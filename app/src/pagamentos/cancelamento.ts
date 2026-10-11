@@ -73,6 +73,8 @@ import { situacaoEfetiva } from "./alteracao-regras";
 import { inicioDoPrazoDePedirDevolucao, inicioDoPrazoDeReleitura } from "./andamento";
 import { sincronizarAvisosDoPagamento, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
+import { registrarEventoDaContestacao } from "./contestacao-leitura";
+import { contestacaoNaoFinal, disputaDoPagamento, MOTIVO_CANCELAMENTO_CONTESTACAO, TEXTO_CONTESTACAO_PERDIDA, TEXTO_DISPUTA_EM_CURSO_CANCELAMENTO } from "./contestacao-regras";
 import { ERRO_FORA_SEM_VALOR, PRAZO_DEVOLUCAO_CARTAO_DIAS, tentarDevolucao } from "./devolucao";
 import { entradasDasAlteracoes } from "./entradas";
 import { FUSO_PAGAMENTO, taxaCanalDaReserva } from "./liberacao";
@@ -82,8 +84,10 @@ import {
   type Alteracao,
   carenciaNoTravado,
   chaveEmVoo,
+  comprometido,
   comprometidoNoPagamento,
   type Cancelamento,
+  contestacoesDoPagamento,
   type Devolucao,
   devolucaoInexplicada,
   devolucoesDoPagamento,
@@ -132,6 +136,8 @@ export type CodigoRecusaCancelamento =
   | "devolucao_a_menor"
   | "ha_alteracao"
   | "contestado"
+  | "contestacao_perdida"
+  | "sem_disputa"
   | "sem_leitura"
   | "repasse_a_pagar"
   | "estadia_encerrada"
@@ -219,7 +225,14 @@ export const TEXTO_FORA_SEM_VALOR =
   "O Mercado Pago mostra parte deste pagamento devolvida pelo painel, sem informar quanto: informe o valor que aparece no painel do Mercado Pago (de cada pagamento pedido) antes de cancelar.";
 export const TEXTO_ALTERACAO_EM_ANDAMENTO =
   "Há uma alteração desta reserva com o pagamento da diferença em andamento: espere o pagamento terminar ou desista da alteração antes de cancelar.";
-export const TEXTO_CONTESTADO = "Pagamento contestado no Mercado Pago: o cancelamento espera a contestação (M8.2e).";
+/**
+ * Disputa do pagamento em curso (M8.2e): o cancelamento pela política espera o resultado. Registro de decisão (11/10/2026):
+ * antes, "Pagamento contestado no Mercado Pago: o cancelamento espera a contestação (M8.2e)."; agora o texto do desenho,
+ * que aponta o pedido do hóspede (vale pelo horário em que chegou) e a ação "Cancelar a reserva contestada".
+ */
+export const TEXTO_CONTESTADO = TEXTO_DISPUTA_EM_CURSO_CANCELAMENTO;
+/** Disputa perdida (M8.2e): o valor já voltou ao hóspede por ela; não se cancela pela política (recusa `contestacao_perdida`). */
+export const TEXTO_CONTESTADO_PERDIDA = TEXTO_CONTESTACAO_PERDIDA;
 export const TEXTO_MOMENTO = "Informe quando o pedido chegou (não pode ser no futuro nem antes do pagamento).";
 
 /** A base da decisão, em palavras (painel; nunca vai ao hóspede assim). */
@@ -232,6 +245,7 @@ export const NOMES_BASE_CANCELAMENTO: Record<BaseCancelamento, string> = {
   fora_do_prazo: "pedido depois do prazo de reembolso integral",
   estadia_iniciada: "pedido depois do início da estadia",
   nao_comparecimento: "não comparecimento",
+  contestacao: "disputa do pagamento (cancelada sem devolução pelo sistema)",
 };
 export const NOMES_CANAL_PEDIDO: Record<CanalPedidoCancelamento, string> = { site: "pelo hóspede, no site", whatsapp: "WhatsApp", email: "E-mail", telefone: "Telefone", presencial: "Pessoalmente", outro: "Outro" };
 export const NOMES_MOTIVO_EXCECAO: Record<MotivoExcecao, string> = { erro_da_scl: "Erro da SCL", forca_maior: "Força maior", cortesia_comercial: "Cortesia comercial", saude_ou_familia: "Saúde ou família", outro: "Outro" };
@@ -398,7 +412,12 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   const andando = t.tentativas.find((x) => emAndamento(x.situacao) && x.criadoEm.getTime() >= inicioLeitura);
   if (andando) return recusa("em_andamento", avisoDoPagamento({ id: andando.id, forma: andando.forma, situacao: andando.situacao, pixExpiraEm: andando.pixExpiraEm, desfecho: andando.desfecho }, fuso, "cancelar"));
   const andandoAntiga = t.tentativas.some((x) => emAndamento(x.situacao) && x.criadoEm.getTime() < inicioLeitura);
-  // 4. O que o Mercado Pago mostra de cada pagamento (pela leitura gravada) e as devoluções dele.
+  // 4. O que o Mercado Pago mostra de cada pagamento (pela leitura gravada) e as devoluções dele. M8.2e: a disputa de
+  // qualquer pagamento da reserva (uma regra, um lugar: `disputaDoPagamento`, de qualquer origem — também o MED registrado
+  // num Pix aprovado e o caso tardio só da Chargebacks API): em curso, espera o resultado; perdida, recusa própria.
+  const disputas = daReserva.map((x) => disputaDoPagamento(t, x.id));
+  if (disputas.includes("em_curso")) return recusa("contestado", TEXTO_CONTESTADO);
+  if (disputas.includes("perdida")) return recusa("contestacao_perdida", TEXTO_CONTESTADO_PERDIDA);
   if (daReserva.some((x) => x.situacao === "contestado")) return recusa("contestado", TEXTO_CONTESTADO);
   for (const x of daReserva) {
     const devs = devolucoesDoPagamento(t, x.id);
@@ -1206,4 +1225,238 @@ export async function marcarHospedeAvisado(db: Db, organizacaoId: string, reserv
   }
   if (!(await marcarAvisado(db, organizacaoId, c.id, qual, autorId, agora))) return { ok: false, erro: "Esta mensagem já foi marcada como enviada." };
   return { ok: true };
+}
+
+// ---------------------------------------------------------------- cancelar a reserva contestada (M8.2e)
+
+export const TEXTO_SEM_DISPUTA_PARA_CANCELAR = "Esta reserva não tem disputa do pagamento aberta com valor em risco: cancele pela política.";
+export const TEXTO_CONTESTADA_SO_ANTES_DA_ENTRADA = (entrada: Date, fuso: string) =>
+  `Só antes do horário de entrada (${diaHoraBr(entrada, fuso)}): depois dele, a reserva segue e a disputa decide (registre quem arca e o resultado no quadro da disputa).`;
+const NOTA_CONTESTADA_OBRIGATORIA = "Escreva por que cancelar a reserva contestada (obrigatória, sem dados pessoais).";
+
+/** O cancelamento é o da rota "Cancelar a reserva contestada" (sem devolução pelo sistema): a página do hóspede mostra "em conferência". */
+export const canceladaPelaDisputa = (c: Pick<Cancelamento, "base"> | null | undefined) => c?.base === MOTIVO_CANCELAMENTO_CONTESTACAO;
+
+/** A prévia de "Cancelar a reserva contestada": o pago, o valor retido (o que o motor divide), a pergunta e a assinatura. */
+export type PreviaContestada = {
+  valorPago: number;
+  valorRetido: number;
+  /** As disputas não finais da reserva com valor em risco (a razão desta rota). */
+  disputas: { contestacaoId: string; pagamentoId: string; valorEmRisco: number }[];
+  avisos: string[];
+  assinatura: string;
+  /** O texto do BotaoConfirmar. */
+  pergunta: string;
+};
+
+type MontadaContestada = { t: Travado; p: Pagamento; ativo: Cancelamento | null; alteracaoADesistir: Alteracao | null; previa: PreviaContestada };
+
+/**
+ * As conferências de "Cancelar a reserva contestada" sobre o retrato da cotação (travado na ação; lido sem trava na
+ * prévia): a reserva confirmada e paga pelo site; uma disputa não final, não duplicada e com valor em risco num pagamento
+ * da reserva; antes do horário de entrada; e as recusas do M8.2c que não dependem da política (tentativa em andamento,
+ * alteração com o pagamento da diferença em andamento, devolução com a chave em voo, parte num repasse ainda a pagar).
+ * O valor retido = o pago (o principal) dos pagamentos da reserva menos o devolvido realizado (as devoluções confirmadas ou
+ * por fora e o reconhecido devolvido fora).
+ */
+async function montarContestada(db: Db, organizacaoId: string, t: Travado, agora: Date): Promise<{ ok: true; m: MontadaContestada } | Recusa> {
+  const r = t.reserva;
+  const fuso = t.imovel.fuso || FUSO_PAGAMENTO;
+  if (r.estado === "cancelada" || t.cancelamento?.situacao === "cancelada") {
+    const em = t.cancelamento?.canceladaEm ?? r.canceladaEm;
+    return recusa("ja_cancelada", `Esta reserva já foi cancelada${em ? ` em ${diaBr(em)}` : ""}.`);
+  }
+  if (r.estado !== "confirmada") return recusa("nao_encontrada", "Só uma reserva confirmada pode ser cancelada por aqui.");
+  const p = t.tentativas.find((x) => x.desfecho === "reserva");
+  if (!p) return recusa("nao_paga_pelo_site", NAO_PAGA);
+  const daReserva = pagamentosDaReserva(t);
+  const disputas = daReserva.flatMap((x) =>
+    contestacoesDoPagamento(t, x.id)
+      .filter((l) => contestacaoNaoFinal(l.situacao) && !l.duplicataPossivel && l.valorEmRisco > 0)
+      .map((l) => ({ contestacaoId: l.id, pagamentoId: x.id, valorEmRisco: l.valorEmRisco })),
+  );
+  if (!disputas.length) return recusa("sem_disputa", TEXTO_SEM_DISPUTA_PARA_CANCELAR);
+  const entrada = await momentosDaEntrada(db, organizacaoId, { imovelId: t.imovel.id, checkin: r.checkin, fuso });
+  if (agora.getTime() >= entrada.entradaEm.getTime()) return recusa("estadia_iniciada", TEXTO_CONTESTADA_SO_ANTES_DA_ENTRADA(entrada.entradaEm, fuso));
+  const inicioLeitura = inicioDoPrazoDeReleitura(agora).getTime();
+  const carencia = carenciaNoTravado(t, agora);
+  const segurada = t.alteracoes.find((a) => situacaoEfetiva(a, agora, carencia(a)) === "segurada") ?? null;
+  if (segurada && t.tentativas.some((x) => x.alteracaoId === segurada.id && ((emAndamento(x.situacao) && x.criadoEm.getTime() >= inicioLeitura) || (x.forma === "cartao" && x.situacao === "pendente" && x.etapaCartao === "analise"))))
+    return recusa("ha_alteracao", TEXTO_ALTERACAO_EM_ANDAMENTO);
+  const andando = t.tentativas.find((x) => emAndamento(x.situacao) && x.criadoEm.getTime() >= inicioLeitura);
+  if (andando) return recusa("em_andamento", avisoDoPagamento({ id: andando.id, forma: andando.forma, situacao: andando.situacao, pixExpiraEm: andando.pixExpiraEm, desfecho: andando.desfecho }, fuso, "cancelar"));
+  for (const x of daReserva) if (devolucoesDoPagamento(t, x.id).some(chaveEmVoo)) return recusa("em_andamento", TEXTO_DEVOLUCAO_EM_VOO);
+  const preso = await repasseAPagarDaReservaDados(db, organizacaoId, r.id);
+  if (preso)
+    return recusa(
+      "repasse_a_pagar",
+      `A parte desta reserva já compõe o repasse ${preso.tipo === "antecipado" ? "antecipado" : preso.tipo === "fechamento" ? "do fechamento" : "por fora"} de ${dataIsoBr(preso.data)}, ainda não pago: estorne esse repasse (o proprietário recebe o resto no próximo) e então cancele.`,
+    );
+  // O pago e o retido: o principal de cada pagamento da reserva menos o que já voltou ao hóspede (realizado) e menos o que a
+  // reserva ainda deve a ele pela disputa (as devoluções substituídas por uma disputa não final: o acerto do cancelamento ou
+  // da alteração já as tirou do resultado, e o dinheiro volta ao hóspede pela disputa, ou volta a ser devido se a SCL
+  // ganhar). Nunca mais que o valor da reserva de agora (depois de uma alteração): o resto é do hóspede.
+  const realizado = (x: Pagamento) =>
+    x.devolvidoForaReconhecido + devolucoesDoPagamento(t, x.id).filter((d) => d.situacao === "confirmada" || d.situacao === "por_fora").reduce((s, d) => s + comprometido(d), 0);
+  const naoFinais = new Set(t.contestacoes.filter((l) => contestacaoNaoFinal(l.situacao)).map((l) => l.id));
+  const substituido = (x: Pagamento) =>
+    devolucoesDoPagamento(t, x.id)
+      .filter((d) => d.contestacaoId !== null && naoFinais.has(d.contestacaoId) && (d.situacao === "recusada" || d.situacao === "pedida"))
+      .reduce((s, d) => s + d.valor, 0);
+  const valorPago = daReserva.reduce((s, x) => s + valorPagoAprovado(x), 0);
+  const retidoDosPagamentos = daReserva.reduce((s, x) => s + Math.max(0, x.valor - realizado(x) - substituido(x)), 0);
+  const valorRetido = r.valorBruto === null ? retidoDosPagamentos : Math.min(retidoDosPagamentos, Math.max(0, r.valorBruto));
+  const ativo = t.cancelamento?.situacao === "pedido" ? t.cancelamento : null;
+  const avisos: string[] = [];
+  if (segurada) avisos.push(`A alteração preparada em ${diaBr(segurada.criadoEm)} (datas seguradas) é desfeita pelo cancelamento: as novas datas voltam à venda.`);
+  if (r.valorBruto !== valorRetido)
+    avisos.push(`O valor retido (${formatBRL(valorRetido)}, o que o hóspede pagou menos o que já voltou a ele) é diferente do valor da reserva (${formatBRL(r.valorBruto ?? 0)}): a divisão muda.`);
+  if (ativo) avisos.push(`O pedido de cancelamento do hóspede recebido em ${diaHoraBr(ativo.pedidoRecebidoEm)} vira este cancelamento (o horário fica registrado).`);
+  const assinatura = createHash("sha1")
+    .update(
+      JSON.stringify([
+        "contestada",
+        valorPago,
+        valorRetido,
+        daReserva.map((x) => [x.id, x.situacao, x.devolvidoForaReconhecido, comprometidoNoPagamento(devolucoesDoPagamento(t, x.id))]),
+        disputas.map((d) => [d.contestacaoId, d.valorEmRisco]),
+        ativo?.id ?? null,
+        segurada?.id ?? null,
+      ]),
+    )
+    .digest("hex")
+    .slice(0, 16);
+  const pergunta = [
+    `Cancelar a reserva ${r.codigo} sem devolução pelo sistema?`,
+    `O pagamento está em disputa: o valor pago (${formatBRL(valorRetido)}) fica retido e é dividido como uma reserva cancelada sem devolução; se o hóspede ganhar a disputa, o dinheiro volta a ele por ela (e a decisão de quem arca vale sobre o valor perdido).`,
+    "As datas voltam à venda no site; reabra-as nas OTAs (no Beds24, apague o bloqueio). O cancelamento não pode ser desfeito.",
+  ].join(" ");
+  return { ok: true, m: { t, p, ativo, alteracaoADesistir: segurada, previa: { valorPago, valorRetido, disputas, avisos, assinatura, pergunta } } };
+}
+
+/** A prévia de "Cancelar a reserva contestada" (sem trava): as mesmas conferências; a assinatura vai na ação. */
+export async function previaDoCancelamentoContestado(db: Db, organizacaoId: string, reservaId: string, agora: Date = new Date()): Promise<{ ok: true; previa: PreviaContestada } | Recusa> {
+  const alvo = await localizar(db, organizacaoId, reservaId);
+  if (!alvo) return recusa("nao_encontrada", "Reserva não encontrada.");
+  if (!alvo.pagamento) return alvo.reserva.estado === "cancelada" ? recusa("ja_cancelada", "Esta reserva já foi cancelada.") : recusa("nao_paga_pelo_site", NAO_PAGA);
+  const t = await lerCotacaoSemTravar(db, organizacaoId, alvo.pagamento.cotacaoId);
+  if (!t) return recusa("nao_encontrada", "Reserva não encontrada.");
+  const m = await montarContestada(db, organizacaoId, t, agora);
+  return m.ok ? { ok: true, previa: m.m.previa } : m;
+}
+
+/**
+ * "Cancelar a reserva contestada (sem devolução pelo sistema)" (★ decisão 6; `reserva:editar` e `financeiro:editar`,
+ * conferidos por quem chama; `BotaoConfirmar` com a pergunta da prévia e nota obrigatória). Grava um cancelamento com o
+ * motivo `contestacao` (quem cancela: a SCL; base `contestacao`), sem decisão pela política: a reserva fica `cancelada` com
+ * `valor_retido` (o pago menos o devolvido realizado) e nenhuma devolução é criada — o dinheiro volta ao titular pela
+ * disputa, se ele ganhar. O motor divide o retido como no M8.2c ("Dinheiro retido (sem devolução)"). A tarefa "reabra as
+ * datas nas OTAs" do M8.2c entra no Início sozinha (o cancelamento sem a marca das OTAs) e a página do hóspede mostra a
+ * reserva cancelada "em conferência" (`canceladaPelaDisputa`). A disputa segue igual: perdida, a decisão de quem arca vale
+ * sobre o valor perdido; ganha, o banco deu a cobrança por válida e o retido continua dividido como numa reserva cancelada
+ * sem devolução. Assinatura da prévia diferente = `previa_mudou`; trava ocupada = `ocupado`.
+ */
+export async function cancelarReservaContestada(
+  db: Db,
+  organizacaoId: string,
+  reservaId: string,
+  e: { nota: string; assinatura: string },
+  autorId: string | null,
+  provedor: ProvedorPagamento | null,
+  agora: Date = new Date(),
+): Promise<{ ok: true; cancelamentoId: string; valorRetido: number } | Recusa> {
+  const nota = e.nota.trim();
+  if (!nota) return recusa("dados", NOTA_CONTESTADA_OBRIGATORIA);
+  if (nota.length > LIMITE_NOTA) return recusa("dados", `A nota tem até ${LIMITE_NOTA} caracteres.`);
+  if (textoSemDadosPessoais(nota) === null) return recusa("dados", ERRO_DADOS_PESSOAIS);
+  const alvo = await localizar(db, organizacaoId, reservaId);
+  if (!alvo) return recusa("nao_encontrada", "Reserva não encontrada.");
+  if (!alvo.pagamento) return alvo.reserva.estado === "cancelada" ? recusa("ja_cancelada", "Esta reserva já foi cancelada.") : recusa("nao_paga_pelo_site", NAO_PAGA);
+  const cotacaoId = alvo.pagamento.cotacaoId;
+  let feito: { ok: true; cancelamentoId: string; valorRetido: number; cancelarNoMp: { id: string; idProvedor: string }[] } | Recusa;
+  try {
+    feito = await db.transaction(async (tx) => {
+      const t = await travarCotacao(tx, organizacaoId, cotacaoId);
+      if (!t) return recusa("nao_encontrada", "Reserva não encontrada.");
+      await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
+      await expirarSeVencida(tx, organizacaoId, t, agora, autorId);
+      const montada = await montarContestada(tx, organizacaoId, t, agora);
+      if (!montada.ok) return montada;
+      const { m } = montada;
+      if (!e.assinatura || e.assinatura !== m.previa.assinatura) return recusa("previa_mudou", TEXTO_PREVIA_MUDOU);
+      return gravarCancelamentoContestado(tx, organizacaoId, m, nota, autorId, agora);
+    });
+  } catch (erro) {
+    if (travaOcupada(erro)) return recusa("ocupado", TEXTO_OCUPADO);
+    if (violouUnicidade(erro, "cancelamentos_reserva_um_ativo")) return recusa("ja_cancelada", "Esta reserva acabou de receber outro pedido ou cancelamento: atualize a página.");
+    throw erro;
+  }
+  if (!feito.ok) return feito;
+  // Fora da transação: o cancelamento no provedor das tentativas da diferença de uma alteração desfeita.
+  if (provedor && feito.cancelarNoMp.length) await cancelarNoProvedor(db, organizacaoId, feito.cancelarNoMp, provedor, agora).catch(() => 0);
+  return { ok: true, cancelamentoId: feito.cancelamentoId, valorRetido: feito.valorRetido };
+}
+
+/** As escritas de "Cancelar a reserva contestada", com o retrato sempre atualizado junto. */
+async function gravarCancelamentoContestado(tx: Db, organizacaoId: string, m: MontadaContestada, nota: string, autorId: string | null, agora: Date) {
+  const { t, p, previa } = m;
+  const r = t.reserva;
+  const comum = {
+    situacao: "cancelada" as const,
+    quemCancela: "empresa" as const,
+    motivoEmpresa: null,
+    motivoExcecao: null,
+    motivoDecisao: "",
+    nota,
+    calculado: null,
+    direito: "nenhum" as const,
+    base: MOTIVO_CANCELAMENTO_CONTESTACAO as "contestacao",
+    valorPago: previa.valorPago,
+    valorADevolver: 0,
+    canceladaEm: agora,
+    canceladaPor: autorId,
+    // Sem devolução: o caixa do cancelamento fica acertado (o dinheiro volta ao titular pela disputa, se ele ganhar).
+    caixaLancadoEm: agora,
+    atualizadoEm: agora,
+  };
+  let linha: Cancelamento;
+  if (m.ativo) [linha] = await tx.update(cancelamentosReserva).set(comum).where(eq(cancelamentosReserva.id, m.ativo.id)).returning();
+  else [linha] = await tx.insert(cancelamentosReserva).values({ organizacaoId, reservaId: r.id, pagamentoId: p.id, pedidoRecebidoEm: agora, canal: null, pedidoPor: autorId, criadoEm: agora, ...comum }).returning();
+  t.cancelamento = linha;
+  const mudancaReserva = { estado: "cancelada" as const, canceladaEm: agora, confirmadaEm: null, conferenciaResolvidaEm: null, valorRetido: previa.valorRetido, atualizadoEm: agora };
+  await tx.update(reservas).set(mudancaReserva).where(eq(reservas.id, r.id));
+  Object.assign(r, mudancaReserva);
+  await tx.update(cotacoes).set({ estado: "cancelada", atualizadaEm: agora }).where(eq(cotacoes.id, t.cotacao.id));
+  t.cotacao.estado = "cancelada";
+  await registrarAuditoria(tx, {
+    organizacaoId,
+    usuarioId: autorId,
+    acao: "reserva.cancelar",
+    entidade: "reserva",
+    entidadeId: r.id,
+    mudancas: { estado: ["confirmada", "cancelada"], motivo: [null, "cancelamento da reserva contestada (disputa do pagamento, sem devolução pelo sistema)"], cancelamento: [null, linha.id] },
+  });
+  await registrarAuditoria(tx, {
+    organizacaoId,
+    usuarioId: autorId,
+    acao: "pagamento.cancelamento",
+    entidade: "pagamento",
+    entidadeId: p.id,
+    mudancas: { direito: [null, "nenhum"], base: [null, MOTIVO_CANCELAMENTO_CONTESTACAO], valor: [null, 0], valorRetido: [null, previa.valorRetido] },
+  });
+  // O resultado: o motor divide o retido como uma reserva normal (o "Dinheiro retido (sem devolução)" do M8.2c).
+  await acertarResultado(tx, organizacaoId, t, p, { direito: "nenhum" }, autorId, agora);
+  const cancelarNoMp = m.alteracaoADesistir ? await desistirPeloCancelamento(tx, organizacaoId, t, m.alteracaoADesistir, autorId, agora) : [];
+  // A linha do tempo de cada disputa que segue aberta e a auditoria da disputa.
+  for (const d of previa.disputas)
+    await registrarEventoDaContestacao(tx, d.contestacaoId, { fonte: "equipe", tipo: "cancelamento", antes: { reserva: "confirmada" }, depois: { reserva: "cancelada", valorRetido: previa.valorRetido }, usuarioId: autorId }, agora);
+  await registrarAuditoria(tx, {
+    organizacaoId,
+    usuarioId: autorId,
+    acao: "contestacao.cancelar_reserva",
+    entidade: "pagamento",
+    entidadeId: p.id,
+    mudancas: { cancelamento: [null, linha.id], valorRetido: [null, previa.valorRetido], contestacoes: [null, previa.disputas.map((d) => d.contestacaoId).join(",")] },
+  });
+  return { ok: true as const, cancelamentoId: linha.id, valorRetido: previa.valorRetido, cancelarNoMp };
 }

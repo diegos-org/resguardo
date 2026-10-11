@@ -30,10 +30,11 @@ import { itensDoRepasse, listarRepasses } from "@/repasses/repasses";
 import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
 import { imoveisMarketplaceDaSessao, limpezasDoProprietario, manutencoesDoProprietario, precosDoMarketplace } from "@/portal/marketplace";
 import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/portal/periodo";
+import { contestacoesDoProprietario } from "@/pagamentos/contestacao-portal";
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { hojeMaisCedo } from "@/site/site";
 import { proprietariosDoUsuario, resumoDoProprietario } from "@/portal/resumo";
-import { divisaoDoDeve, type Rodape, rodapeDoPortal } from "@/portal/rodape";
+import { divisaoDoDeve, nomeDoDescontoQueNaoSeTransfere, type Rodape, rodapeDoPortal, textoForaPorDisputa } from "@/portal/rodape";
 import { donosDosEscolhidos } from "@/relatorios/gerar";
 import { nomeMes } from "@/repasses/repasses";
 import { NOMES_ORIGEM } from "@/reservas/regras";
@@ -44,7 +45,7 @@ const SITUACAO = {
   futuro: { titulo: "Previsto", texto: "só reservas já confirmadas; nada foi recebido ainda." },
 } as const;
 
-const SITUACAO_RESERVA: Record<SituacaoReserva, string> = { definido: "Definido", em_conferencia: "Em conferência", sem_calculo: "Sem cálculo ainda" };
+const SITUACAO_RESERVA: Record<SituacaoReserva, string> = { definido: "Definido", em_conferencia: "Em conferência", em_conferencia_disputa: "Em conferência (disputa do pagamento)", sem_calculo: "Sem cálculo ainda" };
 const br = (d: string) => d.split("-").reverse().join("/");
 
 /** Rodapé de um proprietário: saldo, quem deve a quem e o Pix de quem recebe (só depois do fechamento). */
@@ -64,7 +65,22 @@ function DepoisDoFechamento({ r, empresa }: { r: Rodape; empresa: string }) {
   );
 }
 
-function TextoRodape({ r, empresa, diaFechamento }: { r: Rodape; empresa: string; diaFechamento: number }) {
+/** M8.2e (C2): a parte presa por disputa do pagamento fica para o próximo repasse, com o motivo próprio. */
+function ForaPorDisputa({ r }: { r: Rodape }) {
+  const t = textoForaPorDisputa(r);
+  return t ? <p style={{ margin: 0, fontSize: "0.9375rem" }}>{t}</p> : null;
+}
+
+function TextoRodape(props: { r: Rodape; empresa: string; diaFechamento: number }) {
+  return (
+    <>
+      <TextoDoSaldo {...props} />
+      <ForaPorDisputa r={props.r} />
+    </>
+  );
+}
+
+function TextoDoSaldo({ r, empresa, diaFechamento }: { r: Rodape; empresa: string; diaFechamento: number }) {
   const valor = <strong>{formatBRL(r.valor)}</strong>;
   const descontos = r.descontado > 0 ? ` (já descontados ${formatBRL(r.descontado)} de despesas que a ${empresa} pagou por você)` : "";
   switch (r.situacao) {
@@ -121,7 +137,7 @@ function TextoRodape({ r, empresa, diaFechamento }: { r: Rodape; empresa: string
       // M8.2c: o desconto de reserva cancelada com devolução ao hóspede não se transfere (sai do próximo repasse): o Pix
       // da empresa só aparece para o resto, com esse valor.
       const { proximoRepasse, transferir } = divisaoDoDeve(r);
-      const desconto = `o desconto de reserva cancelada com devolução ao hóspede (${formatBRL(proximoRepasse)}), maior que a sua parte deste mês, não se transfere: sai do próximo repasse`;
+      const desconto = `${nomeDoDescontoQueNaoSeTransfere(r)} (${formatBRL(proximoRepasse)}), maior que a sua parte deste mês, não se transfere: sai do próximo repasse`;
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={{ margin: 0 }}>
@@ -243,6 +259,9 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
     periodo,
   });
   const lista = await reservasDoPortal(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds, periodo });
+  // M8.2e: as disputas do pagamento que atingem estes donos (lista branca: a reserva em conferência, o valor segurado, o
+  // desconto definitivo ou devolvido, a causa e a explicação; nunca a nota, o número do caso ou dado do hóspede).
+  const disputas = await contestacoesDoProprietario(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds });
   // Calendário só no mês (no ano inteiro, a tabela basta).
   // Bloqueios só do tempo em que o imóvel é dele (os do dono anterior não aparecem).
   const bloqueios = filtros.mes !== null && escolhidosIds.length ? await bloqueiosDoPortal(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds, periodo }) : [];
@@ -400,7 +419,11 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
             <Numero titulo="Reservas" valor={String(resumo.reservas)} detalhe={selecao.imoveis.map((i) => i.codigo).join(", ")} />
             <Numero titulo="Valor bruto das reservas" valor={formatBRL(resumo.receitaBruta)} detalhe={`Taxas dos canais: ${formatBRL(resumo.taxasCanais)}`} />
             <Numero titulo={`Comissão da ${empresa}`} valor={formatBRL(resumo.comissao)} />
-            <Numero titulo="Sua parte das reservas" valor={formatBRL(resumo.suaParte)} />
+            <Numero
+              titulo="Sua parte das reservas"
+              valor={formatBRL(resumo.suaParte)}
+              detalhe={resumo.disputa?.n ? `inclui ${formatBRL(resumo.disputa.valor)} da disputa do pagamento (${resumo.disputa.n} ${resumo.disputa.n === 1 ? "reserva" : "reservas"}): veja o extrato` : undefined}
+            />
             <Numero titulo="Despesas atribuídas a você" valor={formatBRL(resumo.despesas)} />
             <Numero
               titulo="Acerto do período"
@@ -515,6 +538,23 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               hóspede informou.
             </p>
           </section>
+
+          {disputas.length > 0 && (
+            <section aria-label="Disputas do pagamento" className={styles.secao}>
+              <h2>Disputas do pagamento</h2>
+              <p className={styles.miudo}>
+                Quando um hóspede pede ao banco para desfazer a cobrança de uma reserva paga pelo site, o Mercado Pago segura o valor até a decisão. Cada passo
+                aparece também no seu extrato.
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
+                {disputas.map((d) => (
+                  <li key={d.id}>
+                    <strong>{d.imovelCodigo}</strong> · {d.texto}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <ExtratoRepasses
             donos={donos}

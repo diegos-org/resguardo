@@ -20,13 +20,14 @@
 import { revalidatePath } from "next/cache";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
-import { type ErrosPagamentoSite, salvarConfigPagamentoSite, validarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import { type ErrosPagamentoSite, lerConfigPagamentoSite, salvarConfigPagamentoSite, validarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { conferirTentativa } from "./conferencia";
+import { conferirContestacoesDoPagamento } from "./contestacao";
 import {
   type AlvoDaDevolucao,
   confirmarDevolucaoVistaNoProvedor,
@@ -103,12 +104,22 @@ function falhaDoProvedor(e: unknown): EstadoAcaoPagamento {
 }
 
 function textoDoResumo(r: ResumoConferencia): string {
-  const partes = [`${r.conferidas} pagamento(s) conferido(s) com o Mercado Pago, ${r.mudaram} com mudança`];
+  const d = r.contestacoes;
+  const partes: string[] = [];
+  // Só as disputas mexeram: a frase começa por elas (sem o "0 pagamento(s) conferido(s)").
+  if (r.conferidas || !disputasMexeram(r)) partes.push(`${r.conferidas} pagamento(s) conferido(s) com o Mercado Pago, ${r.mudaram} com mudança`);
   if (r.devolucoes) partes.push(`${r.devolucoes} devolução(ões) confirmada(s)`);
   if (r.canceladas) partes.push(`${r.canceladas} Pix que sobrou cancelado(s)`);
+  // M8.2e: as disputas da volta (a releitura das abertas e a busca tardia).
+  if (d?.novas) partes.push(`${d.novas} disputa(s) nova(s) no quadro`);
+  if (d?.lidas) partes.push(`${d.lidas} disputa(s) relida(s)`);
+  if (d?.mudaram) partes.push(`disputas atualizadas em ${d.mudaram} pagamento(s)`);
   const texto = `${partes.join(", ")}.`;
   return r.falhas ? `${texto} ${r.falhas} não deu para conferir agora: tente de novo em instantes.` : texto;
 }
+
+/** O "Conferir agora" da empresa leu, achou ou mudou alguma disputa (M8.2e). */
+const disputasMexeram = (r: ResumoConferencia) => !!r.contestacoes && (r.contestacoes.lidas > 0 || r.contestacoes.novas > 0 || r.contestacoes.mudaram > 0);
 
 /**
  * "Conferir agora": com `pagamentoId`, lê aquela tentativa no Mercado Pago (sem esperar o intervalo); sem ele,
@@ -126,14 +137,20 @@ export async function conferirAgoraAcao(_e: EstadoAcaoPagamento, form: FormData)
     if (pagamentoId) {
       const r = await conferirTentativa(db, sessao.organizacaoId, pagamentoId, gate.provedor, new Date(), { forcar: true, origem: "painel" });
       if (!r.ok) return { mensagem: r.erro };
+      // M8.2e: o "Conferir agora" de um pagamento relê também as disputas dele (e a busca das tardias), só daquele pagamento.
+      const disputas = await conferirContestacoesDoPagamento(db, sessao.organizacaoId, pagamentoId, gate.provedor, new Date());
       revalidar();
       const situacao = NOMES_SITUACAO_PAGAMENTO[r.situacao].toLowerCase();
-      return { ok: true, mensagem: r.mudou ? `Conferido com o Mercado Pago: atualizado (${situacao}).` : `Conferido com o Mercado Pago: nada mudou (${situacao}).` };
+      const daDisputa = disputas.novas ? ` ${disputas.novas} disputa(s) nova(s) no quadro.` : disputas.mudaram ? " As disputas do pagamento foram atualizadas." : "";
+      // A leitura das disputas que falhou (a Chargebacks API, a busca ou a Payments API): nunca um "nada mudou" em silêncio.
+      const falhaDaDisputa = disputas.falhas ? " Não deu para conferir as disputas do pagamento agora: tente de novo em instantes." : "";
+      return { ok: true, mensagem: `${r.mudou ? `Conferido com o Mercado Pago: atualizado (${situacao}).` : `Conferido com o Mercado Pago: nada mudou (${situacao}).`}${daDisputa}${falhaDaDisputa}` };
     }
     // Do painel, lê agora (sem os intervalos da rotina): o botão promete conferir tudo o que está pendente.
     const resumo = await conferirPendentes(db, sessao.organizacaoId, gate.provedor, new Date(), { forcar: true });
     revalidar();
-    return { ok: true, mensagem: resumo.conferidas || resumo.falhas || resumo.devolucoes || resumo.canceladas ? textoDoResumo(resumo) : "Nada pendente para conferir com o Mercado Pago." };
+    const algo = resumo.conferidas || resumo.falhas || resumo.devolucoes || resumo.canceladas || disputasMexeram(resumo);
+    return { ok: true, mensagem: algo ? textoDoResumo(resumo) : "Nada pendente para conferir com o Mercado Pago." };
   } catch (e) {
     return falhaDoProvedor(e);
   }
@@ -351,7 +368,8 @@ export async function estornarLiberacaoAcao(_e: EstadoAcaoPagamento, form: FormD
 export async function salvarConfigPagamentoSiteAcao(_e: EstadoConfigPagamento, form: FormData): Promise<EstadoConfigPagamento> {
   const sessao = await sessaoFinanceira();
   const valores = campos(form);
-  const v = validarConfigPagamentoSite(valores);
+  // M8.2e: um formulário sem os campos da disputa (aba antiga aberta) mantém os valores salvos deles.
+  const v = validarConfigPagamentoSite(valores, await lerConfigPagamentoSite(getDb(), sessao.organizacaoId));
   if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores };
   const r = await salvarConfigPagamentoSite(getDb(), sessao.organizacaoId, v.config, sessao.usuarioId);
   if (!r.ok) return { erros: r.erros, mensagem: "Confira os campos destacados.", valores };

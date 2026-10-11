@@ -45,6 +45,8 @@ const cancelamento = (over: Partial<CancelamentoNoPortal> = {}): CancelamentoNoP
   direitoAgora: "integral",
   semPolitica: false,
   linkCotacao: "/reservar/COT-ABCDEFGH",
+  emConferencia: false,
+  faleComAEquipe: false,
   ...over,
 });
 const html = async (busca: Record<string, string> = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(busca) } as PageProps<"/hospede">));
@@ -151,5 +153,42 @@ describe("Minha reserva: a alteração em andamento (M8.2d)", () => {
     expect(await html()).not.toContain("Há uma alteração");
     m.reservas.mockResolvedValue([{ ...reserva, encerrada: true, alteracao: { espera: "pagamento", ate: new Date("2026-10-01T16:20:00Z"), pagamentoEmAndamento: false, link: "/reservar/COT-ABCDEFGH" } }]);
     expect(await html()).not.toContain("Há uma alteração");
+  });
+});
+
+describe("Minha reserva: o pagamento em conferência (M8.2e)", () => {
+  it("disputa em curso: a frase de Textos do site e 'Para cancelar, fale com a equipe.' no lugar do botão; nunca a disputa nem valores", async () => {
+    m.cancelamento.mockResolvedValue(cancelamento({ emConferencia: true }));
+    const h = await html();
+    expect(h).toContain(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia);
+    expect(h).toContain("Para cancelar, fale com a equipe.");
+    expect(h).not.toContain("Pedir o cancelamento");
+    expect(h).not.toMatch(/contesta|chargeback|disputa|Beds24/i);
+    expect(h).not.toContain("R$");
+  });
+
+  it("a frase vazia em Textos do site: só o contato aparece", async () => {
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, pagamentoEmConferencia: "" } } });
+    m.cancelamento.mockResolvedValue(cancelamento({ emConferencia: true }));
+    const h = await html();
+    expect(h).toContain("Para cancelar, fale com a equipe.");
+    expect(h).not.toContain(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia);
+    expect(h).not.toContain("Pedir o cancelamento");
+  });
+
+  it("disputa perdida (revisão de 11/10): sem o botão e sem a frase de conferência, mas com 'Para cancelar, fale com a equipe.' (nunca o sumiço sem explicação)", async () => {
+    m.cancelamento.mockResolvedValue(cancelamento({ emConferencia: false, faleComAEquipe: true, podePedir: false }));
+    const h = await html();
+    expect(h).toContain("Para cancelar, fale com a equipe.");
+    expect(h).not.toContain(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia);
+    expect(h).not.toContain("Pedir o cancelamento");
+    expect(h).not.toMatch(/contesta|chargeback|disputa|Beds24/i);
+  });
+
+  it("pedido já recebido antes da disputa: o recibo do pedido continua valendo", async () => {
+    m.cancelamento.mockResolvedValue(cancelamento({ emConferencia: true, podePedir: false, pedidoEm: new Date("2026-10-10T13:00:00Z") }));
+    const h = await html();
+    expect(h).toContain("Pedido de cancelamento recebido em 10/10 às 10:00");
+    expect(h).not.toContain("Para cancelar, fale com a equipe.");
   });
 });

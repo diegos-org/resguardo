@@ -10,6 +10,7 @@ import {
   chaveTaxaPerdida,
   corrigirTaxaPerdida,
   devolverPeloProvedor,
+  ERRO_DEVOLUCAO_COM_DISPUTA,
   ERRO_POR_FORA_CARTAO,
   ESPERA_DEVOLUCAO_MS,
   ERRO_POR_FORA_SEM_CONFERIR,
@@ -300,7 +301,7 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(pedidos()).toHaveLength(1);
   });
 
-  it("order devolvida em parte ou contestada antes de pedir de novo: a leitura é aplicada e a devolução para (aviso), sem pedir o valor inteiro por cima", async () => {
+  it("order devolvida em parte ou contestada antes de pedir de novo: a leitura é aplicada e a devolução para (aviso), sem pedir o valor inteiro por cima — salvo a contestada com a chave em dúvida (M8.2e), que só espera a leitura", async () => {
     for (const [n, mexer] of [
       [0, (id: string) => c.provedor.devolverNoProvedor(id, 5000)],
       [1, (id: string) => c.provedor.contestar(id)],
@@ -314,12 +315,19 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
       expect((await devolucao(x.pagamentoId)).situacao).toBe("pedida");
       mexer(x.idProvedor);
       await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(21));
-      expect((await devolucao(x.pagamentoId)).situacao).toBe("recusada");
       expect(pedidos()).toHaveLength(antes + 1);
       const t = await c.tentativa(x.pagamentoId);
       expect(t.situacao).toBe(n === 0 ? "devolvido_parcial" : "contestado");
-      expect(t.avisos).toContain("devolucao_parada");
-      expect(textosDosAvisos(t.avisos).join(" ")).toContain("parou");
+      if (n === 0) {
+        expect((await devolucao(x.pagamentoId)).situacao).toBe("recusada");
+        expect(t.avisos).toContain("devolucao_parada");
+        expect(textosDosAvisos(t.avisos).join(" ")).toContain("parou");
+      } else {
+        // M8.2e ("Devoluções do mesmo pagamento"): com a chave em dúvida (o primeiro pedido pode ter sido aceito), a disputa
+        // não a para nem a substitui: nada se envia (nem com a mesma chave) e ela espera a leitura.
+        expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveEmDuvida: true, contestacaoId: null });
+        expect(t.avisos).not.toContain("devolucao_parada");
+      }
     }
   });
 
@@ -560,9 +568,10 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await porFora(y.pagamentoId, minutos(13), { valor: TOTAL - 1000 })).toEqual({ ok: true, situacao: "por_fora" });
     expect(await c.tentativa(y.pagamentoId)).toMatchObject({ desfecho: "por_fora", devolvidoForaReconhecido: 1000 });
     expect(await devolucao(y.pagamentoId)).toMatchObject({ situacao: "por_fora", valor: TOTAL - 1000, porForaValor: TOTAL - 1000 });
+    // M8.2e: a releitura antes do por fora abre a disputa (a contestação lida vira linha em curso): recusado pela disputa.
     const z = await semReserva({ taxa: 1806 }, outras(1));
     c.provedor.contestar(z.idProvedor);
-    expect(await porFora(z.pagamentoId, minutos(14))).toMatchObject({ ok: false, erro: expect.stringContaining("contestado") });
+    expect(await porFora(z.pagamentoId, minutos(14))).toEqual({ ok: false, erro: ERRO_DEVOLUCAO_COM_DISPUTA });
   });
 
   it("por fora: a order relida precisa ser a deste pagamento (id e referência); outra order aprovada não serve, e nada é registrado", async () => {

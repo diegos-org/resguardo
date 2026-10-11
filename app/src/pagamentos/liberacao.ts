@@ -24,6 +24,10 @@
  *   esperavam por ela (`acertarCaixasPendentes`) e acorda as devoluções de parte do valor que esperavam a liberação (D13).
  *   Na reserva cancelada com devolução integral, a liberação (do provedor, ou à mão quando uma devolução de parte do valor
  *   espera por ela) fica registrada só no pagamento: nada entra no livro.
+ * - Disputa do pagamento (M8.2e): a liberação lida nunca lança com disputa em curso ou perdida (`aplicarLeitura` liga o
+ *   aviso); a registrada à mão é aceita sob disputa (o pagamento `contestado` explicado por uma disputa registrada) e lança
+ *   o recebimento com o líquido informado, como sempre (o retido da disputa é outra linha). O estorno da liberação à mão é
+ *   recusado enquanto houver retido realizado da disputa.
  */
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
@@ -40,11 +44,15 @@ import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReserva } from "@/repasses/recebimentos";
 import { dataValida } from "@/reservas/regras";
 import { acertarCaixasPendentes } from "./acerto-cancelamento";
-import { sincronizarAvisosDoPagamento } from "./avisos-devolucao";
+import { sincronizarAvisosDaDisputa, trocarAvisosDaContestacao } from "./contestacao-leitura";
+import { contestacaoNaoFinal, TEXTO_ESTORNO_LIBERACAO_COM_RETIDO } from "./contestacao-regras";
 import type { CodigoAviso } from "./situacoes";
 import {
   type Alteracao,
+  type Contestacao,
+  contestacoesDoPagamento,
   devolucaoInexplicada,
+  devolvidoPelaDisputa,
   devolucoesDoPagamento,
   dinheiroDaReserva,
   esperaLiberacao,
@@ -260,9 +268,11 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
     if (!t || !p) return { ok: false as const, erro: "Pagamento não encontrado." };
     if (!dinheiroDaReserva(p)) return { ok: false as const, erro: "Só o pagamento que confirmou a reserva (ou a diferença de uma alteração aplicada) tem liberação registrada." };
     // Devolvido em parte pelas devoluções do sistema (uma alteração com devolução): a liberação ainda vale. Com uma
-    // devolução que o sistema não explica (painel do Mercado Pago), não.
-    const emParteExplicada = p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devolucoesDoPagamento(t, p.id));
-    if (p.situacao !== "aprovado" && !emParteExplicada) return { ok: false as const, erro: "Este pagamento não está mais aprovado no Mercado Pago: confira antes de registrar a liberação." };
+    // devolução que o sistema não explica (painel do Mercado Pago), não. M8.2e: contestado com a disputa registrada (ela
+    // explica a situação): a liberação à mão lança o líquido que caiu; o retido da disputa é outra linha.
+    const emParteExplicada = p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devolucoesDoPagamento(t, p.id), devolvidoPelaDisputa(t, p.id));
+    const contestadoExplicado = p.situacao === "contestado" && contestacoesDoPagamento(t, p.id).some((c) => c.situacao !== "sem_efeito");
+    if (p.situacao !== "aprovado" && !emParteExplicada && !contestadoExplicado) return { ok: false as const, erro: "Este pagamento não está mais aprovado no Mercado Pago: confira antes de registrar a liberação." };
     // Confirmada, ou cancelada com valor retido pela política (M8.2c): o dinheiro ficou com a empresa. Cancelada com
     // devolução integral: o dinheiro volta ao hóspede e nunca entra no livro — a liberação só se registra (M8.2d, D13)
     // quando uma devolução de parte do valor deste pagamento espera por ela, como faz a liberação lida do Mercado Pago.
@@ -285,7 +295,8 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
       Object.assign(p, mudanca);
       await acertarCaixasPendentes(tx, organizacaoId, t, p, d.data, agora);
       await acordarDevolucoesQueEsperam(tx, t, p, agora);
-      await sincronizarAvisosDoPagamento(tx, t, p, agora);
+      await desligarAvisosDaLiberacaoNaDisputa(tx, t, p, agora);
+      await sincronizarAvisosDaDisputa(tx, t, p, agora);
       await registrarAuditoria(tx, {
         organizacaoId,
         usuarioId: autorId,
@@ -298,6 +309,10 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
     }
     const { emVigor, proxima } = await recebimentosDoPagamento(tx, organizacaoId, p.id);
     if (emVigor.length) return { ok: false as const, erro: emVigor[0].estado === "conciliado" ? "A liberação já foi confirmada pelo Mercado Pago." : "A liberação já está registrada: estorne a registrada à mão antes de registrar de novo." };
+    // M8.2e: a disputa perdida já contou no caixa final o que deste pagamento nunca entrou: só cabe o resto do líquido.
+    const cabe = liquidoQueAindaPodeEntrar(t, p);
+    if (cabe !== null && cabe <= 0) return { ok: false as const, erro: TEXTO_LIBERACAO_DEPOIS_DA_PERDIDA };
+    if (cabe !== null && d.liquido > cabe) return { ok: false as const, erro: `O líquido não pode passar de ${formatBRL(cabe)}: a disputa perdida já contou o resto deste pagamento como "nunca entrou". Confira o valor, ou corrija com um ajuste.` };
     const taxa = p.valor - d.liquido;
     const taxaAntes = p.taxa;
     const mudanca = { taxa, liquido: d.liquido, liberacaoConfirmadaEm: agora, liberacaoOrigem: "manual" as const, atualizadoEm: agora };
@@ -328,10 +343,68 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
     // valor que esperavam a liberação (D13).
     await acertarCaixasPendentes(tx, organizacaoId, t, p, d.data, agora);
     await acordarDevolucoesQueEsperam(tx, t, p, agora);
-    await sincronizarAvisosDoPagamento(tx, t, p, agora);
+    await desligarAvisosDaLiberacaoNaDisputa(tx, t, p, agora);
+    await sincronizarAvisosDaDisputa(tx, t, p, agora);
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_manual", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [null, `${d.liquido} em ${d.data}`], taxa: [taxaAntes, taxa] } });
     return { ok: true as const };
   });
+}
+
+/**
+ * M8.2e: a liberação registrada (à mão, ou lida do Mercado Pago depois da disputa) cumpriu o papel dos avisos de liberação
+ * das disputas do pagamento (a lida sob disputa e a ganha sem recebimento): eles saem das linhas (a união no pagamento é
+ * refeita por quem grava o pagamento). Sob as travas de quem chama. Devolve se algum saiu.
+ */
+export async function desligarAvisosDaLiberacaoNaDisputa(tx: Db, t: Pick<Travado, "contestacoes">, p: Pick<Pagamento, "id">, agora: Date): Promise<boolean> {
+  let mudou = false;
+  for (const c of contestacoesDoPagamento(t, p.id)) mudou = (await trocarAvisosDaContestacao(tx, c, { desligar: ["contestacao_liberacao_lida", "contestacao_ganha_sem_recebimento"] }, agora)) || mudou;
+  return mudou;
+}
+
+/**
+ * M8.2e: o Mercado Pago mostra a liberação de um pagamento com disputa em curso ou perdida (a order, ou a Payments API pelo
+ * número depois dos 85 dias): a liberação lida nunca lança nem fica registrada sozinha. O aviso `contestacao_liberacao_lida`,
+ * nas disputas não finais e nas perdidas, pede só o que ainda falta: sem recebimento em vigor (a liberação já registrada à
+ * mão, ou lida antes da disputa, não se registra de novo) e com líquido que ainda cabe (a perdida que já contou o líquido
+ * como "nunca entrou" não pede a liberação por cima do caixa final dela); senão sai. Uma regra, um lugar: a leitura da order
+ * (`aplicarLeitura`) e a da Payments API (`aplicarFontes`). Sob as travas de quem chama. Devolve se algum aviso mudou.
+ */
+export async function avisarLiberacaoLidaNaDisputa(
+  tx: Db,
+  organizacaoId: string,
+  t: Pick<Travado, "contestacoes">,
+  p: Pick<Pagamento, "id" | "valor" | "liquido" | "taxa">,
+  agora: Date,
+): Promise<boolean> {
+  const comRecebimento = (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.length > 0;
+  const cabe = liquidoQueAindaPodeEntrar(t, p);
+  const pede = !comRecebimento && (cabe === null || cabe > 0);
+  let mudou = false;
+  for (const l of contestacoesDoPagamento(t, p.id)) {
+    if (!contestacaoNaoFinal(l.situacao) && l.situacao !== "perdida") continue;
+    mudou = (await trocarAvisosDaContestacao(tx, l, pede ? { ligar: ["contestacao_liberacao_lida"] } : { desligar: ["contestacao_liberacao_lida"] }, agora)) || mudou;
+  }
+  return mudou;
+}
+
+export const TEXTO_LIBERACAO_DEPOIS_DA_PERDIDA =
+  "A disputa perdida já contou que o líquido deste pagamento nunca entrou na conta (o caixa final da disputa): a liberação não se registra por cima. Corrija com um ajuste, que fica registrado.";
+
+/**
+ * M8.2e: quanto do líquido deste pagamento ainda pode entrar na conta depois das disputas perdidas dele (o líquido, ou o
+ * valor menos a taxa conhecida, menos o "nunca entrou" que o caixa final de cada perdida já contou); null = nenhuma perdida
+ * contou algo como "nunca entrou" (sem teto além das regras de sempre).
+ */
+export function liquidoQueAindaPodeEntrar(
+  t: { contestacoes: readonly Pick<Contestacao, "pagamentoId" | "situacao" | "liquidoNaoEntrou">[] },
+  p: Pick<Pagamento, "id" | "valor" | "liquido" | "taxa">,
+): number | null {
+  const naoEntrou = t.contestacoes
+    .filter((c) => c.pagamentoId === p.id && c.situacao === "perdida")
+    .reduce((s, c) => s + Math.max(0, c.liquidoNaoEntrou ?? 0), 0);
+  if (naoEntrou <= 0) return null;
+  const liquido = p.liquido ?? (p.taxa !== null ? p.valor - p.taxa : p.valor);
+  return liquido - naoEntrou;
 }
 
 /**
@@ -355,6 +428,16 @@ async function taxaAntesDoManual(tx: Db, organizacaoId: string, pagamentoId: str
  * a próxima conferência relê a Payments API. A próxima liberação usa a chave seguinte (#N). Na reserva cancelada com
  * devolução integral (M8.2c), nunca: a liberação não se registraria de novo e a saída da devolução espelha esta entrada.
  */
+/** Alguma disputa do pagamento tem o retido realizado (o débito do Mercado Pago confirmado, ou o MED lido como devolução). */
+async function comRetidoRealizado(tx: Db, organizacaoId: string, t: Travado, pagamentoId: string): Promise<boolean> {
+  const ids = contestacoesDoPagamento(t, pagamentoId)
+    .map((c) => c.retidoLancamentoId)
+    .filter((x): x is string => !!x);
+  if (!ids.length) return false;
+  const linhas = await tx.select({ estado: lancamentos.estado }).from(lancamentos).where(and(eq(lancamentos.organizacaoId, organizacaoId), inArray(lancamentos.id, ids)));
+  return linhas.some((l) => l.estado === "realizado" || l.estado === "conciliado");
+}
+
 export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pagamentoId: string, motivo: string, autorId: string | null, agora: Date = new Date()): Promise<Resultado> {
   const m = motivo.trim().slice(0, 200);
   if (!m) return { ok: false, erro: "Informe o motivo do estorno." };
@@ -379,6 +462,8 @@ export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pag
       return { ok: false as const, erro: "Há uma devolução de parte deste pagamento já pedida ao Mercado Pago (ela só sai com o pagamento liberado): espere ela se resolver e corrija com um ajuste." };
     if (devs.some((x) => (x.situacao === "confirmada" || x.situacao === "por_fora") && !x.caixaLancadoEm))
       return { ok: false as const, erro: "Há uma devolução deste pagamento esperando a liberação para acertar o caixa: corrija com um ajuste." };
+    // M8.2e: o débito do Mercado Pago pela disputa já está no caixa (o retido realizado) contra esta liberação.
+    if (await comRetidoRealizado(tx, organizacaoId, t, p.id)) return { ok: false as const, erro: TEXTO_ESTORNO_LIBERACAO_COM_RETIDO };
     // M8.2c: cancelada com devolução integral, a liberação não se registra de novo (`registrarLiberacaoManual`), e a taxa
     // nunca volta à reserva (gravá-la reabriria a conferência que o acerto do cancelamento deu por resolvida).
     if (!reservaCalculadaPeloMotor(t.reserva)) return { ok: false as const, erro: ERRO_ESTORNO_LIBERACAO_CANCELADA };

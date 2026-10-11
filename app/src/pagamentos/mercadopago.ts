@@ -4,6 +4,10 @@
  * contestações e liberação em parcelas: M8.2b, em 9/10/2026).
  * Taxa, líquido e liberação não existem na Orders: vêm da Payments API, procurando o pagamento
  * pela referência (`detalheFinanceiro`, ver o comentário lá).
+ * Contestação (M8.2e, documentação relida em 11/10/2026): `transactions.chargebacks[]` da order (`contestacoesDaOrder`),
+ * a Chargebacks API (`consultarContestacao`, `buscarContestacoes`, com o X-Caller-Id de GET /users/me) e a Payments
+ * API pelo número (`situacaoDoPagamento`), tudo por lista branca: nunca `reason` em texto livre, `documentation` ou
+ * `references`.
  *
  * Segurança: o access token só vai no cabeçalho Authorization; nenhuma mensagem de erro repete
  * o corpo da resposta, o token, e-mails ou documentos (lista fechada `MENSAGENS`). Toda escrita
@@ -11,12 +15,14 @@
  * resultado é "incerto" e quem chama procura pela referência antes de tentar de novo.
  */
 import {
-  chaveIdempotenciaValida, CODIGOS_TOKEN, emailPlausivel, ErroProvedor, idDevolucaoValido, idProvedorValido, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida,
-  STATUS_TRES_DS, urlDoDesafio, validadePixMinutos,
+  chaveIdempotenciaValida, CODIGOS_TOKEN, emailPlausivel, ErroProvedor, estadoLidoDaContestacao, idContestacaoValido, idDevolucaoValido, idNumericoLido, idNumericoValido,
+  idProvedorValido, liberadoPeloStatus, MAXIMO_CONTESTACOES_LIDAS, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida, SITUACOES_DOCUMENTACAO, STATUS_TRES_DS,
+  TEMPO_LIMITE_CONTESTACAO_MS, TEMPO_LIMITE_PADRAO_MS, urlDoDesafio, validadePixMinutos,
 } from "./provedor";
 import type {
-  Cobranca, CodigoDevolucao, DadosCartao, DetalheFinanceiro, DevolucaoLida, EstadoDevolucaoLida, FormaPagamento, OpcoesDevolucao, PedidoCartao, PedidoPix, ProvedorPagamento,
-  ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca, StatusTresDS,
+  CasoDeContestacao, Cobranca, CodigoDevolucao, ContestacaoLida, DadosCartao, DetalheFinanceiro, DevolucaoLida, EstadoDevolucaoLida, FormaPagamento, OpcoesDevolucao, PedidoCartao,
+  PedidoPix, ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SemAcessoContestacao, SituacaoCobranca, SituacaoDocumentacao, SituacaoDoPagamento,
+  StatusTresDS,
 } from "./provedor";
 
 const BASE = "https://api.mercadopago.com";
@@ -69,7 +75,13 @@ const data = (v: unknown): Date | null => {
 // ---------------------------------------------------------------- situação
 
 const ACAO_PENDENTE = new Set(["waiting_transfer", "waiting_payment", "pending_waiting_payment", "pending_challenge", "waiting_capture", "waiting_retry"]);
-/** Contestação que ainda vale (reimbursed = a contestação terminou e o dinheiro voltou à SCL). */
+/**
+ * Status de `transactions.chargebacks[]` que dão `contestado` em `normalizarSituacao` (M8.2b; o M8.2e não muda isso).
+ * Pela página atual das Orders (11/10/2026), `reimbursed` é "o valor foi devolvido ao pagador depois da contestação" (a
+ * SCL perdeu), e não "o dinheiro voltou à SCL", como dizia a página antiga em que este comentário se baseou; o sentido
+ * está a conferir (item 61 do sandbox). Por isso a lista não decide nada sozinha: a situação que vale para o pagamento
+ * sai de `contestacaoDaLeitura`, pelas contestações lidas (`Cobranca.contestacoes`) e confirmadas pela equipe.
+ */
 const CONTESTACAO_ABERTA = new Set(["in_process", "settled"]);
 
 type ParSituacao = { status?: unknown; status_detail?: unknown };
@@ -86,8 +98,9 @@ type ParSituacao = { status?: unknown; status_detail?: unknown };
  * in_process|settled|reimbursed, expired, failed, refunded) e transação (processing/
  * pending_review_manual|in_review, in_review, action_required/pending_challenge, failed/<motivo>).
  *
- * Contestação (M8.2b, gancho do M8.2e): é por transação. A transação charged_back/* ou uma contestação in_process/
- * settled em `transactions.chargebacks[]` (`contestacoes`, só os status) dão `contestado`, seja qual for a order.
+ * Contestação (M8.2b; igual no M8.2e): é por transação. A transação charged_back/* ou uma contestação in_process/
+ * settled em `transactions.chargebacks[]` (`contestacoes`, só os status) dão `contestado`, seja qual for a order. As
+ * contestações em si (ids, estado, valor) vêm em `Cobranca.contestacoes` (`contestacoesDaOrder`).
  */
 export function normalizarSituacao(order: ParSituacao, transacao?: ParSituacao | null, contestacoes: readonly string[] = []): SituacaoCobranca {
   if (transacao && codigo(transacao.status) === "charged_back") return "contestado";
@@ -168,6 +181,36 @@ export function devolucoesDaLista(itens: unknown): DevolucaoLida[] {
   return lidas;
 }
 
+/**
+ * As contestações que a order mostra (M8.2e), por lista branca: de cada item de `transactions.chargebacks[]` (até 20,
+ * só objetos), o id (CBK…), o `case_id` (texto com até 20 algarismos ou inteiro seguro; um número de 18 algarismos já
+ * chegou arredondado e fica null), o `transaction_id` (só pista), o status e o `amount`. Nunca `references`, `reason`,
+ * `documentation` ou qualquer texto livre. Sem item na lista, a transação (sem ela, a order) `charged_back/<detalhe>` dá
+ * uma contestação sem identificação nem valor, com o estado pelo detalhe (`daTransacao`).
+ */
+export function contestacoesDaOrder(order: Obj, pagamento: Obj | null): ContestacaoLida[] {
+  const transacoes = obj(order.transactions) ? order.transactions : {};
+  const lidas: ContestacaoLida[] = [];
+  for (const x of lista(transacoes.chargebacks).slice(0, MAXIMO_CONTESTACOES_LIDAS)) {
+    if (!obj(x)) continue;
+    const status = codigo(x.status);
+    lidas.push({
+      idContestacao: idContestacaoValido(x.id) ? x.id : null,
+      idCaso: idNumericoLido(x.case_id),
+      idTransacao: idProvedorValido(x.transaction_id) ? x.transaction_id : null,
+      estadoLido: estadoLidoDaContestacao(status),
+      codigo: status,
+      valor: valorApiParaCentavos(x.amount),
+      daTransacao: false,
+    });
+  }
+  if (lidas.length) return lidas;
+  const contestada = [pagamento, order].find((p): p is Obj => !!p && codigo(p.status) === "charged_back");
+  if (!contestada) return [];
+  const detalhe = codigo(contestada.status_detail);
+  return [{ idContestacao: null, idCaso: null, idTransacao: null, estadoLido: estadoLidoDaContestacao(detalhe), codigo: detalhe, valor: null, daTransacao: true }];
+}
+
 const formaDe = (pm: Obj | null): FormaPagamento | null => {
   const tipo = codigo(pm?.type);
   if (tipo === "bank_transfer" || codigo(pm?.id) === "pix") return "pix";
@@ -221,7 +264,9 @@ const linkSeguro = (v: unknown): string | null => {
  * (in_process, pending ou situação desconhecida). `devolucoes`: os itens com id válido, por lista
  * branca de status (ver `devolucoesDaLista`). `valorTransacao` = amount do pagamento.
  * `formaPedida` completa a forma quando a resposta vem sem o meio (os exemplos da criação trazem null).
- * Das contestações (`transactions.chargebacks[]`) só o status é lido; nunca case_id, id ou references.
+ * Contestações (M8.2e): `contestacoes` por lista branca (`contestacoesDaOrder`; antes, até o M8.2d, só o status era
+ * lido) e `transacaoAprovada` (a transação, ou sem ela a order, processed/accredited: o fato "a transação voltou a
+ * aprovada", nunca um resultado). `situacao` não muda: continua de `normalizarSituacao`.
  */
 export function cobrancaDaOrder(dados: unknown, formaPedida: FormaPagamento | null = null): Cobranca | null {
   if (!obj(dados) || !idProvedorValido(dados.id)) return null;
@@ -231,7 +276,8 @@ export function cobrancaDaOrder(dados: unknown, formaPedida: FormaPagamento | nu
   const pagamento = lista(transacoes.payments).find(obj) ?? null;
   const pm = pagamento && obj(pagamento.payment_method) ? pagamento.payment_method : null;
   const forma = formaDe(pm) ?? formaPedida;
-  const contestacoes = lista(transacoes.chargebacks).slice(0, 20).map((x) => (obj(x) ? codigo(x.status) : null)).filter((c): c is string => c !== null);
+  const contestacoes = lista(transacoes.chargebacks).slice(0, MAXIMO_CONTESTACOES_LIDAS).map((x) => (obj(x) ? codigo(x.status) : null)).filter((c): c is string => c !== null);
+  const transacaoOuOrder = pagamento ?? dados;
   let devolvido = 0;
   let devolucaoEmAndamento = false;
   for (const r of lista(transacoes.refunds)) {
@@ -271,6 +317,8 @@ export function cobrancaDaOrder(dados: unknown, formaPedida: FormaPagamento | nu
         }
       : null,
     cartao: forma === "cartao" ? dadosDoCartao(dados, pagamento, pm) : null,
+    contestacoes: contestacoesDaOrder(dados, pagamento),
+    transacaoAprovada: codigo(transacaoOuOrder.status) === "processed" && codigo(transacaoOuOrder.status_detail) === "accredited",
   };
 }
 
@@ -342,17 +390,75 @@ export function financeiroDoPagamento(pg: unknown): DetalheFinanceiro {
   }
   const situacaoLiberacao = codigo(pg.money_release_status) ?? codigo(pg.money_release_date);
   const liberacaoEmParcelas = liberaEmParcelas(pg.money_release_schema);
-  const liberado = liberacaoEmParcelas ? null : situacaoLiberacao === "released" ? true : situacaoLiberacao === "pending" ? false : null;
-  const id = pg.id;
+  const liberado = liberacaoEmParcelas ? null : liberadoPeloStatus(situacaoLiberacao);
   return {
     taxa,
     liquido,
     liberacaoPrevista: data(pg.money_release_date),
     liberado,
-    idPagamento: (typeof id === "number" && Number.isSafeInteger(id) && id > 0) || (typeof id === "string" && /^\d{1,30}$/.test(id)) ? String(id) : null,
+    // O mesmo limite do caso (M8.2e: 20 algarismos, antes 30), num lugar só.
+    idPagamento: idNumericoLido(pg.id),
     liberacaoEmParcelas,
     custoParcelasVendedor: custoDoParcelamento(pg.fee_details),
   };
+}
+
+// ---------------------------------------------------------------- contestação (Chargebacks API e Payments API pelo número, M8.2e)
+
+const MOTIVO_ID = /^\d{1,6}$/;
+/** O `reason` só passa como código: minúsculo, sem espaço, até 40. Uma frase (com nome ou não) nunca passa. */
+const MOTIVO_CODIGO = /^[a-z][a-z0-9_]{0,39}$/;
+const booleano = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
+
+/**
+ * Um caso da Chargebacks API → `CasoDeContestacao`, por lista branca; null sem `id` legível (texto com até 20 algarismos
+ * ou inteiro seguro: no exemplo oficial o id vem como texto de 18 algarismos, que como número já chegaria arredondado).
+ * `payments[]` (até 20) só com números legíveis; `reason_id` só algarismos (até 6); `reason` só como código; as
+ * coberturas só booleanas (a API escreve `coverage_elegible`); `documentation_status` da lista fechada (outro =
+ * desconhecida). Nunca lê `documentation[]`, o `reason` em texto livre ou outro campo: nada da resposta é guardado inteiro.
+ */
+export function casoDaContestacao(dados: unknown): CasoDeContestacao | null {
+  if (!obj(dados)) return null;
+  const idCaso = idNumericoLido(dados.id);
+  if (!idCaso) return null;
+  const pagamentos = [...new Set(lista(dados.payments).slice(0, MAXIMO_CONTESTACOES_LIDAS).map(idNumericoLido).filter((x): x is string => x !== null))];
+  const motivo = typeof dados.reason_id === "number" ? idNumericoLido(dados.reason_id) : dados.reason_id;
+  const documentacao = codigo(dados.documentation_status);
+  return {
+    idCaso,
+    pagamentos,
+    valor: valorApiParaCentavos(dados.amount),
+    motivoId: typeof motivo === "string" && MOTIVO_ID.test(motivo) ? motivo : null,
+    motivoCodigo: typeof dados.reason === "string" && MOTIVO_CODIGO.test(dados.reason) ? dados.reason : null,
+    coberturaAplicada: booleano(dados.coverage_applied),
+    coberturaElegivel: booleano(dados.coverage_elegible) ?? booleano(dados.coverage_eligible),
+    documentacao:
+      dados.documentation_status === undefined || dados.documentation_status === null
+        ? null
+        : documentacao !== null && (SITUACOES_DOCUMENTACAO as readonly string[]).includes(documentacao)
+          ? (documentacao as SituacaoDocumentacao)
+          : "desconhecida",
+    prazoDocumentacao: data(dados.date_documentation_deadline),
+    criadoEm: data(dados.date_created),
+    atualizadoEm: data(dados.date_last_updated),
+    aoVivo: booleano(dados.live_mode),
+  };
+}
+
+/** Payments API pelo número → só `status`, `status_detail` e `money_release_status`, como códigos curtos (ou null). */
+export function situacaoDoPagamentoLida(pg: unknown): SituacaoDoPagamento {
+  if (!obj(pg)) return { status: null, statusDetail: null, moneyReleaseStatus: null };
+  return { status: codigo(pg.status), statusDetail: codigo(pg.status_detail), moneyReleaseStatus: codigo(pg.money_release_status) };
+}
+
+/**
+ * O id da conta (o X-Caller-Id da Chargebacks API) no corpo de GET /users/me: só o `id`, só algarismos e inteiro seguro
+ * (número, ou texto que vira um). Nada mais da resposta é lido (ela tem dados da conta).
+ */
+export function idDaContaDoUsuario(corpo: unknown): string | null {
+  if (!obj(corpo)) return null;
+  const id = idNumericoLido(corpo.id);
+  return id && Number.isSafeInteger(Number(id)) && Number(id) > 0 ? id : null;
 }
 
 /**
@@ -384,6 +490,8 @@ export const MENSAGENS = {
   redirecionamento: "O Mercado Pago tentou redirecionar a chamada; o envio foi bloqueado.",
   erroServidor: "O Mercado Pago teve um erro interno; o pedido pode ter sido recebido.",
   formato: "Resposta do Mercado Pago em formato inesperado.",
+  semIdDaConta: "Não deu para ler o id da conta no Mercado Pago (para consultar as contestações).",
+  contestacaoIndisponivel: "Não deu para ler as contestações no Mercado Pago.",
   incertoCriacao: "Não deu para saber se o pagamento foi criado; conferir pela referência antes de tentar de novo.",
   buscaIndisponivel: "Não deu para buscar o pagamento pela referência no Mercado Pago.",
   emailSandbox: "No ambiente de teste, o e-mail do pagador precisa ser de teste (@testuser.com).",
@@ -484,7 +592,18 @@ type Opcoes = {
 };
 
 type Resposta = { status: number; corpo: unknown };
-type Chamada = { params?: Record<string, string>; corpo?: unknown; chave?: string; sessao?: string | null };
+type Chamada = {
+  params?: Record<string, string>;
+  corpo?: unknown;
+  chave?: string;
+  sessao?: string | null;
+  /** Cabeçalhos a mais, por lista branca (M8.2e): só o X-Caller-Id da Chargebacks API, só algarismos. */
+  cabecalhos?: { "X-Caller-Id"?: string };
+  /** Status que voltam ao método em vez de lançar (M8.2e, a Chargebacks API: 403 = sem acesso, 404). 401 é sempre credencial. */
+  aceitar?: readonly (403 | 404)[];
+  /** Tempo-limite desta chamada, em ms (nunca mais que o do cliente). */
+  tempoMs?: number;
+};
 
 const tokenValido = (t: unknown): t is string => typeof t === "string" && /^[\x21-\x7E]{1,512}$/.test(t);
 const cortar = (v: string | null | undefined, n: number) => (v ?? "").trim().slice(0, n);
@@ -499,13 +618,16 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
   private readonly timeoutMs: number;
   private readonly accessToken: string;
   private readonly ambiente: "teste" | "producao";
+  /** O id da conta (X-Caller-Id), lido de GET /users/me uma vez e guardado só em memória. */
+  private idConta: string | null = null;
+  private idContaEmAndamento: Promise<string> | null = null;
 
   constructor(o: Opcoes) {
     this.accessToken = o.accessToken;
     this.ambiente = o.ambiente;
     this.fetchImpl = o.fetchImpl ?? fetch;
     this.agora = o.agora ?? (() => new Date());
-    this.timeoutMs = o.timeoutMs ?? 15_000;
+    this.timeoutMs = o.timeoutMs ?? TEMPO_LIMITE_PADRAO_MS;
   }
 
   /** Uma chamada, com tempo-limite cobrindo também a leitura do corpo. Lança só falha de transporte. */
@@ -516,8 +638,13 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${this.accessToken}` };
     if (metodo === "POST") headers["X-Idempotency-Key"] = c.chave ?? "";
     if (c.sessao) headers["X-meli-session-id"] = c.sessao;
+    const chamador = c.cabecalhos?.["X-Caller-Id"];
+    if (chamador !== undefined) {
+      if (!idNumericoValido(chamador)) throw new ErroProvedor("incerto", MENSAGENS.semIdDaConta);
+      headers["X-Caller-Id"] = chamador;
+    }
     const controle = new AbortController();
-    const relogio = setTimeout(() => controle.abort(), this.timeoutMs);
+    const relogio = setTimeout(() => controle.abort(), Math.min(this.timeoutMs, c.tempoMs ?? this.timeoutMs));
     try {
       let r: Response;
       try {
@@ -532,7 +659,7 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
       } catch (e) {
         throw falhaDeRede(e, controle.signal.aborted);
       }
-      if (r.status === 401 || r.status === 403) {
+      if (r.status === 401 || (r.status === 403 && !c.aceitar?.includes(403))) {
         await r.body?.cancel().catch(() => {});
         throw new ErroProvedor("credencial", MENSAGENS.credencialRecusada);
       }
@@ -854,11 +981,105 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     return incerta("Resposta inesperada do Mercado Pago; conferir a devolução antes de tentar de novo.");
   }
 
-  /** GET /users/me e o sinal `tags` contém "test_user" (ver `contaDeTesteDoUsuario`). Nunca lança nem registra a resposta. */
+  /**
+   * O X-Caller-Id: o id da conta em GET /users/me (`idDaContaDoUsuario`), lido uma vez (chamadas simultâneas esperam a
+   * mesma leitura) e guardado só em memória, neste cliente. Sem ele, a Chargebacks API não é chamada: lança `ErroProvedor`.
+   * O `user_id` do corpo de um aviso (não assinado) nunca serve. `tempoMs`: o que sobra do prazo de quem chama.
+   */
+  private idDaConta(tempoMs: number = TEMPO_LIMITE_CONTESTACAO_MS): Promise<string> {
+    if (this.idConta) return Promise.resolve(this.idConta);
+    this.idContaEmAndamento ??= (async () => {
+      try {
+        const r = await this.chamar("GET", "/users/me", { tempoMs });
+        if (r.status >= 500) throw new ErroProvedor("incerto", MENSAGENS.erroServidor);
+        const id = r.status === 200 ? idDaContaDoUsuario(r.corpo) : null;
+        if (!id) throw new ErroProvedor("incerto", MENSAGENS.semIdDaConta);
+        this.idConta = id;
+        return id;
+      } finally {
+        this.idContaEmAndamento = null;
+      }
+    })();
+    return this.idContaEmAndamento;
+  }
+
+  /**
+   * GET na Chargebacks API: sempre com o X-Caller-Id, 403 e 404 voltam ao método. O tempo-limite de 8 s vale para o método
+   * inteiro: num cliente novo, a leitura do id da conta (GET /users/me) sai do mesmo prazo, e o pedido à Chargebacks API fica
+   * com o que sobrar. Assim cada chamada do provedor cabe nos 8 s que o orçamento da rotina conta.
+   */
+  private async chamarContestacoes(caminho: string, params?: Record<string, string>): Promise<Resposta> {
+    const prazo = Date.now() + TEMPO_LIMITE_CONTESTACAO_MS;
+    const conta = await this.idDaConta(TEMPO_LIMITE_CONTESTACAO_MS);
+    const resta = prazo - Date.now();
+    if (resta <= 0) throw new ErroProvedor("incerto", MENSAGENS.tempo);
+    return this.chamar("GET", caminho, { params, cabecalhos: { "X-Caller-Id": conta }, aceitar: [403, 404], tempoMs: resta });
+  }
+
+  /**
+   * GET /v1/chargebacks/{id} (M8.2e). 403 = `{ semAcesso: true }` (a equipe confere no painel do Mercado Pago); 404 =
+   * null; o caso lido precisa ter o mesmo id pedido. Id que não pode existir = null, sem rede. 401, 5xx, outro status e
+   * resposta ilegível lançam.
+   */
+  async consultarContestacao(idCaso: string): Promise<CasoDeContestacao | null | SemAcessoContestacao> {
+    if (!idNumericoValido(idCaso)) return null;
+    const r = await this.chamarContestacoes(`/v1/chargebacks/${idCaso}`);
+    if (r.status === 403) return { semAcesso: true };
+    if (r.status === 404) return null;
+    if (r.status >= 500) throw new ErroProvedor("incerto", MENSAGENS.erroServidor);
+    if (r.status !== 200) throw new ErroProvedor("incerto", MENSAGENS.contestacaoIndisponivel);
+    const caso = casoDaContestacao(r.corpo);
+    if (!caso || caso.idCaso !== idCaso) throw new ErroProvedor("incerto", MENSAGENS.formato);
+    return caso;
+  }
+
+  /**
+   * GET /v1/chargebacks/search?payment_id= (M8.2e). A lista vem em `results` (ou `data`, ou o corpo é a lista); até 20.
+   * 403 = `{ semAcesso: true }`. 404 (rota inexistente), 5xx, outro status, corpo sem lista ou um item sem id legível
+   * lançam: nunca "nenhuma" sem saber. Número que não pode existir = lista vazia, sem rede.
+   */
+  async buscarContestacoes(idPagamento: string): Promise<CasoDeContestacao[] | SemAcessoContestacao> {
+    if (!idNumericoValido(idPagamento)) return [];
+    const r = await this.chamarContestacoes("/v1/chargebacks/search", { payment_id: idPagamento });
+    if (r.status === 403) return { semAcesso: true };
+    if (r.status >= 500) throw new ErroProvedor("incerto", MENSAGENS.erroServidor);
+    if (r.status !== 200) throw new ErroProvedor("incerto", MENSAGENS.contestacaoIndisponivel);
+    const corpo = r.corpo;
+    const itens = Array.isArray(corpo) ? corpo : obj(corpo) ? (Array.isArray(corpo.results) ? corpo.results : Array.isArray(corpo.data) ? corpo.data : null) : null;
+    if (!itens) throw new ErroProvedor("incerto", MENSAGENS.formato);
+    const casos: CasoDeContestacao[] = [];
+    for (const x of itens.slice(0, MAXIMO_CONTESTACOES_LIDAS)) {
+      const caso = casoDaContestacao(x);
+      if (!caso) throw new ErroProvedor("incerto", MENSAGENS.formato);
+      casos.push(caso);
+    }
+    return casos;
+  }
+
+  /**
+   * GET /v1/payments/{id} (M8.2e): só `status`, `status_detail` e `money_release_status` (`situacaoDoPagamentoLida`),
+   * com tempo-limite de 8 s. 404 = null (se a Payments API responde para pagamentos antigos é o item 72); número que não
+   * pode existir = null, sem rede. A resposta precisa ser do mesmo número; 401/403, 5xx, outro status e ilegível lançam.
+   */
+  async situacaoDoPagamento(idPagamento: string): Promise<SituacaoDoPagamento | null> {
+    if (!idNumericoValido(idPagamento)) return null;
+    const r = await this.chamar("GET", `/v1/payments/${idPagamento}`, { aceitar: [404], tempoMs: TEMPO_LIMITE_CONTESTACAO_MS });
+    if (r.status === 404) return null;
+    if (r.status >= 500) throw new ErroProvedor("incerto", MENSAGENS.erroServidor);
+    if (r.status !== 200 || !obj(r.corpo) || idNumericoLido(r.corpo.id) !== idPagamento) throw new ErroProvedor("incerto", MENSAGENS.formato);
+    return situacaoDoPagamentoLida(r.corpo);
+  }
+
+  /**
+   * GET /users/me e o sinal `tags` contém "test_user" (ver `contaDeTesteDoUsuario`). Nunca lança nem registra a resposta;
+   * só o id da conta (o X-Caller-Id, `idDaContaDoUsuario`) fica em memória neste cliente.
+   */
   async conferirContaDeTeste(): Promise<boolean | null> {
     try {
       const r = await this.chamar("GET", "/users/me");
-      return r.status === 200 ? contaDeTesteDoUsuario(r.corpo) : null;
+      if (r.status !== 200) return null;
+      this.idConta = idDaContaDoUsuario(r.corpo) ?? this.idConta;
+      return contaDeTesteDoUsuario(r.corpo);
     } catch {
       return null;
     }

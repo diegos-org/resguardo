@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CONFIG_PAGAMENTO_SITE_PADRAO } from "@/configuracoes/pagamento-site";
 import { ErroProvedor } from "./provedor";
 
 const m = vi.hoisted(() => ({
@@ -19,12 +20,16 @@ const m = vi.hoisted(() => ({
   parar: vi.fn(),
   corrigirTaxa: vi.fn(),
   restante: vi.fn(),
+  disputas: vi.fn(),
+  lerConfig: vi.fn(),
 }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({ banco: true }) }));
 vi.mock("next/cache", () => ({ revalidatePath: m.revalidar }));
 vi.mock("./oferta", () => ({ provedorDeConferencia: m.gate }));
 vi.mock("./conferencia", () => ({ conferirTentativa: m.conferir }));
+// M8.2e: o "Conferir agora" de um pagamento relê também as disputas dele.
+vi.mock("./contestacao", () => ({ conferirContestacoesDoPagamento: m.disputas }));
 vi.mock("./rotina", () => ({ conferirPendentes: m.pendentes }));
 vi.mock("./devolucao", () => ({
   devolverPeloProvedor: m.devolver,
@@ -38,7 +43,7 @@ vi.mock("./devolucao", () => ({
 }));
 vi.mock("./liberacao", () => ({ registrarLiberacaoManual: m.liberar, estornarLiberacaoManual: m.estornar }));
 vi.mock("./disjuntor", () => ({ religarCartao: m.religar }));
-vi.mock("@/configuracoes/pagamento-site", async (original) => ({ ...(await original<typeof import("@/configuracoes/pagamento-site")>()), salvarConfigPagamentoSite: m.salvar }));
+vi.mock("@/configuracoes/pagamento-site", async (original) => ({ ...(await original<typeof import("@/configuracoes/pagamento-site")>()), salvarConfigPagamentoSite: m.salvar, lerConfigPagamentoSite: m.lerConfig }));
 import {
   confirmarDevolucaoVistaAcao,
   conferirAgoraAcao,
@@ -71,6 +76,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   m.gate.mockResolvedValue({ ok: true, provedor, ambiente: "teste" });
+  m.disputas.mockResolvedValue({ lidas: 0, mudaram: 0, falhas: 0, foraDoPrazo: 0, buscados: 0, novas: 0 });
+  m.lerConfig.mockResolvedValue(CONFIG_PAGAMENTO_SITE_PADRAO);
 });
 
 describe("permissão (deny-by-default)", () => {
@@ -112,6 +119,15 @@ describe("conferir agora", () => {
     expect(await conferirAgoraAcao({}, form({ pagamentoId: ID }))).toEqual({ mensagem: "Pagamento não encontrado." });
   });
 
+  it("a leitura das disputas do pagamento que falhou entra na mensagem: nunca um \"nada mudou\" em silêncio (Codex, 11/10)", async () => {
+    m.conferir.mockResolvedValue({ ok: true, situacao: "aprovado", consultou: true, mudou: false });
+    m.disputas.mockResolvedValue({ lidas: 1, mudaram: 0, falhas: 1, foraDoPrazo: 0, buscados: 0, novas: 0 });
+    expect(await conferirAgoraAcao({}, form({ pagamentoId: ID }))).toEqual({
+      ok: true,
+      mensagem: "Conferido com o Mercado Pago: nada mudou (aprovado). Não deu para conferir as disputas do pagamento agora: tente de novo em instantes.",
+    });
+  });
+
   it("id inválido não chega ao provedor; travas do ambiente voltam como mensagem", async () => {
     expect(await conferirAgoraAcao({}, form({ pagamentoId: "x' or 1=1" }))).toEqual({ mensagem: "Pagamento não encontrado." });
     expect(m.gate).not.toHaveBeenCalled();
@@ -126,6 +142,17 @@ describe("conferir agora", () => {
     expect(m.pendentes).toHaveBeenCalledWith({ banco: true }, "org", provedor, expect.any(Date), { forcar: true });
     expect(r).toEqual({ ok: true, mensagem: "3 pagamento(s) conferido(s) com o Mercado Pago, 1 com mudança, 1 devolução(ões) confirmada(s). 1 não deu para conferir agora: tente de novo em instantes." });
     m.pendentes.mockResolvedValue({ conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 });
+    expect((await conferirAgoraAcao({}, form({}))).mensagem).toBe("Nada pendente para conferir com o Mercado Pago.");
+  });
+
+  it("as disputas da volta entram na mensagem (uma disputa achada nunca vira \"nada pendente\")", async () => {
+    const disputas = { lidas: 0, mudaram: 0, falhas: 0, foraDoPrazo: 0, buscados: 3, novas: 0 };
+    m.pendentes.mockResolvedValue({ conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0, contestacoes: { ...disputas, novas: 1, mudaram: 1 } });
+    expect(await conferirAgoraAcao({}, form({}))).toEqual({ ok: true, mensagem: "1 disputa(s) nova(s) no quadro, disputas atualizadas em 1 pagamento(s)." });
+    m.pendentes.mockResolvedValue({ conferidas: 2, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0, contestacoes: { ...disputas, lidas: 3 } });
+    expect((await conferirAgoraAcao({}, form({}))).mensagem).toBe("2 pagamento(s) conferido(s) com o Mercado Pago, 0 com mudança, 3 disputa(s) relida(s).");
+    // Só procuradas pela busca tardia, sem nada achado nem relido: nada a dizer das disputas.
+    m.pendentes.mockResolvedValue({ conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0, contestacoes: disputas });
     expect((await conferirAgoraAcao({}, form({}))).mensagem).toBe("Nada pendente para conferir com o Mercado Pago.");
   });
 
@@ -357,10 +384,15 @@ describe("salvar a aba Pagamento no site", () => {
     const r = await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", nomeFatura: " SCL  Leblon ", categoriaTaxaId: "" }));
     expect(r).toEqual({ ok: true, aviso: "Salvo. Vale para os pagamentos novos; os já criados seguem como estavam." });
     // Cancelamento (M8.2c): sem a caixa no formulário, o pedido em Minha reserva fica desligado; horas vazias = 21.
+    // Disputa do pagamento (M8.2e): sem os campos no formulário, os do padrão.
+    const { categoriaDaContestacao, diasAvisoDocumentacao, causasContestacao } = (await vi.importActual<typeof import("@/configuracoes/pagamento-site")>("@/configuracoes/pagamento-site")).CONFIG_PAGAMENTO_SITE_PADRAO;
     expect(m.salvar).toHaveBeenCalledWith(
       { banco: true },
       "org",
-      { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk", pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 21 },
+      {
+        oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk", pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 21,
+        categoriaDaContestacao, diasAvisoDocumentacao, causasContestacao,
+      },
       "u",
     );
     expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");

@@ -1,8 +1,9 @@
 /**
  * Pagamento no site (M8.2a) — a ordem única das travas, num lugar só (a ordem real de todo caminho): imóvel (FOR NO KEY
  * UPDATE) → reserva (FOR NO KEY UPDATE) → cotação → tentativas da cotação (todas, por id) → devoluções → cancelamento
- * ativo da reserva (M8.2c) → alterações da reserva (todas, por id; M8.2d) → motor da reserva (`travarMotorDaReserva`) →
- * linha da reserva-pedido de uma alteração (FOR NO KEY UPDATE) → motor dela → (documentos legais, disjuntor, livro). Toda
+ * ativo da reserva (M8.2c) → alterações da reserva (todas, por id; M8.2d) → contestações dos pagamentos da cotação (todas,
+ * por id, FOR NO KEY UPDATE; M8.2e) → motor da reserva (`travarMotorDaReserva`) → linha da reserva-pedido de uma alteração
+ * (FOR NO KEY UPDATE) → motor dela → (documentos legais, disjuntor, livro). Toda
  * transação que aplica um pagamento (aviso, página, rotina, painel) entra por aqui, com tempo-limite de espera, e chamada
  * ao provedor nunca acontece com trava aberta (55P03 / 40P01 = "ocupado").
  *
@@ -24,14 +25,15 @@
  * mostrar como devolvido por nós e do que ainda se pode devolver moram aqui (puras, sobre o retrato), e todo caminho que
  * cria, pede, registra ou confirma dinheiro confere o teto sob a trava da cotação.
  */
-import { type AnyColumn, and, asc, eq, inArray, sql } from "drizzle-orm";
+import { type AnyColumn, and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { horaDeEntrada } from "@/configuracoes/politica-cancelamento";
-import { alteracoesReserva, cancelamentosReserva, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas, type SituacaoPagamento } from "@/db/schema";
+import { alteracoesReserva, cancelamentosReserva, contestacoesPagamento, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas, type SituacaoPagamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { principalEJuros, situacaoEfetiva, taxaAtribuida } from "./alteracao-regras";
 import { CARENCIA_PAGAMENTO_MS } from "./andamento";
+import { contestacaoDaLeitura, type LinhaParaCasar } from "./contestacao-regras";
 import type { Cobranca } from "./provedor";
 import { situacaoLocal } from "./situacoes";
 
@@ -44,6 +46,7 @@ export type CotacaoTravada = typeof cotacoes.$inferSelect;
 export type ReservaTravada = typeof reservas.$inferSelect;
 export type Cancelamento = typeof cancelamentosReserva.$inferSelect;
 export type Alteracao = typeof alteracoesReserva.$inferSelect;
+export type Contestacao = typeof contestacoesPagamento.$inferSelect;
 
 export type Travado = {
   /** `horaEntrada`: a hora de entrada cadastrada do imóvel (ou a padrão), sem trava: o limite das alterações (D1). */
@@ -58,6 +61,11 @@ export type Travado = {
   cancelamento: Cancelamento | null;
   /** TODAS as alterações da reserva (poucas), travadas depois do cancelamento, em ordem de id (M8.2d). */
   alteracoes: Alteracao[];
+  /**
+   * TODAS as contestações (disputas) dos pagamentos da cotação, de qualquer situação, travadas depois das alterações e
+   * antes do motor, em ordem de id (M8.2e). Quem grava uma atualiza o retrato; uma linha nova entra aqui.
+   */
+  contestacoes: Contestacao[];
 };
 
 // ---------------------------------------------------------------- alterações (M8.2d)
@@ -112,7 +120,12 @@ export const devolucaoAberta = (t: Pick<Travado, "devolucoes">, pagamentoId: str
  * cancelada com direito integral. Alteração: o dinheiro da reserva, com a alteração aplicada. A substituída, nunca.
  */
 /** O que as regras da devolução precisam do cancelamento ativo e das alterações da reserva (o retrato travado, ou o lido). */
-export type ContextoDaDevolucao = { cancelamento: Pick<Cancelamento, "situacao" | "direito"> | null; alteracoes: readonly Pick<Alteracao, "id" | "situacao">[] };
+/** M8.2e: `contestacoes`, as disputas da cotação (sem elas, nenhuma): em curso ou perdida, a devolução não é pedida nem registrada. */
+export type ContextoDaDevolucao = {
+  cancelamento: Pick<Cancelamento, "situacao" | "direito"> | null;
+  alteracoes: readonly Pick<Alteracao, "id" | "situacao">[];
+  contestacoes?: readonly Pick<Contestacao, "pagamentoId" | "situacao" | "avisos" | "estadoLido">[];
+};
 export function cabeNoPagamento(dev: Pick<Devolucao, "origem" | "situacao" | "alteracaoId" | "cancelamentoId">, p: Pick<Pagamento, "desfecho">, t: ContextoDaDevolucao): boolean {
   if (dev.situacao === "substituida") return false;
   if (dev.origem === "sem_reserva") return p.desfecho === null;
@@ -162,15 +175,63 @@ type PagamentoLido = Pick<Pagamento, "situacao" | "devolvidoLido" | "devolvidoFo
 /**
  * D21: o Mercado Pago mostra mais devolvido do que as nossas devoluções e o reconhecido explicam, ou devolvido sem nada
  * nosso nem reconhecido (a leitura sem os valores). O aviso `devolvido_por_fora` é saída disto, nunca entrada.
+ * `pelaDisputa` (M8.2e): o que as disputas `med` e `reclamacao` registradas no pagamento explicam da devolução lida, até o
+ * valor delas (`devolvidoPelaDisputa`); o gêmeo SQL é `devolvidaNoProvedorSql`.
  */
-export function devolucaoInexplicada(p: PagamentoLido, devs: readonly DevolucaoPropria[]): boolean {
+export function devolucaoInexplicada(p: PagamentoLido, devs: readonly DevolucaoPropria[], pelaDisputa = 0): boolean {
   const proprio = devolvidoProprio(devs);
-  if (p.devolvidoLido > p.devolvidoForaReconhecido + proprio) return true;
-  return (p.situacao === "devolvido" || p.situacao === "devolvido_parcial") && proprio === 0 && p.devolvidoForaReconhecido === 0;
+  if (p.devolvidoLido > p.devolvidoForaReconhecido + proprio + pelaDisputa) return true;
+  return (p.situacao === "devolvido" || p.situacao === "devolvido_parcial") && proprio === 0 && p.devolvidoForaReconhecido === 0 && pelaDisputa === 0;
 }
 /** Inexplicada e sem o valor (o Mercado Pago não disse quanto): a equipe informa o valor visto no painel dele. */
-export const devolvidoForaSemValor = (p: PagamentoLido, devs: readonly DevolucaoPropria[]) =>
-  devolucaoInexplicada(p, devs) && p.devolvidoLido <= p.devolvidoForaReconhecido + devolvidoProprio(devs);
+export const devolvidoForaSemValor = (p: PagamentoLido, devs: readonly DevolucaoPropria[], pelaDisputa = 0) =>
+  devolucaoInexplicada(p, devs, pelaDisputa) && p.devolvidoLido <= p.devolvidoForaReconhecido + devolvidoProprio(devs) + pelaDisputa;
+
+// ---------------------------------------------------------------- a disputa do pagamento (M8.2e)
+
+/** As contestações (todas as rodadas e situações) de um pagamento, em ordem de id. */
+export const contestacoesDoPagamento = <T extends Pick<Contestacao, "pagamentoId">>(t: { contestacoes: readonly T[] }, pagamentoId: string): T[] =>
+  t.contestacoes.filter((c) => c.pagamentoId === pagamentoId);
+
+/**
+ * A disputa que explica a devolução lida (D21, M8.2e; uma regra, um lugar): o MED do Pix e a reclamação no Mercado Pago. A
+ * encerrada sem efeito e a possível duplicata ainda não confirmada ("Confirmar que é outra disputa": até lá ela não segura
+ * nada) não explicam nada. Gêmeo SQL em `devolvidoPelaDisputaSql`.
+ */
+export const explicaDevolucaoLida = (c: Pick<Contestacao, "tipo" | "situacao" | "duplicataPossivel">): boolean =>
+  (c.tipo === "med" || c.tipo === "reclamacao") && c.situacao !== "sem_efeito" && !c.duplicataPossivel;
+
+/**
+ * D21 com a disputa (M8.2e): as disputas que explicam a devolução lida (`explicaDevolucaoLida`) a explicam até o valor de
+ * cada uma. O valor do MED vira o retido da disputa, nunca o "devolvido fora" reconhecido. Gêmeo SQL dentro de
+ * `devolvidaNoProvedorSql`.
+ */
+export const devolvidoPelaDisputa = (t: { contestacoes: readonly Pick<Contestacao, "pagamentoId" | "tipo" | "situacao" | "valor" | "duplicataPossivel">[] }, pagamentoId: string): number =>
+  t.contestacoes.filter((c) => c.pagamentoId === pagamentoId && explicaDevolucaoLida(c)).reduce((s, c) => s + Math.max(0, c.valor ?? 0), 0);
+
+/**
+ * Gêmeo SQL de `devolvidoPelaDisputa`, sobre o id do pagamento de quem chama (a coluna, ou `sql.raw("p.id")` dentro de
+ * uma subconsulta com apelido): a soma que entra na conta do D21 de `devolvidaNoProvedorSql`.
+ */
+export const devolvidoPelaDisputaSql = (pagamentoId: AnyColumn | SQL) =>
+  sql`(select coalesce(sum(greatest(coalesce(cp.valor, 0), 0)), 0) from ${contestacoesPagamento} cp where cp.pagamento_id = ${pagamentoId} and cp.tipo in ('med', 'reclamacao') and cp.situacao <> 'sem_efeito' and not cp.duplicata_possivel)`;
+
+/**
+ * A situação que a leitura vale para o pagamento (M8.2e; uma regra, um lugar): a de `situacaoExplicada`, salvo a leitura
+ * `contestado` explicada pelas disputas conhecidas (cada uma lida de uma linha final, sem `in_process` em aberto,
+ * `contestacaoDaLeitura`): aí vale a situação local. Usada por `aplicarLeitura`, pela releitura antes de devolver
+ * (`tentarDevolucao`), pela devolução por fora (`recusaPeloProvedor`) e por `precisaFinanceiro`.
+ */
+export function situacaoDaLeitura(
+  c: Pick<Cobranca, "situacao" | "detalhe" | "devolvido" | "contestacoes">,
+  p: PagamentoDoSaldo & Pick<Pagamento, "situacao">,
+  devs: readonly DevolucaoPropria[],
+  linhas: readonly LinhaParaCasar[],
+): SituacaoPagamento | null {
+  const nova = situacaoExplicada(c, p, devs);
+  if (nova === "contestado" && !contestacaoDaLeitura(c, linhas).contestado) return p.situacao;
+  return nova;
+}
 /**
  * O Mercado Pago mostra o pagamento devolvido por inteiro e as nossas devoluções (com o reconhecido devolvido fora) explicam
  * tudo — a diferença de um aumento devolvida inteira numa redução, por exemplo: o pagamento está quitado pelo sistema, sem
@@ -283,7 +344,18 @@ async function lerCotacao(tx: Db, organizacaoId: string, cotacaoId: string, trav
     .where(and(eq(alteracoesReserva.reservaId, reserva.id), eq(alteracoesReserva.organizacaoId, organizacaoId)))
     .orderBy(asc(alteracoesReserva.id));
   const alteracoes = travar ? await qAlteracoes.for("update") : await qAlteracoes;
-  return { imovel, reserva, cotacao, tentativas, devolucoes, cancelamento: cancelamento ?? null, alteracoes };
+  // M8.2e: as contestações dos pagamentos da cotação, por id, depois das alterações e antes do motor. NO KEY UPDATE: os
+  // eventos e as devoluções que apontam para elas (chaves estrangeiras) continuam podendo ser gravados por quem tem a trava.
+  let contestacoes: Contestacao[] = [];
+  if (tentativas.length) {
+    const q = tx
+      .select()
+      .from(contestacoesPagamento)
+      .where(inArray(contestacoesPagamento.pagamentoId, tentativas.map((t) => t.id)))
+      .orderBy(asc(contestacoesPagamento.id));
+    contestacoes = travar ? await q.for("no key update") : await q;
+  }
+  return { imovel, reserva, cotacao, tentativas, devolucoes, cancelamento: cancelamento ?? null, alteracoes, contestacoes };
 }
 
 /**
@@ -308,6 +380,28 @@ export async function cotacaoDaAlteracao(db: Db, organizacaoId: string, alteraca
     .from(alteracoesReserva)
     .where(and(eq(alteracoesReserva.id, alteracaoId), eq(alteracoesReserva.organizacaoId, organizacaoId)));
   return a ?? null;
+}
+
+/**
+ * A cotação de uma contestação desta organização (M8.2e: o id vem do formulário do painel), resolvida com o filtro da
+ * organização antes de qualquer trava; null = não existe nesta organização (ou o id não é um uuid): "não encontrada", sem
+ * chamada ao provedor nem gravação.
+ */
+export async function contestacaoDaOrganizacao(db: Db, organizacaoId: string, contestacaoId: string): Promise<{ cotacaoId: string; pagamentoId: string; contestacaoId: string } | null> {
+  if (!uuidValido(contestacaoId)) return null;
+  const [c] = await db
+    .select({ cotacaoId: pagamentos.cotacaoId, pagamentoId: pagamentos.id, contestacaoId: contestacoesPagamento.id })
+    .from(contestacoesPagamento)
+    .innerJoin(pagamentos, eq(pagamentos.id, contestacoesPagamento.pagamentoId))
+    .where(and(eq(contestacoesPagamento.id, contestacaoId), eq(contestacoesPagamento.organizacaoId, organizacaoId), eq(pagamentos.organizacaoId, organizacaoId)));
+  return c ?? null;
+}
+
+/** A cotação de um pagamento desta organização (M8.2e: o registro da disputa pela equipe recebe o id do pagamento); null = não existe nela. */
+export async function pagamentoDaOrganizacao(db: Db, organizacaoId: string, pagamentoId: string): Promise<{ cotacaoId: string; pagamentoId: string } | null> {
+  if (!uuidValido(pagamentoId)) return null;
+  const [p] = await db.select({ cotacaoId: pagamentos.cotacaoId, pagamentoId: pagamentos.id }).from(pagamentos).where(and(eq(pagamentos.id, pagamentoId), eq(pagamentos.organizacaoId, organizacaoId)));
+  return p ?? null;
 }
 
 /**

@@ -7,10 +7,12 @@
  * passou a ter o imóvel em diante (data do vínculo) e o imóvel não tem outro dono no livro: na
  * dúvida, o portal esconde — nunca mostra o histórico de outra pessoa.
  */
-import { type AnyColumn, and, eq, exists, gt, gte, isNotNull, isNull, lt, not, notInArray, inArray, or, sql } from "drizzle-orm";
+import { type AnyColumn, and, eq, exists, gt, gte, isNotNull, isNull, lt, ne, not, notInArray, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { cancelamentosReserva, devolucoesPagamento, lancamentos, pagamentos, proprietarioImoveis, reservas } from "@/db/schema";
+import { cancelamentosReserva, contestacoesPagamento, devolucoesPagamento, lancamentos, pagamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { ORIGEM_LANCAMENTO_CONTESTACAO } from "@/pagamentos/contestacao-regras";
+import { devolvidoPelaDisputaSql } from "@/pagamentos/travas";
 
 /** Lançamento em vigor: não é estorno e não foi estornado. */
 export function lancamentoEmVigor(db: Db) {
@@ -32,16 +34,34 @@ export const reservaCalculadaSql = () => sql`(${reservas.estado} = 'confirmada' 
  * nosso nem reconhecido — fora do cancelamento pela política com devolução integral. O dinheiro já voltou ao hóspede: a
  * parte do proprietário fica em conferência e não é repassada. Gêmeo TS: `devolucaoInexplicada` (`pagamentos/travas.ts`),
  * por pagamento, em `devolvidaNoProvedor` (`pagamentos/consultas.ts`). O aviso `devolvido_por_fora` é saída disto, nunca
- * entrada.
+ * entrada. M8.2e: o MED do Pix e a reclamação registrados explicam a devolução lida, até o valor deles
+ * (`devolvidoPelaDisputaSql`, o gêmeo de `devolvidoPelaDisputa`); daí em diante, quem segura a reserva é a disputa.
  */
 export const devolvidaNoProvedorSql = () => sql`(exists (select 1 from ${pagamentos} p where p.reserva_id = ${reservas.id} and p.desfecho in ('reserva', 'alteracao')
-    and (p.devolvido_lido > p.devolvido_fora_reconhecido + (select coalesce(sum(case
+    and (p.devolvido_lido > p.devolvido_fora_reconhecido + ${devolvidoPelaDisputaSql(sql.raw("p.id"))} + (select coalesce(sum(case
             when d.situacao = 'confirmada' then least(coalesce(d.valor_confirmado, d.valor), d.valor)
             when d.situacao = 'pedida' and d.tentativas > 0 and (d.chave_aceita or d.chave_em_duvida) then d.valor
             else 0 end), 0) from ${devolucoesPagamento} d where d.pagamento_id = p.id)
-      or (p.situacao in ('devolvido', 'devolvido_parcial') and p.devolvido_fora_reconhecido = 0 and not exists (select 1 from ${devolucoesPagamento} d
+      or (p.situacao in ('devolvido', 'devolvido_parcial') and p.devolvido_fora_reconhecido = 0 and ${devolvidoPelaDisputaSql(sql.raw("p.id"))} = 0 and not exists (select 1 from ${devolucoesPagamento} d
             where d.pagamento_id = p.id and (d.situacao = 'confirmada' or (d.situacao = 'pedida' and d.tentativas > 0 and (d.chave_aceita or d.chave_em_duvida)))))))
   and not exists (select 1 from ${cancelamentosReserva} c where c.reserva_id = ${reservas.id} and c.situacao = 'cancelada' and c.direito = 'integral'))`;
+
+/**
+ * Condição sobre `reservas` (M8.2e): a reserva está **em conferência por disputa do pagamento** — um pagamento com o
+ * dinheiro dela (desfecho `reserva` ou `alteracao`) tem uma disputa não duplicada `aberta`/`a_confirmar` com valor em
+ * risco > 0 sem decisão de quem arca, ou `perdida` com perda a dividir > 0 (o valor perdido menos as devoluções
+ * substituídas por ela, `perdaADividir`) sem a decisão. Gêmeo TS: `contestacaoSemDecisao`
+ * (`pagamentos/contestacao-regras.ts`): os dois mudam juntos. Lê só `contestacoes_pagamento` (o valor em risco é gravado
+ * sob a trava a cada mudança): o motor e o recálculo nunca gravam ali.
+ *
+ * C2 (registro de decisão de 11/10/2026): a disputa **não** entra em `lancamentoEmConferencia`, que trava o fechamento
+ * inteiro do proprietário (e uma disputa dura até 6 meses). A parte presa fica "a liberar" (`classificarParte`), fora do
+ * fechamento (`foraDoFechamento`) com o motivo próprio, e vai para o repasse seguinte; as outras partes seguem.
+ */
+export const contestacaoSemDecisaoSql = () => sql`(exists (select 1 from ${contestacoesPagamento} cp join ${pagamentos} cpp on cpp.id = cp.pagamento_id
+    where cpp.reserva_id = ${reservas.id} and cpp.desfecho in ('reserva', 'alteracao') and not cp.duplicata_possivel and cp.decisao_versao = 0
+      and ((cp.situacao in ('aberta', 'a_confirmar') and cp.valor_em_risco > 0)
+        or (cp.situacao = 'perdida' and coalesce(cp.valor_perdido, 0) > coalesce((select sum(greatest(d.valor, 0)) from ${devolucoesPagamento} d where d.contestacao_id = cp.id), 0)))))`;
 
 /**
  * Lançamento em conferência (uma regra, um lugar: portal, PDF, fechamento do mês e Início): o
@@ -154,6 +174,8 @@ export async function reservasQueContam(
             ),
           ),
           o.donos ? and(eq(lancamentos.tipo, "direito_proprietario"), inArray(lancamentos.proprietarioId, [...o.donos])) : eq(lancamentos.tipo, "receita_bruta"),
+          // M8.2e: a linha da disputa do pagamento (mês corrente da decisão) não é estadia: nunca faz a reserva contar no mês dela.
+          ne(lancamentos.origem, ORIGEM_LANCAMENTO_CONTESTACAO),
           inArray(lancamentos.imovelId, ids),
           gte(lancamentos.competencia, o.periodo.inicio),
           lt(lancamentos.competencia, o.periodo.fim),

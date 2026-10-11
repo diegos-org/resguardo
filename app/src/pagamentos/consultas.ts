@@ -18,6 +18,7 @@ import {
   alteracoesReserva,
   type BaseCancelamento,
   cancelamentosReserva,
+  contestacoesPagamento,
   cotacoes,
   devolucoesPagamento,
   type DireitoCancelamento,
@@ -45,12 +46,15 @@ import { entradasDaReserva } from "./entradas";
 import { recusaDoCartao } from "./cartao";
 import { type AcoesDaDevolucao, acoesDaDevolucao, liberacaoAtrasada, podeRegistrarRecusaNoPainel, porForaPermitidoNoCartao, type RestanteSemReserva, restanteSemReserva } from "./devolucao";
 import { ALERTA_RECUSAS_24H, ALERTA_TOKEN_INVALIDO_1H, disjuntorAberto, RECUSAS_PARA_DESLIGAR_24H, recusasNasUltimas24h, recusasPorTokenNaUltimaHora } from "./disjuntor";
+import { liquidoQueAindaPodeEntrar } from "./liberacao";
 import { type CodigoDevolucao, type ModoTresDS, type StatusTresDS, urlDoDesafio } from "./provedor";
 import {
   AVISOS_PAGAMENTO,
   type CodigoAviso,
   codigoMotivo,
   textoDevolucaoAguardandoLiberacaoAtrasada,
+  textoDevolucaoDevidaDepoisDaDisputa,
+  textoDoAvisoContestado,
   comDinheiro,
   emAndamento,
   motivoDoDetalhe,
@@ -64,14 +68,27 @@ import {
   textoRestanteRecusado,
 } from "./situacoes";
 import { situacaoEfetiva, valorNovo } from "./alteracao-regras";
+import { perdidoNoPagamento } from "./contestacao-leitura";
+import {
+  disputaDoPagamentoOuSituacao,
+  type LinhaEmCurso,
+  MOTIVO_CANCELAMENTO_CONTESTACAO,
+  NOMES_SITUACAO_CONTESTACAO,
+  NOMES_TIPO_CONTESTACAO,
+  pagamentoContestado,
+  type TipoContestacao,
+  tipoDaDisputaEmCurso,
+} from "./contestacao-regras";
 import {
   type Alteracao,
   carenciaNoTravado,
   comprometidoNoPagamento,
+  type Contestacao,
   type ContextoDaDevolucao,
   type Devolucao,
   devolucaoInexplicada,
   devolucoesDoPagamento,
+  devolvidoPelaDisputa,
   dinheiroDaReserva,
   esperaLiberacao,
   type Pagamento,
@@ -123,7 +140,7 @@ export type CancelamentoParaHospede = {
   /** Ao menos uma parte foi feita por fora (com outras pelo Mercado Pago, as duas frases de como volta). */
   algumaPorFora: boolean;
   /** Quem confirmou a devolução: a leitura do Mercado Pago ou a equipe (vista no painel dele). */
-  confirmadaPor: "leitura" | "equipe" | null;
+  confirmadaPor: "leitura" | "equipe" | "contestacao" | null;
   /**
    * M8.2d (D13): a devolução (ou uma parte dela, com vários pagamentos) espera o Mercado Pago liberar o pagamento — nada
    * foi pedido ainda, e a página nunca diz "já pedimos"; a data prevista quando há. null nas outras situações.
@@ -262,6 +279,11 @@ export type VistaPagamentoHospede = {
    * reserva): o resumo da página é o da cotação original e a alteração aplicada só aparece por um tempo. null sem alteração aplicada.
    */
   reservaAtual?: { checkin: string; checkout: string; hospedes: number | null; valor: number | null } | null;
+  /**
+   * M8.2e: a reserva confirmada tem um pagamento com disputa em curso ("pagamento em conferência"): só com a autorização do
+   * pedido (o cookie de quem pagou; quem só tem o código não vê nada a mais). Some com o resultado.
+   */
+  pagamentoEmConferencia?: boolean;
 };
 
 /**
@@ -289,6 +311,7 @@ export async function vistaDaCotacaoParaHospede(
       reservaCheckout: reservas.checkout,
       reservaHospedes: reservas.hospedes,
       reservaValor: reservas.valorBruto,
+      reservaValorRetido: reservas.valorRetido,
     })
     .from(cotacoes)
     .leftJoin(reservas, eq(reservas.id, cotacoes.reservaId))
@@ -342,7 +365,9 @@ export async function vistaDaCotacaoParaHospede(
     // M8.2d: o cancelamento devolve por pagamento da reserva (o que a confirmou e as diferenças); a página junta as devoluções dele.
     const daReserva = tentativas.filter(dinheiroDaReserva);
     const doCancelamento = devolucoes.filter((d) => d.cancelamentoId === canc.id && d.situacao !== "substituida");
-    return { ...base, ...estadoDoCancelamento(comReserva, daReserva, canc, doCancelamento, agora, devolucoes), reservaCodigo: c.reservaCodigo, forma: comReserva.forma };
+    // M8.2e: as linhas da disputa dos pagamentos da reserva ("Cancelar a reserva contestada" segue o resultado delas).
+    const disputas = daReserva.length ? await db.select().from(contestacoesPagamento).where(inArray(contestacoesPagamento.pagamentoId, daReserva.map((p) => p.id))) : [];
+    return { ...base, ...estadoDoCancelamento(comReserva, daReserva, canc, doCancelamento, agora, devolucoes, disputas, c.reservaValorRetido), reservaCodigo: c.reservaCodigo, forma: comReserva.forma };
   }
   if (comReserva) {
     // Pagamento em dobro: só enquanto o outro pagamento ainda não voltou ao hóspede (devolvido, o aviso sai). A diferença
@@ -368,6 +393,9 @@ export async function vistaDaCotacaoParaHospede(
       ...(pedido ? { pedidoCancelamentoSemPolitica: !(await politicaDoPagamento(db, organizacaoId, comReserva.id)) } : {}),
       ...(alteracao ? { alteracao } : {}),
       ...(aplicada && c.reservaCheckin && c.reservaCheckout ? { reservaAtual: { checkin: c.reservaCheckin, checkout: c.reservaCheckout, hospedes: c.reservaHospedes, valor: c.reservaValor } } : {}),
+      // M8.2e: só para quem pagou (o cookie do checkout): uma disputa em curso num pagamento com o dinheiro da reserva
+      // (`disputaDoPagamentoOuSituacao`: as linhas dele, ou o pagamento contestado sem linha); com o resultado, a linha some.
+      ...(o.comAutorizacao && (await disputaEmCursoNaCotacao(db, organizacaoId, tentativas.filter(dinheiroDaReserva))) ? { pagamentoEmConferencia: true } : {}),
     };
   }
   // Dinheiro sem a reserva: confirmando, aprovado sem as datas, devolução pedida ou feita. Com mais de um pagamento,
@@ -389,6 +417,16 @@ export async function vistaDaCotacaoParaHospede(
     return { ...base, estado: "aprovado_sem_datas" };
   }
   return estadoPelasTentativas(base, tentativas, segurada, c.holdAte, agora, o);
+}
+
+/** M8.2e: algum dos pagamentos tem disputa em curso (aberta ou a confirmar), de qualquer origem (leitura ou equipe). */
+async function disputaEmCursoNaCotacao(db: Db, organizacaoId: string, ps: readonly Pagamento[]): Promise<boolean> {
+  if (!ps.length) return false;
+  const contestacoes = await db
+    .select({ pagamentoId: contestacoesPagamento.pagamentoId, situacao: contestacoesPagamento.situacao, avisos: contestacoesPagamento.avisos, estadoLido: contestacoesPagamento.estadoLido })
+    .from(contestacoesPagamento)
+    .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, ps.map((p) => p.id))));
+  return ps.some((p) => disputaDoPagamentoOuSituacao({ contestacoes }, p) === "em_curso");
 }
 
 /**
@@ -719,6 +757,9 @@ function estadoDoCancelamento(
   devs: readonly Devolucao[],
   agora: Date,
   todas: readonly Devolucao[] = devs,
+  disputas: readonly Contestacao[] = [],
+  /** O retido da reserva cancelada sem devolução (`reservas.valor_retido`); null = nada retido. */
+  valorRetido: number | null = null,
 ): { estado: EstadoPagamentoHospede; cancelamento: CancelamentoParaHospede } {
   const doPagamento = (d: Devolucao) => pagamentosDaReserva.find((x) => x.id === d.pagamentoId) ?? p0;
   // Todas as devoluções vivas do pagamento (as de alteração também): o que o Mercado Pago mostra devolvido é explicado por elas.
@@ -731,9 +772,24 @@ function estadoDoCancelamento(
   const estados = devs.map((d) => estadoDaCancelada(doPagamento(d), canc.direito!, d, estornaPelaEquipe(doPagamento(d), d, agora), agora, vivasDe(doPagamento(d))));
   const ordem: EstadoPagamentoHospede[] = ["cancelada_devolucao_pedida", "cancelada_com_a_equipe", "cancelada_em_conferencia", "cancelada_devolvida"];
   const esperando = devs.filter((d) => esperaALiberacao(doPagamento(d), d, vivasDe(doPagamento(d))));
+  // M8.2e: "Cancelar a reserva contestada" (sem devolução pelo sistema), pelas linhas da disputa dos pagamentos da reserva: em
+  // conferência enquanto alguma está em curso; perdida (o resultado confirmado), o dinheiro voltou ao hóspede por ela
+  // ("devolvida", com a frase própria) só quando as perdidas cobrem todo o retido do cancelamento (`perdidoNoPagamento`, a
+  // mesma conta do teto do pago); uma disputa de parte do valor, ou de um só dos pagamentos, deixa o resto retido: em
+  // conferência (a equipe fala com o hóspede), nunca "voltou". Ganha ou encerrada sem efeito, sem devolução. Sem linha
+  // nenhuma (lido antes do M8.2e), a situação do pagamento.
+  const pelaDisputa = canc.base === MOTIVO_CANCELAMENTO_CONTESTACAO ? situacaoDaDisputaDaReserva(pagamentosDaReserva, disputas) : null;
+  const perdidoNaReserva = pagamentosDaReserva.reduce((s, p) => s + perdidoNoPagamento({ contestacoes: [...disputas] }, p), 0);
+  const devolvidaPelaDisputa = pelaDisputa === "perdida" && valorRetido !== null && perdidoNaReserva >= valorRetido;
   const estado: EstadoPagamentoHospede =
     canc.direito === "nenhum"
-      ? "cancelada_sem_devolucao"
+      ? pelaDisputa === "em_curso"
+        ? "cancelada_em_conferencia"
+        : pelaDisputa === "perdida"
+          ? devolvidaPelaDisputa
+            ? "cancelada_devolvida"
+            : "cancelada_em_conferencia"
+          : "cancelada_sem_devolucao"
       : devs.length === 0
         ? estadoDaCancelada(p0, canc.direito!, undefined, false, agora, vivasDe(p0))
         : (ordem.find((e) => estados.includes(e)) ?? estados[0]);
@@ -763,6 +819,16 @@ function estadoDoCancelamento(
   return { estado, cancelamento };
 }
 
+/**
+ * A disputa dos pagamentos de uma reserva para a página do hóspede (M8.2e): em curso se alguma está; senão perdida se
+ * alguma foi; senão nada. Sem linha nenhuma (pagamento lido como contestado antes do M8.2e), em curso pela situação.
+ */
+function situacaoDaDisputaDaReserva(pagamentosDaReserva: readonly Pagamento[], disputas: readonly LinhaEmCurso[]): "em_curso" | "perdida" | null {
+  // Pagamento a pagamento: as linhas dele, ou, sem linha (lido antes do M8.2e, ou a leitura ambígua), a situação dele.
+  const situacoes = pagamentosDaReserva.map((p) => disputaDoPagamentoOuSituacao({ contestacoes: disputas }, p));
+  return situacoes.includes("em_curso") ? "em_curso" : situacoes.includes("perdida") ? "perdida" : null;
+}
+
 /** A mais tardia das datas (null se alguma falta). */
 const dataMaisTardia = (ds: readonly (Date | null)[]): Date | null => (ds.some((d) => !d) ? null : new Date(Math.max(...ds.map((d) => d!.getTime()))));
 
@@ -778,7 +844,7 @@ function estadoDaCancelada(p: Pagamento, direito: DireitoCancelamento, dev: Devo
   const avisos = dev?.avisos ?? p.avisos;
   const paradaPorProblema = avisos.includes("devolucao_parada") && !dev?.paradaEm;
   const emParteInexplicada = p.situacao === "devolvido_parcial" && devolucaoInexplicada(p, vivas) && !dev?.chaveAceita && !dev?.chaveEmDuvida;
-  if (avisos.includes("devolucao_a_menor") || p.situacao === "contestado" || emParteInexplicada || paradaPorProblema) return "cancelada_em_conferencia";
+  if (avisos.includes("devolucao_a_menor") || emDisputa(p) || emParteInexplicada || paradaPorProblema) return "cancelada_em_conferencia";
   if (dev?.situacao === "pedida") return "cancelada_devolucao_pedida";
   // Cartão com mais de 78 dias: nada foi pedido pelo sistema; a equipe devolve pelo painel do Mercado Pago.
   if (estornoPelaEquipe) return "cancelada_devolucao_pedida";
@@ -879,7 +945,7 @@ export type PagamentoDoPainel = {
     origem?: string;
     /** Último código da resposta do Mercado Pago (lista fechada): explica a espera ou a recusa no quadro. */
     ultimoCodigo?: CodigoDevolucao | null;
-    confirmadaPor?: "leitura" | "equipe" | null;
+    confirmadaPor?: "leitura" | "equipe" | "contestacao" | null;
     confirmadaNota?: string;
     valorConfirmado?: number | null;
     recusaNoPainelEm?: Date | null;
@@ -939,7 +1005,16 @@ export type PagamentoDoPainel = {
   motivoRecusa?: string | null;
 };
 
-const liberacaoVencida = (p: Pagamento, agora: Date) => dinheiroDaReserva(p) && p.situacao === "aprovado" && !p.liberacaoConfirmadaEm && !!p.liberacaoPrevistaEm && p.liberacaoPrevistaEm.getTime() < agora.getTime();
+/**
+ * M8.2e: o pagamento está em disputa (contestado pela leitura, ou com disputa em curso registrada — o MED num Pix aprovado,
+ * o caso tardio só da Chargebacks API). O aviso `contestado` é o retrato do "em curso" (`contestacaoEmCurso`), recalculado em
+ * toda gravação da disputa sob a trava (`avisosComContestacoes`): estas leituras sem trava leem dele.
+ */
+const emDisputa = (p: Pick<Pagamento, "situacao" | "avisos">) => pagamentoContestado(p);
+
+/** Liberação prevista vencida sem confirmação; com disputa em curso, não (a liberação lida não lança: espera o resultado). */
+const liberacaoVencida = (p: Pagamento, agora: Date) =>
+  dinheiroDaReserva(p) && p.situacao === "aprovado" && !emDisputa(p) && !p.liberacaoConfirmadaEm && !!p.liberacaoPrevistaEm && p.liberacaoPrevistaEm.getTime() < agora.getTime();
 
 /** Tentativa `criando`/`incerta` sem resposta há mais que a carência: a criação do pagamento não se resolve sozinha. */
 const criacaoPresa = (p: Pagamento, agora: Date) => (p.situacao === "criando" || p.situacao === "incerta") && p.criadoEm.getTime() + CARENCIA_PAGAMENTO_MS < agora.getTime();
@@ -972,7 +1047,7 @@ export type DevolucaoDoPainel = {
   // parada pela equipe e a parada pelo prazo (pela regra do domínio).
   tentativas: number;
   falhas: number;
-  confirmadaPor: "leitura" | "equipe" | null;
+  confirmadaPor: "leitura" | "equipe" | "contestacao" | null;
   confirmadaNota: string;
   porForaNota: string;
   recusaNoPainelEm: Date | null;
@@ -993,6 +1068,11 @@ type ContextoDoPainel = {
   reserva: { estado: EstadoReserva; valorRetido: number | null } | null;
   cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null;
   alteracoes?: readonly (Pick<Alteracao, "id" | "situacao"> & Partial<Pick<Alteracao, "holdAte">>)[];
+  /**
+   * M8.2e: as disputas do pagamento (as ações das devoluções e a liberação à mão as leem; a perdida sem decisão pede atenção;
+   * o aviso `contestado` diz o tipo da em curso mais antiga).
+   */
+  contestacoes?: readonly Pick<Contestacao, "id" | "pagamentoId" | "tipo" | "abertaEm" | "situacao" | "avisos" | "estadoLido" | "decisaoVersao" | "definitivoEm" | "liquidoNaoEntrou">[];
 };
 
 /** O aviso de devolução recusada, no quadro do pagamento, quando a recusa veio do painel do Mercado Pago (registrada) ou da leitura. */
@@ -1003,9 +1083,17 @@ export const TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA =
 
 /**
  * Os avisos do pagamento em palavras, com os valores quando o texto precisa deles (os de devolução, pela devolução que os
- * tem). `comValores: false`: os mesmos avisos sem nenhum R$, para quem não lê o financeiro (D26).
+ * tem). `comValores: false`: os mesmos avisos sem nenhum R$, para quem não lê o financeiro (D26). M8.2e: `contestado` diz o
+ * tipo da disputa em curso (`tipoDaDisputa`; sem ele, o texto geral).
  */
-function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined, devs: readonly Devolucao[] = dev ? [dev] : [], agora: Date = new Date(), comValores = true): string[] {
+function textosDoPagamento(
+  p: Pagamento,
+  dev: Devolucao | undefined,
+  devs: readonly Devolucao[] = dev ? [dev] : [],
+  agora: Date = new Date(),
+  comValores = true,
+  tipoDaDisputa: TipoContestacao | null = null,
+): string[] {
   const comAviso = (c: CodigoAviso) => [...devs].reverse().find((d) => d.avisos.includes(c));
   const valor = (v: number) => (comValores ? v : null);
   return p.avisos
@@ -1033,12 +1121,17 @@ function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined, devs: reado
         const d = comAviso(c);
         if (d) return textoDevolucaoAguardandoLiberacaoAtrasada(valor(d.valor));
       }
+      if (c === "devolucao_devida_depois_da_disputa") {
+        const d = comAviso(c);
+        if (d) return textoDevolucaoDevidaDepoisDaDisputa(valor(d.valor));
+      }
       // O aviso de devolução recusada (M8.2c) também vem da recusa do painel do Mercado Pago registrada pela equipe e da
       // leitura que mostrou a nossa devolução falha: o texto diz qual foi (nem sempre foram "três vezes").
       if (c === "devolucao_falhou" && dev?.situacao === "recusada" && dev.recusaNoPainelEm) return TEXTO_RECUSA_NO_PAINEL;
       if (c === "devolucao_falhou" && dev?.situacao === "recusada" && dev.idProvedor !== null && !dev.paradaEm) return TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA;
       // Sem reserva (M8.2a), o devolvido fora do sistema não tem parte de proprietário em conferência.
       if (c === "devolvido_por_fora" && p.desfecho !== "reserva") return "Este pagamento foi devolvido (no todo ou em parte) fora do sistema: confira no painel do Mercado Pago.";
+      if (c === "contestado") return textoDoAvisoContestado(tipoDaDisputa);
       return AVISOS_PAGAMENTO[c];
     });
 }
@@ -1046,7 +1139,12 @@ function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined, devs: reado
 function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManual: boolean, agora: Date, ctx: ContextoDoPainel): Omit<PagamentoDoPainel, "aceite"> {
   // A devolução que manda no quadro (M8.2d: a aberta, senão a mais nova); as outras vão em `devolucoes`.
   const dev = devolucaoPrincipal(devs);
-  const contexto: ContextoDaDevolucao = { cancelamento: ctx.cancelamento, alteracoes: ctx.alteracoes ?? [] };
+  const contexto: ContextoDaDevolucao = { cancelamento: ctx.cancelamento, alteracoes: ctx.alteracoes ?? [], contestacoes: ctx.contestacoes ?? [] };
+  // M8.2e: o pagamento contestado com a disputa registrada (ela explica a situação) aceita a liberação à mão; a perdida sem
+  // decisão de quem arca pede atenção (a reserva continua em conferência).
+  const disputasP = (ctx.contestacoes ?? []).filter((c) => c.pagamentoId === p.id);
+  const contestadoExplicado = p.situacao === "contestado" && disputasP.some((c) => c.situacao !== "sem_efeito");
+  const perdidaSemDecisao = disputasP.some((c) => c.situacao === "perdida" && c.decisaoVersao === 0 && c.definitivoEm === null);
   const semDecisao = p.situacao === "aprovado" && p.desfecho === null;
   // Dinheiro que chegou já devolvido em parte ou contestado, sem decisão do sistema (situação inesperada).
   const inesperada = (p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.desfecho === null;
@@ -1097,8 +1195,8 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
     desfechoEm: p.desfechoEm,
     motivoSemReserva: p.motivoSemReserva,
     motivoSemReservaTexto: textoMotivoSemReserva(p.motivoSemReserva),
-    avisos: textosDoPagamento(p, dev, devs, agora),
-    avisosSemValores: textosDoPagamento(p, dev, devs, agora, false),
+    avisos: textosDoPagamento(p, dev, devs, agora, true, tipoDaDisputaEmCurso(disputasP, p.id)),
+    avisosSemValores: textosDoPagamento(p, dev, devs, agora, false, tipoDaDisputaEmCurso(disputasP, p.id)),
     devolucao: dev
       ? {
           situacao: dev.situacao,
@@ -1151,7 +1249,10 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
       (calculada && liberacaoVencida(p, agora)) ||
       (p.desfecho === "reserva" && ctx.cancelamento?.situacao === "pedido") ||
       // M8.2d: uma alteração com as novas datas seguradas (esperando o pagamento da diferença ou a confirmação do hóspede).
-      (p.desfecho === "reserva" && !!ctx.alteracoes?.some((a) => a.situacao === "segurada" && !!a.holdAte && a.holdAte.getTime() > agora.getTime())),
+      (p.desfecho === "reserva" && !!ctx.alteracoes?.some((a) => a.situacao === "segurada" && !!a.holdAte && a.holdAte.getTime() > agora.getTime())) ||
+      // M8.2e: disputa em curso (o aviso `contestado` já conta) ou perdida sem a decisão de quem arca.
+      disputasP.some((c) => c.situacao === "aberta" || c.situacao === "a_confirmar") ||
+      perdidaSemDecisao,
     acoes: {
       conferir: p.idProvedor !== null || emAndamento(p.situacao) || !!dev,
       // Cancelamento: pedir de novo só a devolução recusada de um pagamento com até 78 dias (depois, nada se pede).
@@ -1161,9 +1262,12 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
       // Só a reserva que o motor calcula (confirmada, ou cancelada com valor retido) recebe a liberação no livro. Cancelada
       // com devolução integral (M8.2d, D13): a liberação só se registra quando uma devolução de parte do valor espera por
       // ela (nada entra no livro; a devolução sai depois dela).
+      // M8.2e: a disputa perdida que já contou o líquido inteiro como "nunca entrou" não recebe a liberação por cima (o domínio
+      // recusa; a correção é um ajuste).
       registrarLiberacao:
         dinheiroDaReserva(p) &&
-        (p.situacao === "aprovado" || (p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devs))) &&
+        (p.situacao === "aprovado" || (p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devs)) || contestadoExplicado) &&
+        (liquidoQueAindaPodeEntrar({ contestacoes: disputasP }, p) ?? 1) > 0 &&
         ((!p.liberacaoConfirmadaEm && calculada) || (ctx.cancelamento?.situacao === "cancelada" && ctx.cancelamento.direito === "integral" && devs.some(esperandoLiberacao))),
       // Cancelada com devolução integral, a liberação não se registraria de novo: o estorno não é oferecido (o domínio recusa).
       estornarLiberacao:
@@ -1244,6 +1348,22 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
     .select({ id: alteracoesReserva.id, reservaId: alteracoesReserva.reservaId, situacao: alteracoesReserva.situacao, holdAte: alteracoesReserva.holdAte })
     .from(alteracoesReserva)
     .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), inArray(alteracoesReserva.reservaId, reservaIds)));
+  // M8.2e: as disputas dos pagamentos (as ações das devoluções, a liberação à mão e o "pede atenção").
+  const cts = await db
+    .select({
+      id: contestacoesPagamento.id,
+      pagamentoId: contestacoesPagamento.pagamentoId,
+      tipo: contestacoesPagamento.tipo,
+      abertaEm: contestacoesPagamento.abertaEm,
+      situacao: contestacoesPagamento.situacao,
+      avisos: contestacoesPagamento.avisos,
+      estadoLido: contestacoesPagamento.estadoLido,
+      decisaoVersao: contestacoesPagamento.decisaoVersao,
+      liquidoNaoEntrou: contestacoesPagamento.liquidoNaoEntrou,
+      definitivoEm: contestacoesPagamento.definitivoEm,
+    })
+    .from(contestacoesPagamento)
+    .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, ids)));
   // M7.4: o aceite com que cada tentativa foi criada e o prazo da Política de cancelamento dessa versão.
   const aceiteIds = [...new Set(lista.map((p) => p.aceiteId).filter((x): x is string => x !== null))];
   const aceites = aceiteIds.length ? await db.select().from(aceitesSite).where(and(eq(aceitesSite.organizacaoId, organizacaoId), inArray(aceitesSite.id, aceiteIds))) : [];
@@ -1259,6 +1379,7 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
       reserva: rs.find((r) => r.id === p.reservaId) ?? null,
       cancelamento: cs.find((c) => c.reservaId === p.reservaId) ?? null,
       alteracoes: as.filter((a) => a.reservaId === p.reservaId),
+      contestacoes: cts.filter((c) => c.pagamentoId === p.id),
     }),
     aceite: aceiteDe(p),
   }));
@@ -1268,15 +1389,17 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
  * D21, gêmeo TS de `devolvidaNoProvedorSql` (`portal/posse.ts`): algum pagamento com o dinheiro da reserva (o que a
  * confirmou e as diferenças, M8.2d) mostra no Mercado Pago devolvido além do que as nossas devoluções e o reconhecido
  * explicam (`devolucaoInexplicada`), e a reserva não tem cancelamento pela política com devolução integral. A parte do
- * proprietário fica em conferência.
+ * proprietário fica em conferência. M8.2e: `contestacoes`, as disputas dos pagamentos (o MED e a reclamação registrados
+ * explicam a devolução lida, até o valor deles: `devolvidoPelaDisputa`).
  */
 export function devolvidaNoProvedor(
   pagamentosDaReserva: readonly Pick<Pagamento, "id" | "desfecho" | "situacao" | "devolvidoLido" | "devolvidoForaReconhecido">[],
   devolucoes: readonly Devolucao[],
   cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null | undefined,
+  contestacoes: readonly Pick<Contestacao, "pagamentoId" | "tipo" | "situacao" | "valor" | "duplicataPossivel">[] = [],
 ): boolean {
   if (cancelamento?.situacao === "cancelada" && cancelamento.direito === "integral") return false;
-  return pagamentosDaReserva.some((p) => dinheiroDaReserva(p) && devolucaoInexplicada(p, devolucoesDoPagamento({ devolucoes }, p.id)));
+  return pagamentosDaReserva.some((p) => dinheiroDaReserva(p) && devolucaoInexplicada(p, devolucoesDoPagamento({ devolucoes }, p.id), devolvidoPelaDisputa({ contestacoes }, p.id)));
 }
 
 /** Pagamentos do site de uma reserva (ficha da reserva), do mais antigo ao mais novo. */
@@ -1313,17 +1436,38 @@ function podePedirAtencao(agora: Date) {
       eq(pagamentos.desfecho, "reserva"),
       sql`exists (select 1 from ${alteracoesReserva} where ${alteracoesReserva.reservaId} = ${pagamentos.reservaId} and ${alteracoesReserva.situacao} = 'segurada' and ${alteracoesReserva.holdAte} > ${agora})`,
     ),
+    // M8.2e: disputa em curso, ou perdida sem a decisão de quem arca.
+    comDisputaSql(),
   );
 }
 
+/**
+ * M8.2e: o pagamento tem disputa que pede a equipe — aberta, a confirmar ou perdida sem decisão de quem arca (o filtro "Com
+ * disputa" de Pagamentos do site e o "pede atenção").
+ */
+const comDisputaSql = () =>
+  sql`exists (select 1 from ${contestacoesPagamento} c where c.pagamento_id = ${pagamentos.id} and (c.situacao in ('aberta', 'a_confirmar') or (c.situacao = 'perdida' and c.decisao_versao = 0 and c.definitivo_em is null)))`;
+
 /** `alteracaoEm` (M8.2d): quando foi preparada a alteração cuja diferença este pagamento cobra; null nos outros. */
-export type LinhaPagamento = PagamentoDoPainel & { reservaCodigo: string; reservaEstado: string; imovelCodigo: string; checkin: string; checkout: string; cotacaoCodigo: string; alteracaoEm: Date | null };
+export type LinhaPagamento = PagamentoDoPainel & {
+  reservaCodigo: string;
+  reservaEstado: string;
+  imovelCodigo: string;
+  checkin: string;
+  checkout: string;
+  cotacaoCodigo: string;
+  alteracaoEm: Date | null;
+  /** M8.2e: a coluna "Disputa" — a do pagamento em palavras (tipo e situação, a mais nova), ou null sem disputa. */
+  disputa: string | null;
+  /** M8.2e: alguma disputa em curso (aberta ou a confirmar): o desfecho diz "Reserva (pagamento em disputa)". */
+  emDisputa: boolean;
+};
 
 /**
  * Financeiro → Pagamentos do site: por período (dia de criação, em São Paulo, `de` e `ate` inclusive), com o
  * filtro "pede atenção" (que ignora o período: o que pede atenção aparece sempre).
  */
-export async function listarPagamentos(db: Db, organizacaoId: string, f: { de?: string; ate?: string; atencao?: boolean } = {}, agora: Date = new Date()): Promise<LinhaPagamento[]> {
+export async function listarPagamentos(db: Db, organizacaoId: string, f: { de?: string; ate?: string; atencao?: boolean; disputa?: boolean } = {}, agora: Date = new Date()): Promise<LinhaPagamento[]> {
   const dia = sql`(${pagamentos.criadoEm} at time zone 'America/Sao_Paulo')::date`;
   const linhas = await db
     .select({
@@ -1341,11 +1485,45 @@ export async function listarPagamentos(db: Db, organizacaoId: string, f: { de?: 
     .innerJoin(imoveis, eq(imoveis.id, pagamentos.imovelId))
     .innerJoin(cotacoes, eq(cotacoes.id, pagamentos.cotacaoId))
     .leftJoin(alteracoesReserva, and(eq(alteracoesReserva.id, pagamentos.alteracaoId), eq(alteracoesReserva.organizacaoId, pagamentos.organizacaoId)))
-    .where(and(eq(pagamentos.organizacaoId, organizacaoId), !f.atencao && f.de ? gte(dia, f.de) : undefined, !f.atencao && f.ate ? sql`${dia} <= ${f.ate}` : undefined, f.atencao ? podePedirAtencao(agora) : undefined))
+    .where(
+      and(
+        eq(pagamentos.organizacaoId, organizacaoId),
+        // "Pede atenção" e "Com disputa" ignoram o período: o que pede a equipe aparece sempre.
+        !f.atencao && !f.disputa && f.de ? gte(dia, f.de) : undefined,
+        !f.atencao && !f.disputa && f.ate ? sql`${dia} <= ${f.ate}` : undefined,
+        f.atencao ? podePedirAtencao(agora) : undefined,
+        f.disputa ? comDisputaSql() : undefined,
+      ),
+    )
     .orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id))
     .limit(500);
   const painel = await montarPainel(db, organizacaoId, linhas.map((l) => l.p), agora);
-  const r = painel.map((p, i) => ({ ...p, reservaCodigo: linhas[i].reservaCodigo, reservaEstado: linhas[i].reservaEstado, imovelCodigo: linhas[i].imovelCodigo, checkin: linhas[i].checkin, checkout: linhas[i].checkout, cotacaoCodigo: linhas[i].cotacaoCodigo, alteracaoEm: linhas[i].alteracaoEm ?? null }));
+  // M8.2e: a coluna "Disputa" — a mais nova de cada pagamento, por tipo e situação.
+  const disputas = painel.length
+    ? await db
+        .select({ pagamentoId: contestacoesPagamento.pagamentoId, tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao, decisaoVersao: contestacoesPagamento.decisaoVersao, definitivoEm: contestacoesPagamento.definitivoEm })
+        .from(contestacoesPagamento)
+        .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, painel.map((p) => p.id))))
+        .orderBy(desc(contestacoesPagamento.abertaEm), desc(contestacoesPagamento.rodada))
+    : [];
+  const disputaDe = (id: string) => {
+    const ds = disputas.filter((d) => d.pagamentoId === id);
+    if (!ds.length) return { disputa: null, emDisputa: false };
+    const d = ds[0];
+    const semDecisao = d.situacao === "perdida" && d.decisaoVersao === 0 && d.definitivoEm === null ? " (sem decisão de quem arca)" : "";
+    return { disputa: `${NOMES_TIPO_CONTESTACAO[d.tipo]}: ${NOMES_SITUACAO_CONTESTACAO[d.situacao]}${semDecisao}${ds.length > 1 ? ` (+${ds.length - 1})` : ""}`, emDisputa: ds.some((x) => x.situacao === "aberta" || x.situacao === "a_confirmar") };
+  };
+  const r = painel.map((p, i) => ({
+    ...p,
+    reservaCodigo: linhas[i].reservaCodigo,
+    reservaEstado: linhas[i].reservaEstado,
+    imovelCodigo: linhas[i].imovelCodigo,
+    checkin: linhas[i].checkin,
+    checkout: linhas[i].checkout,
+    cotacaoCodigo: linhas[i].cotacaoCodigo,
+    alteracaoEm: linhas[i].alteracaoEm ?? null,
+    ...disputaDe(p.id),
+  }));
   return f.atencao ? r.filter((x) => x.pedeAtencao) : r;
 }
 
@@ -1353,7 +1531,7 @@ export type AvisoPagamento = { nivel: "atencao" | "info"; texto: string; link?: 
 export type ContagensPagamento = {
   /** Aprovado sem reserva, a devolver ao hóspede (pelo Mercado Pago ou por fora). */
   aprovadoSemDesfecho: number;
-  /** Chegou já devolvido em parte ou contestado, antes de o sistema decidir: resolve-se no painel do Mercado Pago. */
+  /** Chegou já devolvido em parte ou contestado, antes de o sistema decidir: a disputa se acompanha pelo quadro do pagamento (M8.2e). */
   situacaoInesperada: number;
   devolucaoPedida: number;
   /** Devoluções paradas porque o Mercado Pago recusou, não respondeu ou mostrou a devolução pedida como falha. */
@@ -1423,6 +1601,13 @@ export async function avisosDePagamento(
     );
   const devs = lista.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, lista.map((p) => p.id))) : [];
   const devsDe = (id: string) => devolucoesDoPagamento({ devolucoes: devs }, id);
+  // M8.2e: as disputas (o MED e a reclamação registrados explicam a devolução lida, no D21).
+  const disputas = lista.length
+    ? await db
+        .select({ pagamentoId: contestacoesPagamento.pagamentoId, tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao, valor: contestacoesPagamento.valor, duplicataPossivel: contestacoesPagamento.duplicataPossivel })
+        .from(contestacoesPagamento)
+        .where(inArray(contestacoesPagamento.pagamentoId, lista.map((p) => p.id)))
+    : [];
   const contagens: ContagensPagamento = {
     aprovadoSemDesfecho: 0,
     situacaoInesperada: 0,
@@ -1491,7 +1676,7 @@ export async function avisosDePagamento(
       else if (!devsP.some((d) => d.situacao === "pedida")) contagens.aprovadoSemDesfecho++;
     }
     // D21: uma vez por reserva (algum pagamento dela devolvido fora do que o sistema explica).
-    if (dinheiroDaReserva(p) && !contadasNoProvedor.has(p.reservaId) && devolvidaNoProvedor([p], devs, cs.find((x) => x.reservaId === p.reservaId))) {
+    if (dinheiroDaReserva(p) && !contadasNoProvedor.has(p.reservaId) && devolvidaNoProvedor([p], devs, cs.find((x) => x.reservaId === p.reservaId), disputas)) {
       contadasNoProvedor.add(p.reservaId);
       contagens.reservaDevolvidaNoProvedor++;
     }
@@ -1566,7 +1751,7 @@ export async function avisosDePagamento(
   if (contagens.situacaoInesperada)
     alertas.push({
       nivel: "atencao",
-      texto: `${contagens.situacaoInesperada} pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: devolva o restante pelo quadro do pagamento (ou resolva a contestação pelo painel do Mercado Pago).`,
+      texto: `${contagens.situacaoInesperada} pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: devolva o restante pelo quadro do pagamento (acompanhe a disputa pelo quadro do pagamento).`,
       link: `${LINK_PAGAMENTOS}?atencao=1`,
     });
   if (contagens.devolucaoPedida) alertas.push({ nivel: "info", texto: `${contagens.devolucaoPedida} devolução(ões) pedida(s) ao Mercado Pago aguardando confirmação.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
@@ -1686,7 +1871,8 @@ export async function avisosDeCancelamento(db: Db, organizacaoId: string, agora:
   for (const x of canceladas) {
     const { c } = x;
     const desde: Date[] = [];
-    if (!c.hospedeAvisadoDecisaoEm && c.canceladaEm) desde.push(c.canceladaEm);
+    // M8.2e: "Cancelar a reserva contestada" não tem a mensagem da decisão (a equipe fala com o hóspede caso a caso).
+    if (!c.hospedeAvisadoDecisaoEm && c.canceladaEm && c.base !== MOTIVO_CANCELAMENTO_CONTESTACAO) desde.push(c.canceladaEm);
     // M8.2d: a devolução feita é a de todas as devoluções do cancelamento (o dia da última); a substituída não conta.
     const doCancelamento = devs.filter((x) => x.cancelamentoId === c.id && x.situacao !== "substituida");
     const dias = doCancelamento.map((d) => (d.situacao === "confirmada" ? d.confirmadaEm : d.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null));

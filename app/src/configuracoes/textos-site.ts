@@ -42,6 +42,12 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "cancelamentoVoltaPorFora", rotulo: "Cancelamento: devolução feita por fora (transferência da empresa)", limite: 240, linhas: 2 },
   { chave: "cancelamentoComAEquipe", rotulo: "Cancelamento: a devolução pelo Mercado Pago não foi possível (a equipe combina outra forma)", limite: 240, linhas: 2 },
   { chave: "cancelamentoEmConferencia", rotulo: "Cancelamento: devolução em conferência com o Mercado Pago", limite: 240, linhas: 2 },
+  {
+    chave: "cancelamentoDevolvidoPelaDisputa",
+    rotulo: "Cancelamento da reserva contestada: o dinheiro voltou ao hóspede pelo banco ou pelo Mercado Pago (a disputa terminou a favor dele)",
+    limite: 240,
+    linhas: 2,
+  },
   { chave: "cancelamentoSemDevolucaoPrazo", rotulo: "Cancelamento sem devolução: o pedido chegou depois dos prazos da política (a página mostra os prazos antes)", limite: 240, linhas: 2 },
   { chave: "cancelamentoSemDevolucaoNaoComparecimento", rotulo: "Cancelamento sem devolução: não comparecimento", limite: 240, linhas: 2 },
   { chave: "cancelamentoSemDevolucaoEquipe", rotulo: "Cancelamento sem devolução decidido pela equipe (pagamento sem a política aceita)", limite: 240, linhas: 2 },
@@ -58,6 +64,9 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "alteracaoSemDevolucao", rotulo: "Alteração em que a política não devolve a diferença", limite: 240, linhas: 2 },
   { chave: "alteracaoNaoAplicada", rotulo: "Alteração não aplicada: a diferença foi paga, mas as novas datas não puderam ser seguradas", limite: 400, linhas: 3 },
   { chave: "alteracaoNaoVale", rotulo: "Alteração preparada que não vale mais (o prazo passou ou a equipe desistiu)", limite: 240, linhas: 2 },
+  // Disputa do pagamento (M8.2e): a linha da reserva confirmada com o pagamento em disputa, só para quem pagou (o cookie do
+  // pagamento) e em Minha reserva. Nunca a palavra "contestação", nunca uma acusação. Vazia = a linha não aparece.
+  { chave: "pagamentoEmConferencia", rotulo: "Pagamento em conferência: reserva confirmada com o pagamento em disputa (só quem pagou vê; vazio = a linha não aparece)", limite: 240, linhas: 2 },
 ] as const;
 export type ChaveTextoSite = (typeof CAMPOS_TEXTOS_SITE)[number]["chave"];
 export type TextosSite = Record<ChaveTextoSite, string>;
@@ -80,6 +89,7 @@ export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = [
   "cancelamentoVoltaPorFora",
   "cancelamentoComAEquipe",
   "cancelamentoEmConferencia",
+  "cancelamentoDevolvidoPelaDisputa",
   "cancelamentoSemDevolucaoPrazo",
   "cancelamentoSemDevolucaoNaoComparecimento",
   "cancelamentoSemDevolucaoEquipe",
@@ -132,6 +142,7 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   cancelamentoVoltaPorFora: "Devolvemos por transferência, como combinado com a nossa equipe.",
   cancelamentoComAEquipe: "A nossa equipe vai falar com você para combinar outra forma, sem custo para você.",
   cancelamentoEmConferencia: "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você.",
+  cancelamentoDevolvidoPelaDisputa: "O dinheiro desta reserva voltou a você pelo banco ou pelo Mercado Pago.",
   cancelamentoSemDevolucaoPrazo: "O pedido chegou depois desses prazos: pela política que você aceitou, não há devolução.",
   cancelamentoSemDevolucaoNaoComparecimento: "Pela política, o não comparecimento não tem devolução.",
   cancelamentoSemDevolucaoEquipe: "A nossa equipe registrou que não há devolução.",
@@ -148,6 +159,8 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   alteracaoSemDevolucao: "O valor da reserva continua o mesmo.",
   alteracaoNaoAplicada: "As novas datas não puderam ser seguradas: a sua reserva continua como estava e vamos devolver esse valor. A nossa equipe fala com você.",
   alteracaoNaoVale: "A sua reserva continua como está. Fale com a equipe se ainda quiser mudar.",
+  // Disputa do pagamento (M8.2e): texto-base do desenho. Pode ficar vazio (a linha some).
+  pagamentoEmConferencia: "O pagamento desta reserva está em conferência com o Mercado Pago. Se tiver qualquer dúvida sobre a cobrança, fale com a nossa equipe.",
 };
 
 /**

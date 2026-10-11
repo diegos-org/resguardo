@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { TEXTOS_BASE_CAUSAS_CONTESTACAO } from "@/pagamentos/contestacao-regras";
 import { FormPagamentoSite } from "./FormPagamentoSite";
 
 const props = {
-  config: { oferecer: true, nomeFatura: null, categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" as const, pedidoCancelamentoNoPortal: true, naoComparecimentoHoras: 21 },
+  config: {
+    oferecer: true, nomeFatura: null, categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" as const, pedidoCancelamentoNoPortal: true, naoComparecimentoHoras: 21,
+    categoriaDaContestacao: null, diasAvisoDocumentacao: 5, causasContestacao: TEXTOS_BASE_CAUSAS_CONTESTACAO,
+  },
   categorias: [{ id: "33333333-3333-4333-8333-333333333333", nome: "Tarifas bancárias" }],
   nomeEmpresa: "Sua Casa Leblon",
   limiteNome: 22,

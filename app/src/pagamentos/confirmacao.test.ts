@@ -425,6 +425,8 @@ describe("confirmação pelo cartão (M8.2b)", () => {
     aoVivo: false,
     pix: null,
     cartao: null,
+    contestacoes: [],
+    transacaoAprovada: true,
     ...o,
   });
   it("o valor confere: Pix igual; cartão à vista igual; cartão parcelado com juros (pela tentativa, mesmo com a leitura sem tipo e parcelas); à vista com a mais e transação diferente, não", () => {

@@ -33,7 +33,7 @@ export const SECOES_COMO_FUNCIONA = [
   { chave: "quandoRecebe", titulo: "Quando e como você recebe", dica: "Quando a parte de uma reserva fica disponível e como o repasse é feito. A periodicidade escolhida pelo proprietário aparece junto, automaticamente.", limite: 3000 },
   { chave: "relatorios", titulo: "Relatórios e extrato", dica: "O que o proprietário recebe por e-mail e vê no portal.", limite: 3000 },
   { chave: "cancelamentos", titulo: "Cancelamentos", dica: "O que acontece com a reserva e com a parte do proprietário quando o hóspede cancela.", limite: 3000 },
-  { chave: "contestacoes", titulo: "Contestações de pagamento", dica: "Quem arca com uma contestação de cartão perdida — decisão ainda pendente (seção 7 do guia). Vazio = a seção não aparece no portal.", limite: 3000 },
+  { chave: "contestacoes", titulo: "Contestações de pagamento", dica: "O que acontece quando um hóspede contesta no banco a cobrança de uma reserva paga pelo site: a reserva em conferência, quem arca (pela causa da disputa), o valor segurado nos próximos repasses até o resultado e o desconto definitivo ou devolvido. Texto-base no guia (item 42). Vazio = a seção não aparece no portal.", limite: 3000 },
   { chave: "duvidas", titulo: "Dúvidas", dica: "Como falar com a empresa.", limite: 1000 },
 ] as const;
 export type ChaveSecao = (typeof SECOES_COMO_FUNCIONA)[number]["chave"];

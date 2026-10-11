@@ -24,7 +24,11 @@ type AcaoCartao = (form: FormData) => Promise<EstadoCartao>;
  * Textos editáveis do pagamento (Configurações → Site). `cancelamento` (M8.2c): as frases da reserva cancelada pela
  * política e do pedido de cancelamento recebido; sem elas, a página mostra só os fatos do cancelamento.
  */
-export type TextosPagamento = { convite: string; aguardando: string; semDatas: string; cartaoAnalise: string; cancelamento?: TextosDoCancelamento };
+/**
+ * `emConferencia` (M8.2e): a frase de Textos do site da reserva confirmada com o pagamento em disputa (vazia = a linha não
+ * aparece); só aparece com a marca da vista, que vem só com o cookie de quem pagou.
+ */
+export type TextosPagamento = { convite: string; aguardando: string; semDatas: string; cartaoAnalise: string; cancelamento?: TextosDoCancelamento; emConferencia?: string };
 
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formato = (fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o });
@@ -639,6 +643,12 @@ export function PagamentoPix({
           <p className={styles.texto}>Guarde este link. Os detalhes da estadia ficam em Minha reserva, com o e-mail usado ao segurar as datas.</p>
           {aceite?.aceito && <AceiteFeito aceito={aceite.aceito} fuso={fuso} prazo={aceite.prazo} />}
           {v.pagamentoEmDobro && <p className={styles.aviso}>Recebemos mais de um pagamento desta cotação: a equipe vai devolver o valor pago a mais.</p>}
+          {/* M8.2e: pagamento em disputa (só com o cookie de quem pagou; a frase editável pode ficar vazia). */}
+          {v.pagamentoEmConferencia && textos.emConferencia && (
+            <p className={styles.aviso} role="note">
+              {textos.emConferencia}
+            </p>
+          )}
           {/* M8.2c: pedido de cancelamento recebido, ainda sem decisão (a reserva continua confirmada). */}
           {cancelamento.linhas.length > 0 && (
             <div className={styles.aviso} role="note">

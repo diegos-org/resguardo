@@ -1,5 +1,5 @@
 /**
- * Desconto do proprietário (M8.2c; o M8.2e reaproveita): dinheiro do site que voltou ao hóspede depois de a parte do
+ * Desconto do proprietário (M8.2c; o M8.2e reaproveita pela regra geral, `lancarAcertoDoProprietario`): dinheiro do site que voltou ao hóspede depois de a parte do
  * proprietário naquela reserva já ter sido repassada. "Desconto no repasse seguinte" ao pé da letra: é uma **parte
  * negativa** (lançamento "direito_proprietario" com valor e efeito no acerto negativos, origem "cancelamento") na
  * competência do mês corrente — nunca no passado: o mês já fechado e o relatório já enviado não mudam. Ela fica
@@ -19,6 +19,7 @@ import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { type Lancamento, lancar, LancamentoInvalido } from "@/financeiro/ledger";
+import { ehChaveDeContestacao, ORIGEM_LANCAMENTO_CONTESTACAO } from "@/pagamentos/contestacao-regras";
 import { lancamentoEmVigor } from "@/portal/posse";
 
 /** Origem dos lançamentos do acerto de um cancelamento pela política (espelhos e o desconto do proprietário). */
@@ -70,12 +71,62 @@ const MES_DO_DESCONTO = /^\d{4}-(0[1-9]|1[0-2])-01$/;
 /** O 1º dia do mês corrente em São Paulo: a única competência que um desconto pode ter (nunca o passado). */
 export const mesDoDesconto = (agora: Date) => `${hojeISO("America/Sao_Paulo", agora).slice(0, 7)}-01`;
 
+/** As origens de um acerto do proprietário no mês corrente: o desconto do cancelamento (M8.2c) e as linhas da disputa do pagamento (M8.2e). */
+export type OrigemDoAcerto = typeof ORIGEM_CANCELAMENTO | typeof ORIGEM_LANCAMENTO_CONTESTACAO;
+
+/**
+ * Lança um acerto do proprietário (uma parte, `direito_proprietario`, com valor e efeito no acerto iguais): a regra única da
+ * competência no mês corrente em São Paulo (`mesDoDesconto(agora)`) — um mês anterior, que já pode ter sido fechado e
+ * enviado, é recusado, e um mês seguinte atrasaria o acerto. `valor` com sinal, em centavos, nunca 0: o débito é negativo
+ * (o desconto do cancelamento, o valor segurado pela disputa), a reversão é positiva (a disputa ganha ou encerrada sem
+ * efeito, o ajuste da perdida). `origem`: "cancelamento" (M8.2c) ou "contestacao_pagamento" (M8.2e, só com uma chave da
+ * disputa, `chavesDaContestacao`). `chave`: idempotência (repetir devolve o mesmo lançamento). Nasce `previsto`, para quem
+ * recebeu a parte; roda dentro da transação de quem chama, com a trava do motor da reserva já tomada. A linha fica
+ * disponível ou espera junto com a parte da reserva pela regra de `classificarParte`.
+ */
+export async function lancarAcertoDoProprietario(
+  tx: Db,
+  organizacaoId: string,
+  origem: OrigemDoAcerto,
+  d: { chave: string; proprietarioId: string; imovelId: string; reservaId: string; valor: number; competencia: string; descricao: string },
+  autorId: string | null,
+  agora: Date,
+): Promise<Lancamento> {
+  if (origem !== ORIGEM_CANCELAMENTO && origem !== ORIGEM_LANCAMENTO_CONTESTACAO) throw new LancamentoInvalido("Origem do acerto do proprietário inválida.");
+  if (!Number.isSafeInteger(d.valor) || d.valor === 0) throw new LancamentoInvalido("O acerto do proprietário precisa de um valor em centavos diferente de zero.");
+  if (!MES_DO_DESCONTO.test(d.competencia)) throw new LancamentoInvalido("A competência do desconto é o primeiro dia de um mês.");
+  if (d.competencia !== mesDoDesconto(agora)) throw new LancamentoInvalido(`A competência do desconto é o mês corrente (${mesDoDesconto(agora).split("-").reverse().join("/")}): nunca um mês que já pode ter sido fechado.`);
+  if (!d.chave.trim()) throw new LancamentoInvalido("O desconto precisa de chave de origem.");
+  if (origem === ORIGEM_LANCAMENTO_CONTESTACAO && !ehChaveDeContestacao(d.chave)) throw new LancamentoInvalido("A linha da disputa do pagamento precisa da chave da disputa.");
+  const [l] = await lancar(
+    tx,
+    organizacaoId,
+    [
+      {
+        tipo: "direito_proprietario",
+        descricao: d.descricao,
+        valor: d.valor,
+        efeitoSaldo: d.valor,
+        competencia: d.competencia,
+        estado: "previsto",
+        imovelId: d.imovelId,
+        reservaId: d.reservaId,
+        proprietarioId: d.proprietarioId,
+        origem,
+        chaveOrigem: d.chave,
+      },
+    ],
+    autorId,
+  );
+  return l;
+}
+
 /**
  * Lança o desconto (a parte negativa) de `valor` centavos (> 0; o sinal é posto aqui) para o proprietário que recebeu a
  * parte. `competencia`: o 1º dia do mês corrente em São Paulo (`mesDoDesconto(agora)`) — um mês anterior, que já pode ter
  * sido fechado e enviado, é recusado, e um mês seguinte atrasaria o desconto. `chave`: idempotência (ex.:
  * `cancelamento:<id>:espelho:<lançamento original>`). Roda dentro da transação de quem chama, com a trava do motor da
- * reserva já tomada.
+ * reserva já tomada. O M8.2c; a regra é a de `lancarAcertoDoProprietario`, com a origem "cancelamento".
  */
 export async function lancarDescontoDoProprietario(
   tx: Db,
@@ -85,30 +136,7 @@ export async function lancarDescontoDoProprietario(
   agora: Date,
 ): Promise<Lancamento> {
   if (!Number.isSafeInteger(d.valor) || d.valor <= 0) throw new LancamentoInvalido("O desconto precisa ser um valor positivo em centavos.");
-  if (!MES_DO_DESCONTO.test(d.competencia)) throw new LancamentoInvalido("A competência do desconto é o primeiro dia de um mês.");
-  if (d.competencia !== mesDoDesconto(agora)) throw new LancamentoInvalido(`A competência do desconto é o mês corrente (${mesDoDesconto(agora).split("-").reverse().join("/")}): nunca um mês que já pode ter sido fechado.`);
-  if (!d.chave.trim()) throw new LancamentoInvalido("O desconto precisa de chave de origem.");
-  const [l] = await lancar(
-    tx,
-    organizacaoId,
-    [
-      {
-        tipo: "direito_proprietario",
-        descricao: d.descricao,
-        valor: -d.valor,
-        efeitoSaldo: -d.valor,
-        competencia: d.competencia,
-        estado: "previsto",
-        imovelId: d.imovelId,
-        reservaId: d.reservaId,
-        proprietarioId: d.proprietarioId,
-        origem: ORIGEM_CANCELAMENTO,
-        chaveOrigem: d.chave,
-      },
-    ],
-    autorId,
-  );
-  return l;
+  return lancarAcertoDoProprietario(tx, organizacaoId, ORIGEM_CANCELAMENTO, { ...d, valor: -d.valor }, autorId, agora);
 }
 
 export type DescontoDoProprietario = {

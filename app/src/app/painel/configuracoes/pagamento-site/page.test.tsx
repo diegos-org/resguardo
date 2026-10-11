@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ABAS_CONFIG } from "@/configuracoes/abas";
+import { CONFIG_PAGAMENTO_SITE_PADRAO } from "@/configuracoes/pagamento-site";
 import { ESPERA_TELA_MS } from "@/lib/prazo";
 
 const m = vi.hoisted(() => ({ sessao: vi.fn(), config: vi.fn(), categorias: vi.fn(), motivos: vi.fn(), portao: vi.fn(), redirect: vi.fn(), disjuntor: vi.fn(), recusas: vi.fn(), disparos: vi.fn() }));
@@ -23,7 +24,7 @@ beforeEach(() => {
     throw new Error("NEXT_REDIRECT");
   });
   m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
-  m.config.mockResolvedValue({ oferecer: true, nomeFatura: null, categoriaTaxaId: CAT, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" });
+  m.config.mockResolvedValue({ ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, nomeFatura: null, categoriaTaxaId: CAT, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk" });
   m.disjuntor.mockResolvedValue(null);
   m.recusas.mockResolvedValue(0);
   m.disparos.mockResolvedValue([]);
@@ -115,7 +116,7 @@ describe("cartão de crédito (M8.2b)", () => {
     expect(h).toContain("Recusas que contaram no disjuntor nas últimas 24 horas: <strong>0</strong>");
     expect(h).not.toContain("nesta fase, só Pix");
     expect(h).not.toContain("Religar o cartão");
-    m.config.mockResolvedValue({ oferecer: true, nomeFatura: null, categoriaTaxaId: CAT, cartao: true, parcelasMaximas: 6, tresDS: "never" });
+    m.config.mockResolvedValue({ ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, nomeFatura: null, categoriaTaxaId: CAT, cartao: true, parcelasMaximas: 6, tresDS: "never" });
     const ligado = await html();
     expect(ligado).toContain("<strong>Ligado</strong>");
     expect(ligado).toMatch(/name="cartao" checked=""/);
@@ -124,7 +125,7 @@ describe("cartão de crédito (M8.2b)", () => {
   });
 
   it("disjuntor aberto: até quando e por quê, os últimos disparos e o Religar o cartão com confirmação", async () => {
-    m.config.mockResolvedValue({ oferecer: true, nomeFatura: null, categoriaTaxaId: CAT, cartao: true, parcelasMaximas: null, tresDS: "on_fraud_risk" });
+    m.config.mockResolvedValue({ ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, nomeFatura: null, categoriaTaxaId: CAT, cartao: true, parcelasMaximas: null, tresDS: "on_fraud_risk" });
     m.disjuntor.mockResolvedValue({ ate: new Date("2026-10-09T14:00:00Z"), recusas: 8, abertoEm: new Date("2026-10-09T13:00:00Z"), janela: "30min" });
     m.recusas.mockResolvedValue(9);
     m.disparos.mockResolvedValue([disparo({}), disparo({ id: "d0", abertoEm: new Date("2026-10-08T12:00:00Z"), religadoEm: new Date("2026-10-08T12:30:00Z") })]);
@@ -137,5 +138,32 @@ describe("cartão de crédito (M8.2b)", () => {
     m.disjuntor.mockResolvedValue({ ate: null, recusas: 20, abertoEm: new Date("2026-10-09T13:00:00Z"), janela: "24h" });
     h = await html();
     expect(h).toContain("Desligado até alguém religar — 20 recusas em 24 horas. O Pix continua.");
+  });
+});
+
+describe("disputa do pagamento (M8.2e)", () => {
+  it("a categoria da perda (criada no primeiro uso), os dias de aviso (1 a 15, padrão 5) e o nome e a frase de cada causa, editáveis", async () => {
+    const h = await html();
+    expect(h).toContain('aria-label="Disputa do pagamento"');
+    expect(h).toContain('name="categoriaDaContestacao"');
+    expect(h).toContain("Criar “Perda por disputa do pagamento” no primeiro uso");
+    const dias = h.match(/<input[^>]*name="diasAvisoDocumentacao"[^>]*>/)?.[0] ?? "";
+    expect(dias).toContain('min="1"');
+    expect(dias).toContain('max="15"');
+    expect(dias).toContain('value="5"');
+    for (const codigo of ["imovel", "scl", "cobranca", "fraude", "outro"]) {
+      expect(h).toContain(`name="causa_${codigo}_nome"`);
+      expect(h).toContain(`name="causa_${codigo}_frase"`);
+    }
+    // A causa da fraude tem as frases da verificação do banco e do Pix.
+    expect(h).toContain('name="causa_fraude_fraseComVerificacao"');
+    expect(h).toContain('name="causa_fraude_frasePix"');
+    expect(h).toContain("Problema do imóvel (estrutura, equipamento ou obra do proprietário)");
+  });
+
+  it("a categoria escolhida que foi arquivada vira aviso (nunca troca sozinha)", async () => {
+    m.config.mockResolvedValue({ ...CONFIG_PAGAMENTO_SITE_PADRAO, oferecer: true, categoriaTaxaId: CAT, categoriaDaContestacao: "44444444-4444-4444-8444-444444444444" });
+    const h = await html();
+    expect(h).toContain("A categoria escolhida antes foi arquivada ou não existe mais");
   });
 });

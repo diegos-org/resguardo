@@ -6,7 +6,7 @@ import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import { anexarComprovanteAcao, enviarEmailRepasseAcao, estornarRepasseAcao, pagarRepasseAcao } from "@/repasses/acoes";
 import { NOMES_SITUACAO_EMAIL } from "@/repasses/email";
-import { type itensDoRepasse, nomeMes, type Repasse, descricaoDoItem } from "@/repasses/repasses";
+import { avisosDeDisputaNoRepasse, type itensDoRepasse, nomeMes, type Repasse, descricaoDoItem } from "@/repasses/repasses";
 
 export type ItemDoRepasse = Awaited<ReturnType<typeof itensDoRepasse>>[number];
 
@@ -40,6 +40,8 @@ export function situacaoDoRepasse(r: Pick<Repasse, "tipo" | "situacao" | "dataPa
 /** Ações comuns a qualquer repasse (fechamento ou antecipado): itens, pagar com comprovante, anexar comprovante, e-mail, estornar. */
 export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: Props) {
   const comComprovante = Boolean(r.comprovante || r.comprovanteArquivoId);
+  // M8.2e: repasse a pagar com parte de reserva em disputa do pagamento — o aviso, repetido no "Marcar como pago". Nada é bloqueado.
+  const disputas = r.situacao === "a_pagar" ? avisosDeDisputaNoRepasse(itens) : [];
   const campoComprovante = (
     <>
       <label style={{ flex: "1 1 220px" }}>
@@ -92,6 +94,12 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
         </details>
       )}
 
+      {disputas.map((t) => (
+        <p key={t} role="note" className={styles.alerta} style={{ margin: 0 }}>
+          {t}
+        </p>
+      ))}
+
       {r.tipo === "por_fora" && (
         <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
           Acertado fora do sistema, antes do início ({dataBr(r.data)} é o último dia coberto): sem Pix nem e-mail pelo sistema. As partes de reserva acima nunca entram em outro repasse, e o
@@ -137,7 +145,7 @@ export function CartaoRepasse({ r, nome, chavePix, itens, mes, hoje, editar }: P
             </label>
             {campoComprovante}
             <div className={styles.acoes}>
-              <button type="submit">Marcar como pago</button>
+              {disputas.length ? <BotaoConfirmar pergunta={`${disputas.join(" ")} Marcar como pago mesmo assim?`}>Marcar como pago</BotaoConfirmar> : <button type="submit">Marcar como pago</button>}
             </div>
           </form>
           <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>

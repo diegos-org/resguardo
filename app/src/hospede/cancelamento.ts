@@ -20,12 +20,13 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { decidirPelaPolitica, entradaQueConta, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
-import { cancelamentosReserva, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
+import { cancelamentosReserva, contestacoesPagamento, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
 import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { disputaDoPagamentoOuSituacao } from "@/pagamentos/contestacao-regras";
 import { entradasDaReserva } from "@/pagamentos/entradas";
 import { devolucaoInexplicada, devolucoesDoPagamento, devolvidoPeloSistema, type Pagamento, pagamentosDaReserva, travarCotacao } from "@/pagamentos/travas";
 import { politicaDoPagamento } from "@/site/aceites";
@@ -50,6 +51,18 @@ export type CancelamentoNoPortal = {
   semPolitica: boolean;
   /** Onde acompanhar: a página da reserva no site. */
   linkCotacao: string;
+  /**
+   * M8.2e: algum pagamento da reserva está em disputa em curso, sem resultado (`disputaDoPagamento` = em curso: aberta, a
+   * confirmar, ou ganha que o Mercado Pago voltou a mostrar em andamento): a frase editável "pagamento em conferência" de
+   * Textos do site.
+   */
+  emConferencia: boolean;
+  /**
+   * M8.2e: a disputa em curso ou perdida (`disputaDoPagamentoOuSituacao`: as linhas do pagamento, ou o pagamento contestado
+   * sem linha) recusa o cancelamento pela política: o botão some e a página diz "Para cancelar, fale com a equipe." (nunca o
+   * sumiço sem explicação, nem um botão que a equipe não consegue atender). O pedido confere de novo sob a trava.
+   */
+  faleComAEquipe: boolean;
 };
 
 /** A mesma resposta para qualquer recusa que diga respeito a quem é o hóspede (nunca revela se a reserva existe). */
@@ -100,7 +113,27 @@ async function reservaDoHospede(db: Db, organizacaoId: string, email: string, re
   const devolucoes = daReserva.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, daReserva.map((x) => x.id))) : [];
   const fuso = r.fuso || "America/Sao_Paulo";
   const horaEntrada = horaDeEntrada(r.hora);
-  return { email: e, r, p, fuso, horaEntrada, entradaEm: instanteLocal(r.checkin, horaEntrada, fuso), aprovados: todosAprovados(daReserva, devolucoes) };
+  // M8.2e: as disputas dos pagamentos com o dinheiro da reserva, pela regra única (`disputaDoPagamentoOuSituacao`: as linhas
+  // do pagamento, ou o pagamento contestado sem linha): em curso (a frase "pagamento em conferência") ou perdida (recusa o
+  // cancelamento pela política do mesmo jeito).
+  const contestacoes = daReserva.length
+    ? await db
+        .select({ pagamentoId: contestacoesPagamento.pagamentoId, situacao: contestacoesPagamento.situacao, avisos: contestacoesPagamento.avisos, estadoLido: contestacoesPagamento.estadoLido })
+        .from(contestacoesPagamento)
+        .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, daReserva.map((x) => x.id))))
+    : [];
+  const disputas = daReserva.map((x) => disputaDoPagamentoOuSituacao({ contestacoes }, x));
+  return {
+    email: e,
+    r,
+    p,
+    fuso,
+    horaEntrada,
+    entradaEm: instanteLocal(r.checkin, horaEntrada, fuso),
+    aprovados: todosAprovados(daReserva, devolucoes),
+    emConferencia: disputas.includes("em_curso"),
+    faleComAEquipe: disputas.some((d) => d !== null),
+  };
 }
 
 /**
@@ -147,7 +180,7 @@ export async function cancelamentoNoPortal(db: Db, organizacaoId: string, email:
     : null;
   const pedidoEm = ativo?.situacao === "pedido" ? ativo.pedidoRecebidoEm : null;
   return {
-    podePedir: ligado && !pedidoEm && x.aprovados && agora.getTime() < x.entradaEm.getTime(),
+    podePedir: ligado && !pedidoEm && x.aprovados && !x.faleComAEquipe && agora.getTime() < x.entradaEm.getTime(),
     pedidoEm,
     integralAte: decisao?.integralAte ?? null,
     arrependimentoAte: decisao?.arrependimentoAte ?? null,
@@ -156,6 +189,8 @@ export async function cancelamentoNoPortal(db: Db, organizacaoId: string, email:
     direitoAgora: decisao && decisao.calculado !== "sem_politica" ? decisao.calculado : null,
     semPolitica: !politica,
     linkCotacao: `/reservar/${x.p.cotacaoCodigo}`,
+    emConferencia: x.emConferencia,
+    faleComAEquipe: x.faleComAEquipe,
   };
 }
 
@@ -174,17 +209,21 @@ export async function pedirCancelamentoPeloHospede(
   const recebidoEm = agora;
   if (!(await lerConfigPagamentoSite(db, organizacaoId)).pedidoCancelamentoNoPortal) return { ok: false, erro: PEDIDO_DESLIGADO };
   const x = await reservaDoHospede(db, organizacaoId, email, reservaCodigo, agora);
-  if (!x || !x.aprovados) return { ok: false, erro: NAO_DA };
+  if (!x || !x.aprovados || x.faleComAEquipe) return { ok: false, erro: NAO_DA };
   if (recebidoEm.getTime() >= x.entradaEm.getTime()) return { ok: false, erro: ESTADIA_COMECOU };
   const tentar = () =>
     db.transaction(async (tx) => {
       const t = await travarCotacao(tx, organizacaoId, x.p.cotacaoId);
       const p = t?.tentativas.find((y) => y.desfecho === "reserva");
       // Sob a trava: a reserva ainda é deste e-mail e está confirmada, com todo pagamento dela aprovado (ou em parte pelo
-      // sistema). A cancelada antes (a devolução já pode ter mudado o pagamento) responde "já cancelada".
+      // sistema) e sem disputa em curso nem perdida (a mesma regra do botão: o pagamento pode seguir aprovado com um MED
+      // registrado ou um caso tardio da Chargebacks API). A cancelada antes (a devolução já pode ter mudado o pagamento)
+      // responde "já cancelada".
       if (!t || !p || p.id !== x.p.id || t.reserva.hospedeEmail.trim().toLowerCase() !== x.email) return { ok: false as const, erro: NAO_DA };
       if (t.cancelamento?.situacao === "cancelada" || t.reserva.estado === "cancelada") return { ok: false as const, erro: JA_CANCELADA };
-      if (t.reserva.estado !== "confirmada" || !todosAprovados(pagamentosDaReserva(t), t.devolucoes)) return { ok: false as const, erro: NAO_DA };
+      const daReserva = pagamentosDaReserva(t);
+      if (t.reserva.estado !== "confirmada" || !todosAprovados(daReserva, t.devolucoes)) return { ok: false as const, erro: NAO_DA };
+      if (daReserva.some((y) => disputaDoPagamentoOuSituacao(t, y) !== null)) return { ok: false as const, erro: NAO_DA };
       if (t.cancelamento?.situacao === "pedido") return { ok: true as const, recebidoEm: t.cancelamento.pedidoRecebidoEm, cancelamentoId: t.cancelamento.id, novo: false };
       const [linha] = await tx
         .insert(cancelamentosReserva)

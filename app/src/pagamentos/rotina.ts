@@ -20,17 +20,23 @@
  *   chamam o provedor; esta varredura cumpre o cancelamento que a desistência promete e cobre o vencimento);
  * - uma vez por dia, os pagamentos dos últimos 85 dias (o provedor só consulta orders de até três meses) com desfecho (reserva, devolução ou devolução por fora) e
  *   os aprovados sem reserva à espera da devolução: devolução ou contestação feita por fora (ou devolução em dobro)
- *   vira aviso, nunca estorno automático.
+ *   vira aviso, nunca estorno automático;
+ * - as disputas do pagamento (M8.2e, `conferirContestacoes` e a busca tardia semanal): na rotina, depois de vencer os holds
+ *   (um Mercado Pago lento nunca atrasa o vencimento das datas seguradas); no "Conferir agora", no fim desta função. Os
+ *   pagamentos com disputa aberta ou a confirmar ficam fora da releitura de 6 em 6 horas da taxa e da liberação (a
+ *   liberação lida não lança enquanto a disputa não termina).
  *
  * O cron da Vercel só roda no deploy de produção, onde o pagamento fica desligado: no teste (prévias), tudo isto
  * roda pelo "Conferir agora" do painel (e a página do hóspede confere o próprio Pix). A limpeza dos avisos com mais
  * de 90 dias roda na rotina do site, em qualquer ambiente (fora desta função, que o painel também chama).
  */
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, or, type SQL, sql } from "drizzle-orm";
-import { alteracoesReserva, devolucoesPagamento, pagamentos } from "@/db/schema";
+import { alteracoesReserva, contestacoesPagamento, devolucoesPagamento, pagamentos } from "@/db/schema";
 import { dinheiroDaReservaSql } from "./travas";
 import type { Db } from "@/db/types";
+import { type Correio, correioDoAmbiente } from "@/email/correio";
 import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
+import { avisarEquipeDasContestacoes, buscarContestacoesTardias, conferirContestacoes, type ResumoContestacoes } from "./contestacao";
 import { tentarDevolucao } from "./devolucao";
 import { apagarEventosAntigos } from "./eventos";
 import { expirarAlteracoesVencidas, type ResumoAlteracoesVencidas } from "./alteracao-prazo";
@@ -41,22 +47,28 @@ import { expirarHoldsVencidos, type ResumoExpiracao } from "@/site/cotacoes";
 
 /**
  * Por quanto tempo os pagamentos com desfecho são relidos uma vez por dia (devolução e contestação feitas no painel do
- * Mercado Pago): dentro do prazo em que o provedor ainda consulta a order (três meses), com folga. Contestação depois
- * disso é do M8.2e, por outro caminho.
+ * Mercado Pago): dentro do prazo em que o provedor ainda consulta a order (três meses), com folga. A disputa depois disso é
+ * lida pela Chargebacks API e pela Payments API pelo número (`conferirContestacoes` e `buscarContestacoesTardias`, M8.2e;
+ * PAGAMENTO-SITE.md, "Contestação (M8.2e)").
  */
 export const RELER_RESERVA_DIAS = PRAZO_RELEITURA_DIAS;
 export const RELER_RESERVA_A_CADA_MS = 24 * 3_600_000;
 /** Aprovado há mais de um dia à espera da taxa ou da liberação: relido a cada 6 h. */
 export const ESPERA_LIBERACAO_MS = 6 * 3_600_000;
 
-export type ResumoConferencia = { conferidas: number; mudaram: number; devolucoes: number; canceladas: number; falhas: number };
+/** `contestacoes` (M8.2e): só no "Conferir agora" (a rotina confere as disputas depois de vencer os holds). */
+export type ResumoConferencia = { conferidas: number; mudaram: number; devolucoes: number; canceladas: number; falhas: number; contestacoes?: ResumoContestacoes };
+
+/** Um pagamento com disputa aberta ou a confirmar (M8.2e): a releitura de 6 em 6 horas da taxa e da liberação o ignora. */
+const semDisputaAberta = () =>
+  sql`not exists (select 1 from ${contestacoesPagamento} cp where cp.pagamento_id = ${pagamentos.id} and cp.situacao in ('aberta', 'a_confirmar'))`;
 
 /**
  * Confere o que está pendente. `organizacaoId` null = todas as empresas (rotina). `forcar` (o "Conferir agora" do
  * painel): lê agora tudo o que está dentro do prazo, sem os intervalos da rotina (15 s, 6 h da taxa e da liberação,
  * 24 h da releitura diária). As devoluções seguem a espera entre tentativas (é um envio, não uma leitura).
  */
-export async function conferirPendentes(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date = new Date(), o: { forcar?: boolean } = {}): Promise<ResumoConferencia> {
+export async function conferirPendentes(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date = new Date(), o: { forcar?: boolean; correio?: Correio | null } = {}): Promise<ResumoConferencia> {
   const forcar = o.forcar === true;
   const resumo: ResumoConferencia = { conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0 };
   const daOrg = organizacaoId ? eq(pagamentos.organizacaoId, organizacaoId) : undefined;
@@ -89,6 +101,8 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
             or(isNull(pagamentos.taxa), and(dinheiroDaReservaSql(pagamentos.desfecho), or(isNull(pagamentos.liberacaoConfirmadaEm), eq(pagamentos.liberacaoOrigem, "manual")))),
             // Taxa ou liberação que nunca chegou: depois do prazo do provedor, fica para a equipe (registro à mão).
             gte(pagamentos.criadoEm, corte),
+            // M8.2e: com disputa aberta ou a confirmar, a liberação lida não lança: espera o resultado (a ganha volta).
+            semDisputaAberta(),
             // No primeiro dia, a cada volta; depois, a cada 6 h (no teste o sinal de liberação nunca chega).
             forcar
               ? undefined
@@ -207,23 +221,59 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
       resumo.falhas++;
     }
   }
+  // M8.2e, "Conferir agora" (nas prévias a rotina não roda): as disputas da empresa, a busca tardia e os e-mails à equipe.
+  if (forcar && organizacaoId) {
+    resumo.contestacoes = await disputasDaVolta(db, organizacaoId, provedor, agora, { forcar: true, correio: o.correio });
+    resumo.falhas += resumo.contestacoes.falhas;
+  }
   return resumo;
+}
+
+/**
+ * As disputas de uma volta (M8.2e): a releitura das abertas (`conferirContestacoes`), a busca tardia semanal e os e-mails à
+ * equipe (abertura e prazo dos documentos). Uma falha numa parte não impede as outras. A releitura e a busca dividem um
+ * orçamento só (`ORCAMENTO_VOLTA_CONTESTACAO_MS`, contado do início da volta): a busca usa o que a releitura deixou.
+ * `o.relogio` (testes): o relógio do orçamento.
+ */
+async function disputasDaVolta(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date, o: { forcar?: boolean; correio?: Correio | null; relogio?: () => number }): Promise<ResumoContestacoes> {
+  let r: ResumoContestacoes = { lidas: 0, mudaram: 0, falhas: 0, foraDoPrazo: 0, buscados: 0, novas: 0 };
+  const relogio = o.relogio ?? (() => Date.now());
+  const inicio = relogio();
+  try {
+    r = await conferirContestacoes(db, organizacaoId, provedor, agora, { forcar: o.forcar, relogio, inicio });
+  } catch {
+    r.falhas++;
+  }
+  try {
+    const b = await buscarContestacoesTardias(db, organizacaoId, provedor, agora, { relogio, inicio });
+    r = { ...r, buscados: b.buscados, novas: r.novas + b.novas, mudaram: r.mudaram + b.mudaram, falhas: r.falhas + b.falhas };
+  } catch {
+    r.falhas++;
+  }
+  await avisarEquipeDasContestacoes(db, organizacaoId, o.correio === undefined ? correioDoAmbiente() : o.correio, agora).catch(() => 0);
+  return r;
 }
 
 /**
  * A rotina do site (a de holds, a cada 10 min): primeiro confere os pagamentos, depois vence as alterações com as datas
  * seguradas vencidas (M8.2d) e só então os holds, para nunca vencer um pedido (ou uma alteração) cujo pagamento já entrou.
- * Sem provedor (pagamento desligado, como no deploy de produção), só vence — a carência de um pagamento em andamento
- * continua valendo. Em qualquer caso, apaga os avisos do Mercado Pago com mais de 90 dias (o webhook grava no deploy de
- * produção).
+ * Depois dos holds, as disputas do pagamento (M8.2e): um Mercado Pago lento nas disputas nunca atrasa o vencimento. Sem
+ * provedor (pagamento desligado, como no deploy de produção), só vence (e avisa a equipe do prazo dos documentos) — a
+ * carência de um pagamento em andamento continua valendo. Em qualquer caso, apaga os avisos do Mercado Pago com mais de 90
+ * dias (o webhook grava no deploy de produção). `o.correio`: o dos e-mails à equipe (padrão: o do ambiente). `o.relogio`
+ * (testes): o relógio do orçamento das disputas.
  */
 export async function rotinaDoSite(
   db: Db,
   provedor: ProvedorPagamento | null,
   agora: Date = new Date(),
-): Promise<{ pagamentos: ResumoConferencia | null; alteracoes: ResumoAlteracoesVencidas; holds: ResumoExpiracao; eventosApagados: number }> {
+  o: { correio?: Correio | null; relogio?: () => number } = {},
+): Promise<{ pagamentos: ResumoConferencia | null; alteracoes: ResumoAlteracoesVencidas; holds: ResumoExpiracao; contestacoes: ResumoContestacoes | null; eventosApagados: number }> {
   const pagamentos = provedor ? await conferirPendentes(db, null, provedor, agora) : null;
   const alteracoes = await expirarAlteracoesVencidas(db, null, agora);
   const holds = await expirarHoldsVencidos(db, null, agora);
-  return { pagamentos, alteracoes, holds, eventosApagados: await apagarEventosAntigos(db, agora) };
+  const correio = o.correio === undefined ? correioDoAmbiente() : o.correio;
+  const contestacoes = provedor ? await disputasDaVolta(db, null, provedor, agora, { correio, relogio: o.relogio }) : null;
+  if (!provedor) await avisarEquipeDasContestacoes(db, null, correio, agora).catch(() => 0);
+  return { pagamentos, alteracoes, holds, contestacoes, eventosApagados: await apagarEventosAntigos(db, agora) };
 }

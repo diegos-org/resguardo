@@ -86,6 +86,8 @@ export type PagamentoDoHospede = {
   alteracao?: AlteracaoDoHospede | null;
   /** M8.2d: a reserva já alterada, como está agora (o resumo da página é o da cotação original). */
   reservaAtual?: { checkin: string; checkout: string; hospedes: number | null; valor: number | null } | null;
+  /** M8.2e: a reserva confirmada tem o pagamento em disputa em curso; só vem com o cookie de quem pagou ("pagamento em conferência"). */
+  pagamentoEmConferencia?: boolean;
 };
 
 /**
@@ -209,6 +211,7 @@ export function paraOHospede(v: VistaPagamentoHospede): PagamentoDoHospede {
     ...(v.pedidoCancelamentoSemPolitica ? { pedidoCancelamentoSemPolitica: true } : {}),
     ...(v.alteracao ? { alteracao: alteracaoParaOHospede(v.alteracao) } : {}),
     ...(v.reservaAtual ? { reservaAtual: v.reservaAtual } : {}),
+    ...(v.pagamentoEmConferencia ? { pagamentoEmConferencia: true } : {}),
   };
 }
 
@@ -284,6 +287,7 @@ export type TextosDoCancelamento = Pick<
   | "cancelamentoVoltaPorFora"
   | "cancelamentoComAEquipe"
   | "cancelamentoEmConferencia"
+  | "cancelamentoDevolvidoPelaDisputa"
   | "cancelamentoSemDevolucaoPrazo"
   | "cancelamentoSemDevolucaoNaoComparecimento"
   | "cancelamentoSemDevolucaoEquipe"
@@ -398,7 +402,14 @@ export function textoDoCancelamento(
     } else if (v.estado === "cancelada_com_a_equipe") {
       decisoes.push(juntar(`A devolução de ${formatBRL(valor)} pelo Mercado Pago não foi possível.`, textos.cancelamentoComAEquipe));
     } else decisoes.push(textos.cancelamentoEmConferencia);
-  } else if (c.base === "nao_comparecimento") decisoes.push(textos.cancelamentoSemDevolucaoNaoComparecimento);
+  } else if (c.base === "contestacao" && v.estado === "cancelada_em_conferencia")
+    // M8.2e: "Cancelar a reserva contestada" — o dinheiro pode voltar ao hóspede pela disputa: em conferência, nunca "não há
+    // devolução" enquanto ela decide (a frase de sempre, `cancelamentoEmConferencia`).
+    decisoes.push(textos.cancelamentoEmConferencia);
+  else if (c.base === "contestacao" && v.estado === "cancelada_devolvida")
+    // Perdida (o resultado confirmado pela equipe): o dinheiro voltou ao hóspede pela disputa, nunca pelo sistema.
+    decisoes.push(textos.cancelamentoDevolvidoPelaDisputa);
+  else if (c.base === "nao_comparecimento") decisoes.push(textos.cancelamentoSemDevolucaoNaoComparecimento);
   else if (c.base === "sem_politica" || !c.integralAte) decisoes.push(textos.cancelamentoSemDevolucaoEquipe);
   else if (pagaSemPrazoIntegral(c) && c.arrependimentoAte)
     // Paga já depois do prazo do reembolso integral: esse prazo nunca valeu para ela; só o arrependimento (que para na

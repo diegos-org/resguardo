@@ -7,8 +7,9 @@
  */
 import type { OrigemReserva } from "@/db/schema";
 import { formatBRL } from "@/lib/money";
-import { divisaoDoDeve, type Rodape } from "@/portal/rodape";
-import type { QuemRecebeParte, RepasseDaParte, SituacaoParte } from "@/repasses/extrato";
+import { MOTIVO_PARTE_EM_CONFERENCIA, ROTULO_DISPUTA_PROPRIETARIO } from "@/pagamentos/contestacao-regras";
+import { divisaoDoDeve, nomeDoDescontoQueNaoSeTransfere, type Rodape } from "@/portal/rodape";
+import type { QuemRecebeParte, RepasseDaParte, SituacaoParte, VarianteDaDisputa } from "@/repasses/extrato";
 import type { PagamentoDaReserva } from "@/repasses/inicio";
 import { NOMES_ORIGEM } from "@/reservas/regras";
 import { limitesDe, type MesISO, nomeDoMes } from "./metricas";
@@ -44,15 +45,31 @@ export type ParteDoRelatorio = {
    * que a anula; `anulada` = essa parte nunca paga. Ausente nas demais.
    */
   cancelamento?: "retida" | "desconto" | "estorno" | "anulada";
+  /**
+   * M8.2e: a linha da disputa do pagamento (o valor segurado, a reversão ou o ajuste), tratada como o espelho do
+   * cancelamento: sem componentes, sem noites, sem canal e sem data de pagamento, fora das métricas. `segurado` até o
+   * resultado; `definitivo` na perdida; `devolvido` na ganha (ou encerrada sem efeito). Ausente nas demais.
+   */
+  contestacao?: VarianteDaDisputa;
+  /**
+   * Revisão de 11/10: na linha da disputa, a causa registrada (o nome configurado) e a explicação ao proprietário da decisão
+   * em vigor (lista branca do extrato, `disputasDasLinhas`), para o PDF mostrá-las ao lado da linha. Ausentes nas demais.
+   */
+  causaDaDisputa?: string | null;
+  explicacaoDaDisputa?: string;
 };
 
 /** O espelho no mês do cancelamento (o desconto da parte já repassada ou o estorno da parte nunca paga): sem noites, sem canal. */
 export const ehEspelhoDoCancelamento = (p: Pick<ParteDoRelatorio, "cancelamento">) => p.cancelamento === "desconto" || p.cancelamento === "estorno";
+/** M8.2e: a linha da disputa do pagamento (sem noites, sem canal, sem componentes). */
+export const ehLinhaDaDisputa = (p: Pick<ParteDoRelatorio, "contestacao">) => p.contestacao !== undefined;
+/** "Disputa do pagamento da reserva SCL-… (segurado)": só o código da reserva, nunca o hóspede. */
+export const rotuloDaDisputa = (p: Pick<ParteDoRelatorio, "codigo" | "contestacao">) => `${ROTULO_DISPUTA_PROPRIETARIO} da reserva ${p.codigo} (${p.contestacao})`;
 
 /** De onde vem a linha: o canal pagou direto, um repasse antecipado (ou acerto por fora), o fechamento, ou valor a liberar. */
 export type OrigemLinha = "canal" | "antecipado" | "fechamento" | "a_liberar";
 /** Qual é o aviso, para a capa completar com o que o proprietário precisa (ou não precisa) fazer. */
-export type AvisoDaLinha = "a_liberar" | "voce_transfere" | "em_conferencia" | "sem_prazo_do_canal";
+export type AvisoDaLinha = "a_liberar" | "voce_transfere" | "em_conferencia" | "sem_prazo_do_canal" | "disputa";
 export type Linha = { texto: string; valor: number; tipo: "normal" | "aviso" | "info"; origem: OrigemLinha; aviso?: AvisoDaLinha };
 
 export const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -67,6 +84,8 @@ const soma = <T>(xs: readonly T[], f: (x: T) => number) => xs.reduce((s, x) => s
 const unicos = <T>(xs: readonly T[]) => [...new Set(xs)];
 const lista = (xs: readonly string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs.at(-1)}`);
 const reservaDe = (p: ParteDoRelatorio) => `${nomeOuHospede(p.hospede)} (${dataCurta(p.checkin)} → ${dataCurta(p.checkout)})`;
+/** O nome da linha nas listas: o primeiro nome do hóspede, ou, na linha da disputa (M8.2e), só o código da reserva. */
+const nomeDaLinha = (p: ParteDoRelatorio) => (ehLinhaDaDisputa(p) ? `disputa do pagamento da reserva ${p.codigo}` : nomeOuHospede(p.hospede));
 const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios);
 
 const emMes = (data: string | undefined | null, mes: MesISO) => Boolean(data && data.slice(0, 7) === mes);
@@ -108,8 +127,9 @@ export function comoChega(
   const noitesDe = (p: ParteDoRelatorio) => `${p.noitesNoMes} ${plural(p.noitesNoMes, "noite", "noites")} de ${nomeDoMes(p.mes)} da reserva de ${reservaDe(p)}`;
   /** A parte de outro mês paga junto com as deste (reserva que atravessa): sai discriminada e entra no resultado do mês dela. */
   const pagaJunto = (p: ParteDoRelatorio, origem: OrigemLinha): Linha => ({
-    texto:
-      p.cancelamento === "desconto"
+    texto: ehLinhaDaDisputa(p)
+      ? `Desse valor, ${rotuloDaDisputa(p).charAt(0).toLowerCase()}${rotuloDaDisputa(p).slice(1)}: entra no resultado de ${nomeDoMes(p.mes)}`
+      : p.cancelamento === "desconto"
         ? `Desse valor, o desconto da parte já repassada da reserva de ${reservaDe(p)}, cancelada com devolução ao hóspede: entra no resultado de ${nomeDoMes(p.mes)}`
         : p.cancelamento === "estorno"
           ? `Desse valor, o estorno da parte não repassada da reserva de ${reservaDe(p)}, cancelada com devolução ao hóspede: entra no resultado de ${nomeDoMes(p.mes)}`
@@ -161,7 +181,7 @@ export function comoChega(
     }
     if (r.situacao !== "pago" && r.situacao !== "a_pagar") continue;
     if (emMes(data, mes)) {
-      const nomes = unicos(ps.map((p) => nomeOuHospede(p.hospede)));
+      const nomes = unicos(ps.map(nomeDaLinha));
       const gravado = repassesDoMes.find((x) => x.id === r.id);
       const valor = gravado?.valor ?? soma(ps, suaParte);
       if (r.situacao === "pago") linhas.push({ texto: `Já repassado em ${dataCurta(data)} (repasse antecipado: ${lista(nomes)}; Pix com comprovante no portal)`, valor, tipo: "normal", origem: "antecipado" });
@@ -170,13 +190,15 @@ export function comoChega(
       // O que o repasse pagou além das partes deste relatório (reserva de outro imóvel do dono, ou de um mês fora dos que o relatório carrega).
       const foraDoRelatorio = gravado ? gravado.valor - soma(ps, (p) => p.repasse!.valor) : 0;
       if (foraDoRelatorio > 0) {
-        const outras = gravado!.reservas.filter((n) => !nomes.includes(n));
+        const outras = gravado!.reservas.filter((n) => !nomes.includes(n) && !ps.some((p) => ehLinhaDaDisputa(p) && p.codigo === n));
         linhas.push({ texto: `Desse valor, a parte de ${outras.length ? lista(outras) : "outras reservas"}, fora deste relatório (outro imóvel seu ou outro mês): entra no relatório de lá`, valor: foraDoRelatorio, tipo: "info", origem: "antecipado" });
       }
     } else {
       for (const p of deste) {
+        // M8.2e: a linha da disputa não tem noites: só o rótulo dela, com o código da reserva.
+        const oQue = ehLinhaDaDisputa(p) ? rotuloDaDisputa(p) : noitesDe(p);
         linhas.push({
-          texto: r.situacao === "pago" ? `Já repassado em ${dataCurta(data)} (repasse antecipado de ${nomeDoMes(data.slice(0, 7))}): ${noitesDe(p)}` : `Repasse antecipado de ${dataCurta(data)} a pagar: ${noitesDe(p)}`,
+          texto: r.situacao === "pago" ? `Já repassado em ${dataCurta(data)} (repasse antecipado de ${nomeDoMes(data.slice(0, 7))}): ${oQue}` : `Repasse antecipado de ${dataCurta(data)} a pagar: ${oQue}`,
           valor: p.suaParte,
           tipo: "info",
           origem: "antecipado",
@@ -202,9 +224,10 @@ export function comoChega(
       case "proprietario_deve": {
         // M8.2c: o desconto de reserva cancelada com devolução ao hóspede maior que a parte não se transfere — continua a
         // descontar e sai do próximo repasse (o mesmo que o painel diz); só as despesas que passaram da parte, sim.
+        // M8.2e: o mesmo com o valor segurado pela disputa do pagamento.
         const { proximoRepasse, transferir } = divisaoDoDeve(r);
-        const desconto = `o desconto de reserva cancelada com devolução ao hóspede (${formatBRL(proximoRepasse)})`;
-        if (proximoRepasse > 0) linhas.push({ texto: `Desconto de reserva cancelada com devolução ao hóspede maior que a sua parte: sai do próximo repasse, nada a transferir${quem}`, valor: proximoRepasse, tipo: "info", origem: "fechamento" });
+        const desconto = `${nomeDoDescontoQueNaoSeTransfere(r)} (${formatBRL(proximoRepasse)})`;
+        if (proximoRepasse > 0) linhas.push({ texto: `${nomeDoDescontoQueNaoSeTransfere(r, true)} maior que a sua parte: sai do próximo repasse, nada a transferir${quem}`, valor: proximoRepasse, tipo: "info", origem: "fechamento" });
         if (transferir > 0) linhas.push({ texto: `Você transfere à ${empresa} no fechamento${quem}`, valor: transferir, tipo: "aviso", origem: "fechamento", aviso: "voce_transfere" });
         quemPagaQuem =
           transferir > 0
@@ -226,8 +249,19 @@ export function comoChega(
     }
   }
   // 4. A liberar (empresa recebe, dinheiro ainda não com ela) e quem recebe a confirmar.
+  // M8.2e: a parte presa por disputa do pagamento (e a linha da disputa que espera junto) tem aviso próprio: espera a
+  // decisão da disputa, não o canal.
   const aLiberar = doMes.filter((p) => p.quemRecebe !== "split" && p.situacao === "a_liberar");
-  for (const p of aLiberar) linhas.push({ texto: `A liberar — ${reservaDe(p)}, ${nomeDoCanal(p.canal, empresa)}: ${p.motivo}`, valor: p.suaParte, tipo: "aviso", origem: "a_liberar", aviso: "a_liberar" });
+  for (const p of aLiberar) {
+    const disputa = ehLinhaDaDisputa(p) || p.motivo === MOTIVO_PARTE_EM_CONFERENCIA;
+    linhas.push({
+      texto: ehLinhaDaDisputa(p) ? `A liberar — ${rotuloDaDisputa(p)}: ${p.motivo}` : `A liberar — ${reservaDe(p)}, ${nomeDoCanal(p.canal, empresa)}: ${p.motivo}`,
+      valor: p.suaParte,
+      tipo: "aviso",
+      origem: "a_liberar",
+      aviso: disputa ? "disputa" : "a_liberar",
+    });
+  }
   if (aLiberar.length && quemPagaQuem) quemPagaQuem += " O valor a liberar entra no próximo repasse assim que o canal pagar.";
   return { linhas, quemPagaQuem };
 }
@@ -283,8 +317,24 @@ export function conciliacao(partes: readonly ParteDoRelatorio[], mes: MesISO, ho
       tipo: "ponte",
     });
   }
+  // M8.2e: a linha da disputa do pagamento (o valor segurado, a reversão ou o ajuste): nenhum canal pagou nada; é o acerto
+  // da disputa, numa linha própria — só o código da reserva.
+  for (const p of doMes.filter(ehLinhaDaDisputa)) {
+    linhas.push({
+      rotulo: `${p.suaParte < 0 ? "−" : "+"} ${rotuloDaDisputa(p)}`,
+      ...somaDe([p]),
+      quemRecebeu: p.repasse
+        ? `${p.suaParte < 0 ? "descontado" : "devolvido"} no repasse de ${dataCurta(dataDoPix(p.repasse))}`
+        : p.situacao === "a_liberar"
+          ? "espera junto com a sua parte desta reserva"
+          : p.suaParte < 0
+            ? "sai do próximo repasse"
+            : "volta no próximo repasse",
+      tipo: "ponte",
+    });
+  }
   // O resto do mês: pago depois do mês, previsto (data do canal ainda no futuro) ou a receber.
-  for (const p of doMes.filter((x) => !ehEspelhoDoCancelamento(x) && (!pago(x, hoje) || depoisDe(x.pagamento?.data, mes)))) {
+  for (const p of doMes.filter((x) => !ehEspelhoDoCancelamento(x) && !ehLinhaDaDisputa(x) && (!pago(x, hoje) || depoisDe(x.pagamento?.data, mes)))) {
     const depois = pago(p, hoje) && depoisDe(p.pagamento?.data, mes);
     const previsto = Boolean(p.pagamento) && !pago(p, hoje);
     linhas.push({

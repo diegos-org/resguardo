@@ -79,6 +79,8 @@ describe("quadro Pagamento no site", () => {
     const h = html([base]);
     expect(h).toContain("Conferir agora");
     expect(h).toContain("Registrar liberação");
+    // M8.2e (aceite): o "Perdeu" da disputa leva até aqui pelo atalho.
+    expect(h).toContain(`id="registrar-liberacao-${base.id}"`);
     expect(h).toContain('max="2026-10-09"');
     expect(h).toContain('value="1805,94"');
     expect(h).not.toContain("Devolver pelo Mercado Pago");
@@ -272,7 +274,7 @@ describe("reserva cancelada pela política no quadro (M8.2c)", () => {
     expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_sem_devolucao", estornoPelaEquipe: false }, devolucao: null }))).toBe("Reserva cancelada: sem devolução (valor retido)");
     const parcial: PagamentoDoPainel = { ...base, situacao: "devolvido_parcial", desfecho: null, motivoSemReservaTexto: "Chegou já devolvido em parte." };
     expect(situacaoEmPalavras(parcial)).toBe("Devolvido em parte sem reserva: Chegou já devolvido em parte. Devolva o restante pelo quadro do pagamento.");
-    expect(situacaoEmPalavras({ ...parcial, situacao: "contestado" })).toContain("A contestação se resolve pelo painel do Mercado Pago.");
+    expect(situacaoEmPalavras({ ...parcial, situacao: "contestado" })).toContain("Acompanhe a disputa no bloco dela, abaixo.");
     expect(situacaoEmPalavras(parcial)).not.toMatch(/M8\.2/);
   });
 

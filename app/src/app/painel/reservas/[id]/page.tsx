@@ -17,6 +17,7 @@ import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { AlteracaoSite } from "@/components/reservas/AlteracaoSite";
 import { CancelamentoSite } from "@/components/reservas/CancelamentoSite";
+import { CancelarContestada, ContestacaoSite } from "@/components/reservas/ContestacaoSite";
 import { Horarios } from "@/components/reservas/Horarios";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas";
@@ -27,6 +28,7 @@ import { textoDoResultadoDaAlteracao } from "@/pagamentos/alteracao-tela";
 import { cancelamentoDaReserva, momentosDoCancelamento } from "@/pagamentos/cancelamento-painel";
 import { textoDoResultado } from "@/pagamentos/cancelamento-tela";
 import { pagamentosDaReserva } from "@/pagamentos/consultas";
+import { lerContestacoesDaEquipe, lerContestacoesDaOperacao, textoDoResultadoDaContestacao } from "@/pagamentos/contestacao-tela";
 import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebimentos";
 import { aceitesDaReserva } from "@/site/aceites";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
@@ -40,7 +42,7 @@ const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c))
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
   const sessao = await exigirSessaoPainel();
   const { id } = await params;
-  const { salvo, erro, cancelamento: resultadoCancelamento, alteracao: resultadoAlteracao } = await searchParams;
+  const { salvo, erro, cancelamento: resultadoCancelamento, alteracao: resultadoAlteracao, contestacao: resultadoContestacao } = await searchParams;
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
@@ -84,6 +86,35 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     previstaEm: ultimaAplicada?.devolucao?.previstaEm ?? null,
     agora,
   });
+  // M8.2e: as disputas dos pagamentos da reserva — tudo para a equipe que lê o financeiro (nunca o papel proprietário);
+  // sem o financeiro, só o tipo, a situação e o prazo dos documentos. O resultado de cada ação volta por `?contestacao=`.
+  const disputasEquipe = pagamentosSite.length && verValores && sessao.papel !== "proprietario" ? await lerContestacoesDaEquipe(db, sessao, r.id, agora) : null;
+  const disputasOperacao = pagamentosSite.length && !disputasEquipe ? await lerContestacoesDaOperacao(db, sessao, r.id, agora) : [];
+  const textoContestacao = textoDoResultadoDaContestacao(resultadoContestacao);
+  const defesa = editarReserva || editarFinanceiro;
+  const disputas = Object.fromEntries(
+    pagamentosSite.map((p) => [
+      p.id,
+      <ContestacaoSite
+        key={p.id}
+        reservaId={r.id}
+        pagamento={p}
+        equipe={disputasEquipe ? disputasEquipe.filter((d) => d.pagamentoId === p.id) : null}
+        operacao={disputasOperacao.filter((d) => d.pagamentoId === p.id)}
+        editarFinanceiro={editarFinanceiro}
+        defesa={defesa}
+        hoje={hojeISO()}
+      />,
+    ]),
+  );
+  // "Cancelar a reserva contestada": antes da entrada, com uma disputa que segura valor num pagamento da reserva confirmada.
+  const contestada =
+    pagamentoQueConfirmou &&
+    editarReserva &&
+    editarFinanceiro &&
+    r.estado === "confirmada" &&
+    (!momentos || agora.getTime() < momentos.entradaEm.getTime()) &&
+    (disputasEquipe ?? disputasOperacao).some((d) => d.seguraValor && pagamentosSite.some((p) => p.id === d.pagamentoId && (p.desfecho === "reserva" || p.desfecho === "alteracao")));
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
 
@@ -141,6 +172,11 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
       {textoAlteracao && (
         <p role="status" className={styles.sucesso}>
           {textoAlteracao}
+        </p>
+      )}
+      {textoContestacao && (
+        <p role="status" className={styles.sucesso}>
+          {textoContestacao}
         </p>
       )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
@@ -201,6 +237,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
         editar={editarFinanceiro}
         hoje={hojeISO()}
         alteracoes={alteracoes.map((a) => ({ id: a.id, criadaEm: a.criadaEm }))}
+        disputas={disputas}
+        contestada={<CancelarContestada reservaId={r.id} mostrar={!!contestada} />}
         alteracao={
           pagamentoQueConfirmou ? (
             <AlteracaoSite

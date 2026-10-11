@@ -24,3 +24,20 @@ it("recebimento da liberação do pagamento no site não é estornável na lista
   expect(h.match(/>Estornar</g)).toHaveLength(1);
   expect(h).toContain("pelo quadro “Pagamento no site”");
 });
+
+it("M8.2e: o dinheiro que voltou de uma disputa do pagamento não é estornável pela reserva: aponta para o quadro da disputa", () => {
+  const h = renderToStaticMarkup(
+    <Recebimentos
+      reservaId="r"
+      recebimentos={[recebimento("volta", "mercadopago:11111111-1111-4111-8111-111111111111:contestacao:22222222-2222-4222-8222-222222222222:volta")]}
+      recebido={{ recebido: 85000, devido: 85000 }}
+      quemRecebe="empresa"
+      editar
+      hoje="2026-12-10"
+      cancelada={false}
+    />,
+  );
+  expect(h).not.toContain(">Estornar<");
+  expect(h).not.toContain('value="volta"');
+  expect(h).toContain("pelo quadro da disputa do pagamento");
+});

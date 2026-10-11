@@ -198,6 +198,7 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     cancelamentoVoltaPorFora: "[volta por fora]",
     cancelamentoComAEquipe: "[com a equipe]",
     cancelamentoEmConferencia: "[em conferência]",
+    cancelamentoDevolvidoPelaDisputa: "[devolvido pela disputa]",
     cancelamentoSemDevolucaoPrazo: "[sem devolução: prazo]",
     cancelamentoSemDevolucaoNaoComparecimento: "[não comparecimento]",
     cancelamentoSemDevolucaoEquipe: "[sem política]",

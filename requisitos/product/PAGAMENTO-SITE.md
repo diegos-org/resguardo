@@ -24,6 +24,12 @@
 > ao Mercado Pago só depois da liberação do pagamento) e o que o M8.2a e o M8.2c deixaram (o restante de um
 > pagamento já devolvido em parte, a devolução parcial por fora, a devolução feita a menos). As frases "chega no
 > M8.2d" das seções anteriores ficam como histórico, com o que vale desde 10/10 ao lado.
+> **M8.2e (contestação do pagamento: chargeback, MED do Pix e reclamação no Mercado Pago) pronto em 11/10/2026**, só no
+> teste, com o desenho revisado por quatro leituras adversariais (dinheiro, concorrência, produto e API/segurança) e a
+> documentação de contestações das Orders relida em 11/10/2026: seção "Contestação (M8.2e)" e itens 59 a 73 de "A conferir
+> no sandbox". Com ele, as cinco partes estão prontas no teste; o pagamento de verdade continua esperando as decisões
+> marcadas com ★. As frases "fica com o M8.2e" das seções anteriores ficam como histórico, com o que vale desde 11/10 ao
+> lado.
 
 ## As cinco partes
 
@@ -33,11 +39,11 @@
 | **M8.2b** | **Cartão** (pronto em 9/10/2026, seção "Cartão (M8.2b)"): Card Payment Brick, parcelas com juros do hóspede e máximo configurável, freios contra teste de cartão roubado, identificação do aparelho, análise do cartão. | M8.2a |
 | **M8.2c** | Cancelamento de reserva paga pela política (pronto em 10/10/2026, seção "Cancelamento pela política (M8.2c)"): integral até 14 dias antes, nada depois, arrependimento de 7 dias; lançamentos por componente, taxa que não volta com a SCL, dinheiro retido no cancelamento sem reembolso, desconto da parte já repassada no repasse seguinte. | M8.2a |
 | **M8.2d** | Alteração de reserva paga (pronta em 10/10/2026, seção "Alteração de reserva paga (M8.2d)"; datas, pessoas ou valor, só antes da entrada), com novas datas seguradas, cobrança da diferença ou devolução parcial; e a devolução de parte do valor que o M8.2a e o M8.2c deixaram (o restante de um pagamento já devolvido em parte, a devolução parcial por fora, a devolução que o Mercado Pago fez a menos). | M8.2c |
-| **M8.2e** | Contestação (chargeback): registro, conferência, decisão de quem arca, lançamentos. | M8.2b, M8.2c |
+| **M8.2e** | Contestação (chargeback) (pronta em 11/10/2026, seção "Contestação (M8.2e)"): a disputa lida da order, da Chargebacks API e da Payments API, ou registrada pela equipe (também o MED do Pix e a reclamação no Mercado Pago); a reserva em conferência até a decisão de quem arca; o valor segurado nos repasses; o resultado sempre confirmado pela equipe; os lançamentos de cada momento; "Cancelar a reserva contestada" antes da entrada. | M8.2b, M8.2c |
 
 O pagamento **de verdade** só liga com as cinco partes e o M7.4 feitos (o M7.4 ficou pronto em
 9/10/2026: páginas legais e aceite antes do Pix, desenho em `PAGINAS-LEGAIS.md`; o M8.2b ficou pronto
-em 9/10/2026, o M8.2c e o M8.2d em 10/10/2026; falta o M8.2e), e com as decisões pendentes de Diego: taxa do pagamento (hoje sai antes da divisão; se a SCL passar a arcar, o motor precisa de
+em 9/10/2026, o M8.2c e o M8.2d em 10/10/2026 e o M8.2e em 11/10/2026: as cinco partes estão prontas no teste), e com as decisões pendentes de Diego: taxa do pagamento (hoje sai antes da divisão; se a SCL passar a arcar, o motor precisa de
 base por canal, porque a opção atual vale para todos), arrependimento conferido com o contador (e o
 limite "até o horário de entrada", com o advogado),
 a verificação do banco (3DS) do cartão (padrão "quando houver risco"; com "nunca", toda contestação
@@ -48,7 +54,10 @@ devolução; seção "Cancelamento pela política (M8.2c)"). Desde o M8.2d, tamb
 original ou da nova, a que vier primeiro; a taxa do Mercado Pago sobre a parte devolvida com a SCL; a política e
 o arrependimento depois de uma alteração (a versão e a aprovação do primeiro pagamento); a devolução de parte
 esperando a liberação do pagamento; e os e-mails da alteração (seção "Alteração de reserva paga (M8.2d)"; GUIA,
-seção 7).
+seção 7). Desde o M8.2e, também as seis decisões ★ da contestação: quanto o proprietário perde quando ele arca, "a
+proporção da sua parte", o que fica segurado, o resultado e o valor perdido confirmados pela equipe, o pagamento não
+reconhecido (pela verificação do banco) e a disputa antes da entrada (seção "Contestação (M8.2e)", "Decisões de
+Diego"; GUIA, seção 7).
 
 ## Perímetro do teste (parte a)
 
@@ -201,6 +210,18 @@ disso, a página mostra o fluxo de hoje, e a aba de pagamento lista cada imóvel
     `substituida`, reserva de fonte `alteracao`, os motivos "sem reserva" da diferença, os códigos `ja_devolvido` e
     `aguardando_liberacao`, o aviso `devolucao_aguardando_liberacao_atrasada`, as duas mensagens novas e
     `regras.site.minutosHoldAlteracao`.
+- **Migração 0069 (M8.2e), idempotente como a 0067 e a 0068:**
+  - tabela **`contestacoes_pagamento`** (sem dado pessoal; linhas nunca apagadas): uma linha por disputa e rodada, com
+    a identificação (tipo, origem, ids do caso, da contestação e da transação), a situação, o que a leitura mostrou, a
+    decisão de quem arca, o resultado e os vínculos de caixa;
+  - tabela **`eventos_contestacao`** (a linha do tempo de cada disputa, só códigos, datas e centavos; nunca apagada);
+  - `pagamentos.contestacoes_buscadas_em` (a busca tardia semanal) e `devolucoes_pagamento.contestacao_id` (a devolução
+    substituída pela disputa, com chave estrangeira de nome próprio);
+  - índices `contestacoes_pagamento_caso`, `_cbk`, `_sem_id` (únicos parciais), `_situacao`, `_leitura` (parcial, só as
+    não finais), `_reserva` e `_pagamento`, e `devolucoes_pagamento_contestacao` (parcial);
+  - listas no código, sem migração: as da seção "Contestação (M8.2e)", "Tabelas" (situações, tipos, origens, estados
+    lidos, causas, quem arca, avisos, o desfecho `contestacao`, a origem de lançamento `contestacao_pagamento`, a base de
+    cancelamento `contestacao` e o valor `contestacao` de `confirmada_por`).
 
   As listas fechadas ficam no código (texto sem CHECK, como as outras tabelas novas). A configuração muda
   só no JSON (`pagamento_site`, versões da `politica_cancelamento`, `textos_site`, `mensagens_hospede`).
@@ -213,7 +234,11 @@ relógio; sob a trava da tentativa): `criando`/`incerta` → qualquer; `pendente
 dinheiro); `aprovado` → `devolvido_parcial`, `devolvido`, `contestado`; `devolvido_parcial` →
 `devolvido`, `contestado`. Desconhecido nunca sobrescreve uma situação conhecida (vira aviso).
 Tentativa com desfecho `reserva` que vira devolvida ou contestada por fora gera aviso, sem mexer na
-reserva (partes c e e).
+reserva (partes c e e). **Desde o M8.2e**, `contestado` tem duas saídas: → `devolvido` com um pedido de devolução
+aceito (a leitura o confirma) e → a situação de antes da disputa (`situacao_pagamento_antes`) quando todas as disputas
+do pagamento terminam ganhas ou sem efeito, pela confirmação da equipe e só se o pagamento ainda está `contestado`
+(nunca pela leitura; auditoria `pagamento.situacao`, motivo `contestacao_ganha`). A situação que a leitura dá a um
+pagamento com disputa sai de `situacaoDaLeitura` (`contestacaoDaLeitura`): seção "Contestação (M8.2e)".
 
 **Etapa do cartão (M8.2b):** a verificação do banco, a análise e o processamento do Mercado Pago
 continuam `pendente`; a etapa vai em `etapa_cartao` e muda só o texto, o prazo das datas, o intervalo de
@@ -229,7 +254,10 @@ id) → devolução → **cancelamento ativo da reserva** (M8.2c) → **motor da
 (`travarMotorDaReserva`, M8.2c) → documentos legais / disjuntor / livro. Motor e livro travam depois, como já fazem.
 **Desde o M8.2d:** … → cancelamento ativo → **todas as alterações da reserva** (por id) → motor da reserva →
 **linha da reserva-pedido da alteração** (`FOR NO KEY UPDATE`, só pelo código da alteração: `cancelarPortador`) →
-motor da reserva-pedido → documentos legais / disjuntor / livro. Segurar uma alteração toma o motor da reserva e
+motor da reserva-pedido → documentos legais / disjuntor / livro. **Desde o M8.2e:** … → alterações → **contestações dos
+pagamentos da cotação** (por id, `FOR NO KEY UPDATE`; o retrato `Travado.contestacoes`) → motor da reserva → livro; toda
+gravação em `contestacoes_pagamento` e `eventos_contestacao` acontece dentro de `travarCotacao` (seção "Contestação
+(M8.2e)", "Dinheiro e livro"). Segurar uma alteração toma o motor da reserva e
 depois cria a reserva-pedido (`sincronizarReserva`, trava consultiva da fonte, motor dela): a mesma ordem. O
 cancelamento à mão (`tentarCancelarReserva`) recusa a reserva-pedido, e o recálculo de toda a empresa não passa por
 ela. `segurarDatas` e `criarBloqueio` vencem as alterações do imóvel em savepoints, depois da trava do imóvel.
@@ -405,9 +433,12 @@ pode ser pago, um cartão pode já ter sido. Por isso:
 - **Corpo:** `{ validation: "on_fraud_risk", liability_shift: "required" }` ou `{ validation: "never" }`.
   O modo fica em `pagamentos.tres_ds` (retrato do painel em cada tentativa) e o resultado lido em
   `tres_ds_status` (`AUTHENTICATED`, `NOT_AUTHENTICATED`, `CHALLENGE`, `ATTEMPTED`, `REJECTED`, `ERROR`).
-- **O M8.2e decide quem arca com a contestação pelo `tres_ds_status = AUTHENTICATED` de cada pagamento,
-  nunca pelo modo `tres_ds`.** Se `ATTEMPTED` também passa a responsabilidade é pergunta ao Mercado Pago
-  (sandbox, item 15).
+- **Desde o M8.2e, a frase da causa `fraude` ("pagamento não reconhecido") segue o `tres_ds_status` do pagamento,
+  congelado na abertura da disputa, nunca o modo `tres_ds`; quem decide quem arca é a equipe** (seção "Contestação
+  (M8.2e)", "Quem arca: a decisão da equipe"). *Antes* (desenho de 9/10): "O M8.2e decide quem arca com a contestação
+  pelo `tres_ds_status = AUTHENTICATED` de cada pagamento". *Motivo:* o sistema nunca escolhe quem arca; a verificação do
+  banco vira a frase da regra ao lado da escolha. Se `ATTEMPTED` também passa a responsabilidade é pergunta ao Mercado
+  Pago (sandbox, itens 15 e 65).
 - **Desafio:** transação `action_required/pending_challenge` = etapa `desafio`. O endereço vem só na
   resposta da criação (o GET não o documenta) e só vale com https e domínio (ou subdomínio) de
   `mercadopago.com`, `mercadopago.com.br`, `mercadolibre.com` ou `mercadolivre.com.br`
@@ -565,15 +596,30 @@ Screen Brick).
 - **Prazo:** o cartão libera conforme o plano da conta (na hora 4,98%, 14 dias 4,49%, 30 dias 3,98%; a
   confirmar nos termos vigentes). A reserva fica "a liberar" até o sinal explícito `released`, com "o
   Mercado Pago libera em dd/mm"; a releitura de 6 em 6 horas e os 85 dias cobrem os 30 dias.
+- **Sob disputa (desde o M8.2e):** com uma contestação não final ou perdida, a liberação nunca é lançada sozinha: a
+  leitura com `liberado = true` liga `contestacao_liberacao_lida` e a equipe registra a liberação à mão, que passa a ser
+  aceita sob disputa (o retido da disputa é outra linha); a taxa lida durante a disputa não muda a reserva (diferente da
+  conhecida = `taxa_divergente`). `precisaFinanceiro` olha a situação explicada (`situacaoDaLeitura`), não a crua: a
+  Payments API é lida durante a disputa (para o aviso da liberação lida) e depois da ganha, mesmo com a order ainda em
+  `charged_back/*`, quando a liberação volta a lançar sozinha. Seção "Contestação (M8.2e)", "Liberação".
 
 ### Contestação (gancho para o M8.2e)
 
+**Desde o M8.2e (11/10/2026), ver a seção "Contestação (M8.2e)".** O texto de 9/10 fica como histórico, com o que vale
+agora ao lado.
+
 A leitura da order dá `contestado` quando uma transação está `charged_back/*` ou algum
 `transactions.chargebacks[].status` é `in_process` ou `settled`, qualquer que seja a situação da order
-(só o `status` é lido: nunca `case_id`, `id` ou `references`). O id numérico da Payments API (é o que chega
+(só o `status` é lido: nunca `case_id`, `id` ou `references`). *Agora:* `normalizarSituacao` não muda, e
+`transactions.chargebacks[]` passa a ser lido por lista branca para `Cobranca.contestacoes` (o `id` CBK…, o `case_id`,
+o `transaction_id` só como pista, o `status` e o `amount`; `references`, `reason` e `documentation` continuam nunca
+lidos). O id numérico da Payments API (é o que chega
 nos avisos de contestação, cujo prazo de 180 dias passa da janela de leitura das orders) fica em
-`pagamentos.id_pagamento_provedor`. Registro, decisão de quem arca e lançamentos são do M8.2e; o aviso
-assinado continua ignorando ids numéricos.
+`pagamentos.id_pagamento_provedor`. *Correção de 11/10:* pela documentação atual, o aviso de contestação das Orders
+chega como **order** (`ORD…`, `order.charged_back`), não pelo id numérico; o número do pagamento serve para ler a disputa
+pela Chargebacks API e pela Payments API depois dos 85 dias, e desde o M8.2e o Pix também o grava. Registro, decisão de
+quem arca e lançamentos são do M8.2e (feitos em 11/10); o aviso
+assinado continua ignorando ids numéricos (até o item 59 do sandbox mostrar outro formato).
 
 ### Limites do M8.2b
 
@@ -615,7 +661,10 @@ minutos), com as carências.
   de fraude) é registrado como ignorado, com 200. Order que este banco não conhece: 200, sem aviso.
 - Válido: grava o evento (repetição = nada), responde 200 e processa depois da resposta, com tempo
   limite em cada chamada. O resultado fica no evento para a rotina saber o que falhou.
-- Na parte (a), marcar no Mercado Pago só o evento "Order (Mercado Pago)".
+- Na parte (a), marcar no Mercado Pago só o evento "Order (Mercado Pago)". **Desde o M8.2e**, marcar também
+  "Contestações" (`chargebacks`; GUIA, seção 6, item 37). O id numérico continua registrado como ignorado: o aviso de
+  contestação das Orders chega como order (`ORD…`, `order.charged_back`) e a releitura da order traz a disputa
+  (item 59 do sandbox).
 
 ## Conferência (uma função, vários gatilhos)
 
@@ -653,7 +702,10 @@ de que o sistema parou de conferir aquela devolução; desde o M8.2c, a equipe r
 Pago e registra no quadro do pagamento ("Confirmar devolução feita no painel do Mercado Pago", "Registrar
 que o Mercado Pago recusou a devolução no painel" ou "Parar a devolução pedida"; seção "Cancelamento pela
 política (M8.2c)", "Devolução"). Desde o M8.2c, o sistema também não **pede** mais devolução de pagamento
-com mais de 78 dias (`MARGEM_PEDIDO_DEVOLUCAO_DIAS`): não daria tempo de conferir. Contestação tardia (até 180 dias) fica com o M8.2e, por outro caminho (Payments ou Chargebacks).
+com mais de 78 dias (`MARGEM_PEDIDO_DEVOLUCAO_DIAS`): não daria tempo de conferir. Contestação tardia (até 180 dias) fica com o M8.2e, por outro caminho (Payments ou Chargebacks). *Desde 11/10:* a
+rotina das disputas (`conferirContestacoes`, depois de vencer os holds) relê cada disputa aberta uma vez por dia, e a
+busca tardia semanal (`buscarContestacoesTardias`) procura disputas novas de todo pagamento com o número, até 540 dias
+(seção "Contestação (M8.2e)", "De onde vem cada fato", item 5).
 
 No cartão (M8.2b), `paginaAindaLe` considera a forma: cartão recusado não é relido (order `failed` é
 final); cartão cancelado ou vencido no desafio é relido até 15 minutos depois de encerrado (ou da criação
@@ -693,7 +745,9 @@ noites nunca foram liberadas), seja qual for o relógio.
    impede gerar o Pix, sob a trava da reserva que o recebimento à mão também toma); dinheiro que chega **já devolvido em parte ou
    contestado**, sem uma leitura "aprovado" antes (motivo "situação inesperada", com aviso: nunca
    confirma sozinho; o resto se resolve pelo painel do Mercado Pago, e a devolução de parte do valor pelo
-   sistema chega no M8.2d — desde 10/10, "Devolver o restante ao hóspede").
+   sistema chega no M8.2d — desde 10/10, "Devolver o restante ao hóspede"). **Desde o M8.2e**, o dinheiro que chegou
+   contestado ganha a linha da disputa e segue o fluxo dela, com o resultado sempre confirmado pela equipe (o aviso diz
+   "acompanhe a disputa pelo quadro do pagamento"); o por fora continua recusado enquanto ela não é ganha.
 4. **Reserva confirmada à mão pela equipe** (sem recebimento manual e sem outra tentativa com
    desfecho `reserva`): o pagamento vira o desfecho `reserva` dela.
 5. Recusado, cancelado ou expirado: nada muda; o hóspede pode tentar de novo enquanto as datas
@@ -753,6 +807,12 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   mesma transação, as saídas de devolução que esperavam o recebimento (`acertarCaixasPendentes`) e acorda as
   devoluções de parte que esperavam a liberação; o `valor_pago` fica congelado na aprovação. Seção "Alteração de
   reserva paga (M8.2d)", "Lançamentos".
+- **Desde o M8.2e:** com uma disputa não final ou perdida no pagamento, a liberação lida não lança (aviso
+  `contestacao_liberacao_lida`) e a liberação à mão é aceita sob disputa; `precisaFinanceiro` usa a situação explicada
+  pela disputa; na ganha sem recebimento e sem sinal, o aviso `contestacao_ganha_sem_recebimento` e a liberação no próprio
+  formulário de "Ganhou"; `estornarLiberacaoManual` recusa com o retido da disputa realizado. As chaves da disputa
+  (`mercadopago:<pagamento>:contestacao:<id>:…`) nunca contêm `recebimento`: ficam fora das somas dos recebimentos do
+  pagamento. Seção "Contestação (M8.2e)", "Liberação" e "Dinheiro e livro".
 
 ## Devolução na parte (a): só do pagamento sem reserva
 
@@ -808,7 +868,11 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   devolução ainda deve, e o restante do pagamento sem reserva já devolvido em parte também). Desde o M8.2c, a nota passa pelo validador de
   dados pessoais e a taxa que não voltou é **calculada** no registro (abaixo). O dinheiro que chegou já **contestado** (situação
   inesperada) continua com essa opção: a situação local nunca volta a "aprovado", e a releitura só
-  aceita quando o Mercado Pago mostra o pagamento aprovado de novo (contestação resolvida). O que
+  aceita quando o Mercado Pago mostra o pagamento aprovado de novo (contestação resolvida). *Desde o M8.2e (C1):* a
+  contestação se resolve pela disputa, com o resultado confirmado pela equipe, nunca pela leitura; enquanto ela não é
+  `ganha`, o por fora é recusado ("o pagamento está em disputa"; perdida, `contestacao_perdida`); na ganha, o pagamento
+  volta à situação de antes e os caminhos de sempre valem. Perdida num pagamento sem reserva: desfecho `contestacao`, a
+  taxa como despesa da SCL e a devolução substituída confirmada pela disputa (seção "Contestação (M8.2e)", "Casos"). O que
   chegou já **devolvido em parte** não tem essa opção (o Mercado Pago sempre mostra a parte
   devolvida): o quadro explica e oferece só "Conferir agora", e o resto se resolve pelo painel do
   Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d; desde 10/10, "Devolver o restante ao
@@ -912,6 +976,14 @@ fuso do imóvel (fuso diferente de `America/Sao_Paulo` = aviso na prévia). O in
    **recusado**: "saída antecipada não é cancelamento"; a reserva continua (descarte o pedido, se for o caso).
 6. Fora disso → nada (`fora_do_prazo`).
 
+**Desde o M8.2e:** "Cancelar a reserva contestada" é outra rota, sem a decisão pela política e **sem devolução pelo
+sistema** (base e motivo `contestacao`, quem cancela a SCL, direito `nenhum`, `valor_retido` = o principal pago menos
+o devolvido realizado e o reconhecido devolvido fora, dividido como em "Dinheiro retido (sem devolução)"): só antes do horário de entrada, com uma disputa não final
+e valor em risco maior que zero, `reserva:editar` e `financeiro:editar`. O dinheiro volta ao titular pela disputa, se ele
+ganhar. Registro de decisão (antes: item 1, "a SCL nunca fica com o dinheiro de uma reserva que ela cancelou"; agora; o
+motivo; a alternativa, decisão 6 ★) na seção "Contestação (M8.2e)", "A reserva enquanto a disputa está aberta". Essa rota
+não tem a mensagem da decisão ao hóspede: numa disputa, a equipe fala com ele caso a caso.
+
 **A equipe só decide onde a política não decide:**
 - **Exceção:** a política dá nada → "Devolver tudo por exceção", com motivo da lista (Erro da SCL, Força maior,
   Cortesia comercial, Saúde ou família, Outro) e nota obrigatória (nunca mostrada ao hóspede nem ao
@@ -936,7 +1008,9 @@ fora dele, só aviso); pagamento que a última leitura mostra devolvido em parte
 política espera isso se resolver… a devolução de parte do valor chega com o M8.2d."; desde o M8.2d, o devolvido em
 parte e o `devolvido_lido > 0` não recusam mais por si: só a devolução em andamento, a situação desconhecida e o
 devolvido fora sem o valor informado); contestado ("…espera a
-contestação (M8.2e)"); a parte do proprietário num repasse **ainda não pago** ("estorne esse repasse (o
+contestação (M8.2e)"; desde o M8.2e, qualquer disputa em curso do pagamento, pela regra `contestacaoEmCurso`, com o texto
+"Disputa do pagamento em curso: o cancelamento pela política espera o resultado…", e, depois de perdida, a recusa
+`contestacao_perdida`); a parte do proprietário num repasse **ainda não pago** ("estorne esse repasse (o
 proprietário recebe o resto no próximo) e então cancele. Se ele já foi pago de fato, marque-o como pago
 antes…"); notas com dado pessoal.
 
@@ -994,6 +1068,14 @@ devolução do cancelamento tem `origem = 'cancelamento'`; código, rotina e lei
   mais a confirmação da equipe). **Desde o M8.2d:** com o id, a devolução é confirmada pelo que voltou e a equipe pede
   o restante ou o registra por fora; sem o id, a equipe confirma o valor que o painel mostra (D15).
 - **Pedir de novo** (devolução recusada, pagamento até 78 dias): reaproveita a linha, com chave nova.
+- **Substituída pela disputa (desde o M8.2e):** a devolução pedida sem aceite (ou recusada) de um pagamento que entra
+  em disputa para e fica substituída por ela (`devolucoes_pagamento.contestacao_id`, evento `substituicao`, auditoria
+  `pagamento.devolucao_substituida`): o valor dela sai do valor em risco. Perdida: a devolução é **confirmada pela
+  disputa** (`confirmada_por = 'contestacao'`), pelo menor entre o valor dela e o valor perdido, sem saída de caixa
+  própria (o caixa é o da disputa); a menos, o aviso `devolucao_a_menor`. Ganha ou sem efeito: volta a ser devida,
+  recusada, com o aviso `devolucao_devida_depois_da_disputa` e os caminhos de sempre. A aceita ou com a chave em dúvida
+  nunca é substituída. Seção "Contestação (M8.2e)", "A reserva enquanto a disputa está aberta", "Devoluções do mesmo
+  pagamento".
 - **Por fora** ("Registrar devolução feita por fora"): Pix sempre que a devolução está recusada e sem pedido
   aceito; cartão só pela regra estrita da seção "Cartão (M8.2b)", "Devolução". A reserva continua com o
   desfecho `reserva`; o financeiro do cancelamento é acertado com a data informada.
@@ -1089,7 +1171,11 @@ O pagamento que confirmou a reserva aparece devolvido (no todo ou em parte), com
 desta reserva devolvido fora do sistema: a parte do proprietário não é repassada. Cancele pela política
 (devolução integral) ou registre um ajuste e dê a conferência por resolvida." e o Início avisa. A nossa própria
 devolução de cancelamento nunca liga `devolvido_por_fora`; uma devolução por fora registrada mais a devolução no
-Mercado Pago liga `devolucao_em_dobro`.
+Mercado Pago liga `devolucao_em_dobro`. **Desde o M8.2e**, o MED do Pix e a reclamação no Mercado Pago registrados pela
+equipe explicam a devolução lida, até o valor deles (`devolvidoPelaDisputa` em `devolucaoInexplicada` e o gêmeo
+`devolvidoPelaDisputaSql` em `devolvidaNoProvedorSql`): o registro não grava `devolvido_fora_reconhecido`, o valor vira
+o retido realizado da disputa (no dia em que a leitura viu a devolução) e, daí em diante, quem segura a reserva é a
+disputa.
 
 ### O que o hóspede vê
 
@@ -1687,6 +1773,1778 @@ cancelada, do M8.2c; alterada, do M8.2d):
 - Ganchos do M8.2e: pagamento contestado recusa a alteração; as devoluções são por pagamento com
   `devolucaoInexplicada`; `lancarDescontoDoProprietario`, `id_pagamento_provedor` e `tres_ds_status` não mudaram.
 
+## Contestação (M8.2e)
+
+Pronta em 11/10/2026, só no teste, nas prévias, com as mesmas travas. Desenho de 11/10/2026, a partir da `main` em
+821ee7f, revisado no mesmo dia por quatro leituras adversariais (dinheiro, concorrência, produto e API/segurança),
+conferidas no código e na documentação; o que a implementação ajustou está em "O que a implementação ajustou", no fim
+desta seção, com o motivo. **Ler** usa `provedorDeConferencia`; **decidir, confirmar e lançar não
+dependem dele** (nem da chave da oferta, nem das páginas legais): com a trava do provedor fechada, a equipe decide e
+confirma com a nota "sem leitura do Mercado Pago". Nada de cobrança nova.
+
+Base:
+- a decisão de Diego de 7/10 (ROADMAP, M8.2; `RECEBIMENTO-SITE.md`, pergunta 4);
+- os ganchos das partes anteriores: `id_pagamento_provedor` e `tres_ds_status` (M8.2b), as recusas `contestado` do
+  cancelamento e da alteração (M8.2c e M8.2d), `lancarDescontoDoProprietario` e o "Dinheiro retido (sem devolução)"
+  (M8.2c), as várias devoluções por pagamento e o D15/D21 (M8.2d);
+- a documentação oficial do Mercado Pago relida em 11/10/2026: gestão de contestações e avisos de contestação das
+  Orders (Checkout API e Checkout Pro), situação da order, 3DS e relatórios.
+
+**O que a documentação atual diz** (páginas das Orders, 11/10/2026):
+- `charged_back/reimbursed` na order: "o valor foi devolvido ao pagador depois da contestação" (a SCL perdeu);
+  `settled`: "a transação foi liquidada"; `in_process`: em análise;
+- `coverage_applied` é o resultado: `true` = a favor do vendedor (o dinheiro volta), `false` = contra; o exemplo
+  oficial traz `null` (antes da decisão). Páginas antigas e o comentário de `CONTESTACAO_ABERTA` em `mercadopago.ts`
+  ("reimbursed = o dinheiro voltou à SCL") dizem o contrário: o comentário é corrigido neste PR;
+- o aviso de contestação das Orders chega como **order** (`type: "order"`, `action: "order.charged_back"`,
+  `data.id` `ORD…`): o caminho de hoje já o processa;
+- `GET /v1/chargebacks/{id}` e `GET /v1/chargebacks/search?payment_id=` exigem `X-Caller-Id` (o id numérico do
+  vendedor); no exemplo, `id` vem como texto ("234000062890459000"), `payments` como lista de números e `amount` como
+  número;
+- no exemplo do aviso, o `transaction_id` da contestação não é o `id` do pagamento da mesma order: não serve para
+  identificar.
+
+O sandbox não tem cenário de contestação: o M8.2e é construído e testado sobre a versão falsa, nos formatos dos exemplos
+oficiais. Como as páginas já se contradisseram e um resultado errado moveria dinheiro do proprietário, **o resultado da
+contestação nunca é aplicado só pela leitura** (C1, abaixo). O que fica em aberto está nos itens 59 a 73 de "A conferir
+no sandbox".
+
+Código (em `app/src/`):
+- `pagamentos/contestacao.ts`: a rotina e a busca tardia, o registro pela equipe, os e-mails à equipe, a decisão (registrar,
+  mudar, atualizar o valor segurado), o débito, outra disputa, documentos e prazo, o resultado, o sem efeito e conferir o
+  aviso; reexporta `contestacao-leitura.ts`;
+- `pagamentos/contestacao-leitura.ts`: a leitura sob a trava (casar, criar a linha, os avisos do pagamento, o retido, a
+  substituição das devoluções), separada de `contestacao.ts` para não fechar o ciclo de importação `aplicar` →
+  `contestacao` → `conferencia` → `aplicar`;
+- `pagamentos/contestacao-acerto.ts`: o livro da disputa (`lancarContestacao`, as partes efetivas da reserva);
+- `pagamentos/contestacao-regras.ts`: as regras puras (`casarContestacao`, `transicaoDaContestacao`,
+  `contestacaoDaLeitura`, `contestacaoEmCurso`, `valorEmRisco`, `dividirPerda`, `acertoDaPerda`, as chaves, as assinaturas
+  e os textos);
+- `pagamentos/contestacao-tela.ts` e `acoes-contestacao.ts`: o painel; `contestacao-portal.ts`: a leitura do proprietário;
+- adaptador em `pagamentos/provedor.ts`, `mercadopago.ts` e `falso.ts`;
+- `pagamentos/aplicar.ts`, `travas.ts`, `conferencia.ts` (`precisaFinanceiro`), `rotina.ts`, `devolucao.ts`, `liberacao.ts`,
+  `cancelamento.ts`, `alteracao.ts`, `alteracao-tela.ts`, `acerto-cancelamento.ts`, `consultas.ts`, `situacoes.ts` e
+  `acoes-painel.ts` ("Conferir agora" de um pagamento);
+- `repasses/descontos.ts` (`lancarAcertoDoProprietario`), `extrato.ts`, `recebimentos.ts`, `repasses.ts`, `email.ts`,
+  `inicio.ts` e `avisos-contestacao.ts` (os avisos dos repasses no Início);
+- `despesas/despesas.ts` e `despesas/acoes.ts`; `components/reservas/Recebimentos.tsx`;
+- `portal/posse.ts`, `portal/resumo.ts`, `portal/reservas.ts` e `portal/rodape.ts`;
+- `relatorios/dados.ts`, `dinheiro.ts` e `relatorio.ts`;
+- `painel/dashboard.ts` (`avisosDeContestacao`), `configuracoes/pagamento-site.ts`, `textos-site.ts` e `como-funciona.ts`,
+  `site/pagamento-vista.ts`, `hospede/cancelamento.ts` e `mensagens/hospede.ts` (a rota contestada sem a mensagem da
+  decisão);
+- telas `components/reservas/ContestacaoSite.tsx`, `FormDecisaoContestacao.tsx`, `FormResultadoContestacao.tsx`,
+  `FormRegistrarContestacao.tsx`, `FormCancelarContestada.tsx`, `FormAcaoContestacao.tsx` (os formulários menores) e
+  `BotaoImprimir.tsx`; a página para imprimir `app/painel/reservas/[id]/defesa/page.tsx`; e as páginas da ficha, de
+  Pagamentos do site, de Configurações → Pagamento no site, de despesas, de repasses, do portal, de `/reservar` e de Minha
+  reserva;
+- migração `0069_m8_2e_contestacao.sql`.
+
+Testes: `pagamentos/contestacao-regras.test.ts`, `contestacao-leitura.test.ts`, `contestacao.test.ts`,
+`contestacao-decisao.test.ts`, `contestacao-resultado.test.ts`, `contestacao-tela.test.ts`, `contestacao-dados.test.ts`,
+`acoes-contestacao.test.ts`, `repasses/disputa.test.ts`, `components/reservas/ContestacaoSite.test.tsx` e
+`components/repasses/CartaoRepasse.test.tsx`, além dos casos novos nos testes do adaptador, da migração, da configuração e
+das telas que já existiam.
+
+Com o M8.2e, as cinco partes estão prontas no teste. O pagamento de verdade continua esperando as decisões marcadas com
+★ (aqui e nas partes anteriores).
+
+### O que é contestação aqui
+
+**Contestação (chargeback)** é o pedido do titular do cartão ao banco dele para desfazer a cobrança. Passa pela bandeira e
+pelo emissor, não pelo Mercado Pago. O Mercado Pago retém o valor em disputa na conta da SCL (se debita ou só bloqueia,
+e se pelo bruto ou pelo líquido, está a conferir: item 64) e a decisão pode levar até 6 meses.
+
+- **Cartão:** o caso principal. O sistema detecta sozinho (abaixo).
+- **Pix com `charged_back` na leitura:** registrado igual, por defesa, com o aviso `contestacao_pix`.
+- **MED do Pix** (Mecanismo Especial de Devolução, do Banco Central). Só vale para fraude, golpe ou falha operacional,
+  nunca para desacordo comercial. Quem analisa o caso é o Mercado Pago, como banco de quem recebeu, em cerca de 7 dias.
+  - Nenhuma página do Mercado Pago diz como o MED aparece para o vendedor (item 67). O sistema não o detecta.
+  - Entra pelo registro da equipe ("Registrar disputa vista no painel do Mercado Pago", tipo `med`, só num Pix) e
+    segue o mesmo fluxo.
+  - Se o dinheiro aparece na order como uma devolução que o sistema não pediu, o caso cai antes no D21 (reserva em
+    conferência, aviso `devolvido_por_fora`). **O registro do MED não grava `devolvido_fora_reconhecido`**: o valor do
+    MED vira o retido da contestação (uma saída de caixa já realizada, no dia em que a leitura viu a devolução,
+    `devolvido_visto_em`), e o D21 passa a contar as contestações `med` e `reclamacao` do pagamento como explicação
+    da devolução lida, até o valor delas (`devolucaoInexplicada` e `devolvidaNoProvedorSql`). Daí em diante, quem segura
+    a reserva é a contestação. Reconhecer o valor como "devolvido fora" zeraria o valor em risco e deixaria no caixa um
+    dinheiro que já saiu.
+- **Reclamação do Mercado Pago** (Claims API, mediação): não é contestação.
+  - Se aparecer na order como `charged_back/in_process` (a página de migração mapeia `in_mediation` para isso), é lida
+    como contestação: o sistema não tem como separar, e o aviso diz isso.
+  - Se aparecer como devolução, a equipe a registra à mão (tipo `reclamacao`), como o MED.
+- **Nome no código:** "contestação" já existe para os adiantamentos (M4.4: `contestacoes_adiantamento`,
+  `repasses.contestado`). Aqui é sempre "contestação do pagamento": tabela `contestacoes_pagamento` e origem de
+  lançamento `contestacao_pagamento`.
+- **Nome nos textos, por tipo:** "contestação no cartão" (`chargeback`), "devolução pedida pelo Pix (MED)" (`med`),
+  "reclamação no Mercado Pago" (`reclamacao`); nas contagens e no que vale para os três, "disputa do pagamento".
+- **Para o proprietário:** "disputa do pagamento da reserva SCL-…" (rótulo "Disputa do pagamento"; abaixo). A palavra
+  "Contestados" do e-mail do repasse (adiantamentos que o proprietário contestou) continua só para aquilo.
+- **Para o hóspede:** a palavra "contestação" nunca aparece na página da reserva nem em Minha reserva: lá é "pagamento
+  em conferência".
+
+### Quem pode
+
+| Ação | Permissão |
+|---|---|
+| Ver que o pagamento está em conferência por uma disputa (tipo, situação, datas e prazo dos documentos, sem valores) | `reserva:ler` |
+| "Documentos enviados no painel do Mercado Pago"; abrir a página "Documentos para a defesa" | `reserva:editar` ou `financeiro:editar` |
+| Ver valores, motivo, decisão, lançamentos, notas e a linha do tempo | `financeiro:ler` **e** papel diferente de `proprietario` |
+| Registrar disputa vista no painel do Mercado Pago; confirmar o débito do Mercado Pago; registrar e mudar quem arca; atualizar o valor segurado; confirmar o resultado e o valor perdido; encerrar sem efeito; conferir o aviso (e reabrir) | `financeiro:editar` |
+| Cancelar a reserva contestada (sem devolução pelo sistema) | `reserva:editar` **e** `financeiro:editar` |
+
+- Hoje só o admin tem o financeiro: só Diego decide.
+- As ações seguem sessão → permissão → validação → domínio, como no M8.2c e no M8.2d.
+- **O papel `proprietario` tem `financeiro:ler`** (`acesso/politica.ts`) e hoje só o redirecionamento do layout do painel o
+  barra. As leituras da equipe (`lerContestacoesDaEquipe`) exigem `financeiro:ler` e papel diferente de `proprietario`,
+  no servidor. O portal usa outra função (`contestacoesDoProprietario`, em `contestacao-portal.ts`) com lista branca de
+  campos (abaixo), filtrada por `reservaDosDonos` **e** pelo `proprietario_id` das linhas do motor da reserva — nunca pelo
+  dono atual do imóvel.
+- Os ids vindos do formulário são resolvidos com o filtro da organização **antes de qualquer trava**:
+  `contestacaoDaOrganizacao` (o id da contestação) e `pagamentoDaOrganizacao` (o registro pela equipe recebe o id do
+  pagamento). Id de outra empresa = "não encontrada", sem chamada ao provedor nem gravação.
+- As listas são fechadas.
+- O proprietário vê no portal só o que o atinge: a reserva em conferência, o valor segurado e o desconto definitivo ou
+  devolvido, a causa e a explicação ao proprietário (quando a equipe escreveu). Nunca a nota interna, o número do caso, o
+  motivo do Mercado Pago ou dado do hóspede.
+
+### De onde vem cada fato
+
+1. **Leitura da order**, a mesma conferência de sempre, até 85 dias.
+   - `cobrancaDaOrder` passa a ler `transactions.chargebacks[]` por lista branca, até 20 itens, para
+     `Cobranca.contestacoes: ContestacaoLida[]`. Cada item traz:
+     - `idContestacao` (`CBK…`, `idContestacaoValido`);
+     - `idCaso` (`case_id`: texto `^\d{1,20}$`, ou número com `Number.isSafeInteger`, convertido com `String`; outro
+       formato = null, e o caso é procurado pela busca do pagamento);
+     - `idTransacao` (`PAY…`): só como pista, nunca para casar (o exemplo oficial não bate com o pagamento);
+     - `estadoLido`: `in_process`, `settled`, `reimbursed` ou `desconhecido` (com o `codigo` cru curto ao lado);
+     - `valor` (`amount`, número ou texto, por `valorApiParaCentavos`; ilegível = null).
+   - `references`, `reason`, `documentation` e qualquer texto livre nunca são lidos.
+   - A transação `charged_back/<detalhe>` sem item na lista dá uma `ContestacaoLida` sem identificação, com o estado pelo
+     detalhe.
+   - A transação de volta a `processed/accredited` com uma contestação conhecida é guardada como fato ("a transação
+     voltou a aprovada"), nunca como resultado.
+   - `normalizarSituacao` não muda: continua dando `contestado`. A situação que vale para o pagamento sai de
+     `contestacaoDaLeitura` (abaixo).
+2. **Chargebacks API**, dois métodos novos no adaptador.
+   - `consultarContestacao(idCaso)` (`GET /v1/chargebacks/{id}`) → `CasoDeContestacao`, ou null (404), ou
+     `{ semAcesso: true }` (403).
+   - `buscarContestacoes(idPagamento)` (`GET /v1/chargebacks/search?payment_id=`) → lista; 403 = `{ semAcesso: true }`;
+     404 (rota inexistente), falha de transporte ou resposta ilegível lançam `ErroProvedor`: nunca "nenhuma" sem saber.
+   - `CasoDeContestacao`, por lista branca:
+     - `idCaso` (texto `^\d{1,20}$` ou inteiro seguro) e `pagamentos[]` (só inteiros seguros, convertidos com `String`);
+     - `valor` (`amount`);
+     - `motivoId` (`reason_id`, `^\d{1,6}$`) e `motivoCodigo` (`reason`, só `^[a-z][a-z0-9_]{0,39}$`, sem espaço: uma
+       frase com nome nunca passa);
+     - `coberturaAplicada` (`coverage_applied`: null, true ou false, **o resultado** pela documentação atual) e
+       `coberturaElegivel` (aceita também a grafia `coverage_elegible`);
+     - `documentacao` (`pending`, `review_pending`, `valid`, `invalid`, `not_supplied`, `not_applicable`; outro =
+       desconhecida);
+     - `prazoDocumentacao` (`date_documentation_deadline`, pode vir null);
+     - `criadoEm`, `atualizadoEm` (`date_last_updated`) e `aoVivo`.
+   - Nunca: `documentation[]` (endereços, arquivos, descrições), o `reason` em texto livre e a resposta crua.
+   - **O caso precisa ser deste pagamento:** só vale um caso cujo `payments[]` contém `pagamentos.id_pagamento_provedor`.
+     Senão, nada do caso é usado e liga `contestacao_caso_de_outro_pagamento` ("Este caso é de outro pagamento no Mercado
+     Pago."); no registro pela equipe, a ação recusa com essa frase. Sem `id_pagamento_provedor`, o número do caso fica só
+     como referência e os valores dele não são usados. A mesma conferência vale para cada item da busca.
+   - **Contrato do adaptador:** `ClienteMercadoPagoHttp.chamar` hoje lança `ErroProvedor("credencial")` em todo 401 e 403
+     antes de o método ver a resposta, e não aceita cabeçalho. `Chamada` ganha `cabecalhos` (lista branca: só
+     `X-Caller-Id`) e `aceitar` (status que voltam ao método em vez de lançar: aqui, 403 e 404). 401 continua credencial.
+   - **`X-Caller-Id`:** o `id` de `GET /users/me` (já chamado em `conferirContaDeTeste`, que hoje só lê `tags`), só
+     algarismos e inteiro seguro, guardado em memória no cliente. Uma chamada só, sempre com o cabeçalho; se a chamada
+     sem ele existe é o item 60. O `user_id` do corpo do aviso (não assinado) nunca serve.
+   - Tempo-limite de 8 s por chamada nestes métodos (os outros continuam com 15 s).
+3. **Payments API pelo número** (`GET /v1/payments/{id_pagamento_provedor}`), método novo `situacaoDoPagamento`: só
+   `status`, `status_detail` e `money_release_status`, por lista branca. Terceira fonte, para as contestações com mais de
+   85 dias (a order não é mais lida) e para a ganha sem recebimento. Se responde para pagamentos antigos é o item 72;
+   enquanto não responder, vale o aviso do dia 85 (abaixo).
+   - **O Pix passa a gravar `id_pagamento_provedor`.** `aplicar.ts` hoje só grava no cartão; passa a gravar sempre que
+     `detalheFinanceiro.idPagamento` vem. O limite é o mesmo do caso: `^\d{1,20}$` (hoje 30), num lugar só.
+4. **Aviso assinado.** Nada muda no caminho: o aviso de contestação das Orders chega como order (`ORD…`,
+   `order.charged_back`), e a releitura da order já traz `transactions.chargebacks[]`. O id numérico continua registrado
+   como `ignorado` (com o `type` que já é gravado), até o item 59 mostrar outro formato.
+   - Diego marca também o evento "Contestações" (`chargebacks`) no painel de Webhooks (GUIA, seção 6, item 37
+     atualizado).
+   - Nas prévias o aviso não chega: o "Simular" do Mercado Pago contra o endereço de produção só confere a assinatura e
+     grava o evento (item 59).
+5. **Rotina** (`conferirContestacoes`, em `rotinaDoSite` **depois** de `expirarHoldsVencidos`, para um Mercado Pago lento
+   nunca atrasar o vencimento das datas seguradas; nas prévias, pelo "Conferir agora", depois de `conferirPendentes`).
+   - Orçamento de 60 s por volta e 8 s por chamada; no máximo 50 leituras por volta
+     (`LEITURAS_DE_CONTESTACAO_POR_VOLTA`), em ordem de `proxima_leitura_em`. Desde a revisão do Codex de 11/10, o
+     orçamento é conferido também antes de cada chamada dentro de um pagamento (abaixo, "Revisão do Codex").
+   - Cada contestação `aberta` ou `a_confirmar` é relida uma vez por dia (`RELER_CONTESTACAO_A_CADA_MS`):
+     - pela order, enquanto ela está nos 85 dias;
+     - pela Chargebacks API, pelo id do caso (ou pela busca pelo id do pagamento, sem o caso; desde a revisão do Codex de
+       11/10, a busca roda sempre que alguma disputa do pagamento não tem o caso, mesmo com outra com caso ao lado);
+     - depois dos 85 dias, também pela Payments API pelo número.
+   - **A fila anda também na falha:** `proxima_leitura_em` avança com espera crescente (1, 2, 4 dias, até 7) e
+     `falhas_leitura` conta; as mesmas 50 nunca ocupam todas as voltas.
+   - 403 da Chargebacks API: aviso `contestacao_sem_leitura`, uma vez (a equipe confere no painel do Mercado Pago).
+   - **Dia 85 sem fonte** (sem caso nem `id_pagamento_provedor`, ou Chargebacks e Payments sem resposta útil): aviso
+     `contestacao_sem_fonte`, uma vez ("confira o resultado no painel do Mercado Pago e confirme aqui"), em vez de esperar
+     os 240 dias.
+   - Até 240 dias da abertura (`PRAZO_LEITURA_CONTESTACAO_DIAS`: os 6 meses da decisão, com folga). Depois, para de ler e
+     liga uma vez `contestacao_fora_do_prazo`; a equipe confirma o resultado pelo painel do Mercado Pago.
+   - **Busca tardia** (`buscarContestacoesTardias`): todo pagamento com `id_pagamento_provedor` e dinheiro (aprovado,
+     devolvido em parte ou por inteiro, contestado), **de qualquer desfecho** (reserva, alteração, devolução, por fora,
+     sem reserva), na janela de 80 dias da aprovação até 200 dias depois do maior entre a aprovação e a saída da reserva,
+     com teto de 540 dias da aprovação (`JANELA_CONTESTACAO_TARDIA`): nas bandeiras, o prazo de "serviço não prestado"
+     conta do dia previsto do serviço (itens 66 e 71). Uma vez por semana por pagamento, pela coluna
+     `pagamentos.contestacoes_buscadas_em`, reservada por `UPDATE … RETURNING` antes da chamada (como a leitura reservada
+     do M8.2a). Sem o id, nada (o quadro diz isso). O 403 gasta a vez e, desde a revisão do Codex de 11/10, liga o aviso
+     `contestacao_busca_sem_acesso` no pagamento (contado no Início), que sai na primeira busca tardia que responder (a da
+     semana seguinte, ou a do "Conferir agora").
+   - **"Conferir agora" com `pagamentoId`** (o quadro de uma reserva): só as contestações e a busca daquele pagamento.
+   - O comentário de `rotina.ts` ("Contestação depois disso é do M8.2e") e o de `RETENCAO_ORDERS_DIAS` passam a apontar
+     para cá.
+6. **Registro pela equipe**: "Registrar disputa vista no painel do Mercado Pago", no quadro do pagamento.
+   - Campos:
+     - tipo: Contestação no cartão (`chargeback`), MED do Pix (`med`, só num Pix) ou Reclamação no Mercado Pago
+       (`reclamacao`);
+     - aberta em (data entre a aprovação e hoje);
+     - valor (até o pago);
+     - prazo dos documentos (opcional; sem ele, aviso `contestacao_prazo_desconhecido`, abaixo);
+     - número do caso (opcional, só algarismos, até 20; conferido contra o pagamento quando dá para ler);
+     - nota obrigatória, passada por `textoSemDadosPessoais`.
+   - Fase 0 (sem trava, melhor esforço): releitura da order e da Chargebacks API. Falhou ou o provedor está fechado: segue,
+     com "sem leitura do Mercado Pago" na nota.
+   - Fase 1, sob a trava: `casarContestacao` de novo (a rotina pode ter criado a linha no meio). Casou com uma linha
+     existente: "O Mercado Pago já mostra esta disputa: ela está no quadro." O índice único violado (23505) responde o
+     mesmo, nunca o erro cru.
+   - Origem `equipe`. O quadro diz "registrada à mão: o sistema confere pela leitura quando puder".
+
+**Casamento e idempotência** (`casarContestacao(lidas, linhas)`, pura, testada numa matriz que inclui a order antes da API,
+a API antes da order, a leitura sem lista depois com lista, e a linha final relida):
+1. Casa pelo `id_caso` e depois pelo `id_contestacao`, na rodada mais nova (índices únicos abaixo). O `id_transacao`
+   nunca casa sozinho.
+2. Leitura sem identificação, ou com um id nunca visto, num pagamento com **exatamente uma** linha não final: é essa
+   linha, e ela é completada (`completarIdentificacao`), nunca duplicada.
+3. Leitura com estado final (`settled`, `reimbursed`, ou `coverage_applied` preenchido), ou que só casa com linhas
+   finais, **nunca cria linha**: atualiza os fatos ou liga `contestacao_resultado_mudou`. Num pagamento sem linha
+   nenhuma (a busca tardia achou uma disputa já encerrada), liga no pagamento `contestacao_ambigua` ("o Mercado Pago
+   mostra uma disputa já encerrada que o sistema não conhecia: registre-a pelo quadro e confirme o resultado").
+4. Linha nova só com `in_process` e nenhuma linha não final no pagamento.
+5. Qualquer outro caso (duas linhas não finais e uma leitura sem id, por exemplo): aviso `contestacao_ambigua`, sem criar
+   nada; a equipe confere no painel do Mercado Pago.
+6. **Segunda disputa no mesmo pagamento com outra ainda não final** (pela equipe, ou um caso com id novo e outro aberto):
+   nasce com valor em risco 0, sem retido, com o aviso `contestacao_possivel_duplicata`, até a equipe "Confirmar que é
+   outra disputa" (auditado). A soma dos valores em risco das linhas não finais, não duplicadas e não `sem_efeito` de um
+   pagamento nunca passa do pago.
+
+**Ordem das leituras.**
+- Cada linha guarda `lida_em` (o início da chamada que a leu) e `atualizado_no_provedor_em` (`date_last_updated`). Sob a
+  trava, uma leitura iniciada antes da última aplicada, ou com `date_last_updated` mais antigo, é descartada.
+- Entre as fontes da mesma volta, a precedência é fixa: qualquer `in_process` = em disputa. Fontes que divergem no
+  encerramento (`reimbursed` com `coverage_applied = true`, por exemplo) ligam `contestacao_leitura_conflitante` uma
+  vez, sem transição.
+- Evento só quando o estado combinado muda; uma leitura que não muda nada só atualiza `consultada_em` e `lida_em`.
+
+**Desconhecido nunca sobrescreve conhecido.**
+- Status fora da lista: `estado_lido` fica o último conhecido, o código estranho vai em `codigo`, aviso
+  `contestacao_situacao_desconhecida`, situação mantida.
+- Valor ilegível: aviso `contestacao_valor_desconhecido`; o valor em risco usa o pago e o diz.
+- Valor maior que o valor da reserva: aviso `contestacao_valor_acima`: "o valor contestado (R$ A) passa do valor da
+  reserva (R$ P): pode incluir os juros do parcelamento; confira no painel do Mercado Pago quanto saiu da conta".
+- `live_mode = true` no caso: aviso `ao_vivo`, como em toda leitura (só alarme).
+
+### Tabelas (migração 0069, idempotente como a 0067 e a 0068)
+
+`IF NOT EXISTS` em tudo, e cada chave estrangeira num bloco que confere `pg_constraint`, porque o banco das prévias é
+compartilhado. Sem tipo novo no `pgEnum` de lançamentos.
+
+**`contestacoes_pagamento`** (sem dado pessoal; linhas nunca apagadas):
+- **Vínculos:** `organizacao_id`, `pagamento_id`, `reserva_id` (null no pagamento sem reserva) e `imovel_id`.
+- **Identificação:**
+  - `tipo` (`chargeback`, `med`, `reclamacao`);
+  - `origem` (`leitura`, `equipe`);
+  - `id_caso`, `id_contestacao` e `id_transacao` (pista);
+  - `rodada` (1; a reabertura de uma disputa ganha cria a rodada seguinte, abaixo);
+  - `duplicata_possivel` (boolean) e `confirmada_outra_em`/`confirmada_outra_por`.
+- **Situação:** `situacao` (abaixo) e `situacao_pagamento_antes` (`aprovado`, `devolvido_parcial` ou `devolvido`: a da
+  primeira linha não final do pagamento; para onde o pagamento volta se a SCL ganhar).
+- **Leitura:**
+  - `estado_lido` (o último conhecido: `in_process`, `settled`, `reimbursed`) e `codigo` (o cru curto, inclusive
+    desconhecido);
+  - `cobertura_aplicada`, `cobertura_elegivel`, `motivo_id` e `motivo_codigo`;
+  - `valor` (centavos em disputa) e `valor_origem` (`leitura`, `equipe`, `pagamento`);
+  - `valor_em_risco` (o derivado, gravado sob a trava a cada mudança: é o que a regra da conferência em SQL lê);
+  - `aberta_em` (primeira vez vista ou registrada) e `aberta_no_provedor_em`;
+  - `documentacao`, `documentacao_prazo`, `documentos_enviados_em` e `documentos_enviados_por`;
+  - `tres_ds_status`, o retrato do pagamento na abertura;
+  - `ao_vivo`, `consultada_em`, `lida_em`, `atualizado_no_provedor_em`, `proxima_leitura_em`, `falhas_leitura`,
+    `avisos` (jsonb) e `nota_registro`.
+- **Decisão:**
+  - `causa`, `quem_arca`, `decisao_nota` e `explicacao_proprietario` (opcional, até 300, mostrada ao proprietário);
+  - `decisao_por`, `decisao_em` e `decisao_versao` (0 = sem decisão; sobe a cada mudança);
+  - `base_parte_proprietario` e `base_comissao` (o retrato da divisão, em centavos);
+  - `exposicao` (o valor em risco usado na versão em vigor) e `parte_proprietario`/`parte_scl` (a divisão em vigor).
+- **Resultado:**
+  - `resultado_em` (data informada), `resultado_por` e `resultado_nota`;
+  - `valor_perdido`, `liquido_nao_entrou`, `debito_em` (o dia em que o Mercado Pago debitou) e `tarifa`;
+  - `definitivo_em` (os lançamentos definitivos feitos) e `encerrada_nota` (sem efeito);
+  - `aviso_conferido_em`, `aviso_conferido_por` e `aviso_conferido_nota` ("Conferir o aviso").
+- **Caixa:** `retido_lancamento_id`, `retido_confirmado_em`, `retido_confirmado_por`, `volta_lancamento_id` e
+  `caixa_final_lancamento_id`.
+- **Índices:**
+  - `contestacoes_pagamento_caso`: único (`pagamento_id`, `id_caso`, `rodada`) com o caso preenchido;
+  - `contestacoes_pagamento_cbk`: único (`pagamento_id`, `id_contestacao`, `rodada`) com o id preenchido;
+  - `contestacoes_pagamento_sem_id`: único (`pagamento_id`) com o caso e o id vazios e a situação `aberta`/`a_confirmar`;
+  - `contestacoes_pagamento_situacao` (`organizacao_id`, `situacao`);
+  - `contestacoes_pagamento_leitura` (`proxima_leitura_em`) parcial, só as não finais;
+  - `contestacoes_pagamento_reserva` (`reserva_id`).
+
+**`eventos_contestacao`** (a linha do tempo; "registro de cada evento"; nunca apagada, ao contrário de
+`eventos_pagamento`, que some em 90 dias e não se liga ao pagamento):
+- colunas: `contestacao_id`, `fonte` (`order`, `chargebacks`, `payments`, `equipe`, `sistema`), `tipo`, `antes` e
+  `depois` (jsonb pequeno, só códigos, datas e centavos), `usuario_id` (null = o sistema) e `em`;
+- tipos: `aberta`, `estado_lido`, `documentacao`, `prazo`, `valor`, `cobertura`, `decisao`, `documentos_enviados`,
+  `debito_confirmado`, `resultado`, `sem_efeito`, `aviso_conferido`, `reaberta`, `outra_disputa`, `substituicao`,
+  `cancelamento`, `caixa`, `lancamentos`, `email_equipe`;
+- índice (`contestacao_id`, `em`).
+
+**Em `pagamentos`:** `contestacoes_buscadas_em` (a busca tardia semanal). **Em `devolucoes_pagamento`:**
+`contestacao_id` (a contestação que substitui esta devolução, abaixo; chave estrangeira com nome próprio).
+
+**Listas no código, sem migração:**
+- `SITUACOES_CONTESTACAO`, `TIPOS_CONTESTACAO`, `ORIGENS_CONTESTACAO`, `ESTADOS_LIDOS_CONTESTACAO`,
+  `SITUACOES_DOCUMENTACAO`, `CODIGOS_CAUSA_CONTESTACAO`, `QUEM_ARCA_CONTESTACAO`, `FONTES_EVENTO_CONTESTACAO` e
+  `TIPOS_EVENTO_CONTESTACAO`;
+- `AVISOS_DE_CONTESTACAO`: `contestacao_pix`, `contestacao_situacao_desconhecida`, `contestacao_valor_desconhecido`,
+  `contestacao_valor_acima`, `contestacao_valor_mudou`, `contestacao_com_devolucao`, `contestacao_liberacao_lida`,
+  `contestacao_ganha_sem_recebimento`, `contestacao_resultado_mudou`, `contestacao_leitura_conflitante`,
+  `contestacao_ambigua`, `contestacao_possivel_duplicata`, `contestacao_caso_de_outro_pagamento`,
+  `contestacao_sem_leitura`, `contestacao_sem_fonte`, `contestacao_fora_do_prazo` e `contestacao_prazo_desconhecido`
+  ("a divisão da reserva mudou depois da decisão" é calculado na leitura, nunca gravado: abaixo); desde a revisão do Codex
+  de 11/10, também `contestacao_busca_sem_acesso` (o 403 da busca tardia), que mora só no pagamento, como a
+  `contestacao_ambigua` (`AVISOS_DE_CONTESTACAO_DO_PAGAMENTO`);
+- o desfecho `contestacao` (só no pagamento sem reserva, abaixo);
+- a origem de lançamento `contestacao_pagamento` e o prefixo das chaves `mercadopago:<pagamento>:contestacao:<id>:`;
+- a origem de devolução não muda; a confirmação de uma devolução ganha o valor `contestacao` em `confirmada_por`;
+- os códigos de recusa `contestacao_perdida` e `contestacao_previa_mudou`;
+- o motivo de cancelamento `contestacao` (abaixo);
+- a chave de Textos do site `pagamentoEmConferencia`;
+- em `pagamento_site`: `categoriaDaContestacao`, `diasAvisoDocumentacao` e `causasContestacao` (nome e frase de cada
+  código, editáveis).
+
+**Registro de decisão (11/10/2026), dados pessoais.**
+- *Antes* (M8.2b, seção "Dados pessoais"): "nunca guardado nem registrado: … ids dos casos de contestação".
+- *Agora:* `id_caso`, `id_contestacao` e `id_transacao` são guardados.
+- *Motivo:* são identificadores do Mercado Pago para a disputa, sem dado de ninguém, como o id da order e o número do
+  pagamento que a ficha já mostra. São a única forma de ler o caso depois dos 85 dias e de achá-lo no painel do Mercado
+  Pago.
+- *Continua proibido:* o `reason` em texto livre, a documentação (arquivos, endereços e descrições), qualquer dado do
+  pagador e a resposta crua.
+
+### Situações e transições
+
+Situação da contestação (`situacao`, local):
+
+| Situação | Quando |
+|---|---|
+| `aberta` | em disputa: leitura `in_process`, aviso ou registro da equipe |
+| `a_confirmar` | o Mercado Pago mostra a disputa encerrada (`settled`, `reimbursed`, `coverage_applied` preenchido, ou a transação de volta a aprovada): resultado a conferir pela equipe |
+| `ganha` | a SCL ganhou (confirmado pela equipe) |
+| `perdida` | a SCL perdeu (confirmado pela equipe) |
+| `sem_efeito` | registrada por engano, duplicata, ou reclamação resolvida sem dinheiro (pela equipe, com nota) |
+
+- A documentação é um eixo à parte: `documentacao`, `documentacao_prazo` e a marca "Documentos enviados no painel do
+  Mercado Pago" (com data, auditada).
+- **Transições** (`transicaoDaContestacao`, pura, testada numa matriz):
+  - pela leitura: `aberta` → `a_confirmar`; `a_confirmar` → `aberta` só com uma leitura mais nova (ordem acima) que
+    mostra `in_process` do mesmo caso, com evento e aviso uma vez;
+  - pela equipe: `aberta`/`a_confirmar` → `ganha`/`perdida`/`sem_efeito`.
+  - `ganha`, `perdida` e `sem_efeito` são finais. Uma leitura que contradiz uma linha final (um caso `ganha` lido
+    `in_process` ou com `coverage_applied = false`; um caso `perdida` lido com `coverage_applied = true`) liga
+    `contestacao_resultado_mudou` e não muda a linha nem a situação do pagamento.
+  - **"Conferir o aviso"** (`financeiro:editar`, nota obrigatória), numa linha final com `contestacao_resultado_mudou`:
+    - "A disputa continua encerrada no painel do Mercado Pago": o aviso sai;
+    - só numa `ganha` relida `in_process`: **"A disputa foi reaberta (reapresentação ou arbitragem)"**: nasce a rodada
+      seguinte (linha nova, mesma identificação, origem `equipe`, `aberta`, sem decisão), que segue o fluxo inteiro. A
+      rodada ganha fica como está, com os lançamentos dela.
+    - Numa `perdida` contradita, a correção é um ajuste (limites).
+- **C1, Registro de decisão (11/10/2026).**
+  - *Antes:* o M8.2a supunha a contestação resolvida pela leitura ("a releitura só aceita quando o Mercado Pago mostra o
+    pagamento aprovado de novo", seção "Devolução na parte (a)").
+  - *Agora:* o resultado só vale com a confirmação da equipe ("Confirmar o resultado"). O formulário **começa sem nada
+    marcado** e mostra os fatos em palavras: "O Mercado Pago mostra a disputa encerrada (código `reimbursed`). Pela página
+    atual do Mercado Pago, `reimbursed` é 'devolvido ao pagador' e a cobertura `false` é 'contra o vendedor'; o sentido
+    está a conferir (item 61). Confira no painel dele se o dinheiro voltou à SCL." Datas e valores vêm preenchidos; o
+    resultado, nunca. A sugestão pela leitura existe no código atrás de `SUGERIR_RESULTADO_PELA_LEITURA = false`.
+  - *Motivo:* as páginas oficiais já deram sentidos opostos a `reimbursed` ("devolvido ao pagador" na situação da order ×
+    "o dinheiro voltou à SCL" no comentário do M8.2b, tirado de página antiga), e `coverage_applied` já apareceu como
+    cobertura e como resultado. Um resultado errado moveria dinheiro do proprietário. As contestações são raras:
+    confirmar custa pouco.
+  - *Objetivo final:* depois de o item 61 do sandbox (ou o primeiro caso real) conferir os códigos, um item futuro liga a
+    sugestão e, depois, aplica o resultado pela leitura; a equipe só confirma o valor.
+- **A situação do pagamento** (`contestacaoDaLeitura(c, linhas)`, pura: uma função só, que devolve se a leitura está
+  explicada pelas linhas conhecidas e a situação que vale):
+  - usada por `aplicarLeitura` e por todos os testes que hoje olham a situação crua: `tentarDevolucao`
+    (`devolucao.ts`, o `cobranca.situacao === "contestado"`), `recusaPeloProvedor` (o por fora), `precisaFinanceiro`
+    (`conferencia.ts`), `estadoDaCancelada` (`consultas.ts`), `montarDecisao` (`cancelamento.ts`) e `conferirReserva`
+    (`alteracao.ts`);
+  - continua `contestado` (a leitura e `transicaoPermitida` não mudam) enquanto houver contestação não final;
+  - um pagamento `devolvido` contestado **não muda de situação** (`transicaoPermitida` não deixa); a linha nasce mesmo
+    assim, com o aviso `contestacao_com_devolucao`;
+  - com todas as linhas `ganha` ou `sem_efeito`, `confirmarResultado` (ou o "sem efeito") volta o pagamento a
+    `situacao_pagamento_antes` **só se ele ainda estiver `contestado`** (uma devolução aceita que se confirmou no meio
+    já o levou a `devolvido`), auditado (`pagamento.situacao`, motivo `contestacao_ganha`). É a segunda saída de
+    `contestado`, ao lado de contestado → devolvido com um pedido de devolução aceito;
+  - depois disso, uma leitura `contestado` em que cada contestação lida é de uma linha final conhecida, sem `in_process`,
+    é explicada e mantém a situação local. Uma leitura **sem id** em `settled`/`reimbursed` é explicada por qualquer
+    linha final do pagamento. Só `in_process` sem linha não final abre linha nova (casamento, item 4); `in_process` sem
+    id com só linhas finais liga `contestacao_resultado_mudou`, sem linha nova.
+- **Em curso** (`contestacaoEmCurso(t, pagamentoId)`, pura, sobre o retrato travado): alguma linha `aberta`,
+  `a_confirmar` ou `perdida`, de qualquer origem (leitura ou equipe), ou uma `ganha` com `contestacao_resultado_mudou`
+  vindo de `in_process` e ainda não conferido. Uma regra, um lugar: `montarDecisao` (cancelamento), `conferirReserva` e
+  `aplicarNaTransacao` (alteração), `tentarDevolucao`, `registrarRecebimento` e o "pedir de novo" leem daqui, além da
+  situação. Assim, um MED registrado à mão num Pix aprovado e um caso achado só pela Chargebacks API depois do dia 85
+  (a order já apagada, o pagamento ainda `aprovado`) recusam o cancelamento pela política e a alteração como um
+  pagamento `contestado`.
+- **Avisos.**
+  - O aviso `contestado` do pagamento passa a valer só com contestação em curso e é desligado quando ela termina. O texto
+    passa a ser por tipo: "Pagamento contestado no cartão", "Devolução pedida pelo Pix (MED)" ou "Reclamação no Mercado
+    Pago", mais ": acompanhe no quadro da disputa."
+  - Os avisos de cada contestação vivem em `contestacoes_pagamento.avisos`. O pagamento leva a união deles
+    (`avisosComContestacoes`, o gêmeo de `avisosComDevolucoes`), recalculada na mesma transação de toda gravação.
+
+### A reserva enquanto a disputa está aberta
+
+**Em conferência por disputa** (uma regra, um lugar: `contestacaoSemDecisaoSql()` em `portal/posse.ts` e o gêmeo TS
+`contestacaoSemDecisao` em `contestacao-regras.ts`). A reserva tem um pagamento com o dinheiro dela (desfecho `reserva`
+ou `alteracao`) com uma linha não duplicada que se encaixa num destes casos:
+- `aberta` ou `a_confirmar`, com `valor_em_risco > 0` e sem decisão de quem arca;
+- `perdida`, com perda a dividir maior que zero e sem a decisão.
+
+Efeitos:
+- **Parte do proprietário dessa reserva ainda não repassada:** fica "a liberar" (`classificarParte`, campo novo
+  `ParteBruta.contestacaoSemDecisao`), com o motivo "Reserva em conferência: disputa do pagamento; a parte espera a
+  decisão de quem arca."
+- **Parte já repassada:** nada é descontado de ninguém até a decisão.
+- **Parte num repasse ainda a pagar** quando a disputa abre: o repasse ganha o aviso "A reserva SCL-… tem uma disputa do
+  pagamento aberta desde dd/mm: estorne o repasse antes de pagar, se quiser segurar a parte dela." (painel e Início), e
+  o `BotaoConfirmar` de "Marcar como pago" repete a frase. Nada é bloqueado: é decisão da equipe.
+- **C2, Registro de decisão (11/10/2026).** A disputa **não entra em `lancamentoEmConferencia`**.
+  - *Motivo:* aquela regra bloqueia o fechamento inteiro do proprietário, e uma disputa dura até 6 meses.
+  - *Como funciona:* a parte presa fica fora do fechamento (`foraDoFechamento`, a mesma porta do M4.10 para o dinheiro
+    que ainda não está com a empresa) e vai para o repasse seguinte. As outras partes do proprietário seguem.
+  - *Onde aparece:* o portal (`portal/reservas.ts`), o rodapé, o resumo e o relatório mostram "em conferência" pela
+    regra nova, com o texto "disputa do pagamento". No fechamento e no e-mail do repasse, a parte presa por disputa tem
+    motivo próprio: "reserva em conferência: disputa do pagamento" (nunca "dinheiro ainda não recebido pela empresa",
+    que é falso aqui).
+  - *Continua:* o débito do proprietário depois da decisão é `previsto`, não `pendente` (C3, abaixo), e por isso também
+    não bloqueia nada.
+- **C5, Registro de decisão (11/10/2026), "em conferência até a decisão".**
+  - *O texto:* o ROADMAP (M8.2) diz "reserva em conferência até a decisão da disputa"; a decisão de 7/10 diz "registra a
+    disputa e avisa, sem descontar de ninguém, até a decisão registrada; com a decisão, … débito pendente durante a
+    disputa … o desconto fica segurado no repasse durante a disputa".
+  - *A leitura do desenho:* "a decisão" é a decisão de quem arca, registrada pela equipe. Com ela, a parte da reserva
+    volta às regras de sempre e só o valor de quem arca fica segurado até o resultado.
+  - *Motivo:* segurar a parte inteira por até 6 meses depois de a equipe já ter decidido quem arca contradiz "o desconto
+    fica segurado no repasse durante a disputa".
+  - *Em aberto:* Diego confirma (decisão 14).
+- **Calendário:** nada muda sozinho. A reserva continua confirmada, as noites continuam ocupadas e nada vai ao Beds24.
+- **Disputa com a estadia por vir** (o titular não reconheceu o pagamento antes da entrada; pode ser fraude): aviso de
+  atenção no Início, "Disputa do pagamento da reserva SCL-… com entrada em dd/mm: não libere a entrada antes de falar
+  com quem cuida do financeiro." e a ação "Cancelar a reserva contestada" (abaixo).
+- **Escalada no Início:** parte presa há mais de 15 dias (`DIAS_ESCALADA_CONTESTACAO`) sobe de tom: "R$ 4.846,02 da
+  parte do proprietário presos há 15 dias por uma disputa de R$ 200,00 (reserva SCL-…): registre quem arca."
+- **Cancelamento.**
+  - `montarDecisao` continua recusando com contestação em curso (pela regra acima). O texto `TEXTO_CONTESTADO` passa a
+    ser "Disputa do pagamento em curso: o cancelamento pela política espera o resultado (o dinheiro pode voltar ao
+    hóspede por ela). O pedido do hóspede pode ser registrado: vale pelo horário em que chegou. Antes da entrada, use
+    'Cancelar a reserva contestada'."
+  - O pedido registrado pela equipe continua aceito (`registrarPedidoDeCancelamento`).
+  - Depois de `ganha`, o pagamento volta à situação de antes e o cancelamento segue a política com o momento do pedido.
+    Com o pagamento acima de 78 dias, a devolução segue as regras de sempre do M8.2c (painel do Mercado Pago, registro de
+    recusa, por fora): o texto aponta esses caminhos, nunca "Pedir de novo".
+  - Depois de `perdida`, recusa nova `contestacao_perdida`: "O pagamento desta reserva foi perdido numa disputa: o valor
+    já voltou ao hóspede por ela. Não se cancela pela política; corrija com um ajuste."
+- **Cancelar a reserva contestada (sem devolução pelo sistema)** (★ decisão 6).
+  - Só antes do horário de entrada, com uma linha não final e valor em risco maior que zero num pagamento da reserva;
+    `reserva:editar` e `financeiro:editar`; `BotaoConfirmar` e nota obrigatória.
+  - Grava um cancelamento com o motivo `contestacao` (quem cancela: a SCL), sem decisão pela política: a reserva fica
+    `cancelada` com `valor_retido` = o pago dos pagamentos da reserva menos o devolvido realizado, e **nenhuma devolução
+    é criada** (o dinheiro volta ao titular pela disputa, se ele ganhar). O motor divide o retido como no M8.2c ("Dinheiro
+    retido (sem devolução)").
+  - Mesmas recusas do M8.2c que não dependem da política: parte num repasse ainda a pagar, devolução com chave em voo,
+    tentativa em andamento, nota com dado pessoal.
+  - Entra no Início a tarefa "reabra as datas nas OTAs" do M8.2c; a página do hóspede mostra `cancelada_em_conferencia`.
+  - A disputa segue igual: perdida, a decisão de quem arca vale sobre o valor perdido; ganha, o banco deu a cobrança por
+    válida e o retido continua dividido como numa reserva cancelada sem devolução.
+  - **Registro de decisão (11/10/2026).** *Antes* (M8.2c, "A regra", item 1): "A SCL cancela → integral, em qualquer
+    prazo… a SCL nunca fica com o dinheiro de uma reserva que ela cancelou". *Agora:* o cancelamento por disputa do
+    pagamento é outra rota, sem devolução pelo sistema. *Motivo:* a devolução pelo sistema pagaria o hóspede duas vezes
+    (a devolução e a disputa); o caminho do dinheiro é a disputa. *Alternativa* (decisão 6): cancelar com direito
+    integral e a devolução substituída pela disputa (abaixo), pedida só se a SCL ganhar.
+- **Alteração.**
+  - `conferirReserva` continua recusando com contestação em curso. `TEXTO_CONTESTADO_ALTERACAO` passa a ser "Disputa do
+    pagamento em curso: a alteração espera o resultado." Depois de `perdida`, recusa `contestacao_perdida`.
+  - Alteração segurada quando a disputa abre: `aplicarNaTransacao` confere os pagamentos de novo (pela regra em curso) e
+    recusa com `alteracao_nao_aplicada:contestado`. A diferença paga fica "aprovado sem reserva", para devolver (regra do
+    M8.2d).
+- **Minha reserva.** Hoje o botão "Pedir o cancelamento" some sem explicação (`todosAprovados` falso). Passa a mostrar a
+  frase editável `pagamentoEmConferencia` e "Para cancelar, fale com a equipe.", sem botão.
+- **Devoluções do mesmo pagamento.**
+  - **Pedida sem aceite, ou recusada, de origem `cancelamento`, `alteracao` ou `sem_reserva`:** quando a disputa abre,
+    para como hoje (`pararDevolucao`, recusada, `devolucao_parada`, motivo "o pagamento está em disputa") e fica
+    **substituída pela disputa** (`devolucoes_pagamento.contestacao_id`, evento `substituicao`, auditoria
+    `pagamento.devolucao_substituida`). O valor dela (`substituido`) sai do valor em risco: o acerto do cancelamento ou da
+    alteração já o tirou do resultado, e a disputa é o caminho por onde o dinheiro volta ao hóspede.
+    - Perdida: a devolução é **confirmada pela disputa** (`confirmada_por = 'contestacao'`) pelo menor entre o valor dela
+      e o valor perdido, sem saída de caixa própria (o caixa é o da disputa) e com o caminho de sempre da taxa que não
+      voltou (`taxa_perdida_desconhecida`; a taxa do reembolso fica com a SCL, como no M8.2c e no M8.2d). Menor que o
+      valor dela: o aviso `devolucao_a_menor` (D15) e "Devolver o restante ao hóspede".
+    - Ganha ou sem efeito: a substituição acaba (o vínculo fica no histórico) e a devolução volta a ser devida, recusada,
+      com o aviso "A SCL ganhou a disputa: a devolução de R$ X que a reserva deve ao hóspede continua devida" e os
+      caminhos de sempre (pedir de novo até 78 dias; depois, painel do Mercado Pago ou por fora).
+  - **Aceita ou com a chave em dúvida:** continua esperando a leitura (nunca para), sem substituição.
+  - **Realizada** (confirmada, por fora, ou o reconhecido devolvido fora) com uma disputa no mesmo pagamento: aviso
+    `contestacao_com_devolucao`, "O hóspede pode receber duas vezes: a devolução de R$ X (dd/mm) e a disputa de R$ Y. Envie
+    o comprovante da devolução ao Mercado Pago como defesa e confira quanto ele debitou." O valor em risco não desconta a
+    devolução realizada (o Mercado Pago retém o que está em disputa).
+  - Depois de `ganha`: "Pedir a devolução de novo" volta a valer (até 78 dias; depois, os caminhos acima).
+  - Depois de `perdida`: pedir de novo, pedir o restante (fora o da substituída, acima) e por fora são recusados
+    (`contestacao_perdida`).
+- **Liberação.**
+  - **Com contestação não final ou perdida, a liberação nunca é lançada sozinha.** A leitura que mostra `liberado = true`
+    liga `contestacao_liberacao_lida`: "O Mercado Pago mostra a liberação de um pagamento em disputa: registre a liberação
+    à mão com o líquido do pagamento que caiu na conta." Corrige a lacuna de hoje: o ramo que, num `contestado` com
+    desfecho `reserva`, gravava `liberacao_confirmada_em` sem recebimento.
+  - **A liberação à mão é aceita sob disputa** (`registrarLiberacaoManual` deixa de recusar `contestado` quando a
+    contestação explica a situação): lança o recebimento com o líquido informado, como sempre. O retido da disputa é
+    outra linha (abaixo). Assim o caixa registra a parte que entrou, inclusive numa disputa de parte do valor antes da
+    liberação, e o atraso do livro (prévias, parcelado, as 6 h da rotina) nunca deixa a entrada e a saída fora dele.
+  - A taxa lida durante a disputa não muda a reserva (o líquido informado pode vir reduzido pela disputa: item 73);
+    diferente da conhecida = o aviso `taxa_divergente` de sempre.
+  - `estornarLiberacaoManual` recusa enquanto houver retido realizado da disputa: "A disputa do pagamento já tem o débito
+    do Mercado Pago confirmado contra esta liberação: corrija com um ajuste."
+  - Depois de `ganha`, a leitura volta a lançar sozinha. `precisaFinanceiro` usa a situação explicada
+    (`contestacaoDaLeitura`), então a Payments API volta a ser lida mesmo com a order ainda em `charged_back/*`. Ganha sem
+    recebimento e sem sinal: aviso `contestacao_ganha_sem_recebimento` ("registre a liberação à mão quando o dinheiro
+    cair") e o formulário de "Ganhou" oferece registrar a liberação ali mesmo (data e líquido, as mesmas regras de
+    `registrarLiberacaoManual`, sob a mesma trava).
+  - `liberacaoVencida` e a releitura de 6 em 6 horas ignoram só os pagamentos com contestação `aberta` ou `a_confirmar`;
+    a ganha volta a ter o aviso de liberação vencida.
+
+### Quem arca: a decisão da equipe
+
+"Registrar quem arca" (`registrarDecisao`) fica no quadro da disputa, com a situação `aberta`, `a_confirmar` ou `perdida`
+sem decisão, e valor em risco (ou perda a dividir) maior que zero. Disputa que só substitui uma devolução já lançada
+(valor em risco 0) não pede decisão: o quadro diz "A disputa cobre a devolução que a reserva já devia ao hóspede: nada a
+dividir."
+
+- **Causa** (`CODIGOS_CAUSA_CONTESTACAO`, códigos fixos; nome e frase editáveis em Configurações → Pagamento no site,
+  auditados). Texto-base:
+  - `imovel`: "Problema do imóvel (estrutura, equipamento ou obra do proprietário)";
+  - `scl`: "Falha da SCL (atendimento, limpeza, entrada, manutenção combinada)";
+  - `cobranca`: "Falha na cobrança (valor errado, cobrança em dobro, devolução que não saiu)";
+  - `fraude`: "Pagamento não reconhecido (cartão de terceiro, golpe ou fraude)";
+  - `outro`: "Outro".
+- **Quem arca** (`QUEM_ARCA_CONTESTACAO`):
+  - `proprietario`: O proprietário;
+  - `scl`: A SCL;
+  - `proporcional`: Cada um na proporção da sua parte (sem como separar).
+- **Nota obrigatória** (até 300, `textoSemDadosPessoais`), nunca mostrada ao proprietário.
+- **Explicação ao proprietário** (opcional, até 300, `textoSemDadosPessoais`): mostrada no extrato, no PDF e no e-mail,
+  ao lado da causa. Depois da decisão, o quadro oferece um "Texto para o proprietário" pronto para copiar (causa, valores,
+  o que acontece em cada resultado), sem envio automático.
+- **O sistema nunca escolhe.** O formulário começa sem nada marcado. Cada causa mostra a frase da regra (editável):
+  - imóvel → "pela regra de 7/10, o proprietário";
+  - falha da SCL ou falha na cobrança → "pela regra de 7/10, a SCL";
+  - pagamento não reconhecido → pela verificação do banco já explicada em Configurações → Pagamento no site:
+    `tres_ds_status = AUTHENTICATED` → "o hóspede passou pela verificação do banco: a responsabilidade costuma passar à
+    bandeira; espere o resultado antes de decidir"; nos outros casos → "pela regra da verificação do banco (Configurações
+    → Pagamento no site), a SCL"; no Pix → "decida e registre o motivo";
+  - outro → nenhuma ("decida e registre o motivo").
+
+  Uma escolha diferente da frase é aceita (a equipe decide) e repetida na pergunta de confirmação. "O proprietário" numa
+  causa `fraude` pede confirmação reforçada: "A regra da verificação do banco, mostrada quando o cartão foi ligado, diz
+  que fica com a SCL. Confirma que o proprietário arca?"
+- **Fatos ao lado do formulário:**
+  - valor em disputa, valor em risco (com a conta), datas e prazo dos documentos;
+  - a estadia (já aconteceu ou por vir) e, nas datas dela, as limpezas e manutenções do imóvel (das telas de sempre);
+  - quanto o proprietário já recebeu da reserva;
+  - a verificação do banco do pagamento: `tres_ds_status` congelado na abertura e o modo `tres_ds`. `ATTEMPTED` mostra
+    "verificação tentada: se passa a responsabilidade é pergunta ao Mercado Pago" (item 65);
+  - a cobertura (`coverage_applied`, `coverage_eligible`), com "pela página atual do Mercado Pago, a cobertura aplicada
+    é o resultado; o sentido está a conferir";
+  - a documentação;
+  - se o proprietário já aceitou uma versão do "Como funciona" com a seção "Contestações de pagamento" preenchida; sem
+    isso, o aviso (sem bloquear): "O proprietário ainda não aceitou um 'Como funciona' que fale de disputas do
+    pagamento."
+
+  Nenhum desses fatos muda a decisão sozinho.
+- **Prévia:** para cada opção, o débito de cada lado (`dividirPerda`) e o que o proprietário e a SCL ficam da reserva
+  (com o resultado perdido e com o ganho).
+- **Confirmação:** `BotaoConfirmar`, com a pergunta montada pelo domínio (`perguntaDaDecisao`): causa, quem arca, os dois
+  valores, "o valor do proprietário fica segurado nos próximos repasses até o resultado" e, sem resultado ainda, "volta
+  no repasse seguinte se a SCL ganhar a disputa".
+- **Versão e assinatura** (como no M8.2c): o formulário leva `decisaoVersao` e a assinatura das entradas de
+  `dividirPerda` (valor em risco, D, C, quem arca). Sob a trava: versão diferente → "A decisão mudou desde que você abriu
+  a tela: confira de novo."; assinatura diferente → `contestacao_previa_mudou`. "Registrar" só com a versão 0; "Mudar"
+  só com a versão 1 ou mais.
+- **A proporção** (`dividirPerda(valor, D, C)`, pura):
+  - proprietário = arredondamento de `valor × D / (D + C)` (meio centavo para cima); SCL = `valor` − proprietário. A
+    soma é sempre exata.
+  - D e C são as **partes efetivas** da reserva: as somas em vigor de `direito_proprietario` e `comissao` de origem
+    `motor` e `cancelamento` (os espelhos), todos os meses, congeladas na decisão em `base_parte_proprietario` e
+    `base_comissao`.
+  - Com a base líquida de hoje (a taxa sai antes da divisão), D + C = valor − taxa: cada um arca com a taxa na sua
+    proporção, como na comissão. Com a base bruta, a taxa fica com a SCL. Uma regra só: `regras.base`.
+  - Se um recálculo depois mudar D ou C, o débito não muda (vale a data da decisão). O quadro **calcula na leitura** se
+    a base congelada difere da atual e diz "A divisão da reserva mudou depois da decisão: mude a decisão se quiser."
+    O motor e o recálculo nunca gravam em `contestacoes_pagamento` (ordem das travas, abaixo).
+  - `proprietario` = o valor inteiro com o proprietário; `scl` = o valor inteiro com a SCL.
+- **Recusas:**
+  - `proprietario` e `proporcional` numa reserva sem proprietário nas linhas do motor (`sem_calculo`); `scl` é sempre
+    aceito;
+  - `proporcional` com D + C = 0 (reserva cancelada com devolução integral: "não há partes para dividir: escolha a SCL
+    ou o proprietário");
+  - nota ou explicação com dado pessoal;
+  - contestação `ganha`, `perdida` com decisão, `sem_efeito`, ou possível duplicata ainda não confirmada;
+  - versão ou assinatura diferentes (acima);
+  - trava ocupada (`ocupado`).
+- **Pagamento sem reserva** (aprovado sem reserva, a devolver, que é disputado): não há proprietário, então não há o que
+  escolher. O formulário não aparece. O quadro diz "Pagamento sem reserva: não há proprietário; a perda, se houver, é da
+  SCL", e a confirmação do resultado faz o resto (abaixo).
+- **Mudar a decisão** ("Mudar quem arca", nota obrigatória "por que mudar"):
+  - só antes do resultado; sobe `decisao_versao`;
+  - lança só a diferença de cada lado, no mês corrente, numa transação, com a auditoria `contestacao.decisao`
+    [antes, depois] (códigos e valores, nunca a nota).
+  - Depois do resultado, a decisão não muda pelo sistema: "A disputa já terminou: corrija com um ajuste, que fica
+    registrado."
+  - `perdida` sem decisão aceita a primeira decisão, que nasce definitiva.
+- **O valor em risco mudou depois da decisão** (a leitura trouxe o valor do caso, uma devolução substituída, outra
+  disputa confirmada): aviso `contestacao_valor_mudou` ("O valor em disputa mudou de R$ A para R$ B: o valor segurado
+  continua R$ C") com a ação pronta "Atualizar o valor segurado" (`financeiro:editar`, mesma causa e quem arca, versão
+  n+1, a diferença de cada lado no mês corrente). O sistema nunca muda o segurado sozinho.
+
+### Dinheiro e livro
+
+**C3, Registro de decisão (11/10/2026), "débito pendente".**
+- O texto do ROADMAP fala em débito pendente. No livro ele é `previsto`, não `pendente`.
+- *Motivo:* `pendente`, no livro, é "acerto pendente" (sem proprietário, quem recebe a confirmar). Ele bloqueia o
+  fechamento (`lancamentoEmConferencia`) e aparece no Início com o texto "falta proprietário ou confirmar quem recebe do
+  canal".
+- O "pendente" da disputa é a linha `previsto` mais a situação da contestação (aberta = pode voltar).
+
+**Meses e datas.**
+- As linhas de resultado (proprietário e SCL) têm origem `contestacao_pagamento` e competência no **mês corrente em São
+  Paulo** (nunca o passado: mês fechado e relatório enviado não mudam).
+- As linhas de caixa (retido, volta, caixa final; valor 0, só `montante`) seguem o padrão da saída do caixa da devolução
+  do M8.2c e da liberação à mão: competência = data de caixa = o dia do fato (o débito, a volta), nunca no futuro. O
+  retido previsto, sem data de caixa, tem a competência do dia da abertura.
+- Nenhuma linha muda de estado num mês anterior: a perda definitiva da SCL nasce no mês corrente, ao lado do espelho da
+  prevista (abaixo), em vez de `mudarEstado`.
+- **Chaves:** todas começam com `mercadopago:<pagamento>:contestacao:<contestação>:` (e nunca contêm `recebimento`), e
+  por isso herdam os bloqueios que já existem para o dinheiro do site: `estornarRecebimento` e `Recebimentos.tsx` não
+  estornam, `temRecebimentoManual` ignora, `estornarDespesa` recusa (com o texto próprio `ERRO_DESPESA_DA_CONTESTACAO`:
+  "Esta despesa é da disputa do pagamento da reserva SCL-…: corrija pelo quadro da disputa."). Idempotência pela chave e
+  por `decisao_versao`.
+
+**Travas**, na ordem única: imóvel → reserva → cotação → tentativas → devoluções → cancelamento ativo → alterações →
+**contestações dos pagamentos da cotação (por id, `FOR NO KEY UPDATE`)** → motor da reserva (`travarMotorDaReserva`) →
+livro. `travarCotacao` passa a tomar as contestações depois das alterações (o retrato `Travado` ganha `contestacoes`).
+`aplicarLeitura` já roda sob essa trava. **Toda gravação** em `contestacoes_pagamento` e `eventos_contestacao` acontece
+só dentro de `travarCotacao`, recalculando na mesma transação a união dos avisos do pagamento; nada de UPDATE em massa
+como o `avisarForaDoPrazo` (os avisos de prazo são gravados linha a linha, sob a trava). O motor nunca mexe nessas linhas
+(a origem não é `motor`) e o recálculo nunca grava nelas.
+
+**Valor em risco** (`valorEmRisco`, pura, gravado em `valor_em_risco` a cada mudança). É o que o débito pendente usa na
+decisão:
+
+`valor em risco = máx(0, mín(contestado, pago − soma dos valores em risco das outras disputas não finais e não duplicadas
+do pagamento) − substituído)`
+
+- **contestado:** o valor lido (ou registrado pela equipe); ilegível = o pago, com o aviso.
+- **substituído:** a soma das devoluções do pagamento substituídas por esta disputa (acima): o que o cancelamento ou a
+  alteração já tirou do resultado e o hóspede ainda não recebeu.
+- **Devolução já realizada não desconta** (o Mercado Pago retém o que está em disputa): o aviso
+  `contestacao_com_devolucao` mostra os dois valores.
+- **Entrou ou não entrou** não muda o valor em risco: isso só se decide no resultado (`liquido_nao_entrou`, abaixo), pelo
+  sinal de liberação do provedor ou pela equipe.
+
+**O retido** (a disputa no caixa):
+- **Na abertura:** linha `devolucao`, `montante` = valor em risco, `valor` 0, **`previsto`**, sem data de caixa, "Valor
+  em disputa bloqueado pelo Mercado Pago (a confirmar)", chave `…:retido`. Atualizada (estorno e linha nova, `#N`)
+  quando o valor em risco muda antes de ser confirmado.
+- **"Confirmar o débito do Mercado Pago"** (`financeiro:editar`, data e valor, nota quando o valor difere): o retido vira
+  `realizado` com a data e o valor confirmados (valor diferente: a prevista é estornada e nasce a realizada, `#N`).
+- **MED (e reclamação) que a leitura mostra como devolução:** o retido nasce `realizado`, com o valor da disputa, no dia
+  em que a leitura viu a devolução (`devolvido_visto_em`): é fato lido.
+- Antes da decisão, o retido é o único lançamento da disputa; nada é lançado para ninguém.
+
+**Lançamentos por momento** (`lancarContestacao`, sob as travas):
+
+| Momento | Proprietário (parte negativa) | SCL (perda) | Caixa |
+|---|---|---|---|
+| Abertura | nada | nada | retido `previsto` (acima) |
+| Débito confirmado | nada | nada | retido `realizado` na data do débito |
+| Decisão (versão 1) | `direito_proprietario` com valor e efeito `−x`, `previsto`, "Disputa do pagamento da reserva SCL-…: R$ x segurado dos seus próximos repasses até o resultado", chave `…:proprietario:v1` | `despesa_empresa` com valor `−y` e `montante` `y`, `previsto`, sem data de caixa, categoria `categoriaDaContestacao`, `reservaId`, "…: perda prevista da SCL", chave `…:scl:v1` | nada |
+| Mudança ou valor atualizado (versão n) | a diferença `−(xₙ − xₙ₋₁)`, chave `…:proprietario:v<n>` | a diferença, chave `…:scl:v<n>` | nada |
+| Ganha | reversão `+Σx`, chave `…:proprietario:reverte` | espelho `+Σy` (`previsto`), chave `…:scl:reverte` | retido realizado → volta: `recebimento` com `montante` = o retido realizado, `realizado`, no "dia em que o dinheiro voltou" (padrão: a data do resultado), chave `…:volta`; retido previsto → estornado |
+| Perdida | o ajuste `xF − Σx`, chave `…:proprietario:final` (nada com 0) | espelho `+Σy` (`previsto`), chave `…:scl:espelho`, e a perda definitiva `−yF`, `realizado`, sem data de caixa, chave `…:scl:final` | retido previsto → estornado; caixa final = `valor perdido − líquido que não entrou − retido realizado`: saída (se > 0) ou entrada (se < 0) na data do débito, chave `…:caixa_final` |
+| Tarifa (ganha ou perdida, opcional) | nada | `despesa_empresa` `realizado` com data de caixa, chave `…:tarifa` | a própria despesa |
+
+- Nada é lançado com valor 0.
+- **Na perda** (`acertoDaPerda`, pura): a perda a dividir = `valor perdido − o que confirmou a devolução substituída`;
+  `xF` e `yF` = `dividirPerda(perda a dividir, D, C)` congelados (ou o valor inteiro de um lado), comparados sempre com o
+  **já lançado** (Σx, Σy), nunca com o valor em risco recalculado. Exemplo: exposição 100.000 (proprietário 85.000, SCL
+  15.000), depois uma devolução realizada de 20.000 e a equipe confirma 80.000 perdidos → proprietário `xF` = 68.000,
+  ajuste +17.000; SCL `yF` = 12.000.
+- **Líquido que não entrou** (`liquido_nao_entrou`): preenchido com o líquido do pagamento quando não há recebimento em
+  vigor (o Mercado Pago não liberou), e 0 quando há; a equipe corrige. Contestação integral antes da liberação, com
+  taxa de 3.980: valor perdido 100.000, não entrou 96.020, retido realizado 0 → saída de 3.980 (a taxa que o Mercado Pago
+  cobrou; se não cobrou, a equipe confirma 96.020 perdidos e não há saída).
+- **Tarifa** (`tarifa`, opcional no "Ganhou" e no "Perdeu"): uma tarifa do Mercado Pago pela disputa (item 64), sempre
+  despesa da SCL (decisão 13), na categoria da contestação.
+- `lancarAcertoDoProprietario` (`repasses/descontos.ts`) generaliza `lancarDescontoDoProprietario`: recebe a origem
+  (`cancelamento` ou `contestacao_pagamento`) e o valor com sinal (o débito é negativo; a reversão, positiva), com a
+  mesma regra da competência no mês corrente. `lancarDescontoDoProprietario` continua para o M8.2c, sem mudança de
+  comportamento.
+- A reversão e os ajustes são **espelhos no mês corrente**, nunca `estornar`: o estorno herda a competência do original e
+  mexeria num mês que pode estar fechado. O padrão é o dos espelhos do M8.2c. O retido previsto (sem caixa, sem
+  resultado) é a exceção: sai por estorno, porque nada se moveu.
+- **Despesas:** as linhas `despesa_empresa` com o prefixo da disputa saem de `totaisDespesas.aPagar` e não têm "Marcar
+  como paga" nem "Estornar"; `marcarDespesaPaga` e `estornarDespesa` recusam (`ERRO_DESPESA_DA_CONTESTACAO`). A lista
+  diz "Perda por disputa do pagamento (prevista até o resultado): acompanhe no quadro da disputa", e depois "definitiva
+  (disputa perdida em dd/mm)" ou "revertida (disputa ganha em dd/mm)". Sem isso, "marcar paga" tiraria do caixa uma
+  segunda vez o que o retido já tirou, e um estorno consumiria a chave e a perda nunca ficaria definitiva.
+
+**O valor segurado no repasse** (C4; uma regra, um lugar: `classificarParte`, com `ehLinhaDeContestacao` e o SQL gêmeo
+na lista de partes). Todas as linhas do proprietário de uma disputa seguem a parte dele na mesma reserva:
+- **alguma parte da reserva ainda não repassada está "a liberar"** (conferência, check-in por vir, dinheiro que não
+  entrou): as linhas ficam "a liberar" junto, com o motivo "segurado junto com a sua parte desta reserva, até o
+  resultado". Nada sai de outros repasses, e o proprietário nunca fica com a parte presa e o valor descontado ao mesmo
+  tempo;
+- **as partes da reserva já foram repassadas, ou estão disponíveis:** as linhas ficam disponíveis e o próximo repasse de
+  qualquer tipo as leva. Fica retido exatamente o valor do proprietário.
+- As partes que não cobrem: o antecipado espera e o fechamento mostra que o proprietário fica devendo. O texto de
+  `gerarAntecipado` passa a falar de "desconto" de cancelamento ou de disputa.
+- **Ganha:** a reversão `+Σx` segue a mesma regra. Se o débito já tinha saído num repasse, o valor volta no próximo. Se
+  não, as duas linhas entram juntas e somam zero.
+- **Perdida:** o rótulo passa de "segurado" a "definitivo". A linha não muda; o ajuste, se houver, entra no mês corrente.
+- **Repasse, e-mail e fechamento** reconhecem as linhas da disputa (ramo `contestacao`, um teste de cada):
+  - `descricaoDoItem`: "valor segurado pela disputa do pagamento (até o resultado)", "desconto definitivo da disputa do
+    pagamento" ou "valor segurado devolvido (a SCL ganhou a disputa)";
+  - `separarAntecipado`: uma linha própria, "Disputa do pagamento" (o débito e a reversão), fora de "Desconto de reserva
+    cancelada" e de "Noites de meses seguintes";
+  - `itensDoRepasse`: as linhas da disputa não são "outras partes" da reserva (`ne(origem)` também para
+    `contestacao_pagamento`), e a parte verdadeira não vira "parcial" por causa delas;
+  - o aviso de `foraDoFechamento` e o e-mail: o motivo "reserva em conferência: disputa do pagamento" (C2).
+- **Aviso do Início:** `avisosDeDescontos` continua só para o desconto de cancelamento. As linhas da disputa têm aviso
+  próprio em `avisosDeContestacao`, só para as classificadas "disponível" e ainda não descontadas há mais de 7 dias
+  ("as partes disponíveis não cobriram"); a que espera junto com a parte não é aviso.
+- Estornar um repasse que levou uma linha de disputa segue a regra do M8.2c para o desconto ("…estornar o repasse
+  deixaria o desconto sem o pagamento. Corrija com um ajuste."). O repasse que só leva a linha pode ser estornado.
+
+**O dinheiro com a empresa** (`recebidoPorReserva`, a regra única de `dinheiroComAEmpresa`):
+- Enquanto a disputa não é `perdida` com os lançamentos definitivos, as linhas de caixa dela (retido, volta, caixa final)
+  não contam. Quem segura a reserva nesse tempo é a regra da disputa acima: sem isso, a parte ficaria presa duas vezes.
+- **Perdida e com os lançamentos definitivos:** contam o retido realizado e o caixa final, e `perdaCoberta` = `valor
+  perdido`. A condição passa a ser `recebido + perdaCoberta ≥ devido`. A identidade fecha nos três caminhos: liberado
+  (95.020 − 100.000 + 100.000 = 95.020), não liberado (0 − 3.980 + 100.000 = 96.020) e disputa de parte do valor
+  (96.020 − 30.000 + 30.000).
+- As somas dos recebimentos de um pagamento (`recebimentosDoPagamento`, `liberacoesDoSiteComAlvo`) já procuram só
+  `mercadopago:<pagamento>:recebimento`: as chaves da disputa ficam de fora sem mudança.
+
+**Casos.**
+- **Disputa de parte do valor:** o valor em risco é o contestado. A parte não contestada entra no livro pela liberação à
+  mão (acima); o retido é só o valor em disputa.
+- **Depois de uma devolução de parte do valor (M8.2d):** o valor em risco não desconta a devolução realizada; aviso
+  `contestacao_com_devolucao`. A equipe confere quanto o Mercado Pago debitou e confirma o valor perdido.
+- **Pagamento já devolvido por inteiro e contestado:** a linha nasce (com a marca `contestacao_com_devolucao`, sem mudar
+  a situação do pagamento), o valor em risco é o contestado e, numa reserva cancelada com devolução integral, D + C = 0:
+  a escolha é `scl` ou `proprietario`. Se o Mercado Pago debitar, o retido e o caixa final registram a saída.
+- **Vários pagamentos na reserva** (reserva e diferença, M8.2d): uma disputa por pagamento, a proporção da reserva e o
+  valor em risco do pagamento disputado. O cancelamento e a alteração recusam com qualquer pagamento da reserva em curso.
+- **Juros do parcelamento:** se o valor contestado inclui os juros, a proposta mostra os dois números
+  (`contestacao_valor_acima`) e a equipe confirma o que saiu da conta.
+- **Taxa:** se a taxa do Mercado Pago volta numa disputa perdida, e se há tarifa por disputa, não se sabe (item 64). A
+  confirmação do valor perdido, do líquido que não entrou e da tarifa é o lugar de corrigir.
+- **Pagamento sem reserva:** na perda confirmada, desfecho `contestacao` ("o dinheiro voltou ao pagador pela disputa").
+  O valor perdido proposto é a taxa do pagamento: o dinheiro dele nunca entrou no livro, e o que a SCL perde é a taxa,
+  salvo se o Mercado Pago a devolver. Ela vira despesa da empresa, `realizado` com data de caixa, chave `…:taxa`. A
+  devolução `sem_reserva` substituída é confirmada pela disputa. As ações de devolução desse pagamento param.
+
+**Exemplos** (cartão, comissão de 15%, base líquida; com a taxa saindo antes da divisão, o proporcional dá 85% para o
+proprietário e 15% para a SCL).
+
+1. **Liberado na hora (4,98%), parte já repassada, proporcional, perdida.**
+   - Reserva de R$ 1.000,00 com taxa de R$ 49,80: base R$ 950,20, comissão R$ 142,53, parte R$ 807,67. Estadia em
+     10/11–14/11; parte repassada no fechamento de 02/12.
+   - 15/12, disputa de R$ 1.000,00: retido previsto de R$ 1.000,00 ("bloqueado, a confirmar"). Nada descontado.
+   - 16/12, a equipe confirma o débito do Mercado Pago (16/12, R$ 1.000,00): o retido vira realizado.
+   - 18/12, decisão proporcional: em dezembro, proprietário −R$ 850,00 (segurado; sai do próximo repasse) e SCL
+     −R$ 150,00 (perda prevista).
+   - 10/03, perdida, R$ 1.000,00: caixa final 0; as linhas do proprietário ficam definitivas; em março, o espelho
+     +R$ 150,00 e a perda definitiva −R$ 150,00 da SCL.
+   - Final: proprietário −R$ 42,33 (807,67 − 850,00) e SCL −R$ 7,47 (142,53 − 150,00). Somam −R$ 49,80, a taxa perdida.
+     O caixa confere: +950,20 − 1.000,00. Dezembro não muda.
+2. **O mesmo, ganha em 10/03.**
+   - Março: proprietário +R$ 850,00 (volta no próximo repasse), espelho +R$ 150,00 da SCL e volta de +R$ 1.000,00 no
+     caixa.
+   - Resultado igual ao de antes da disputa.
+3. **Liberação em 30 dias (3,98%), disputa do valor inteiro antes da liberação, problema do imóvel, perdida.**
+   - Taxa R$ 39,80, base R$ 960,20, comissão R$ 144,03, parte R$ 816,17.
+   - 25/11, disputa aberta: retido previsto de R$ 1.000,00. A parte espera (conferência e liberação).
+   - 26/11, o proprietário arca: novembro, −R$ 1.000,00, segurado junto com a parte (os dois esperam).
+   - O Mercado Pago nunca libera. 15/02, perdida, R$ 1.000,00; não entrou R$ 960,20 (preenchido, sem recebimento): o
+     retido previsto é estornado e o caixa final é a saída de R$ 39,80 (a taxa cobrada). A parte e o débito ficam
+     disponíveis juntos e o próximo repasse leva −R$ 183,83 (816,17 − 1.000,00): a comissão e a taxa, que o
+     proprietário cobre pela decisão 1.
+   - Caixa −R$ 39,80; SCL +R$ 144,03; proprietário −R$ 183,83.
+4. **Liberado, a SCL arca (cobrança em dobro), perdida.**
+   - O proprietário mantém a parte de R$ 807,67.
+   - A SCL lança −R$ 1.000,00 e fica com 142,53 − 1.000,00 = **−R$ 857,47**.
+   - Caixa: −R$ 49,80 no total (+950,20 − 1.000,00).
+5. **Disputa de R$ 300,00 antes da liberação (30 dias), falha na cobrança, perdida.**
+   - Retido previsto de R$ 300,00. No dia 30, o Mercado Pago mostra a liberação: aviso; a equipe registra a liberação à
+     mão (R$ 960,20) e confirma o débito de R$ 300,00. Caixa +960,20 − 300,00.
+   - A SCL arca: −R$ 300,00. Perdida: caixa final 0; `recebido` 660,20 + 300,00 = 960,20, a parte de R$ 816,17 fica
+     disponível depois do check-in. SCL 144,03 − 300,00 = −R$ 155,97. Se o Mercado Pago informar o líquido já sem os
+     R$ 300,00, a equipe registra o que caiu e o débito em separado (item 73).
+6. **Cancelamento integral com a devolução ainda não saída, depois a disputa, perdida.**
+   - Reserva do exemplo 1, parte repassada. 05/12, cancelamento pela política, integral: o proprietário ganha o desconto
+     de −R$ 807,67 e a comissão sai; a devolução de R$ 1.000,00 é pedida.
+   - 08/12, antes de o pedido sair, a disputa abre: a devolução para e fica substituída pela disputa; valor em risco 0,
+     sem decisão ("nada a dividir").
+   - 10/03, perdida, R$ 1.000,00: a devolução é confirmada pela disputa (sem saída própria), o retido confirmado é a
+     saída e a taxa que não voltou (R$ 49,80) é informada e lançada como despesa da SCL.
+   - Final: proprietário −R$ 807,67 só pelo cancelamento (nada a mais), SCL −R$ 49,80, caixa −R$ 49,80. Se a SCL ganhar,
+     a devolução volta a ser devida e segue os caminhos de sempre.
+
+### Confirmar o resultado
+
+"Confirmar o resultado" (`confirmarResultado`, `financeiro:editar`), com a situação `aberta` ou `a_confirmar`:
+- **Campos:**
+  - Ganhou ou Perdeu, **sem nada marcado** (C1), com os fatos do Mercado Pago em palavras ao lado;
+  - data do resultado (entre a abertura e hoje);
+  - no "Ganhou": o dia em que o dinheiro voltou (com o retido realizado), a tarifa (opcional) e, sem recebimento do
+    pagamento, a liberação (data e líquido, opcional);
+  - no "Perdeu": "Valor que a SCL perdeu" (preenchido com o valor em disputa, com a conta), "Quanto deste pagamento nunca
+    entrou na conta" (preenchido, acima), "Dia em que o Mercado Pago debitou" (preenchido com o do retido) e a tarifa
+    (opcional);
+  - nota, obrigatória quando o resultado ou o valor diferem do que o Mercado Pago mostra, quando ele não mostra nada ("o
+    Mercado Pago não informa o resultado: confirme pelo painel dele"), ou quando a leitura não deu.
+- **Fase 0:** releitura (order, Chargebacks API e, depois dos 85 dias, Payments API), melhor esforço. Falhou ou trava do
+  provedor fechada: segue só com a nota "não deu para conferir no Mercado Pago agora". Uma leitura bem-sucedida que
+  mostra `in_process` **do mesmo caso** não recusa: pede a nota reforçada ("o painel do Mercado Pago já mostra o
+  resultado") e a pergunta avisa; uma leitura depois que contradiga liga `contestacao_resultado_mudou`.
+- **Fase 1, numa transação:** a situação, o pagamento (de volta à situação de antes na ganha, se ainda `contestado`), as
+  linhas da tabela acima, a devolução substituída, o evento e a auditoria `contestacao.resultado`.
+- **Assinatura**, como no M8.2c: o formulário leva `decisaoVersao` e a assinatura dos fatos (situação, estado combinado,
+  valor em disputa, valor em risco, Σx, Σy, o retido e a versão). Mudou: `contestacao_previa_mudou`. Nunca entram na
+  assinatura `consultada_em`, eventos, avisos ou lançamentos de outras origens da reserva (a própria fase 0 e a rodada
+  do motor não invalidam a confirmação).
+- **Perdida sem decisão:** a situação vira `perdida`, o caixa é acertado (retido, caixa final, tarifa, a devolução
+  substituída) e, com perda a dividir maior que zero, a reserva continua em conferência, com o aviso de atenção
+  "Disputa perdida sem decisão de quem arca"; a decisão depois nasce definitiva.
+- **"Encerrar sem efeito"** (nota obrigatória; numa leitura `in_process` do mesmo caso, a nota reforçada):
+  - só sem lançamentos definitivos;
+  - espelha no mês corrente os lançamentos previstos do proprietário e da SCL, chave `…:sem_efeito:<lançamento
+    original>` (repetir depois de uma falha não duplica);
+  - o retido previsto é estornado; o retido realizado pede "o dia em que o dinheiro voltou" e lança a volta;
+  - a devolução substituída volta a ser devida;
+  - devolve o pagamento à situação de antes quando é a última disputa dele (e ele ainda está `contestado`).
+
+### O que o hóspede vê
+
+Nunca a palavra "contestação", nunca uma acusação, nunca "Beds24", nunca dado pessoal. Nenhuma mensagem automática nova e
+nenhum modelo novo em Modelos de mensagem. A equipe fala com o hóspede caso a caso: uma mensagem automática sobre uma
+disputa pode soar como pressão, e quem lê a página de uma reserva paga com cartão de terceiro pode nem ser o titular.
+
+- **`/reservar/<código>`**, reserva confirmada com disputa em curso:
+  - continua "Reserva confirmada";
+  - **com o cookie do checkout** (`autorizadoNaCotacao`), ganha a linha editável `pagamentoEmConferencia` (Textos do
+    site, texto-base "O pagamento desta reserva está em conferência com o Mercado Pago. Se tiver qualquer dúvida sobre a
+    cobrança, fale com a nossa equipe.", até 240 caracteres; vazia = a linha não aparece). Sem o cookie (quem só tem o
+    código, que circula no WhatsApp), nada muda: só "Reserva confirmada";
+  - a linha some com o resultado.
+- **Reserva cancelada** com pagamento em disputa (inclusive pela ação "Cancelar a reserva contestada"): o
+  `cancelada_em_conferencia` de sempre (`cancelamentoEmConferencia`).
+- **Minha reserva:** a mesma frase e "Para cancelar, fale com a equipe." no lugar do botão (acima).
+- O botão de contato leva a mensagem de sempre da reserva.
+
+### O que o proprietário vê
+
+No portal, no extrato, no PDF e no e-mail do repasse. Nada do hóspede, nem a nota interna, nem o número do caso. Um
+proprietário nunca vê a disputa de um imóvel que não é dele (`reservaDosDonos` e o `proprietario_id` das linhas da
+reserva). **Nas linhas da disputa, só o código da reserva**, sem o nome do hóspede (as linhas de sempre da reserva não
+mudam).
+
+- **Reserva:** "Em conferência (disputa do pagamento)" enquanto não há decisão. O resumo do portal conta essa parte como
+  "a liberar".
+- **Extrato**, rótulo "Disputa do pagamento":
+  - segurado (proporcional): "Disputa do pagamento da reserva SCL-…: R$ 850,00 segurados dos seus próximos repasses até o
+    resultado — 85% do valor em disputa (R$ 1.000,00), a proporção da sua parte. Se a SCL ganhar a disputa, o valor volta
+    no repasse seguinte. Causa registrada: [nome da causa]." e a explicação ao proprietário, quando há;
+  - segurado (o proprietário arca com tudo): "…: R$ 1.000,00 segurados dos seus próximos repasses até o resultado — o
+    valor em disputa inteiro, que inclui a comissão e a taxa do pagamento…";
+  - definitivo: "…: desconto definitivo (a SCL perdeu a disputa em dd/mm).";
+  - devolvido: "…: valor segurado devolvido (a SCL ganhou a disputa em dd/mm).";
+  - junto com a parte presa: "segurado junto com a sua parte desta reserva".
+- **Fechamento e e-mail do repasse:** a parte presa por disputa com o motivo "reserva em conferência: disputa do
+  pagamento"; as linhas da disputa na linha própria "Disputa do pagamento" (acima).
+- **Relatório mensal:** a linha da disputa é tratada como o espelho do cancelamento: sem componentes (bruto, taxa,
+  comissão), sem noites, sem canal e sem data de pagamento, fora das métricas (receita, ocupação, receita por noite
+  disponível), na variante `contestacao` (`"segurado" | "definitivo" | "devolvido"`) de `partesDoRelatorio`, com uma linha
+  própria na conciliação (`relatorios/dinheiro.ts`: "Disputa do pagamento da reserva SCL-… (segurado | definitivo |
+  devolvido)") e no resumo do portal (`portal/resumo.ts`). O mês já enviado não muda.
+- **"Como funciona", versão 2** (Diego publica; seção "Contestações de pagamento", hoje vazia). Texto-base proposto para
+  o GUIA, item 42:
+  > Quando um hóspede contesta no banco uma cobrança de reserva paga pelo site, o Mercado Pago segura o valor até a
+  > decisão do banco, o que pode levar alguns meses. Enquanto isso, a reserva fica em conferência: se a sua parte dela
+  > ainda não foi repassada, ela espera; se já foi, nada é descontado até a equipe registrar quem arca. Arca quem deu
+  > causa ao motivo da disputa: um problema do imóvel fica com você; uma falha da SCL ou na cobrança fica com a SCL; sem
+  > como separar, cada um arca na proporção da sua parte. Com a decisão, o seu valor fica segurado nos próximos repasses
+  > (de qualquer reserva sua) até o resultado: se a SCL ganhar, ele volta no repasse seguinte; se perder, o desconto fica
+  > definitivo. Exemplo: numa reserva de R$ 1.000,00 em que a sua parte é R$ 807,67 e a da SCL R$ 142,53, uma disputa
+  > perdida dividida na proporção desconta R$ 850,00 de você e R$ 150,00 da SCL; se o problema foi do imóvel, R$ 1.000,00
+  > de você. Cada passo aparece no seu extrato.
+- **Termos de uso, versão 2** (opcional; Diego decide): "Se não reconhecer uma cobrança ou tiver um problema com a
+  reserva, fale com a gente antes de pedir ao seu banco para desfazer a cobrança: resolvemos mais rápido. Um pedido ao
+  banco deixa o pagamento em conferência com o Mercado Pago até a decisão dele." A Política de privacidade já cobre
+  "defender direitos em … contestações de pagamento": nada muda.
+- Textos que ficam velhos e o PR atualiza:
+  - a dica de `configuracoes/como-funciona.ts` e `FormComoFunciona.tsx` ("decisão ainda pendente");
+  - `COMO-FUNCIONA-PROPRIETARIO.md` e `RECEBIMENTO-SITE.md` (pergunta 4);
+  - o GUIA (seção 2, linha do M8; item 31);
+  - o comentário de `CONTESTACAO_ABERTA` em `mercadopago.ts`.
+
+### Painel
+
+- **Quadro "Pagamento no site"** da ficha, um bloco **Disputa** por linha:
+  - cabeçalho por tipo: "Contestação no cartão | Devolução pedida pelo Pix (MED) | Reclamação no Mercado Pago — aberta em
+    dd/mm" (com "rodada 2" quando houver);
+  - situação em palavras: aberta; "encerrada no Mercado Pago, resultado a conferir"; ganha; perdida; encerrada sem efeito;
+  - o valor em disputa, o valor em risco (com a conta) e o número do caso (com botão de copiar, como os ids da linha "No
+    Mercado Pago");
+  - o que o Mercado Pago mostra: estado (com o código), documentação e prazo, cobertura e os códigos do motivo, com "o
+    sentido está a conferir" onde vale;
+  - a verificação do banco do pagamento;
+  - a linha do tempo (`eventos_contestacao`, a mais nova em cima);
+  - a decisão (causa, quem arca, versão, quem e quando; a nota e a explicação ao proprietário só para a equipe com o
+    financeiro), e "a divisão da reserva mudou depois da decisão" quando vale;
+  - os lançamentos de cada lado (segurado, definitivo ou revertido), o caixa (retido previsto ou realizado, volta, caixa
+    final) e a devolução substituída, quando há;
+  - os avisos.
+- **Ações**, cada uma só quando o domínio permite e com `BotaoConfirmar`; o resultado volta por uma chave fixa
+  (`?contestacao=`):
+  - "Confirmar o débito do Mercado Pago" (data e valor);
+  - "Registrar quem arca", "Mudar quem arca" e "Atualizar o valor segurado";
+  - "Confirmar que é outra disputa" (na possível duplicata);
+  - "Documentos enviados no painel do Mercado Pago" (com a data);
+  - "Confirmar o resultado";
+  - "Encerrar sem efeito";
+  - "Conferir o aviso" (na linha final com `contestacao_resultado_mudou`; com "A disputa foi reaberta" só na ganha);
+  - "Cancelar a reserva contestada" (antes da entrada);
+  - "Conferir agora", o de sempre, que também relê as disputas daquele pagamento.
+- **Prazo dos documentos:** "Envie os documentos pelo painel do Mercado Pago até dd/mm (faltam N dias); depois marque
+  'Documentos enviados'." com o link para "Documentos para a defesa". Prazo desconhecido (null na leitura, ou registro sem
+  prazo): aviso de atenção `contestacao_prazo_desconhecido`, "prazo dos documentos desconhecido: confira no painel do
+  Mercado Pago e informe aqui", com o campo para informar (auditado). O envio pela API é uma vez por caso e o sistema não
+  guarda arquivos (limites).
+- **"Documentos para a defesa"**: uma página para imprimir (`reserva:editar` ou `financeiro:editar`), montada na hora, sem
+  guardar nada: resumo da reserva (código, imóvel, datas, pessoas), o pagamento (ids, data, forma, verificação do banco),
+  a política aceita (versão, horário e texto, de `PaginasLegaisAceitas`), a lista da portaria (M6.4, quando o imóvel
+  exige) e o que o sistema não tem e a equipe junta por fora (a conversa com o hóspede, o registro de entrada e saída do
+  prédio, fotos).
+- **E-mail à equipe** (`avisarEquipePorEmail`, o mesmo do pedido de cancelamento; só o código da reserva e o imóvel): na
+  abertura (leitura ou registro), ao entrar nos dias de aviso do prazo e no dia do prazo sem a marca. Uma vez cada
+  (evento `email_equipe`).
+- **Fora do quadro:** "Registrar disputa vista no painel do Mercado Pago" fica no quadro do pagamento.
+- **Sem `financeiro:ler`:** "O pagamento desta reserva está em disputa ([tipo]): quem cuida do financeiro acompanha.", com
+  a situação e o prazo, sem valores, e as ações de documentos.
+- **Financeiro → Pagamentos do site:** filtro "Com disputa" (aberta, a confirmar, perdida sem decisão) e a coluna
+  "Disputa". `desfechoEmPalavras` ganha "Reserva (pagamento em disputa)". Os textos "Contestado (tinha confirmado a
+  reserva)" e "A contestação se resolve pelo painel do Mercado Pago" (`PagamentoNoSite.tsx`, página da lista) passam a
+  apontar para o bloco.
+- **Configurações → Pagamento no site:**
+  - "Categoria da perda por disputa do pagamento", criada no primeiro uso e editável, como a da taxa perdida;
+  - "Dias de aviso antes do prazo dos documentos" (padrão 5, de 1 a 15);
+  - os nomes e as frases das causas (códigos fixos);
+  - tudo auditado.
+- **Início** (`avisosDeContestacao`, financeiro, empresa toda; "pede atenção" inclui os de atenção):
+  - "N disputa(s) do pagamento sem decisão de quem arca: a parte do proprietário dessas reservas espera." (atenção), e a
+    escalada depois de 15 dias (acima);
+  - "Disputa da reserva SCL-…: documentos até dd/mm (faltam N dias)." (atenção dentro dos dias do aviso; antes,
+    informativo); passado o prazo sem a marca: "o prazo dos documentos passou" (atenção); prazo desconhecido (atenção);
+  - "N disputa(s) encerrada(s) no Mercado Pago com resultado a conferir." (atenção);
+  - "Disputa perdida sem decisão de quem arca" (atenção);
+  - a estadia por vir (acima, atenção);
+  - o repasse a pagar com parte de reserva em disputa (acima, atenção);
+  - possível duplicata, disputa ambígua, caso de outro pagamento, resultado que mudou e leituras em conflito (atenção);
+  - ganha sem recebimento; dia 85 sem fonte; aberta há mais de 240 dias (atenção);
+  - débito da disputa disponível e não descontado há mais de 7 dias (atenção).
+  - O aviso de `situacaoInesperada` continua para o dinheiro sem reserva, com "(acompanhe a disputa pelo quadro do
+    pagamento)".
+  - O contador de lançamentos `pendente` do Início não conta nada da disputa (C3).
+
+### Auditoria
+
+- Ações:
+  - `contestacao.registrar` (equipe), `contestacao.outra_disputa`;
+  - `contestacao.debito` (valor e data confirmados);
+  - `contestacao.decisao` (causa, quem arca, versão e os dois valores [antes, depois]; também a atualização do valor
+    segurado);
+  - `contestacao.documentos` e `contestacao.prazo`;
+  - `contestacao.resultado` (resultado, valor perdido, não entrou, data do débito, tarifa);
+  - `contestacao.sem_efeito`, `contestacao.conferir_aviso` e `contestacao.reabrir`;
+  - `contestacao.cancelar_reserva` (com as do cancelamento);
+  - `pagamento.devolucao_substituida` e `pagamento.devolucao_confirmada` (pela disputa);
+  - `pagamento.situacao` (contestado → situação de antes, motivo `contestacao_ganha`);
+  - as do livro (`lancamento.*`).
+- A auditoria nunca copia notas nem a explicação ao proprietário.
+- O que o sistema lê vai para `eventos_contestacao` com `usuario_id` null.
+
+### Dados pessoais
+
+**Contestação (M8.2e).**
+- **Pode ser guardado:**
+  - os ids do caso, da contestação (`CBK…`) e da transação;
+  - códigos de listas fechadas, `reason_id` e o código do motivo, valores, datas e booleanos de cobertura;
+  - o retrato de `tres_ds_status`;
+  - ids de usuário e notas validadas (até 300 caracteres: registro, decisão, mudança, resultado, sem efeito, conferir o
+    aviso, débito) e a explicação ao proprietário, também validada.
+- **Nunca:**
+  - nome, e-mail, telefone, CPF, chave Pix ou dados bancários e de cartão do hóspede ou do titular;
+  - o `reason` em texto livre, a documentação (arquivos, endereços, descrições, uuids) e a resposta crua.
+- Toda nota passa por `textoSemDadosPessoais`. A página "Documentos para a defesa" é montada na hora e nunca gravada.
+- `semDadosPessoais` percorre também `contestacoes_pagamento` e `eventos_contestacao`, depois dos fluxos aberta → ganha,
+  aberta → perdida, sem identificação → com caso, registro da equipe, MED, duplicata e reabertura. O teste do adaptador
+  HTTP usa o JSON oficial com `reason` em frase, `documentation[].description` com e-mail e `references` com dado
+  pessoal, e confere que nada sai normalizado.
+
+### Testes a escrever (Vitest, PGlite, versão falsa; sem rede)
+
+1. **Adaptador:**
+   - `cobrancaDaOrder` lê `transactions.chargebacks[]` por lista branca: `CBK…`, `case_id` como texto e como número
+     (inteiro seguro; 18 algarismos como número = null), status, `amount` como número e como texto; ignora
+     `references`, `reason` e `documentation`; status estranho = desconhecido;
+   - `consultarContestacao`/`buscarContestacoes`: `coverage_elegible`, prazo null, `id` texto, `payments` números, 404 →
+     null, 403 → sem acesso, 401 → credencial, busca 404 lança, falha lança; `X-Caller-Id` conferido num `fetchImpl`
+     espião; o id vem de `/users/me`;
+   - `reason` com espaço nunca passa; `reason_id` só algarismos;
+   - `situacaoDoPagamento` por lista branca;
+   - o JSON oficial cheio de dados pessoais no cliente HTTP (acima);
+   - a versão falsa ganha `MetodoProvedor` com os métodos novos, `respostaChargebacks: "403" | "404" | "falha"` por
+     método, e os cenários: `contestar(id, como, { valor, idCaso, idCbk, documentacao, prazo, cobertura })`,
+     `resolverContestacao(id, { estado, cobertura })`, `contestarTarde(idPagamento, …)` (só pela Chargebacks API, com a
+     order apagada), `documentacaoDoCaso`, `casoDeOutroPagamento`, transação contestada sem lista que depois traz a
+     lista, `reimbursed` com cobertura `false`, cobertura null → true/false, id como número e como texto.
+2. **Casamento** (matriz de `casarContestacao`): N leituras = 1 linha e o evento só quando muda; sem id completada pelo
+   caso; order antes da API e API antes da order; leitura final nunca cria linha; sem id com linha final = explicada;
+   `in_process` sem id com só linhas finais = aviso; duas não finais + leitura sem id = ambígua; segunda disputa =
+   possível duplicata com valor em risco 0; Σ ≤ pago; caso de outro pagamento recusado; o retrato do `tres_ds_status`.
+3. **Ordem das leituras:** leitura iniciada antes da última aplicada descartada; `date_last_updated` mais velho
+   descartado; fontes divergentes = aviso uma vez, sem oscilar; a confirmação da equipe nunca é desfeita por leitura velha.
+4. **Situação do pagamento:** `contestado` durante a disputa; ganha → volta à de antes só se ainda `contestado`;
+   devolução aceita confirmada no meio → fica `devolvido`; leitura `reimbursed` depois não a muda; caso novo
+   `in_process` abre linha; o aviso `contestado` desligado; pagamento `devolvido` contestado não muda de situação.
+5. **Em curso:** MED à mão num Pix aprovado e caso tardio só da API recusam o cancelamento, a alteração (também na
+   aplicação segurada), o pedir de novo e o recebimento à mão; todos os testes crus usam `contestacaoDaLeitura`.
+6. **Transições** (matriz de `transicaoDaContestacao`): finais não mudam; `contestacao_resultado_mudou`; "Conferir o
+   aviso" limpa ou reabre (rodada 2 com o fluxo inteiro); sem efeito e resultado contra `in_process` só com a nota
+   reforçada.
+7. **Liberação sob disputa:** a lida não lança e liga o aviso (a lacuna de hoje corrigida); a à mão lança com o retido
+   separado; o estorno da liberação recusado com retido realizado; ganha → lança na leitura seguinte, com a order ainda
+   `charged_back/*`; ganha sem recebimento = aviso e liberação no próprio formulário; a liberação vencida volta na ganha.
+8. **Conferência:** a parte não repassada fica a liberar até a decisão; a repassada não é descontada; valor em risco 0
+   não segura; o fechamento não trava (as outras partes passam e a presa vai ao seguinte, com o motivo próprio); portal,
+   rodapé, resumo e relatório mostram "em conferência (disputa do pagamento)"; o aviso do repasse a pagar.
+9. **Decisão:**
+   - permissões: só `financeiro:editar`; o proprietário (com `financeiro:ler`) na leitura da equipe = negado; dono de
+     outro imóvel = não encontrada; id de outra organização = não encontrada; nota com dado pessoal recusada;
+   - sem decisão, nada lançado para ninguém (só o retido);
+   - `dividirPerda` (matriz: proprietário, SCL, proporcional com o arredondamento, a soma exata, base líquida e bruta,
+     partes efetivas com espelhos);
+   - D + C = 0 recusa o proporcional; `scl` sem proprietário aceito; pagamento sem reserva não tem formulário;
+   - a frase da causa `fraude` pela verificação do banco e a confirmação reforçada;
+   - a base mudou calculada na leitura (o motor não grava nada); recálculo simultâneo com uma decisão sem impasse;
+   - versão e assinatura (duas abas; recálculo entre a prévia e o clique).
+10. **Linhas pendentes:** chaves com o prefixo `mercadopago:…:contestacao:`; `previsto`; competência no mês corrente
+    (virada de mês e de ano em São Paulo); repetir = as mesmas linhas; duas decisões simultâneas = uma versão.
+11. **Segurado no repasse:** com a parte a liberar, as linhas esperam junto; com a parte repassada ou disponível, saem do
+    próximo antecipado e do próximo fechamento; partes que não cobrem; o aviso de 7 dias só das disponíveis; estorno de
+    repasse recusado; `descricaoDoItem`, `separarAntecipado`, `itensDoRepasse` e o e-mail com o ramo `contestacao`.
+12. **Mudar e atualizar a decisão:** a diferença por lado no mês corrente; a auditoria [antes, depois]; recusa depois do
+    resultado; `contestacao_valor_mudou` e "Atualizar o valor segurado".
+13. **Retido:** nasce previsto; débito confirmado = realizado (valor diferente = estorno e linha nova); MED realizado na
+    data da leitura; fora do dinheiro com a empresa enquanto não é perdida.
+14. **Ganha:** reversão no mês corrente (o mês da decisão, fechado, não muda); volta = retido realizado; retido previsto
+    estornado; o valor devolvido no próximo repasse; débito nunca descontado + reversão = soma zero; tarifa como despesa.
+15. **Perdida:** os seis exemplos acima com a identidade do caixa; ajuste comparado com o já lançado (exposição 100.000,
+    perdidos 80.000); líquido que não entrou; perdida sem decisão continua em conferência e a decisão depois nasce
+    definitiva; SCL com espelho e perda definitiva no mês corrente, sem `mudarEstado`.
+16. **Substituição:** cancelamento integral + disputa perdida = proprietário com −80.767 no total; redução com a
+    devolução da diferença parada não cobra a diferença de novo; ganha → a devolução volta a ser devida; perdida menor
+    que a devolução = `devolucao_a_menor`.
+17. **Despesas e recebimentos:** fora do "a pagar"; "marcar paga" e "estornar" recusados; `estornarRecebimento` da volta
+    recusado; `Recebimentos.tsx` sem o botão.
+18. **Cancelar a reserva contestada:** só antes da entrada; valor retido; sem devolução; tarefa das OTAs; a página do
+    hóspede; perdida = decisão sobre o valor perdido; ganha = retido dividido.
+19. **Devoluções:** a não aceita para e é substituída; a aceita segue; devolução realizada + disputa =
+    `contestacao_com_devolucao` e valor em risco cheio; pedir de novo recusado depois de perdida e aceito depois de ganha
+    (até 78 dias; depois, os caminhos do painel).
+20. **Rotina:** releitura diária pela Chargebacks API depois dos 85 dias; Payments API depois dos 85; a fila anda na
+    falha (espera crescente); busca tardia semanal de todo desfecho, na janela nova, reservada pela coluna; 403 →
+    `contestacao_sem_leitura` uma vez; dia 85 sem fonte; 240 dias; o limite por volta e o orçamento de tempo; roda depois
+    dos holds; "Conferir agora" de um pagamento só lê aquele.
+21. **Aviso assinado:** `ORD…` com `order.charged_back` cria a disputa pela releitura; número = `ignorado`; corpo e
+    `type` nunca decidem.
+22. **Registro pela equipe:** a releitura antes; não duplica a lida (o casamento sob a trava; 23505 = "já registrada");
+    sem provedor segue com a nota; MED só no Pix, sem gravar o reconhecido, com o retido realizado e o D21 explicado.
+23. **Pix:** `id_pagamento_provedor` gravado; `contestado` num Pix = `contestacao_pix`.
+24. **Pagamento sem reserva:** perdida = desfecho `contestacao` e a taxa como despesa; a devolução substituída confirmada;
+    as ações de devolução param.
+25. **Início:** cada contagem e texto; a escalada; "pede atenção"; o contador de `pendente` intacto; o e-mail à equipe uma
+    vez por momento.
+26. **Hóspede:** a linha editável só com o cookie (sem ele, nada; vazia some); nenhuma das palavras "contestação" e
+    "Beds24"; Minha reserva sem o botão e com a frase.
+27. **Proprietário:** os rótulos e textos no extrato, no portal, no PDF e no e-mail; a explicação ao proprietário; sem
+    nota, sem número do caso, sem nome do hóspede nas linhas da disputa; o dono de outro imóvel não vê; o relatório sem
+    noites nem bruto em dobro.
+28. **Dados pessoais e meses fechados:** `semDadosPessoais` nas tabelas novas; nenhuma linha de resultado com competência
+    antes do mês corrente; relatório já enviado igual.
+
+### Decisões de Diego (GUIA, seção 7, "Contestação (M8.2e)")
+
+Em cada uma há um padrão, e o sistema funciona assim. As marcadas com ★ precisam vir antes do pagamento de verdade.
+
+1. ★ **Quanto o proprietário perde quando "o proprietário arca".** Numa reserva de R$ 1.000,00 (parte dele R$ 807,67,
+   comissão R$ 142,53, taxa R$ 49,80) e disputa perdida de R$ 1.000,00:
+   - **padrão, o valor perdido inteiro:** proprietário fica com −R$ 192,33 (paga também a comissão e a taxa), SCL com
+     +R$ 142,53;
+   - **alternativa, o valor perdido menos a comissão da SCL:** proprietário −R$ 49,80, SCL R$ 0,00;
+   - para comparar, o **proporcional** dá proprietário −R$ 42,33 e SCL −R$ 7,47.
+   Na disputa antes da liberação em que o dinheiro nunca entrou (exemplo 3), o padrão faz o proprietário pagar a comissão
+   (R$ 144,03) e a taxa; a alternativa dá zero para os dois.
+2. ★ **"A proporção da sua parte".** Padrão: parte do proprietário ÷ (parte + comissão), pelas partes efetivas da reserva.
+   Com a taxa saindo antes da divisão, como hoje, dá 85% e 15% numa comissão de 15%. Ligada à pergunta 3 da taxa.
+3. ★ **O que fica segurado.** Padrão:
+   - antes da decisão, a parte da reserva ainda não repassada espera, e nada é descontado do que já foi pago;
+   - depois da decisão, só o valor do proprietário fica segurado: junto com a parte da reserva enquanto ela espera, ou no
+     próximo repasse de qualquer tipo quando ela já foi paga;
+   - se a SCL ganhar, volta no repasse seguinte.
+   O efeito: numa estadia de R$ 6.000,00 (parte R$ 4.846,02) com disputa de R$ 200,00 por um item extra, os R$ 4.846,02
+   ficam presos até a decisão; num caso igual cuja parte foi repassada um dia antes, nada fica preso. Alternativa: a parte
+   segue normalmente e, com a decisão, o débito sai do próximo repasse, como quando ela já foi repassada. Com o padrão, o
+   Início sobe o tom depois de 15 dias.
+4. ★ **Resultado e valor perdido confirmados pela equipe**, com o formulário sem resultado marcado e os fatos do Mercado
+   Pago em palavras, até a conta de teste ou o primeiro caso conferirem os códigos (itens 61 e 64). Alternativa: aplicar
+   pela leitura (arriscado: as páginas do Mercado Pago já deram sentidos opostos a `reimbursed`).
+5. ★ **Pagamento não reconhecido (fraude ou cartão de terceiro).** A tela de Configurações e o GUIA já disseram: "quando o
+   hóspede passa pela verificação, a contestação por cartão roubado fica com a bandeira; nos outros pagamentos, continua
+   com a SCL". Padrão: a frase da causa segue isso (com a verificação, "espere o resultado"; sem ela, "a SCL"), e escolher
+   o proprietário pede confirmação reforçada. Confirma? Se a regra mudar, fica o registro de decisão (antes, agora,
+   motivo).
+6. ★ **Disputa antes da entrada.** Padrão: a reserva continua confirmada, o Início avisa ("não libere a entrada…") e a
+   equipe pode "Cancelar a reserva contestada" sem devolução pelo sistema: o valor fica retido até o resultado (perdida,
+   a decisão de quem arca; ganha, dividido como reserva cancelada sem devolução). Alternativa: cancelar com direito
+   integral e a devolução substituída pela disputa, pedida só se a SCL ganhar.
+7. **O hóspede vê "pagamento em conferência"** só com o cookie do pagamento e em Minha reserva, numa frase editável que
+   pode ficar vazia. Nenhuma mensagem automática.
+8. **MED do Pix e reclamações do Mercado Pago** entram pelo registro à mão, com o mesmo fluxo.
+9. **Quem decide:** só quem cuida do financeiro (hoje, você), como no cancelamento e na alteração; a marca "Documentos
+   enviados" e a página da defesa também para a operação.
+10. **Textos:** a seção "Contestações de pagamento" do "Como funciona" (versão 2, com o exemplo) e a frase opcional dos
+    Termos, juntos com o item 42; os nomes e as frases das causas (texto-base acima, editáveis).
+11. **Marcar o evento "Contestações"** no painel de Webhooks do Mercado Pago, além de "Order (Mercado Pago)" (item 37
+    atualizado).
+12. **Pagamento sem reserva disputado e perdido:** a taxa que não voltar fica com a SCL (a decisão de 7/10, estendida).
+13. **Tarifa do Mercado Pago pela disputa** (se existir, item 64): despesa da SCL, ganhe ou perca.
+14. **"Em conferência até a decisão"** quer dizer até a decisão de quem arca (C5); depois, só o valor de quem arca fica
+    segurado até o resultado. Alternativa: a parte inteira presa até o resultado da disputa.
+
+### Limites do M8.2e
+
+- Só teste. O sandbox não cria contestação: no teste das prévias, Diego registra uma à mão num pagamento de teste
+  (GUIA, item novo 46), confirma o débito, decide e confirma o resultado. A leitura automática só foi testada com a
+  versão falsa.
+- O resultado nunca é aplicado só pela leitura (C1), e o formulário não sugere resultado.
+- Uma disputa perdida que o Mercado Pago reverte depois vira aviso e ajuste manual. Uma ganha reaberta vira a rodada
+  seguinte pela equipe ("Conferir o aviso"), nunca sozinha.
+- Os documentos são enviados pelo painel do Mercado Pago; o sistema só marca e monta a página para imprimir. O envio pela
+  API (uma vez por caso, até 10 arquivos) fica para depois, porque pediria guardar arquivos com dados do hóspede.
+- A alteração de uma reserva com disputa em curso ou perdida não é feita pelo sistema; o cancelamento, só pela ação
+  "Cancelar a reserva contestada" (antes da entrada); depois de ganha, os dois voltam ao normal.
+- O MED e as reclamações não são lidos sozinhos: só o registro da equipe.
+- O id numérico no aviso assinado continua ignorado (item 59).
+- O marketplace segue fora (M12.2): a proporção pelos pesos do modelo B entra lá.
+- A decisão não muda depois do resultado; a correção é um ajuste.
+- Testar só na prévia mais nova: as antigas usam o mesmo banco e não conhecem `contestacoes_pagamento` (uma prévia
+  antiga mostraria só "Contestado" e manteria as recusas de hoje). Nas prévias a rotina não roda: o "Conferir agora" faz
+  o papel dela.
+- **O restante de uma devolução substituída que a disputa perdida confirmou a menos.** *Até a revisão de 11/10:* não
+  tinha ação no sistema ("Pedir o restante" e "Registrar o restante devolvido por fora" recusados com
+  `contestacao_perdida`). *Agora:* resolvido como o próximo passo previsto — o restante sai por fora (só ele), também no
+  cartão; pedir o restante ao Mercado Pago é recusado com texto próprio (ver "O que a implementação ajustou", revisão).
+- **A nota do débito.** *Até a revisão de 11/10:* conferida e não guardada (a 0069 não tinha a coluna). *Agora:* a 0069
+  ganhou `debito_nota` e "Confirmar o débito do Mercado Pago" a grava; o evento `debito_confirmado` e a auditoria
+  `contestacao.debito` continuam só com o dia e o valor.
+- **Contestação nova sobre uma ganha já conferida** ("continua encerrada") e relida em `in_process` com os mesmos fatos:
+  não volta a ligar o aviso nem a segurar o pagamento (a equipe já conferiu); um fato novo liga de novo. A correção, se a
+  equipe errou, é registrar a disputa vista no painel.
+
+### O que a implementação ajustou (11/10/2026)
+
+Cada ajuste com o motivo. Nenhum muda uma decisão de Diego; os que mudam um texto ou uma regra do desenho dizem o antes.
+
+**Adaptador** (`provedor.ts`, `mercadopago.ts`, `falso.ts`):
+- `ContestacaoLida.daTransacao` marca a leitura tirada só da transação `charged_back/<detalhe>`, sem item na lista, e
+  `Cobranca.transacaoAprovada` leva o fato "a transação voltou a aprovada" (também quando a contestação aparece só na
+  lista). *Motivo:* o adaptador não sabe quais disputas o banco conhece; quem cruza o fato com as linhas é o domínio.
+- Um item de `transactions.chargebacks[]` sem nada legível vira uma leitura sem identificação, com estado
+  `desconhecido`. *Motivo:* avisar em vez de sumir.
+- O limite de 20 algarismos é um só para o caso e para o número do pagamento (`ID_NUMERICO_PROVEDOR`, em `provedor.ts`,
+  também em `aplicar.ts`); `payments[]` do caso aceita também texto só de algarismos. `ESTADOS_LIDOS_CONTESTACAO` e
+  `SITUACOES_DOCUMENTACAO` vivem em `provedor.ts`, e `contestacao-regras.ts` só as reexporta (uma regra, um lugar).
+- `documentacao`: null quando o campo não vem; `desconhecida` quando vem fora da lista.
+- `buscarContestacoes` com um número que não pode existir devolve a lista vazia sem chamar a rede (como `consultar` com
+  id inválido); um item sem id legível faz a busca inteira falhar (nunca "nenhuma" sem saber). `consultarContestacao` e
+  `situacaoDoPagamento` exigem que a resposta traga o id pedido; senão, falham.
+- `situacaoDoPagamento`: 404 = null; 403 continua erro de credencial (o 403 "sem acesso" só vale na Chargebacks API).
+- `X-Caller-Id`: guardado em memória também quando vem de `conferirContaDeTeste`; chamadas ao mesmo tempo esperam a
+  mesma leitura de `/users/me`; sem id válido, a Chargebacks API não é chamada, e a falha não fica guardada (a próxima
+  chamada tenta de novo).
+
+**Esquema** (0069):
+- Dois índices além do desenho: `contestacoes_pagamento_pagamento` (as travas e as leituras por pagamento) e
+  `devolucoes_pagamento_contestacao` (parcial, a soma das devoluções substituídas). A chave estrangeira do caixa final se
+  chama `contestacoes_pagamento_caixa_final_fk`: o nome gerado passaria de 63 caracteres.
+- O desfecho `contestacao` aparece como "Voltou ao pagador pela disputa". A base de cancelamento `contestacao` e o valor
+  `contestacao` de `confirmada_por` são só tipos (as colunas são texto).
+- **Colunas do aceite (11/10, depois da revisão).** *Antes:* a 0069 não tinha nenhuma delas. *Agora:*
+  - `contestacoes_pagamento.decisao_mudanca_nota` (o "por que mudar" da mudança mais recente; abaixo, "Telas");
+  - `eventos_contestacao.ordem` (identidade, a ordem de gravação: os eventos de uma mesma ação têm o mesmo `em`, e a
+    linha do tempo desempatava pelo id aleatório);
+  - `repasses.fora_presa_disputa` e `repasses.fora_segurado_junto` (a divisão do que ficou fora, gravada no fechamento;
+    null nos fechamentos de antes; abaixo, "Proprietário e repasses").
+  *Motivo:* sem elas, a explicação ao proprietário e a nota da decisão se perdiam na mudança, a linha do tempo trocava de
+  ordem a cada leitura e o motivo do que ficou fora de um fechamento dependia do valor em risco de agora. A 0069 ainda não
+  foi aplicada em nenhum banco (a branch não foi publicada), por isso as colunas entram nela, idempotentes como o resto.
+
+**Leitura, casamento e transições:**
+- `contestacaoDaLeitura` devolve `{ explicada, contestado }`, não a situação; com `contestado` falso, vale a situação
+  local (`situacaoDaLeitura`, em `travas.ts`, é quem dá a situação). Uma leitura `in_process` contra uma linha final não
+  muda a situação do pagamento: quem segura as recusas é o "em curso". Uma disputa encerrada que o sistema não conhecia
+  (ambígua) deixa o pagamento `contestado` até a equipe registrá-la.
+- Numa linha final, a leitura grava os fatos lidos mesmo quando contradizem o resultado, sem mudar a situação. *Motivo:*
+  o "em curso" precisa saber que a contradição veio de `in_process`, e sem os fatos o aviso voltaria a cada leitura.
+- `contestacao_resultado_mudou` liga na primeira contradição e, depois de "Conferir o aviso", só volta com um fato novo;
+  a passagem `a_confirmar` → `aberta` usa o mesmo aviso; `contestacao_leitura_conflitante` fica até a equipe confirmar o
+  resultado; uma leitura `in_process` sem identificação, num pagamento com só linhas finais, cai na final mais nova (com
+  `contestacao_resultado_mudou`).
+- Registro da equipe sem número de caso: num pagamento com uma disputa sem identificação aberta, cai nela ("já está no
+  quadro": o índice `_sem_id` não deixaria outra); com uma disputa que a leitura já criou com o número, nasce **possível
+  duplicata** (valor em risco 0) em vez de "já está no quadro". *Motivo:* sem o número não dá para saber se é a mesma; a
+  equipe confirma "outra disputa" ou encerra sem efeito (avisar em vez de supor). O índice único violado (23505) responde
+  "já está no quadro" no código, sem teste direto (a corrida não se provoca de fora).
+- Confirmar o resultado de uma possível duplicata é recusado (confirme antes que é outra disputa); "Encerrar sem efeito"
+  vale nela.
+- `contestacao_caso_de_outro_pagamento` fica só na linha; um item da busca que é de outro pagamento é ignorado.
+
+**Avisos do pagamento:**
+- O aviso `contestado` liga só com a disputa aberta, a confirmar, ou ganha que o Mercado Pago voltou a mostrar em
+  andamento, não com a perdida. *Motivo:* ele é o retrato do "em curso" para quem lê sem a trava (`estadoDaCancelada`,
+  `liberacaoVencida`), e a liberação vencida só ignora as disputas que ainda correm. A perdida continua recusando o
+  cancelamento, a alteração e as devoluções pelo `contestacaoEmCurso`, em que ela conta.
+- `contestacao_liberacao_lida` vai nas linhas em curso ou perdidas; a liberação à mão o desliga.
+- O aviso `devolucao_devida_depois_da_disputa` diz o valor no quadro (`textoDevolucaoDevidaDepoisDaDisputa`), com a mesma
+  frase na ganha e no sem efeito: "A disputa do pagamento terminou sem o dinheiro voltar ao hóspede por ela: a devolução
+  de R$ X que a reserva deve a ele continua devida…". *Antes* (desenho): "A SCL ganhou a disputa: a devolução de R$ X…".
+  *Motivo:* no sem efeito ninguém ganhou.
+
+**Caixa e valor em risco:**
+- No pagamento sem o dinheiro da reserva (sem reserva) não há retido: esse dinheiro nunca entrou no livro. Na perda, a
+  taxa vira despesa da SCL (como no desenho).
+- O valor em risco de várias disputas não finais do mesmo pagamento é distribuído pela ordem de abertura: a mais antiga
+  tem prioridade (a soma nunca passa do pago).
+- MED que a leitura mostra como devolução: o retido usa o valor em risco, no dia de `devolvido_visto_em`; sem essa data
+  (devolução de parte do valor), hoje. `retido_confirmado_em` fica vazio (é fato lido, não confirmação da equipe).
+- "Confirmar o débito" sempre estorna o retido previsto e lança o realizado (`#N`), mesmo com o valor igual, com a
+  competência na data do débito. *Motivo:* nenhuma linha muda de estado nem de competência depois de lançada.
+- A substituição das devoluções pega só a pedida sem aceite e sem chave em dúvida, ou a recusada (salvo a parada com a
+  chave em dúvida).
+- Durante a disputa, `precisaFinanceiro` lê a Payments API também, para dar o aviso da liberação lida.
+- A tarifa usa a data do resultado; a taxa do pagamento sem reserva usa o dia do débito ou, sem ele, a data do resultado.
+- "Cancelar a reserva contestada": `valor_retido` = o principal menos as devoluções realizadas e o reconhecido devolvido
+  fora; o direito do hóspede fica `nenhum`; sem a mensagem da decisão ao hóspede e sem o aviso de mensagem pendente no
+  Início (a equipe fala com ele caso a caso).
+- Fase 0 do resultado: "em andamento na leitura de agora" = a linha relida no mesmo instante com `in_process`
+  (conservador: pede a nota reforçada).
+
+**Proprietário e repasses:**
+- Os avisos dos repasses no Início ficam em `repasses/avisos-contestacao.ts` (`avisosDeContestacaoNosRepasses`), não em
+  `repasses/inicio.ts`: aquele arquivo trata do início do sistema (M4.12), e pôr os avisos lá criaria importação circular.
+  O Início os mostra junto com `avisosDeContestacao` (`painel/dashboard.ts`).
+- O e-mail do fechamento refaz a parte presa por disputa (`foraPorDisputaDoFechamento`) pelo livro como estava no
+  instante do fechamento e pelas disputas abertas antes dele e ainda sem decisão nele. *Motivo:* o repasse grava só o
+  total `foraDoFechamento`; assim não foi preciso outra coluna.
+  - *Revisão de 11/10 (dinheiro). Antes:* a conta lia `decisao_em` e `valor_em_risco` de agora (`decisao_em` é regravado a
+    cada versão, o "Encerrar sem efeito" zera o valor em risco, e uma disputa ganha sem decisão antes do fechamento
+    continuava contando). Com o total fora negativo, o e-mail mostrava "(reserva em conferência: disputa do pagamento):
+    -R$ …", e o painel do mês fechado dizia sempre "dinheiro ainda não registrado". *Agora:* a divisão `{ presa, seguradoJunto, outras }` é refeita pela linha do tempo
+    daquele instante: decisão tomada antes do corte (as linhas `…:(proprietario|scl):(vN|final)` criadas até ele, o evento
+    `decisao` ou `decisao_em` até ele); disputa encerrada antes do corte (os eventos `resultado` e `sem_efeito`); a
+    duplicata pela `confirmada_outra_em`; o valor em risco de uma encerrada sem efeito pelo retido em vigor no corte; a
+    perdida antes do corte com perda a dividir. O e-mail mostra uma linha por motivo, com o sinal de cada uma, e o valor
+    segurado que espera junto ganha linha própria. O painel do mês fechado dá os mesmos motivos (`foraDividido`). *Limite
+    registrado:* o valor em risco de uma disputa ainda aberta é o de agora; *próximo passo:* uma coluna no repasse.
+  - *Aceite (11/10): o próximo passo, feito.* O fechamento grava a divisão daquele instante (`fora_presa_disputa` e
+    `fora_segurado_junto`, da mesma `foraDividido` da previsão), e `foraPorDisputaDoFechamento` lê daí; a reconstrução pela
+    linha do tempo fica só para os fechamentos de antes (colunas null), com o limite acima. Financeiro → Repasses mostra
+    as três linhas pelo `foraDividido`, cada uma com o sinal ("− Fora do fechamento (dinheiro ainda não com a empresa)",
+    "− Fora do fechamento (reserva em conferência: disputa do pagamento)" e "+ Valor segurado pela disputa do pagamento,
+    fora deste repasse (espera junto com a parte da reserva)"), no mês fechado também. *Antes:* o painel usava
+    `p.repasse ? 0 : p.foraPorDisputa`, e o mês fechado dizia tudo "dinheiro ainda não com a empresa".
+- Estornar um repasse é recusado quando ele levou uma parte da reserva e existe, fora dele, uma linha da disputa do
+  mesmo proprietário lançada depois; o repasse que só leva a linha da disputa pode ser estornado.
+- O segurado e a reversão que entram juntos somam zero ("Nada disponível"), sem a mensagem de desconto não coberto.
+- No rodapé do portal, o valor segurado em que o proprietário fica devendo não se transfere (como o desconto do
+  cancelamento): ele sai dos próximos repasses, e o portal nunca pede Pix por ele.
+- Na tabela de reservas do portal, as linhas da disputa ficam fora da "sua parte" de cada reserva (as de sempre não
+  mudam) e aparecem à parte, no extrato e no resumo.
+- A tarifa e a taxa da disputa têm texto próprio na lista de despesas.
+  - *Revisão de 11/10 (dinheiro). Antes:* as duas eram "Tarifa… acompanhe no quadro da disputa". *Agora:* a taxa é "Taxa
+    do pagamento do site perdida na disputa (pagamento sem reserva), definitiva (disputa perdida em dd/mm)", e a tarifa é
+    "Tarifa do Mercado Pago pela disputa do pagamento, já paga (disputa ganha/perdida em dd/mm)", sem "acompanhe" nas já
+    realizadas.
+- **Cada linha da disputa diz o valor dela** (revisão de 11/10, dinheiro). *Antes:* todas as linhas do extrato repetiam
+  `parte_proprietario` (o total em vigor), e a linha positiva (a que devolve) era chamada de "segurados". *Agora:* a linha é
+  identificada pela chave (versão N, reverte, final ou sem efeito), com o valor segurado antes e depois tirado das linhas
+  de versão no livro: a versão 1 diz o valor dela; a versão N diz "com a decisão atualizada, o valor segurado passa de R$ a
+  para R$ b", seguido de "mais R$ d segurados…" ou "R$ d voltam a você", e "Nada fica segurado de você" quando b = 0; a
+  versão que já não vale diz "pela primeira decisão (atualizada depois)"; o definitivo e o devolvido seguem a mesma
+  lógica. A causa, a explicação e a proporção só aparecem na versão em vigor.
+- **Causa e explicação no e-mail e no PDF** (revisão de 11/10, dinheiro). *Antes:* só o extrato e a lista do portal as
+  mostravam. *Agora:* ao lado da linha do item (painel, portal e e-mail do repasse; no e-mail, as linhas da disputa nunca
+  caem no "e mais N reserva(s)") e, no PDF, na nota abaixo da tabela das reservas (a coluna da situação é cortada). A
+  linha devolvida e a versão que já não vale não as levam.
+- **Portal, perdida sem nada a dividir** (aceite de 11/10). *Antes:* sem decisão, tudo que não era ganha aparecia "em
+  conferência", também a perdida definitiva sem perda a dividir (a perda coberta pela devolução substituída). *Agora:*
+  "Disputa do pagamento da reserva SCL-…: nada descontado de você (a SCL perdeu a disputa em dd/mm)." (variante
+  definitivo); a perdida que ainda espera a decisão continua em conferência.
+- `definitivo_em` só é preenchido com os lançamentos definitivos feitos (`recebidoPorReserva` depende disso).
+
+**Telas:**
+- Os formulários menores (débito, prazo, documentos, outra disputa, sem efeito, conferir o aviso, atualizar o valor
+  segurado) usam um componente só, `FormAcaoContestacao`.
+- "Documentos para a defesa" monta a política aceita pelas mesmas funções das páginas legais (`lerPaginaLegal`,
+  `preencherCampos`, `blocosDoDocumento`), sem o módulo do site que só roda no servidor.
+- O e-mail à equipe sai por `avisarEquipeDasContestacoes`, que usa `avisarEquipePorEmail` (o mesmo do pedido de
+  cancelamento), na rotina e no registro; o "Conferir agora" de um pagamento é `conferirContestacoesDoPagamento`.
+- **Revisão das telas (11/10/2026).**
+  - **"Para cancelar, fale com a equipe." em Minha reserva** vale também com a disputa perdida (a regra única,
+    `disputaDoPagamento`: em curso ou perdida), também no MED do Pix perdido com o pagamento ainda aprovado; a frase
+    "pagamento em conferência" só aparece enquanto a disputa está em curso.
+  - **"Texto para o proprietário"**: neutro quanto ao tipo e à forma de pagamento ("foi aberta uma disputa de R$ X sobre o
+    pagamento desta reserva no Mercado Pago", como o portal; nunca "titular do cartão") e escrito pela situação (segurado
+    até o resultado; ganha, volta no repasse seguinte; perdida, fica definitivo; sem efeito, nada fica descontado).
+    "Cancelar a reserva contestada" diz "pagador".
+  - **Caixa da nota reforçada**: aparece também com a linha aberta e o caso da Chargebacks API sem estado nem cobertura
+    (`leituraEmDisputa`), e sempre depois da recusa `nota_reforcada`, no resultado e no sem efeito (a ação nunca fica
+    travada sem a caixa que o domínio pede).
+  - **"Mudar quem arca"**: o campo vem com a explicação ao proprietário em vigor; enviar sem mexer a mantém, e apagar o
+    campo apaga a explicação (de propósito).
+  - **"Nunca entrou na conta"**: obrigatório; em branco nunca vira 0 (a ação manda null, e o domínio recusa). O valor
+    digitado entra na pergunta do botão, e o texto de `liberacaoAntesDaPerda` aparece quando o domínio pede a liberação
+    antes.
+  - **"Documentos para a defesa"**: sem o titular da reserva (não está na lista do desenho), e o valor pago só para quem
+    lê o financeiro (`verValores`).
+  - **Ambígua no Início**: contada pelos avisos do pagamento (`pagamentos.avisos` com `contestacao_ambigua`), também sem
+    linha no quadro, o que fecha "a contagem do Início pelos avisos do pagamento é das telas" (revisão do domínio, abaixo).
+  - Também: a prévia da decisão diz o que cada lado fica da reserva com a disputa perdida e com a ganha; o hóspede da
+    reserva cancelada pela disputa lê "em conferência", nunca "não há devolução"; a prévia do cancelamento não exige a
+    nota (só o passo 2); o provedor só é consultado depois de achar a reserva na empresa da sessão.
+- **Aceite (11/10/2026): o que cada corretor deixou para a área de outro.**
+  - **A nota do débito no quadro** (a coluna veio na revisão do domínio): "Nota do débito (só a equipe)", na leitura da
+    equipe que lê o financeiro; a operação não a vê.
+  - **A origem da disputa no quadro**: `textoDaOrigemDaContestacao` em toda linha ("Lida no Mercado Pago como contestação:
+    pode ser uma reclamação no Mercado Pago (mediação)…" ou "Registrada à mão: …"). *Antes:* só a registrada à mão tinha
+    texto.
+  - **"Perdeu" que pede a liberação antes**: o texto de `liberacaoAntesDaPerda` leva o atalho "Ir para 'Registrar
+    liberação'", que desce até o formulário do pagamento, só quando essa ação está no quadro (o domínio a aceitaria).
+  - **"Mudar quem arca" guarda o "por que mudar" à parte** (`decisao_mudanca_nota`). *Antes:* ele substituía a
+    `decisao_nota`, e a nota da decisão se perdia. *Agora:* o quadro mostra as duas ("Nota da decisão" e "Por que a decisão
+    mudou", só a equipe); nenhuma vai ao proprietário, ao evento ou à auditoria. A explicação vazia continua apagando a
+    explicação (acima).
+  - **O aviso "contestado" do quadro do pagamento diz o tipo** da disputa em curso mais antiga (`tipoDaDisputaEmCurso`,
+    `textoDoAvisoContestado`): "Pagamento contestado no cartão…", "Devolução pedida pelo Pix (MED)…" ou "Reclamação no
+    Mercado Pago…". *Antes:* sempre o texto geral "Disputa do pagamento em curso…".
+  - **A recusa da nota reforçada diz a caixa a marcar**, com o rótulo de cada formulário: 'marque a caixa "O painel do
+    Mercado Pago já mostra o resultado"' (resultado) e '… "O painel do Mercado Pago já mostra a disputa encerrada"' (sem
+    efeito). *Antes:* "confirme na nota que o painel do Mercado Pago já mostra o resultado", nos dois.
+  - **A linha do tempo na ordem de gravação** (`eventos_contestacao.ordem`, o mais novo em cima). *Antes:* os eventos de uma
+    mesma ação (a decisão e os lançamentos dela) trocavam de ordem a cada leitura, e um teste das telas falhava às vezes.
+
+**Revisão do domínio (11/10/2026, depois da auditoria do PR).** Cada item com o antes e o motivo; os marcados *(segue o
+desenho)* só fazem o código cumprir o que já estava escrito acima.
+- **`contestacao_ambigua`.** *Antes:* toda volta em que as leituras casavam desligava o aviso. *Agora:* a Chargebacks API e
+  a Payments API só o ligam; quem o desliga é a releitura da order (`aplicarLeitura`) ou o registro pela equipe.
+  *Motivo:* as fontes da rotina chegam em transações diferentes, e o caso conhecido que casava apagava, na mesma volta, a
+  disputa sem número que a order acabava de mostrar. A contagem do Início pelos avisos do pagamento é das telas.
+- **`a_confirmar` → `aberta` só com `in_process` lido** (order ou Payments API) *(segue o desenho, "Transições")*. O caso
+  da Chargebacks API ainda sem cobertura conta como "em disputa" para criar ou manter a linha aberta, nunca para desfazer o
+  encerramento que outra fonte mostrou; na fase 0 do resultado, ele só pede a nota reforçada com a linha ainda aberta.
+  *Antes:* a order levava a `a_confirmar` e o caso devolvia a `aberta`, todo dia.
+- **Conflito entre as fontes** *(segue o desenho, "Ordem das leituras")*: a divergência no encerramento é vista também
+  entre o fato guardado de uma fonte e o da fonte nova (`fatosEmConflito`: `reimbursed` guardado e a cobertura true lida
+  depois), não só dentro de uma chamada; liga `contestacao_leitura_conflitante`, sem transição.
+- **Dia 85 sem fonte.** *Antes:* só sem falha. *Agora:* também com 3 falhas seguidas da Chargebacks API e da Payments API
+  (`FALHAS_PARA_SEM_FONTE`), lidas como "sem resposta útil". *Motivo:* com a rota sempre falhando, a disputa chegava calada
+  aos 240 dias.
+- **Avisos de leitura que saem.** *Antes:* `contestacao_sem_leitura` e `contestacao_sem_fonte` só saíam na confirmação
+  da equipe. *Agora:* o primeiro sai quando a Chargebacks API volta a responder sem 403; o segundo, com uma resposta útil.
+- **Busca tardia.** A janela inteira (até 200 dias depois do maior entre a aprovação e a saída) vai ao SQL antes do limite
+  da volta, e a vez volta também quando a aplicação falha depois da chamada (trava ocupada) *(segue o desenho, "a falha
+  devolve a marca")*. *Motivo:* os pagamentos fora da janela ocupavam a fila para sempre, e uma trava ocupada escondia a
+  disputa achada por uma semana.
+- **Fase 0 com a trava ocupada** *(segue o desenho, "melhor esforço")*: a releitura da order que não aplica por trava
+  ocupada é uma leitura que não deu ("não deu para conferir no Mercado Pago agora" / "sem leitura do Mercado Pago"), no
+  resultado, no sem efeito e no registro pela equipe.
+- **Uma `sem_efeito` não absorve a disputa nova.** *Antes (ajuste anterior):* a leitura `in_process` sem identificação,
+  num pagamento só com linhas finais, caía na final mais nova. *Agora:* na final mais nova **com resultado** (ganha ou
+  perdida, com `contestacao_resultado_mudou`); só com `sem_efeito`, nasce a linha nova (casamento, item 4). *Motivo:* uma
+  disputa registrada por engano e encerrada sem efeito escondia a contestação de verdade, e o pagamento voltava a pagar
+  devoluções pelo sistema durante ela.
+- **Avisos da liberação.** *Antes:* `contestacao_liberacao_lida` ligava a cada leitura com `liberado` e só a liberação à
+  mão o desligava. *Agora:* liga só sem recebimento em vigor e com líquido que ainda cabe; a liberação lida pelo Mercado
+  Pago (ou a à mão conciliada) desliga os dois avisos de liberação; a confirmação do resultado desliga o da liberação lida
+  (na ganha sempre: a leitura volta a lançar; na perdida, com recebimento, ou quando o líquido inteiro já é "nunca
+  entrou"). `registrarLiberacaoManual` recusa o que passa do líquido menos o "nunca entrou" das perdidas
+  (`liquidoQueAindaPodeEntrar`), e o quadro esconde a ação quando nada mais cabe. *Motivo:* depois da perdida que já
+  contou o líquido no caixa final, o aviso pedia, e o sistema aceitava, a mesma entrada de novo.
+- **"Nunca entrou" e a perdida sem recebimento.** *Antes:* proposto o líquido sempre que não havia recebimento, e o campo
+  ia até o pago. *Agora:* nunca mais que o valor perdido (recusa acima dele); com o sinal de liberação do Mercado Pago (o
+  aviso da liberação lida, ou a liberação confirmada) ou numa disputa de parte do valor, o "Perdeu" pede antes a liberação
+  registrada à mão (`FatosDoResultado.liberacaoAntesDaPerda`, código `liberacao_antes`), sem valor proposto. *Motivo:* o
+  desenho decide o "entrou ou não" "pelo sinal de liberação do provedor ou pela equipe"; sem isso, a disputa parcial
+  lançava uma entrada de caixa que não existiu e dava o dinheiro por "com a empresa" sem liberação.
+- **Pagamento sem reserva perdido.** *Antes:* o valor perdido ia até o pago. *Agora:* até a taxa do pagamento mais o custo
+  do parcelamento pago pela SCL; sem a taxa conhecida, a nota (com a taxa vista no painel do Mercado Pago) é obrigatória.
+  *Motivo:* o dinheiro dele nunca entrou no livro; o que a SCL perde é a taxa, e um valor maior é quase sempre digitação.
+- **Datas de caixa.** *Antes:* a partir da aprovação. *Agora:* o débito (confirmar e perdida) a partir da abertura no
+  Mercado Pago (o dia do caso, ou o que a equipe registrou; sem ela, a aprovação, porque o dia em que a leitura viu a
+  disputa pode vir depois do débito), e a volta (ganha e sem efeito) a partir do débito.
+- **Reabrir com outra disputa sem número aberta:** recusa com texto próprio (a equipe segue por ela ou a encerra sem
+  efeito); a rodada nova nasce num ponto de salvamento (o índice único violado responde com texto).
+- **Decisão:** a trava do motor da reserva vem antes da leitura das partes efetivas (registrar, mudar e atualizar o valor
+  segurado) *(segue o desenho, "ordem única")*.
+- **Devolução com a chave em dúvida quando a disputa abre** *(segue o desenho, "Devoluções do mesmo pagamento")*: só relê
+  e espera — nem para, nem envia de novo com a mesma chave (se o primeiro pedido não chegou, sairia uma devolução nova por
+  cima da disputa), também sob a trava. *Antes:* parava como a pedida sem aceite. O texto do M8.2a ("Devolução na parte
+  (a)": "devolvida em parte ou contestada = … a devolução para") vale para a pedida sem a chave em dúvida.
+- **Retido do MED e da reclamação.** *Antes:* realizado pelo valor em risco, só no registro com a devolução já lida.
+  *Agora:* pelo devolvido lido que a disputa explica (até o valor em risco), no registro e também quando a leitura vê a
+  devolução depois do registro (o previsto é estornado e nasce o realizado, no dia em que a leitura a viu). Registrado acima
+  do devolvido lido: a mensagem na hora ("o caixa registra R$ X"); o resto não vira outro retido (uma disputa tem um retido
+  só) e entra no caixa final, se o Mercado Pago debitar. *Motivo:* o retido é fato lido; o mesmo fato dava caixas
+  diferentes conforme a ordem, e um valor digitado acima virava saída de caixa que não existiu.
+- **Restante da devolução confirmada pela disputa** (limite resolvido): "Registrar o restante devolvido por fora" vale
+  para a devolução `confirmada_por = 'contestacao'` com a perdida (também no cartão; o "contestado" que o Mercado Pago ainda
+  mostra dessa disputa não recusa); outra disputa em curso continua segurando; "Pedir o restante" é recusado com texto
+  próprio (`ERRO_RESTANTE_DA_DISPUTA`) e o quadro oferece só o por fora. As devoluções de um pagamento com disputa em curso
+  ou perdida deixam de oferecer "Pedir o restante" e "por fora" que o domínio recusaria.
+- **Nota do débito** (limite resolvido): coluna `debito_nota` na 0069, gravada em "Confirmar o débito". O quadro a mostra
+  a quem lê o financeiro (feito no aceite, "Telas").
+- **"Cancelar a reserva contestada".** *Antes:* `valor_retido` = o principal menos as devoluções realizadas e o
+  reconhecido. *Agora:* menos também as devoluções substituídas por uma disputa não final, e nunca mais que o valor da
+  reserva de agora. *Motivo:* depois de uma redução, a diferença que é do hóspede voltava ao resultado do proprietário e da
+  SCL, e o resultado deixava de bater com o caixa.
+- **Taxa que não voltou na devolução confirmada pela disputa.** *Antes:* o caminho de sempre (despesa paga, com data de
+  caixa no dia da confirmação, que é o do débito). *Agora:* despesa realizada **sem** data de caixa, no mês corrente.
+  *Motivo:* o retido (ou o caixa final) da disputa já tirou do caixa o valor bruto debitado, que inclui a taxa; a despesa
+  paga a tirava de novo, num mês que podia estar fechado.
+- **Origem da disputa no quadro** *(segue o desenho, "O que é contestação aqui")*: `textoDaOrigemDaContestacao` dá, para a
+  linha lida, "lida no Mercado Pago como contestação: pode ser uma reclamação no Mercado Pago (mediação); o sistema não tem
+  como separar, confira no painel dele" (`TEXTO_LIDA_PODE_SER_RECLAMACAO`); a registrada à mão continua com o texto dela.
+  O quadro mostra os dois textos desde o aceite ("Telas").
+
+**Revisão do Codex (11/10/2026).**
+- **A Payments API com disputas de tipos diferentes no mesmo pagamento** *(segue o desenho, "De onde vem cada fato",
+  item 3)*. *Antes:* depois dos 85 dias, a Payments API só era lida quando **todas** as disputas do pagamento eram no
+  cartão; com um MED ou uma reclamação registrados ao lado, a contestação no cartão ficava sem a terceira fonte e ganhava
+  `contestacao_sem_fonte`. *Agora:* ela é lida sempre que há uma disputa no cartão a reler, e a leitura vale só para as
+  disputas no cartão (`LeituraDeContestacao.soDoTipo`: o casamento a liga só às linhas desse tipo, e o MED e a reclamação
+  ao lado não a tornam ambígua). No MED e na reclamação, só a leitura do caso deles conta como fonte útil (o
+  `contestacao_sem_fonte` deles não sai por causa da Payments API). *Motivo:* o desenho pede a releitura de cada disputa
+  no cartão pela Payments API depois dos 85 dias.
+- **A busca pelo número do pagamento com uma disputa sem caso ao lado de outra com caso** *(segue o desenho, "De onde vem
+  cada fato", item 2)*. *Antes:* a rotina só fazia a busca da Chargebacks API pelo número do pagamento quando **nenhuma**
+  disputa dele tinha número de caso; um MED ou uma reclamação registrados sem o número, ao lado de uma contestação no
+  cartão com caso, nunca eram procurados. E a resposta útil do caso de uma disputa contava como fonte para todas as
+  disputas no cartão do pagamento (o `contestacao_sem_fonte` de uma contestação sem caso saía sem nada tê-la lido).
+  *Agora:* a busca roda sempre que alguma disputa a reler não tem um número de caso legível (os casos já lidos pelo número
+  não entram de novo), e a fonte útil é olhada disputa a disputa: só a que recebeu alguma leitura na volta (casada pelo caso,
+  ou por ser a única não final do tipo) perde o `contestacao_sem_fonte`. O casamento continua conservador: com duas
+  disputas não finais, o caso novo achado pela busca não se liga a nenhuma e vira a `contestacao_ambigua` (a equipe confere
+  no painel do Mercado Pago e registra pelo quadro). *Motivo:* sem isso, a disputa sem caso ficava sem fonte e sem aviso.
+- **O orçamento da volta dentro de um pagamento** *(segue o desenho, "Rotina", orçamento de 60 s)*. *Antes:* o orçamento
+  era conferido só antes de cada pagamento; um pagamento com muitas disputas chamava a Chargebacks API caso a caso até o
+  fim (8 s cada), passando do minuto. *Agora:* ele é conferido também antes de cada chamada da Chargebacks API e da Payments
+  API. Esgotado no meio de um pagamento, andam na fila só as disputas cujo caso já respondeu (sem ligar o
+  `contestacao_sem_fonte`, porque as fontes que faltaram não foram chamadas); as outras continuam na vez e são as primeiras
+  da próxima volta, e a volta para ali. *Motivo:* a rotina tem de caber no tempo da função.
+- **O 403 na busca tardia** *(segue o desenho, "Busca tardia")*. *Antes:* a Chargebacks API recusando a busca (403) gastava
+  a vez da semana sem nenhum aviso: a disputa aberta tarde ficava invisível. *Agora:* o 403 continua gastando a vez (a
+  próxima busca é na semana seguinte, ou no "Conferir agora"), mas liga, sob a trava, o aviso do pagamento
+  `contestacao_busca_sem_acesso` (mora só no pagamento, como a `contestacao_ambigua`), com a contagem no Início ("O
+  Mercado Pago não deixa esta conta procurar disputas…"). A primeira busca tardia que responder (a da semana seguinte, ou a
+  do "Conferir agora") desliga o aviso. Junto, os avisos
+  do pagamento que a leitura da disputa liga (`ao_vivo` e este) passam pela gravação única dos avisos
+  (`sincronizarAvisosDaDisputa`, `ligar`/`desligar`), em vez de mudar a lista na memória antes dela (o que podia pular a
+  escrita num pagamento sem disputa em curso). *Motivo:* "avisar em vez de supor": a falta de permissão tem de aparecer.
+- **"Voltou a aprovado" com a contestação que o pagamento não registra** *(segue o desenho, "De onde vem cada fato",
+  item 3)*. *Antes:* depois dos 85 dias, o `approved` da Payments API só valia como "a transação voltou a aprovada" quando
+  o pagamento estava `contestado`. A contestação no cartão registrada pela equipe, ou achada pela Chargebacks API depois
+  dos 85 dias, não muda a situação do pagamento (continua `aprovado`); sem o caso legível na Chargebacks API, a disputa
+  ficava aberta para sempre. *Agora:* vale também quando o quadro tem uma contestação no cartão não final; a disputa vai
+  para `a_confirmar` e a equipe confirma o resultado (como sempre). *Motivo:* o fato que a Payments API dá é o mesmo; o que
+  muda é só por onde o sistema soube da disputa.
+- **A falha de um caso não para os outros** *(segue o desenho, "Rotina", "a fila anda também na falha")*. *Antes:* com
+  várias disputas no mesmo pagamento, a falha na leitura do primeiro caso (transporte, resposta ilegível) encerrava as
+  leituras dos outros casos e a busca, e todas as disputas do pagamento contavam a falha. *Agora:* cada caso é lido numa
+  chamada isolada; a falha conta só para a disputa daquele caso (ou para todas, quando falha uma fonte do pagamento inteiro
+  — a order, a busca ou a Payments API — e nada as leu na volta), e os outros casos e a busca seguem. *Motivo:* um caso
+  com problema não pode deixar as outras disputas sem leitura.
+- **O "Conferir agora" da empresa conta as disputas** *(segue o desenho, "Painel")*. *Antes:* a mensagem só olhava os
+  pagamentos, as devoluções e os Pix cancelados; uma volta que só achava ou mudava uma disputa respondia "Nada pendente
+  para conferir com o Mercado Pago". *Agora:* a mensagem diz as disputas novas, as relidas e os pagamentos com disputa
+  atualizada (como o "Conferir agora" de um pagamento já fazia).
+- **A possível duplicata não explica a devolução lida** *(segue o desenho, "D21 com a disputa" e "possível duplicata")*.
+  *Antes:* o MED ou a reclamação registrados como possível duplicata (há outra disputa não final) já contavam, pelo valor
+  inteiro, na explicação da devolução que a leitura mostra (D21, no TS e no gêmeo SQL), embora não segurem nada até a
+  equipe confirmar que é outra disputa. *Agora:* uma regra só, `explicaDevolucaoLida` (`travas.ts`): explicam a devolução
+  o MED e a reclamação que não estão encerrados sem efeito nem são possível duplicata ainda não confirmada; o gêmeo SQL
+  (`devolvidoPelaDisputaSql`) e a conta do retido (`devolvidoExplicadoPelaDisputa`) seguem a mesma regra. Ao "Confirmar
+  que é outra disputa", ela passa a explicar, e o aviso `devolvido_por_fora` sai se nada mais ficar sem explicação.
+  *Motivo:* uma duplicata não confirmada não pode liberar a parte do proprietário.
+- **A saída do `devolvido_por_fora` é sempre gravada** *(segue o desenho)*. *Antes:* o registro de um MED ou de uma
+  reclamação que explicava a devolução tirava o aviso só da lista em memória antes da gravação única dos avisos; quando o
+  resto da lista não mudava, a gravação era pulada e o aviso continuava no pagamento. *Agora:* a saída vai pelo `desligar`
+  de `sincronizarAvisosDaDisputa`, como os outros avisos do pagamento.
+- **A página do hóspede depois do resultado de "Cancelar a reserva contestada"** *(segue o desenho, "Estados da página":
+  "enquanto a disputa não termina")*. *Antes:* a página ficava em `cancelada_em_conferencia` enquanto o pagamento estava
+  contestado, e a disputa perdida deixa o pagamento contestado para sempre: "Estamos conferindo a devolução…" nunca saía.
+  *Agora:* a página segue as linhas da disputa dos pagamentos da reserva: em curso, `cancelada_em_conferencia`; perdida
+  (o resultado confirmado pela equipe), `cancelada_devolvida`, com a frase nova editável `cancelamentoDevolvidoPelaDisputa`
+  ("O dinheiro desta reserva voltou a você pelo banco ou pelo Mercado Pago."; sem a palavra "contestação"); ganha ou
+  encerrada sem efeito, `cancelada_sem_devolucao`, como antes. Sem linha nenhuma (lido antes do M8.2e), a situação do
+  pagamento, como antes. *Motivo:* a página não pode prometer uma conferência que já terminou.
+- **O teto do pago com uma disputa já perdida** *(segue o desenho, "Valor em risco": a soma nunca passa do pago)*.
+  *Antes:* o valor em risco somava só as disputas não finais; com duas disputas confirmadas no mesmo pagamento, a perdida
+  saía da conta e a outra voltava a poder segurar (e perder) o pago inteiro, e "Confirmar o resultado" aceitava qualquer
+  perda até o pago: a soma das perdas podia passar do que entrou. *Agora:* `perdidoNoPagamento` (`contestacao-leitura.ts`)
+  soma o que as perdidas do pagamento já levaram (o valor perdido; no pagamento sem reserva, o contestado ou o pago); o
+  valor em risco das outras parte desse total (`recalcularDisputas`), a proposta do valor perdido nunca passa do que sobra,
+  e "Confirmar o resultado" recusa uma perda acima disso (`textoPerdaAcimaDoQueSobra`). *Motivo:* o dinheiro perdido nas
+  disputas de um pagamento nunca passa do que ele pagou.
+- **O prazo dos documentos no registro pela equipe** *(segue o desenho, "Registro pela equipe")*. *Antes:* o registro aceitava
+  um prazo anterior ao dia em que a disputa abriu (o formulário só limitava pelo dia da aprovação), e a disputa já nascia
+  com o prazo vencido nos avisos. *Agora:* o prazo vai do dia da abertura em diante, no servidor e no formulário (como em
+  "Informar o prazo").
+- **A data do envio dos documentos** *(segue o desenho, "Painel", ações: "Documentos enviados no painel do Mercado
+  Pago" com a data)*. *Antes:* "Documentos enviados no painel do Mercado Pago" aceitava qualquer dia desde a aprovação
+  do pagamento, no servidor e no formulário; numa disputa aberta
+  dias depois da aprovação, uma data anterior à abertura ficava gravada para sempre (a marca é uma vez só) e tirava o
+  aviso do prazo. *Agora:* uma regra só, `desdeADefesa` (`contestacao.ts`): o envio dos documentos e o prazo deles vão do
+  dia da abertura no Mercado Pago em diante, ou, sem ela, do dia em que o sistema viu ou a equipe registrou a disputa
+  (nunca antes da aprovação); o domínio e o formulário leem dali. O débito continua desde a abertura no Mercado Pago ou,
+  sem ela, desde a aprovação (`desdeAberturaDaDisputa`: o débito pode vir antes de o sistema ver a disputa), e o
+  formulário dele passa a ler a mesma regra do domínio. *Motivo:* a defesa só começa depois de a disputa abrir.
+- **"Pedir o cancelamento" pelo hóspede com a disputa registrada** *(segue o desenho, "Minha reserva": o botão some com a
+  disputa em curso ou perdida)*. *Antes:* o botão sumia, mas o pedido (`pedirCancelamentoPeloHospede`) não conferia a
+  disputa: um formulário aberto antes, ou o envio direto da ação, gravava o pedido num pagamento que segue aprovado com um
+  MED registrado ou um caso tardio da Chargebacks API. *Agora:* o pedido recusa ("fale com a equipe") antes e de novo sob a
+  trava, pela mesma regra do botão.
+- **O pagamento contestado sem linha no quadro, para o hóspede** *(segue o desenho, "Estados da página" e "Minha
+  reserva")*. *Antes:* a leitura ambígua (`contestacao_ambigua`, que não cria linha) ou o pagamento contestado antes do
+  M8.2e deixavam Minha reserva sem o botão e sem explicação nenhuma, e a página da reserva sem a frase "pagamento em
+  conferência". *Agora:* uma regra só, `disputaDoPagamentoOuSituacao` (`contestacao-regras.ts`): a disputa de cada pagamento
+  é a das linhas dele, ou, sem linha nenhuma, a situação dele (contestado é em curso). Minha reserva, o pedido de
+  cancelamento, a página da reserva e a da reserva cancelada pela disputa leem dali (esta última já usava a situação
+  quando a reserva não tinha linha nenhuma; agora decide pagamento a pagamento). *Motivo:* o hóspede nunca fica sem saber
+  por que não pode pedir o cancelamento.
+- **A disputa de parte do valor perdida, na reserva cancelada pela disputa** *(segue o desenho, "Estados da página")*.
+  *Antes:* qualquer disputa perdida levava a página a `cancelada_devolvida` ("O dinheiro desta reserva voltou a você…"),
+  também numa disputa de parte do valor ou de um só dos pagamentos da reserva, com o resto ainda retido. *Agora:* só
+  quando o que as perdidas levaram (`perdidoNoPagamento`, a mesma conta do teto do pago, somada nos pagamentos da
+  reserva) cobre o retido da reserva (`reservas.valor_retido`); senão, `cancelada_em_conferencia` ("Estamos conferindo a
+  devolução com o Mercado Pago; a nossa equipe fala com você."), e a equipe trata o resto com o hóspede. *Motivo:* a
+  página nunca diz que o dinheiro todo voltou quando só parte voltou.
+- **"Confirmar que é outra disputa" num MED ou numa reclamação que a leitura já mostra como devolução** *(segue o desenho,
+  "Lançamentos", o retido do MED)*. *Antes:* o registro de um MED que a leitura já mostrava como devolução lançava o
+  retido realizado, mas a possível duplicata confirmada depois como outra disputa ganhava só o retido previsto; depois
+  dos 85 dias, nenhuma leitura da order o corrigiria, e a saída de caixa que já aconteceu ficava prevista para sempre.
+  *Agora:* `confirmarOutraDisputa` faz a mesma sequência do registro (`recalcularDisputas` sem caixa e
+  `lancarRetidoRealizado`, no dia em que a leitura viu a devolução, pelo que esta disputa explica). *Motivo:* o caixa
+  registra a saída que já aconteceu.
+- **O teto da perda no pagamento sem reserva** *(segue o desenho, "Pagamento sem reserva": o que a SCL perde é a taxa)*.
+  *Antes:* "Confirmar o resultado" aceitava até a taxa mais o custo do parcelamento cobrado da SCL
+  (`custo_parcelas_vendedor`), que já está dentro da taxa (`financeiroDoPagamento`); e cada disputa perdida do mesmo
+  pagamento podia perder a taxa inteira, lançando a mesma taxa como despesa mais de uma vez. *Agora:* o teto é a taxa do
+  pagamento menos o que as outras perdidas dele já levaram (`taxaJaPerdidaNoPagamento`, `contestacao-leitura.ts`); a
+  proposta do valor perdido segue o mesmo teto (zero quando outra disputa já levou a taxa), e a recusa diz quanto as outras
+  já levaram. *Motivo:* a taxa de um pagamento é cobrada uma vez só.
+- **A data do resultado** *(segue o desenho, "Confirmar o resultado": a data entre a abertura e hoje)*. *Antes:* o mínimo
+  era o dia em que o sistema viu ou a equipe registrou a disputa (`aberta_em`); numa disputa registrada ou achada dias
+  depois de abrir, um resultado verdadeiro entre a abertura e o registro era recusado (e o formulário levava ao mesmo
+  mínimo, forçando uma data falsa). *Agora:* o mínimo é o da abertura no Mercado Pago (`desdeAberturaDaDisputa`, a mesma
+  regra do débito; sem ela, a aprovação), no domínio e no formulário (`ResultadoNaTela.desde`). Os passos da defesa
+  (documentos e prazo, `desdeADefesa`) continuam a partir da abertura ou, sem ela, do dia em que o sistema viu a disputa.
+  *Motivo:* o resultado, como o débito, pode vir antes de o sistema ver a disputa.
+- **O id da conta dentro dos 8 s da chamada** *(segue o desenho, "Rotina", orçamento de 60 s com 8 s por chamada)*.
+  *Antes:* num cliente novo, a primeira chamada da Chargebacks API lia antes o id da conta (GET /users/me, para o
+  X-Caller-Id) com 8 s próprios, e o pedido do caso tinha mais 8 s: uma chamada do provedor podia levar 16 s, e a volta
+  passava do orçamento mais do que uma chamada. *Agora:* os 8 s valem para o método inteiro (`chamarContestacoes`,
+  `mercadopago.ts`): a leitura do id sai do mesmo prazo, e o pedido à Chargebacks API fica com o que sobrar (sem sobra, a
+  chamada falha por tempo, como as outras). *Motivo:* o orçamento conta cada chamada do provedor como no máximo 8 s.
+- **"Voltou a aprovado" pela order, com a contestação que o pagamento não registra** *(segue o desenho, "De onde vem
+  cada fato", item 1)*. *Antes:* a correção anterior (a Payments API, depois dos 85 dias) não valia para a leitura da
+  order: dentro dos 85 dias, a order aprovada de novo, sem disputa listada, só dava o fato com o pagamento `contestado`; a
+  contestação no cartão registrada pela equipe (o pagamento continua `aprovado`) ficava aberta. *Agora:* uma regra só,
+  `comContestacaoNoCartaoEmAberto` (`contestacao-regras.ts`; desde a rodada seguinte, `voltouAAprovadaTemDisputa`, abaixo):
+  a leitura da order e a da Payments API dão o fato sempre que há uma contestação no cartão não final no quadro, de
+  qualquer origem; a disputa vai para `a_confirmar` e a equipe confirma o resultado, como sempre.
+- **Um orçamento só para a volta das disputas** *(segue o desenho, "Rotina", orçamento de 60 s)*. *Antes:* a releitura das
+  disputas abertas e a busca tardia da mesma volta tinham 60 s cada (até uns 120 s na volta). *Agora:* as duas dividem um
+  orçamento só, contado do início da volta (`disputasDaVolta` na rotina e no "Conferir agora" da empresa,
+  `conferirContestacoesDoPagamento` no de uma reserva): a busca usa o que a releitura deixou, e o que não coube fica para a
+  próxima volta, com a vez intacta. *Motivo:* a volta tem de caber no tempo da função.
+- **"Voltou a aprovado" depois de uma disputa perdida** *(segue o desenho, "Transições": a leitura que contradiz uma linha
+  final liga `contestacao_resultado_mudou`)*. *Antes:* o fato só valia com uma contestação no cartão não final; com a
+  única disputa já confirmada como perdida, a order (ou a Payments API) de novo aprovada, sem disputa listada, não dava
+  fato nenhum, ou era tida como explicada pela linha final, e a perda definitiva e o livro ficavam sem aviso. *Agora:* a
+  regra (`voltouAAprovadaTemDisputa`) inclui a contestação no cartão perdida; sem id e só com linhas finais, o fato vai para
+  a perdida mais nova (a ganha mais nova o explica; a sem efeito não conta); a perdida contradita pela transação de volta a
+  aprovada liga o aviso, sem mudar a linha, a situação do pagamento nem o livro (a correção é da equipe, por um ajuste), e
+  "Conferir o aviso" o tira até um fato novo. O fato da order sem lista fala só da contestação no cartão (`soDoTipo`), como
+  o da Payments API. *Motivo:* "avisar em vez de supor".
+- **O e-mail da abertura com o dia em que a disputa abriu** *(segue o desenho, "Painel", "E-mail à equipe")*. *Antes:* o e-mail
+  dizia o dia do registro (ou da primeira leitura). *Agora:* diz a abertura no Mercado Pago (a data que a equipe informou,
+  ou a do caso), como o quadro; sem ela, o dia em que o sistema a viu.
+- **A liberação lida pela Payments API depois dos 85 dias** *(segue o desenho, "Taxa, liberação e recebimento": a liberação
+  sob disputa só à mão, com o aviso)*. *Antes:* a leitura do pagamento pelo número (`situacaoDoPagamento`) trazia o
+  `money_release_status`, mas a disputa só usava a situação: um pagamento em disputa liberado depois dos 85 dias nunca
+  ligava `contestacao_liberacao_lida`, e o resultado podia propor que o líquido nunca entrou. *Agora:* uma regra só para o
+  status (`liberadoPeloStatus`, `provedor.ts`: o financeiro da order e a Payments API leem dela) e uma só para o aviso
+  (`avisarLiberacaoLidaNaDisputa`, `liberacao.ts`: a leitura da order e a da Payments API chamam a mesma): com a disputa em
+  curso ou perdida, sem recebimento em vigor e com líquido que ainda cabe, o aviso pede o registro à mão. *Motivo:* o
+  sinal do Mercado Pago é o mesmo; só muda por onde o sistema o lê.
+- **O "Conferir agora" de uma reserva diz quando a leitura das disputas falhou** *(segue o desenho, "Painel")*. *Antes:* a
+  falha na Chargebacks API, na busca ou na Payments API (a order lida sem problema) não entrava na mensagem, que podia
+  dizer "nada mudou". *Agora:* a mensagem diz "Não deu para conferir as disputas do pagamento agora: tente de novo em
+  instantes.", como o "Conferir agora" da empresa já diz das falhas.
+- **A disputa perdida no cartão depois dos 85 dias** *(segue o desenho, "Transições": a leitura que contradiz uma linha
+  final liga `contestacao_resultado_mudou`; e "Rotina", a busca tardia semanal)*. *Antes:* a releitura diária só pega as
+  disputas `aberta` e `a_confirmar`; depois dos 85 dias (a order não é mais lida), nada lia a situação de um pagamento cuja
+  disputa no cartão foi perdida, e a transação de volta a aprovada não dava aviso. *Agora:* a busca tardia semanal
+  (`buscarContestacoesTardias`), na vez do pagamento, lê também a Payments API pelo número quando ele está fora da order,
+  tem uma contestação no cartão perdida e nenhuma outra no cartão ainda não final (essa a releitura diária já lê). A
+  leitura passa pelo mesmo casamento e pelas mesmas transições: a transação de volta a aprovada liga o aviso na perdida, e
+  a liberação lida liga `contestacao_liberacao_lida` (`avisarLiberacaoLidaNaDisputa`). A perdida não volta à fila diária
+  (sem espera crescente nem `contestacao_sem_fonte`). A falha dessa leitura, ou a falta de tempo para ela na volta,
+  devolve a vez, como a falha da busca. *Motivo:* a perda definitiva não pode ficar sem aviso quando o Mercado Pago a
+  desfaz, e a busca semanal já é a leitura dos pagamentos antigos.
+- **A disputa ganha no cartão reaberta depois dos 85 dias** *(segue o desenho, "Transições": a ganha relida `in_process`
+  liga `contestacao_resultado_mudou` e volta a segurar o "em curso"; "Conferir o aviso" com "A disputa foi reaberta")*.
+  *Antes:* a leitura da Payments API na busca semanal (item anterior) valia só para a perdida; a ganha reaberta
+  (reapresentação ou arbitragem) depois dos 85 dias não era vista: a Chargebacks API não diz `in_process`. *Agora:* a mesma
+  leitura vale para a contestação no cartão ganha ou perdida (sem outra no cartão ainda não final): `charged_back/in_process`
+  liga o aviso na ganha, e a equipe abre a rodada seguinte por "Conferir o aviso". *Motivo:* uma disputa ativa não pode
+  ficar tida como resolvida.
+- **O pagamento contestado de novo com só disputas encerradas no quadro** *(segue o desenho, "Estados da página": "enquanto
+  a disputa não termina")*. *Antes:* `disputaDoPagamentoOuSituacao` só olhava a situação do pagamento quando ele não tinha
+  linha nenhuma. Com uma disputa encerrada (ganha, sem efeito ou perdida) e uma leitura nova que não casou
+  (`contestacao_ambigua`, o pagamento `contestado` de novo), a página do hóspede não dizia "em conferência", ou mostrava a
+  perda antiga como o resultado. *Agora:* com o pagamento contestado, vale "em curso" quando o quadro não o explica (sem
+  linha, só encerradas sem perda) ou com a leitura ambígua, mesmo ao lado de uma perdida; a perdida sozinha (que deixa o
+  pagamento contestado) segue perdida. Uma regra, um lugar: as três telas do hóspede e o pedido de cancelamento por ele.
+- **Cada chamada da volta das disputas só começa se o tempo dela cabe no orçamento** *(segue o desenho, "Rotina", orçamento
+  de 60 s)*. *Antes:* o orçamento era conferido antes de cada pagamento e antes das chamadas da Chargebacks API e da
+  Payments API, mas a leitura da order (`conferirTentativa`, a order e o financeiro, cada um com o tempo-limite padrão de
+  15 s) começava sem conferir. Com o orçamento quase no fim, uma order lenta levava a volta a uns 75 s. *Agora:* uma regra
+  só, `cabeNoOrcamento` (`contestacao-regras.ts`): uma chamada só começa se o tempo máximo dela cabe no que resta do
+  orçamento. A order reserva `TEMPO_LEITURA_DA_ORDER_MS` (2 × 15 s), e a Chargebacks API e a Payments API reservam 8 s,
+  na releitura e na busca tardia. A volta nunca passa dos 60 s, e o que não coube fica na vez para a próxima.
+  `TEMPO_LIMITE_PADRAO_MS` (`provedor.ts`) é o tempo-limite padrão do cliente, num lugar só. *Motivo:* a volta tem de caber
+  no tempo da função.
+- **A devolução lida que cresce depois do MED ou da reclamação** *(segue o desenho, "Devolvido no painel do Mercado
+  Pago (fora da política)": o valor vira o retido realizado da disputa, no dia em que a leitura viu a devolução)*.
+  *Antes:* o retido realizado pela
+  leitura era lançado uma vez só, pelo devolvido lido naquele dia. Se o Mercado Pago devolvia mais ao pagador depois (a
+  devolução em partes), a leitura seguinte não mexia no retido, e o aviso `devolvido_por_fora` saía, porque o valor da
+  disputa explicava o devolvido maior. O caixa ficava sem a saída que o Mercado Pago já mostrava. *Agora:* quando o que a
+  disputa explica passa do retido realizado pela leitura, `lancarRetidoRealizado` estorna o realizado com a data de caixa
+  de hoje e lança o `retido#N` com o valor todo, também hoje. O caixa do dia anterior não muda, o de hoje leva só a
+  diferença, e o retido continua um lançamento só. Não mexe no retido conciliado nem no confirmado pela equipe (o débito
+  confirmado). A devolução lida que diminui não muda o caixa: o resultado da disputa acerta. *Motivo:* o caixa acompanha a
+  saída de dinheiro que o Mercado Pago mostra, sem mudar o passado.
+- **As disputas que passam dos 240 dias juntas** *(segue o desenho, "Rotina": até 240 dias, depois
+  `contestacao_fora_do_prazo` uma vez; até 50 por volta e o orçamento de 60 s)*. *Antes:* a consulta das disputas com mais
+  de 240 dias não tinha limite nem ordem, e a marcação de cada uma (uma transação sob a trava) não conferia o orçamento.
+  Um acúmulo (a rotina parada por um tempo) podia gastar a volta inteira antes da releitura e da busca tardia. *Agora:*
+  as mais antigas primeiro (`aberta_em`, depois `id`), no máximo `LEITURAS_DE_CONTESTACAO_POR_VOLTA` (50) por volta. O
+  orçamento é conferido antes de cada uma, e a marcação para quando ele acaba. As que ficaram são marcadas na volta
+  seguinte. *Motivo:* a volta tem de caber no tempo da função, e a marcação não pode tomar o lugar das leituras.
+- **A leitura da order na volta das disputas não cancela as irmãs pendentes** *(segue o desenho, "Rotina", orçamento de
+  60 s)*. *Antes:* a releitura da order (`conferirTentativa`) cancelava no provedor os pagamentos pendentes que sobraram
+  na cotação e relia cada um. O cancelamento e a releitura têm 15 s cada, e os 30 s reservados para a order não os
+  contavam: com uma irmã pendente, a chamada passava do orçamento. *Agora:* a leitura das disputas lê a order sem
+  cancelar (`semCancelar`). As irmãs ficam marcadas pelo sistema (`cancelamento_por`), e a varredura das que sobraram
+  (`conferirPendentes`, que roda antes das disputas em toda volta da rotina) as cancela. *Motivo:* a volta tem de caber
+  no tempo da função, e o cancelamento já tem o lugar dele.
+- **Disputas abertas no mesmo instante** *(segue o desenho, "Devolvido no painel do Mercado Pago (fora da política)": o
+  devolvido lido é explicado pelas disputas mais antigas primeiro)*. *Antes:* o devolvido que um MED ou uma reclamação
+  explica descontava as outras abertas "até o mesmo instante". Com duas abertas no mesmo instante, cada uma descontava a
+  outra: com 500,00 devolvidos e duas disputas de 500,00, nenhuma ganhava o retido realizado, e o caixa ficava sem a saída
+  que o Mercado Pago já mostrava. *Agora:* uma ordem só, `ordemDeAbertura` (`contestacao-regras.ts`): pela abertura e,
+  no mesmo instante, pelo id. Uma regra, um lugar: o valor em risco, o devolvido que cada disputa explica, o acerto do
+  retido lido, a primeira disputa não final e o tipo da disputa em curso. *Motivo:* o mesmo fato tem de dar o mesmo
+  caixa, sem depender de empate.
+- **O estado lido que o painel não conhece** *(segue o desenho: o estado fora da lista é "desconhecido" e nunca
+  sobrescreve o último conhecido)*. *Antes:* o quadro "O que o Mercado Pago mostra" traduzia o estado gravado por uma
+  lista sem frase de reserva. O estado gravado é sempre um dos conhecidos (o desconhecido vai só no código), mas um valor
+  de fora da lista (uma versão futura, um dado antigo) aparecia como "Situação: undefined". *Agora:* a lista exige uma
+  frase para cada estado conhecido (`Record<EstadoConhecidoContestacao, string>`), e o que não está nela diz "situação
+  que o sistema não conhece", com o código lido, como já acontecia com a documentação. *Motivo:* avisar em vez de supor,
+  e nunca mostrar um texto quebrado.
+- **A liberação opcional no "Ganhou" começa em branco** *(segue o desenho, "A reserva enquanto a disputa está aberta":
+  o "Ganhou" oferece registrar a liberação ali mesmo, com data e líquido)*. *Antes:* sem recebimento do pagamento, o
+  líquido da liberação vinha preenchido com o lido no Mercado Pago, e a data em branco. A ação pede os dois ou nenhum,
+  então o "Ganhou" sem registrar a liberação era sempre recusado até a equipe apagar o valor. *Agora:* os dois campos
+  começam em branco. O líquido lido aparece ao lado do campo ("o Mercado Pago mostra R$ …") e como sugestão dentro dele,
+  sem ir no envio. *Motivo:* o opcional não pode travar a confirmação, e o valor do Mercado Pago continua à vista para
+  quem registra.
+
+### Mudanças nas outras seções deste arquivo (no mesmo PR)
+
+Feitas em 11/10/2026: cada seção diz "desde o M8.2e" (ou "desde 11/10") ao lado do texto anterior.
+
+- **"As cinco partes":** a linha do M8.2e ("pronta em …") e o parágrafo "falta o M8.2e".
+- **"Tabelas":** a migração 0069 (resumo).
+- **"Ordem das travas":** as contestações depois das alterações.
+- **"Situação local":** a frase das transições ganha a saída contestado → situação de antes pela disputa ganha.
+- **"Verificação do banco (3DS)":** "O M8.2e decide quem arca… pelo `tres_ds_status`" vira "a frase da causa `fraude`
+  segue o `tres_ds_status`; quem decide é a equipe (seção Contestação (M8.2e))".
+- **"Taxa e liberação" (M8.2b) e "Taxa, liberação e recebimento":** a liberação sob disputa (só à mão) e o
+  `precisaFinanceiro` pela situação explicada.
+- **"Contestação (gancho para o M8.2e)":** "desde o M8.2e, ver a seção Contestação (M8.2e)". O "nunca `case_id`, `id`
+  ou `references`" e "o aviso assinado continua ignorando ids numéricos" viram histórico, com a regra nova ao lado; "o id
+  numérico… é o que chega nos avisos de contestação" é corrigido (o aviso das Orders chega como order).
+- **"Aviso assinado":** "marcar também Contestações"; o id numérico continua ignorado.
+- **"Conferência":** a frase "Contestação tardia … fica com o M8.2e" aponta para a rotina daqui.
+- **"Confirmação", item 3,** e **"Devolução na parte (a)":** o dinheiro que chegou contestado segue a disputa (resultado
+  confirmado); o por fora continua recusado enquanto ela não é ganha.
+- **"Cancelamento pela política (M8.2c)", "A regra":** a rota "Cancelar a reserva contestada" com o registro de decisão
+  acima; **"Devolução":** a devolução substituída pela disputa e a confirmada pela disputa.
+- **"Devolvido no painel do Mercado Pago (fora da política)":** o MED e a reclamação registrados explicam a devolução lida.
+- **"O que o hóspede vê":** a linha "Confirmada com o pagamento em conferência (M8.2e)", só com o cookie.
+- **"Painel", "Início":** os avisos novos.
+- **"Dados pessoais":** o parágrafo acima e o registro de decisão dos ids.
+
 ## O que o hóspede vê (`/reservar/<código>`)
 
 A vista da cotação lê também a tentativa mais recente. Um pagamento aprovado ou pendente sempre vence
@@ -1706,10 +3564,11 @@ consulta".
 | Cartão em análise (M8.2b) | "Pagamento em análise": o texto editável da análise e a linha fixa do prazo das datas (antes e depois do fim); continua assim mesmo depois do prazo das datas, porque a análise ainda pode aprovar |
 | Cartão recusado, datas ainda seguradas (M8.2b) | "Datas seguradas" com a mensagem genérica (recusa ou verificação não concluída) e as opções que restam: outro cartão, Pix, WhatsApp; com as datas já vencidas, igual ao Pix (sem pagamento) |
 | Confirmada com pedido de cancelamento esperando a equipe (M8.2c) | a reserva continua confirmada, com a linha "Pedido de cancelamento recebido em dd/mm às HH:MM (horário de Brasília)." e a frase editável de que a equipe confirma por escrito o valor (sem política aceita, a frase fixa sem citar política); "Acompanhe ou peça pelo seu acesso: Minha reserva" |
+| Confirmada com o pagamento em conferência (M8.2e) | só com o cookie de quem pagou (`autorizadoNaCotacao`): "Reserva confirmada" e a frase editável `pagamentoEmConferencia` ("O pagamento desta reserva está em conferência com o Mercado Pago…", até 240 caracteres; vazia = nada); sem o cookie, só "Reserva confirmada". Nunca a palavra "contestação" nem acusação. A linha some com o resultado da disputa |
 | Reserva cancelada, devolução pedida (M8.2c) | "Reserva cancelada": quem cancelou e quando o pedido chegou, "devolvemos o valor integral pago, R$ …, sem desconto de taxas", "Já pedimos a devolução ao Mercado Pago…" e como o dinheiro volta (Pix ou cartão; com partes por caminhos diferentes — reserva no Pix e diferença no cartão, ou uma parte devolvida por fora —, a frase de cada caminho usado, na mesma regra da devolução da diferença de uma alteração; com alguma parte por fora, o total nunca é dito "pelo Mercado Pago"). Também na devolução aceita ainda sem confirmação, no cartão com mais de 78 dias ("Estamos pedindo o estorno no seu cartão…", enquanto a devolução por fora do cartão não abre) e no cartão recusado com a devolução por fora ainda fechada |
 | Reserva cancelada, devolvida (M8.2c) | "Devolução de R$ … confirmada pelo Mercado Pago em dd/mm" (o valor lido, quando a leitura o traz), "feita pelo Mercado Pago em dd/mm" (confirmada pela equipe) ou "feita em dd/mm" (por fora, com a frase da transferência e sem linha da forma de pagamento) |
 | Reserva cancelada, com a equipe (M8.2c) | "A devolução de R$ … pelo Mercado Pago não foi possível." e a frase editável de que a equipe combina outra forma, sem custo (Pix recusado, ou cartão com a devolução por fora já aberta) |
-| Reserva cancelada, em conferência (M8.2c) | devolução a menos, pagamento contestado ou devolvido em parte, devolução parada por um problema: "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você." Nunca oferece outro jeito de pagar |
+| Reserva cancelada, em conferência (M8.2c) | devolução a menos, pagamento contestado ou devolvido em parte, devolução parada por um problema (desde o M8.2e, também a reserva cancelada por "Cancelar a reserva contestada", enquanto a disputa não termina, e depois da perdida que não cobre todo o retido; perdida e cobrindo o retido, a página diz que o dinheiro voltou pela frase `cancelamentoDevolvidoPelaDisputa`, desde a revisão do Codex de 11/10): "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você." Nunca oferece outro jeito de pagar |
 | Reserva cancelada sem devolução (M8.2c) | os prazos da política aceita ("Prazo de reembolso integral: pedidos até dd/mm, às 23h59." e o arrependimento, quando vai além) e a frase do caso (fora do prazo, não comparecimento, ou decisão da equipe sem política) |
 | Reserva cancelada, devolução esperando a liberação (M8.2d) | o restante de um pagamento já devolvido em parte, que só é pedido depois da liberação: "…previsto para dd/mm" e a frase editável `devolucaoAguardaLiberacao` ("Ela será pedida ao Mercado Pago quando ele liberar o seu pagamento…"), nunca "Já pedimos" |
 | Alteração segurada (M8.2d) | "Alteração da sua reserva": de/para (datas, noites, pessoas, valor, diferença), "Datas seguradas até HH:MM (horário de Brasília)" (ou "dd/mm às HH:MM"), a frase do rumo e a linha da política; no aumento, o Pix e o cartão da diferença (com o aceite D11 quando preciso); a reserva continua como está até a confirmação |
@@ -1785,7 +3644,8 @@ navegador também barra um desafio em outro endereço.
 - **Início** (para a empresa toda, sem depender do filtro de imóveis): aprovado sem desfecho (a
   devolver), dinheiro que chegou já devolvido em parte ou contestado antes da decisão (alerta
   próprio: resolver no painel do Mercado Pago; o sistema passa a cuidar disso no M8.2d — desde 10/10, "devolva o
-  restante pelo quadro do pagamento"), devolução pedida ou recusada,
+  restante pelo quadro do pagamento"; desde 11/10, no contestado, "(acompanhe a disputa pelo quadro do pagamento)"),
+  devolução pedida ou recusada,
   liberação prevista vencida sem sinal, criação do pagamento sem resposta do Mercado Pago há mais que a
   carência, conta das chaves que não é de teste, configuração inválida,
   aviso com `live_mode`, dinheiro sem cálculo, e o informativo "N reserva(s) do site paga(s): feche as
@@ -1850,6 +3710,17 @@ navegador também barra um desafio em outro endereço.
     uma alteração da reserva". No quadro do cancelamento, a linha "Devolução" mostra a de cada pagamento (o da
     diferença também, e o restante). A devolução que manda no pagamento é a mais nova pela criação.
   - Início: seção "Alteração de reserva paga (M8.2d)", "Início".
+- **Disputa do pagamento no painel (M8.2e):** o bloco **Disputa** por linha no quadro "Pagamento no site" (com as ações,
+  cada uma com `BotaoConfirmar`, e o resultado pela chave `?contestacao=`), "Registrar disputa vista no painel do
+  Mercado Pago" no quadro do pagamento, a página para imprimir "Documentos para a defesa", Financeiro → Pagamentos do
+  site (filtro "Com disputa" e a coluna "Disputa"), Configurações → Pagamento no site (a categoria da perda por disputa,
+  os dias de aviso do prazo dos documentos e os nomes e as frases das causas) e Textos do site
+  (`pagamentoEmConferencia`). Os avisos novos do Início (`avisosDeContestacao`, em `painel/dashboard.ts`, e
+  `avisosDeContestacaoNosRepasses`, em `repasses/avisos-contestacao.ts`): sem decisão de quem arca (e a escalada depois de
+  15 dias), prazo dos documentos (informativo, atenção, passou, desconhecido), resultado a conferir, perdida sem decisão,
+  estadia por vir, repasse a pagar com parte de reserva em disputa, possível duplicata, disputa ambígua, caso de outro
+  pagamento, resultado que mudou, leituras em conflito, ganha sem recebimento, dia 85 sem fonte, 240 dias e o débito
+  disponível não descontado há mais de 7 dias. Seção "Contestação (M8.2e)", "Painel".
 
 ## Dados pessoais
 
@@ -1864,7 +3735,8 @@ juros), códigos de detalhe, `tres_ds`, `tres_ds_status`, `etapa_cartao`, `desaf
 `com_dispositivo`, `encerrado_em`, `cancelamento_por`, `conta_no_disjuntor`, `id_pagamento_provedor`,
 `custo_parcelas_vendedor`, `aceite_id` e `live_mode`. **Nunca** guardado nem registrado: token do cartão,
 BIN, últimos dígitos, titular, CPF ou outro documento, e-mail do pagador, id do aparelho, ids dos casos de
-contestação, IP (além das chaves do freio, de cerca de 24 h), os dados crus do Brick (`formData`,
+contestação (*desde o M8.2e*, os ids do caso, da contestação e da transação são guardados: registro de decisão na seção
+"Contestação (M8.2e)", "Tabelas"), IP (além das chaves do freio, de cerca de 24 h), os dados crus do Brick (`formData`,
 `additionalData`, a mensagem de erro) e a resposta crua do provedor. Disparos do disjuntor e auditorias
 só com contagens, horários e ids de usuário. O motivo da recusa só aparece para quem lê o financeiro. O
 teste de dados pessoais (`semDadosPessoais`) percorre `pagamentos`, `eventos_pagamento`, `auditoria`,
@@ -1897,6 +3769,18 @@ telefone, CPF, chave Pix, dados bancários ou de cartão do hóspede, a mensagem
 a auditoria nunca copia notas; os valores ficam na auditoria das entidades `alteracao` e `pagamento`, e a
 auditoria `reserva.alterar` só leva `valorBruto` (escondido sem `financeiro:ler`). As observações da reserva levam
 datas e pessoas, nunca valores. `semDadosPessoais` percorre também `alteracoes_reserva` e as reservas-pedido.
+
+**Contestação (M8.2e).** Pode ser guardado: os ids do caso, da contestação (`CBK…`) e da transação (registro de decisão
+de 11/10 na seção "Contestação (M8.2e)", "Tabelas": são identificadores do Mercado Pago para a disputa, sem dado de
+ninguém, e a única forma de ler o caso depois dos 85 dias); códigos de listas fechadas, o `reason_id` e o código do
+motivo (só `^[a-z][a-z0-9_]{0,39}$`), valores, datas, booleanos de cobertura, o retrato do `tres_ds_status`, ids de
+usuário, notas validadas (até 300 caracteres) e a explicação ao proprietário, também validada. **Nunca:** nome, e-mail,
+telefone, CPF, chave Pix ou dados bancários e de cartão do hóspede ou do titular; o `reason` em texto livre; a
+documentação do caso (arquivos, endereços, descrições); a resposta crua. A página "Documentos para a defesa" é montada na
+hora e nunca gravada; o e-mail à equipe leva só o código da reserva e o imóvel. `semDadosPessoais` percorre também
+`contestacoes_pagamento` e `eventos_contestacao`, depois dos fluxos aberta → ganha, aberta → perdida, sem identificação →
+com caso, registro da equipe, MED, duplicata e reabertura (`contestacao-dados.test.ts`, que também planta um valor em
+cada tabela para provar que a varredura as lê); os testes de cada fluxo da disputa conferem o mesmo depois de cada caso.
 
 O texto-base da Política de privacidade (`paginas-legais-rascunho.ts`) diz agora, na linha do
 pagamento: "no cartão, também a bandeira, o número de parcelas, o valor pago com os juros e o resultado
@@ -2053,6 +3937,49 @@ Alteração e devolução de parte do valor (M8.2d):
 58. O `GET /v1/orders/{id}` ainda funciona depois de 90 dias? A referência do Checkout Pro diz 1 ano; completa o
     item 37 e pode mudar a regra dos 78/85 dias.
 
+Contestação (M8.2e):
+
+59. Simular, no painel de Webhooks, um evento "Chargebacks" ("Contestações") contra o endereço de produção. Registrar a
+    URL (`data.id` e `type`), o corpo (a página atual mostra `type: "order"`, `action: "order.charged_back"` e
+    `data.id` `ORD…`) e se a assinatura confere com o id da URL. Se chegar um id numérico, se é o `case_id` ou o número do
+    pagamento.
+60. `GET /v1/chargebacks/search?payment_id=<pagamento de teste>` e `GET /v1/chargebacks/{id}` com as credenciais de
+    teste: lista vazia, 401, 403 ou 404? O `X-Caller-Id` é o `id` de `GET /users/me`? Sem ele, 400 ou 403?
+61. **(Condição para sugerir e, depois, aplicar o resultado pela leitura.)** Perguntar ao suporte do Mercado Pago:
+    - se existe contestação de teste;
+    - o que `settled` e `reimbursed` querem dizer na order, na transação, em `transactions.chargebacks[]` e na Payments
+      API (a página atual da order diz "devolvido ao pagador" para `reimbursed`; o comentário do M8.2b dizia o contrário);
+    - se `coverage_applied` é sempre o resultado (true = a favor do vendedor) e quando sai de null.
+62. Se `payments[]` do caso traz o mesmo número que `pagamentos.id_pagamento_provedor`; se o `case_id` da order é o `id`
+    da Chargebacks API; por que, no exemplo do aviso, o `transaction_id` da contestação não é o `id` do pagamento.
+63. Quantos avisos chegam (abertura, documentos, decisão) e com que `action`; se `order.charged_back` chega a quem marcou
+    só "Order (Mercado Pago)".
+64. **(Condição para tirar a confirmação do valor.)** O dinheiro:
+    - na abertura, o Mercado Pago debita ou só bloqueia? Bruto ou líquido?
+    - a taxa e os juros voltam na perda? Há tarifa por disputa, ganha ou perdida?
+    - em que dia o dinheiro volta na ganha?
+    - que linhas (`chargeback`, `reserve_for_cbk_cross_recovery`) o relatório de liberações e o de dinheiro em conta
+      mostram em cada momento;
+    - o que acontece sem saldo.
+65. 3DS: `AUTHENTICATED` e `ATTEMPTED` passam a responsabilidade só no motivo "não reconhecido" ou em todos? Como isso
+    aparece no caso (`coverage_applied`, ou o caso nem é aberto contra a SCL)? Bandeira ou emissor? `coverage_eligible`
+    pode ser `true` para hospedagem (serviço)?
+66. A lista de `reason`/`reason_id` (quais são "não reconhecido" e quais são "serviço não prestado") e de quando conta o
+    prazo da bandeira em hospedagem.
+67. MED do Pix: como aparece para o vendedor (situação do pagamento, devolução `by_admin`, aviso, linha do relatório,
+    bloqueio do saldo) e se o vendedor responde ou manda evidência.
+68. Reclamação (Claims API) no Checkout Transparente: o hóspede que paga sem conta no Mercado Pago consegue abrir? Como
+    aparece na order (`in_mediation` vira `charged_back/in_process`)?
+69. Volta de estado: `settled` pode virar `reimbursed` (reapresentação, arbitragem)? A ganha volta a `in_process`? A
+    transação resolvida volta a `processed/accredited` ou fica em `charged_back/*`?
+70. Formatos: `id` do caso como texto ou número, `payments[]` como números, `amount` como número ou texto; os valores
+    reais de `documentation_status`; quando `date_documentation_deadline` vem null.
+71. A Chargebacks API responde para pagamentos com mais de 180 dias e para orders já apagadas (mais de 90 dias; completa
+    o item 58)?
+72. `GET /v1/payments/{id}` de um pagamento com mais de 90 e de 180 dias: responde? Que `status`/`status_detail` mostra
+    durante e depois de uma disputa, e o `money_release_status` depois de ganha?
+73. Disputa de parte do valor antes da liberação: o Mercado Pago libera a parte não disputada? O `net_received_amount` e o
+    `money_release_status` da Payments API vêm com ou sem o valor bloqueado?
 
 ## Conferência dos prazos de cartão — 10/10/2026
 
@@ -2073,4 +4000,5 @@ Esta conferência não foi executada contra a conta de teste do Mercado Pago. Co
 pendentes as verificações de formato e comportamento do provedor na lista de sandbox
 acima, inclusive o item 14. Nenhuma cobrança ou devolução real foi feita. Cancelar
 reserva paga (M8.2c), alterar (M8.2d) e tratar contestação (M8.2e) permanecem itens
-próprios, ainda não entregues por este reforço de testes.
+próprios, ainda não entregues por este reforço de testes (entregues depois, só no teste: o M8.2c e o M8.2d em 10/10, o
+M8.2e em 11/10/2026).

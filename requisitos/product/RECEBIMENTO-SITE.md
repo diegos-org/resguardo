@@ -8,7 +8,8 @@ repassa; depois perguntou se dava para fazer como o Airbnb (split), e este docum
 opções. Taxas tiradas de fontes públicas (setembro e 4/10/2026), **a conferir** na hora de abrir
 a conta (mudam por plano, prazo de recebimento e negociação). Continuam pendentes só as perguntas
 3, 4 e 5 (taxa do pagamento, contestação perdida, política de cancelamento), antes do pagamento de
-verdade.
+verdade. (Depois: as perguntas 4 e 5 foram respondidas em 7/10; a 4 está implementada em teste desde o M8.2e,
+11/10/2026, com detalhes ★ para Diego; a 3 continua pendente.)
 
 ## A pergunta
 
@@ -275,7 +276,17 @@ cada vez.
    disputa (problema no imóvel, o proprietário; falha no atendimento ou na cobrança, a SCL; sem
    como separar, cada um na proporção da sua parte), decidido caso a caso pela equipe e
    registrado com o motivo. O sistema registra a disputa e avisa, e nunca escolhe sozinho: o
-   lançamento para quem arca só nasce com a decisão registrada (M8.2).
+   lançamento para quem arca só nasce com a decisão registrada (M8.2). **Implementada em teste em 11/10/2026
+   (M8.2e;** `PAGAMENTO-SITE.md`, seção "Contestação (M8.2e)"): a disputa (contestação no cartão, MED do Pix ou
+   reclamação no Mercado Pago) deixa a reserva em conferência até a decisão de quem arca; com a decisão, o valor do
+   proprietário fica segurado nos próximos repasses até o resultado (devolvido se a SCL ganhar, definitivo se perder) e o
+   da SCL é perda prevista, que vira definitiva na perda; tudo no mês corrente. "Na proporção da sua parte" = parte ÷
+   (parte + comissão), pelas partes efetivas da reserva (com a taxa saindo antes da divisão, 85% e 15% numa comissão de
+   15%). Exemplo: reserva de R$ 1.000,00 (parte R$ 807,67, comissão R$ 142,53, taxa R$ 49,80), disputa perdida de
+   R$ 1.000,00 na proporção: R$ 850,00 do proprietário e R$ 150,00 da SCL; no fim, −R$ 42,33 e −R$ 7,47. O resultado é
+   sempre confirmado pela equipe. Ficam com Diego, antes do pagamento de verdade, as decisões ★ 1 a 6 do GUIA, seção 7
+   (quanto o proprietário perde quando ele arca, a proporção, o que fica segurado, o resultado confirmado pela equipe,
+   o pagamento não reconhecido e a disputa antes da entrada).
 5. Política de cancelamento das reservas do site: reembolso total, parcial ou nenhum conforme
    a antecedência, e quem arca com a taxa do pagamento que não volta. **Base respondida em
    7/10/2026:** reembolso integral até 14 dias antes da entrada; com menos de 14 dias, sem

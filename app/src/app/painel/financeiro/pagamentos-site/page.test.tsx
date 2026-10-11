@@ -46,6 +46,8 @@ const linha: LinhaPagamento = {
   checkout: "2026-10-15",
   cotacaoCodigo: "COT1",
   alteracaoEm: null,
+  disputa: null,
+  emDisputa: false,
 };
 const hoje = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const html = async (params: Record<string, string> = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(params) } as PageProps<"/painel/financeiro/pagamentos-site">));
@@ -69,7 +71,7 @@ it("padrão: os últimos 30 dias da empresa da sessão; colunas, link para a res
   const h = await html();
   const ate = hoje();
   const de = new Date(Date.parse(`${ate}T12:00:00Z`) - 29 * 86_400_000).toISOString().slice(0, 10);
-  expect(m.listar).toHaveBeenCalledWith({}, "org", { de, ate, atencao: false });
+  expect(m.listar).toHaveBeenCalledWith({}, "org", { de, ate, atencao: false, disputa: false });
   for (const col of ["Data", "Reserva", "Imóvel", "Forma", "Situação", "Valor", "Desfecho"]) expect(h).toContain(`<th>${col}</th>`);
   expect(h).toContain('href="/painel/reservas/22222222-2222-4222-8222-222222222222"');
   expect(h).toContain("SCL-TESTE1");
@@ -85,7 +87,7 @@ it("padrão: os últimos 30 dias da empresa da sessão; colunas, link para a res
 
 it("filtro pede atenção e período informado; datas inválidas voltam ao padrão", async () => {
   await html({ de: "2026-09-01", ate: "2026-09-30", atencao: "1" });
-  expect(m.listar).toHaveBeenCalledWith({}, "org", { de: "2026-09-01", ate: "2026-09-30", atencao: true });
+  expect(m.listar).toHaveBeenCalledWith({}, "org", { de: "2026-09-01", ate: "2026-09-30", atencao: true, disputa: false });
   await html({ de: "lixo", ate: "2026-02-31" });
   expect(m.listar).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ ate: hoje(), atencao: false }));
   m.listar.mockResolvedValue([]);
@@ -119,4 +121,23 @@ it("M8.2d: o pagamento da diferença de uma alteração aplicada diz de qual alt
   expect(await html()).toContain("Diferença da alteração de 01/10");
   m.listar.mockResolvedValue([{ ...linha, id: "dif-2", desfecho: "alteracao" as const, motivoSemReserva: null, motivoSemReservaTexto: null, avisos: [], alteracaoId: "a1", alteracaoEm: null }]);
   expect(await html()).toContain("Diferença de uma alteração da reserva");
+});
+
+it("M8.2e: filtro Com disputa (de qualquer data), a coluna Disputa com o link para a reserva e o desfecho 'Reserva (pagamento em disputa)'", async () => {
+  m.listar.mockResolvedValue([
+    { ...linha, id: "disp-1", desfecho: "reserva" as const, situacao: "contestado" as const, motivoSemReserva: null, motivoSemReservaTexto: null, avisos: [], disputa: "Contestação no cartão: aberta", emDisputa: true },
+  ]);
+  const h = await html({ disputa: "1" });
+  expect(m.listar).toHaveBeenCalledWith({}, "org", expect.objectContaining({ disputa: true }));
+  expect(h).toContain("<th>Disputa</th>");
+  expect(h).toContain("Contestação no cartão: aberta");
+  expect(h).toContain("Reserva (pagamento em disputa)");
+  expect(h).toContain('name="disputa"');
+  m.listar.mockResolvedValue([]);
+  expect(await html({ disputa: "1" })).toContain("Nenhum pagamento do site com disputa pedindo a equipe.");
+  // Sem reserva e contestado: o texto aponta para o quadro (nunca "se resolve pelo painel do Mercado Pago").
+  m.listar.mockResolvedValue([{ ...linha, situacao: "contestado" as const, motivoSemReservaTexto: "Chegou contestado." }]);
+  const semReserva = await html();
+  expect(semReserva).toContain("Acompanhe a disputa no quadro do pagamento.");
+  expect(semReserva).not.toContain("se resolve pelo painel");
 });

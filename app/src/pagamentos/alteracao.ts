@@ -71,6 +71,7 @@ import { entradasDasAlteracoes } from "./entradas";
 import { diaBr, diaHoraBr, type EscolhaDaEquipe, escolhaDaEquipe, momentosDaEntrada, NOMES_BASE_CANCELAMENTO, NOMES_MOTIVO_EMPRESA, releituraDosPagamentos, TEXTO_OCUPADO } from "./cancelamento";
 import { cancelarNoProvedor } from "./conferencia";
 import type { Decisao } from "./confirmacao";
+import { contestacaoEmCurso, disputaDoPagamento, TEXTO_DISPUTA_EM_CURSO_ALTERACAO, textoContestacaoPerdida } from "./contestacao-regras";
 import { tentarDevolucao } from "./devolucao";
 import { FUSO_PAGAMENTO, taxaDaReserva } from "./liberacao";
 import { pendenciaDoMotor, podeCobrar } from "./oferta";
@@ -132,6 +133,7 @@ export type CodigoRecusaAlteracao =
   | "estadia_iniciada"
   | "em_andamento"
   | "contestado"
+  | "contestacao_perdida"
   | "devolvido_fora"
   | "devolucao_em_andamento"
   | "ha_cancelamento"
@@ -227,7 +229,11 @@ export type PreviaAlteracao = {
 export const TEXTO_PREVIA_MUDOU_ALTERACAO = "O cálculo mudou desde a prévia (reserva, pagamento, leitura do Mercado Pago, preços ou agenda): calcule de novo antes de seguir.";
 export const TEXTO_NAO_CONFIRMADA = "Só uma reserva confirmada pelo site pode ser alterada por aqui.";
 export const TEXTO_NAO_PAGA = "Esta reserva não foi paga pelo site: a alteração por aqui é só para reservas pagas pelo site.";
-export const TEXTO_CONTESTADO_ALTERACAO = "Pagamento contestado no Mercado Pago: a alteração espera a contestação (M8.2e).";
+/**
+ * Disputa do pagamento em curso (M8.2e): a alteração espera o resultado. Registro de decisão (11/10/2026): antes,
+ * "Pagamento contestado no Mercado Pago: a alteração espera a contestação (M8.2e)."; agora o texto do desenho.
+ */
+export const TEXTO_CONTESTADO_ALTERACAO = TEXTO_DISPUTA_EM_CURSO_ALTERACAO;
 export const TEXTO_DEVOLVIDO_FORA =
   "O Mercado Pago mostra parte deste pagamento devolvida fora do sistema ou uma situação que o sistema não reconhece: confira no painel do Mercado Pago e use Conferir agora antes de alterar.";
 export const TEXTO_DEVOLUCAO_EM_ANDAMENTO = "Há uma devolução desta reserva esperando o Mercado Pago: espere ela se resolver (use Conferir agora) antes de alterar de novo.";
@@ -357,6 +363,11 @@ async function conferirReserva(db: Db, organizacaoId: string, t: Travado, agora:
   // 4. O dinheiro de cada pagamento da reserva, pela leitura gravada, e as devoluções dele.
   const daReserva = pagamentosDaReserva(t);
   for (const p of daReserva) {
+    // M8.2e: a disputa do pagamento (uma regra, um lugar: `disputaDoPagamento`, de qualquer origem): em curso, a alteração
+    // espera o resultado; perdida, o valor já voltou ao hóspede por ela e a alteração não é feita pelo sistema.
+    const disputa = disputaDoPagamento(t, p.id);
+    if (disputa === "em_curso") return recusa("contestado", TEXTO_CONTESTADO_ALTERACAO);
+    if (disputa === "perdida") return recusa("contestacao_perdida", textoContestacaoPerdida("alteracao"));
     if (p.situacao === "contestado") return recusa("contestado", TEXTO_CONTESTADO_ALTERACAO);
     const devs = devolucoesDoPagamento(t, p.id);
     // O devolvido por inteiro pelas nossas devoluções (quitado, sem saldo) não é devolução de fora do sistema.
@@ -1033,6 +1044,9 @@ async function aplicarNaTransacao(
   // 1. As conferências de todo caminho.
   if (r.estado !== "confirmada") return recusa("nao_confirmada", TEXTO_NAO_CONFIRMADA);
   if (t.cancelamento) return recusa("ha_cancelamento", TEXTO_HA_CANCELAMENTO);
+  // M8.2e: a disputa que abriu enquanto a alteração estava segurada (a aprovação da diferença vira
+  // `alteracao_nao_aplicada:contestado`; a diferença paga fica "aprovado sem reserva", para devolver).
+  if (pagamentosDaReserva(t).some((x) => contestacaoEmCurso(t, x.id) || x.situacao === "contestado")) return recusa("contestado", TEXTO_CONTESTADO_ALTERACAO);
   if (!reservaComoNoRetrato(r, a)) return recusa("reserva_mudou", TEXTO_RESERVA_MUDOU);
   const datas = await conferirDatasNoFuturo(tx, organizacaoId, t, a, agora);
   if (datas) return datas;

@@ -6,7 +6,23 @@ import { FormPagamentoSite } from "@/components/configuracoes/FormPagamentoSite"
 import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
-import { CARACTERES_VISIVEIS_FATURA, CATEGORIA_TAXA_PERDIDA, LIMITE_NOME_FATURA, lerConfigPagamentoSite, NAO_COMPARECIMENTO_HORAS_MAX, TEXTOS_TRES_DS } from "@/configuracoes/pagamento-site";
+import {
+  CARACTERES_VISIVEIS_FATURA,
+  CATEGORIA_PERDA_CONTESTACAO,
+  CATEGORIA_TAXA_PERDIDA,
+  type CampoDaCausa,
+  campoDaCausa,
+  DIAS_AVISO_DOCUMENTACAO_MAX,
+  DIAS_AVISO_DOCUMENTACAO_MIN,
+  DIAS_AVISO_DOCUMENTACAO_PADRAO,
+  LIMITE_FRASE_CAUSA,
+  LIMITE_NOME_CAUSA,
+  LIMITE_NOME_FATURA,
+  lerConfigPagamentoSite,
+  NAO_COMPARECIMENTO_HORAS_MAX,
+  TEXTOS_TRES_DS,
+} from "@/configuracoes/pagamento-site";
+import { CODIGOS_CAUSA_CONTESTACAO } from "@/pagamentos/contestacao-regras";
 import { getDb } from "@/db/client";
 import { listarCategorias } from "@/despesas/categorias";
 import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
@@ -30,6 +46,14 @@ const FUSO = "America/Sao_Paulo";
 const hora = (d: Date) => d.toLocaleTimeString("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit" });
 const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: FUSO, dateStyle: "short", timeStyle: "short" });
 const nota = { fontSize: "0.8125rem", color: "var(--scl-texto-2)", margin: 0 } as const;
+
+/** Os campos editáveis de cada causa da decisão de quem arca (M8.2e), com o rótulo de cada um. */
+const ROTULOS_DA_CAUSA: Record<CampoDaCausa, string> = {
+  nome: "Nome",
+  frase: "Frase da regra",
+  fraseComVerificacao: "Frase quando o hóspede passou pela verificação do banco (cartão)",
+  frasePix: "Frase no Pix",
+};
 
 /** O estado do cartão em palavras: ligado, desligado no painel ou desligado pelo disjuntor (até quando e por quê). */
 function estadoDoCartao(ligado: boolean, d: DisjuntorAberto | null): string {
@@ -87,6 +111,19 @@ export default async function PagamentoNoSite() {
         parcelasLimite={PARCELAS_MAXIMAS}
         horasLimite={NAO_COMPARECIMENTO_HORAS_MAX}
         opcoesTresDS={MODOS_TRES_DS.map((m) => ({ valor: m, texto: TEXTOS_TRES_DS[m] }))}
+        disputa={{
+          categoriaPadrao: CATEGORIA_PERDA_CONTESTACAO,
+          dias: { min: DIAS_AVISO_DOCUMENTACAO_MIN, max: DIAS_AVISO_DOCUMENTACAO_MAX, padrao: DIAS_AVISO_DOCUMENTACAO_PADRAO },
+          causas: CODIGOS_CAUSA_CONTESTACAO.map((codigo) => {
+            const textos = config.causasContestacao[codigo] as Partial<Record<CampoDaCausa, string>>;
+            const campos = (Object.keys(ROTULOS_DA_CAUSA) as CampoDaCausa[]).filter((campo) => typeof textos[campo] === "string");
+            return {
+              codigo,
+              titulo: `Causa "${config.causasContestacao[codigo].nome}" (código ${codigo})`,
+              campos: campos.map((campo) => ({ nome: campoDaCausa(codigo, campo), rotulo: ROTULOS_DA_CAUSA[campo], valor: textos[campo] ?? "", limite: campo === "nome" ? LIMITE_NOME_CAUSA : LIMITE_FRASE_CAUSA })),
+            };
+          }),
+        }}
         editar={editar}
         salvar={salvarConfigPagamentoSiteAcao}
       />
