@@ -219,6 +219,11 @@ export type LeituraDeContestacao = {
   lidaEm: Date;
   /** `date_last_updated` do caso; null = a fonte não traz. */
   atualizadoNoProvedorEm: Date | null;
+  /**
+   * A leitura só fala das disputas deste tipo (a Payments API: a contestação no cartão). O casamento a liga só às linhas
+   * desse tipo: o MED e a reclamação registrados ao lado não recebem a leitura nem a tornam ambígua.
+   */
+  soDoTipo?: TipoContestacao | null;
 };
 
 /** O que uma linha guarda das leituras (as colunas de leitura de `contestacoes_pagamento`). */
@@ -461,7 +466,7 @@ export function avisosDoValor(avisos: readonly string[], valor: number | null, v
 
 /** A identificação de uma disputa no Mercado Pago (os três ids; o da transação é só pista). */
 export type IdentificacaoDaContestacao = { idCaso: string | null; idContestacao: string | null; idTransacao: string | null };
-export type LinhaParaCasar = Pick<LinhaDeContestacao, "id" | "situacao" | "idCaso" | "idContestacao" | "idTransacao" | "rodada" | "abertaEm">;
+export type LinhaParaCasar = Pick<LinhaDeContestacao, "id" | "tipo" | "situacao" | "idCaso" | "idContestacao" | "idTransacao" | "rodada" | "abertaEm">;
 export type CasamentoDeContestacoes = {
   /**
    * Linhas existentes que receberam leituras (na rodada mais nova), com os ids a completar (`completarIdentificacao`):
@@ -479,6 +484,7 @@ export type CasamentoDeContestacoes = {
 type Alvo = {
   chave: number;
   linhaId: string | null;
+  tipo: TipoContestacao;
   situacao: SituacaoContestacao;
   idCaso: string | null;
   idContestacao: string | null;
@@ -515,6 +521,7 @@ export function casarContestacao(lidas: readonly LeituraDeContestacao[], linhas:
   const alvos: Alvo[] = linhas.map((x, i) => ({
     chave: i,
     linhaId: x.id,
+    tipo: x.tipo,
     situacao: x.situacao,
     idCaso: x.idCaso,
     idContestacao: x.idContestacao,
@@ -543,6 +550,8 @@ export function casarContestacao(lidas: readonly LeituraDeContestacao[], linhas:
     alvos.push({
       chave: alvos.length,
       linhaId: null,
+      // A linha nova pela leitura é uma contestação no cartão; o registro da equipe dá o tipo ao gravar.
+      tipo: l.soDoTipo ?? "chargeback",
       situacao: "aberta",
       idCaso: l.idCaso,
       idContestacao: l.idContestacao,
@@ -555,17 +564,19 @@ export function casarContestacao(lidas: readonly LeituraDeContestacao[], linhas:
     });
 
   for (const { l } of ordem) {
+    // A leitura de um tipo só (a Payments API) só enxerga as linhas desse tipo.
+    const doTipo = l.soDoTipo ? alvos.filter((a) => a.tipo === l.soDoTipo) : alvos;
     // 1. Pelos ids, na rodada mais nova.
-    const peloCaso = l.idCaso !== null ? maisNovaRodada(alvos.filter((a) => a.idCaso === l.idCaso)) : undefined;
-    const peloCbk = !peloCaso && l.idContestacao !== null ? maisNovaRodada(alvos.filter((a) => a.idContestacao === l.idContestacao)) : undefined;
+    const peloCaso = l.idCaso !== null ? maisNovaRodada(doTipo.filter((a) => a.idCaso === l.idCaso)) : undefined;
+    const peloCbk = !peloCaso && l.idContestacao !== null ? maisNovaRodada(doTipo.filter((a) => a.idContestacao === l.idContestacao)) : undefined;
     const porId = peloCaso ?? peloCbk;
     if (porId) {
       if (!compativel(porId, l)) ambiguas.push(l);
       else naLinha(porId, l);
       continue;
     }
-    const naoFinais = alvos.filter((a) => contestacaoNaoFinal(a.situacao));
-    const finais = alvos.filter((a) => !contestacaoNaoFinal(a.situacao));
+    const naoFinais = doTipo.filter((a) => contestacaoNaoFinal(a.situacao));
+    const finais = doTipo.filter((a) => !contestacaoNaoFinal(a.situacao));
     // 6. O registro da equipe: outra disputa (possível duplicata se há outra não final), ou a mesma linha sem id.
     if (l.fonte === "equipe") {
       const semIdNaoFinal = !temId(l) ? naoFinais.find((a) => !temId(a)) : undefined;

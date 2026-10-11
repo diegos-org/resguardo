@@ -202,6 +202,17 @@ describe("casamento e idempotência (matriz de casarContestacao)", () => {
     expect(juntas.linhas[0]).toMatchObject({ idCaso: "123" });
   });
 
+  it("a leitura de um tipo só (Payments API) casa só com as linhas desse tipo: o MED e a reclamação ao lado não a tornam ambígua", () => {
+    const cartao = linha({ id: "c1", tipo: "chargeback" });
+    const reclamacao = linha({ id: "c2", tipo: "reclamacao", abertaEm: em(10) });
+    const daPayments = leitura({ fonte: "payments", estadoLido: "settled", valor: null, soDoTipo: "chargeback" });
+    expect(casarContestacao([daPayments], [cartao, reclamacao])).toMatchObject({ existentes: [{ linhaId: "c1" }], novas: [], ambiguas: [] });
+    // Sem a restrição, a mesma leitura sem id diante de duas não finais é ambígua (a regra 5).
+    expect(casarContestacao([{ ...daPayments, soDoTipo: null }], [cartao, reclamacao])).toMatchObject({ existentes: [], ambiguas: [expect.anything()] });
+    // Só a reclamação: a leitura do cartão não é dela (nada casa e, encerrada, não cria linha).
+    expect(casarContestacao([daPayments], [reclamacao])).toMatchObject({ existentes: [], novas: [], ambiguas: [expect.anything()] });
+  });
+
   it("o id da transação nunca casa sozinho; ids que se contradizem são ambíguos", () => {
     const l = linha({ idCaso: "1", idContestacao: "CBK1", idTransacao: "PAY1", situacao: "ganha" });
     // Só o PAY igual: é um id nunca visto (a linha é final): não casa e, em disputa sem outra não final, abre linha nova.

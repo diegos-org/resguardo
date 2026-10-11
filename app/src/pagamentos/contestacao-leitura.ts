@@ -166,10 +166,11 @@ export const leituraDoCaso = (caso: CasoDeContestacao, lidaEm: Date): LeituraDeC
 /**
  * A Payments API pelo número como leitura (a terceira fonte, depois dos 85 dias): `charged_back/<estado>` dá o estado;
  * `approved` de um pagamento que uma leitura contestou (`contestado`) é o fato "a transação voltou a aprovada". Outra
- * situação não diz nada da disputa (null).
+ * situação não diz nada da disputa (null). Fala só da contestação no cartão (`soDoTipo`): o MED e a reclamação
+ * registrados no mesmo pagamento não recebem a leitura.
  */
 export function leituraDaSituacao(s: SituacaoDoPagamento, lidaEm: Date, contestado: boolean): LeituraDeContestacao | null {
-  const base = { fonte: "payments" as const, idCaso: null, idContestacao: null, coberturaAplicada: null, valor: null, lidaEm, atualizadoNoProvedorEm: null };
+  const base = { fonte: "payments" as const, idCaso: null, idContestacao: null, coberturaAplicada: null, valor: null, lidaEm, atualizadoNoProvedorEm: null, soDoTipo: "chargeback" as const };
   if (s.status === "charged_back") return { ...base, estadoLido: estadoLidoDaContestacao(s.statusDetail), codigo: s.statusDetail };
   if (s.status === "approved" && contestado) return { ...base, estadoLido: null, voltouAAprovada: true };
   return null;

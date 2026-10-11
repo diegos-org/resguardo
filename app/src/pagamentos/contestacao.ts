@@ -223,9 +223,10 @@ async function lerFontes(
     if (!(e instanceof ErroProvedor)) throw e;
     lido.falhou = true;
   }
-  // A terceira fonte: depois dos 85 dias (a order não é mais lida), a situação do pagamento pelo número. Só para disputas no
-  // cartão (o "voltou a aprovado" de um MED registrado num Pix aprovado não diria nada).
-  if (!naOrder && p.idPagamentoProvedor && linhas.every((l) => l.tipo === "chargeback")) {
+  // A terceira fonte: depois dos 85 dias (a order não é mais lida), a situação do pagamento pelo número, sempre que há uma
+  // disputa no cartão a reler. A leitura vale só para as do cartão (`soDoTipo`): o "voltou a aprovado" de um MED registrado
+  // num Pix aprovado não diria nada, e um MED ou uma reclamação ao lado não a tornam ambígua.
+  if (!naOrder && p.idPagamentoProvedor && linhas.some((l) => l.tipo === "chargeback")) {
     try {
       const s = await provedor.situacaoDoPagamento(p.idPagamentoProvedor);
       const l = s ? leituraDaSituacao(s, agora, p.situacao === "contestado") : null;
@@ -271,7 +272,10 @@ async function aplicarFontes(db: Db, p: PagamentoLido, lidas: readonly string[],
       // Dia 85 sem fonte: a order não é mais lida e nem a Chargebacks API nem a Payments API disseram algo útil (ou não há
       // caso nem número do pagamento), inclusive quando elas falham seguidas vezes: a equipe confere o resultado no painel
       // do Mercado Pago. Uma resposta útil depois desliga o aviso.
-      if (lido.util) desligar.push("contestacao_sem_fonte");
+      // Útil para esta linha: no cartão, qualquer resposta útil da volta; no MED e na reclamação, só a leitura do caso dela
+      // (a Payments API e o caso de outra disputa não dizem nada deles).
+      const util = lido.util && (l.tipo === "chargeback" || lido.leituras.some((x) => x.idCaso !== null && x.idCaso === l.idCaso));
+      if (util) desligar.push("contestacao_sem_fonte");
       else if (foraDaOrder && (!lido.falhou || falhas >= FALHAS_PARA_SEM_FONTE)) ligar.push("contestacao_sem_fonte");
       if (await trocarAvisosDaContestacao(tx, l, { ligar, desligar }, agora)) mudou = true;
     }

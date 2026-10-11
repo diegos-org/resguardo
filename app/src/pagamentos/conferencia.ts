@@ -172,7 +172,7 @@ export async function conferirTentativa(
   };
   // M8.2e: as disputas do pagamento (sem trava) só para decidir se a Payments API precisa ser lida (situação explicada).
   const linhas = await db
-    .select({ id: contestacoesPagamento.id, situacao: contestacoesPagamento.situacao, idCaso: contestacoesPagamento.idCaso, idContestacao: contestacoesPagamento.idContestacao, idTransacao: contestacoesPagamento.idTransacao, rodada: contestacoesPagamento.rodada, abertaEm: contestacoesPagamento.abertaEm })
+    .select({ id: contestacoesPagamento.id, tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao, idCaso: contestacoesPagamento.idCaso, idContestacao: contestacoesPagamento.idContestacao, idTransacao: contestacoesPagamento.idTransacao, rodada: contestacoesPagamento.rodada, abertaEm: contestacoesPagamento.abertaEm })
     .from(contestacoesPagamento)
     .where(eq(contestacoesPagamento.pagamentoId, p.id));
   let leitura: Leitura;

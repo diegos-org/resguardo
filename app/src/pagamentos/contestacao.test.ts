@@ -92,6 +92,24 @@ describe("rotina das disputas (item 20)", () => {
     expect((await c.tentativa(x.pagamentoId)).avisos).toContain("contestacao_sem_leitura");
   });
 
+  it("depois dos 85 dias, a Payments API é lida com uma reclamação ao lado da contestação no cartão, e vale só para a do cartão", async () => {
+    const x = await contestado();
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "reclamacao" }), equipe, null, minutos(20))).toMatchObject({ ok: true });
+    await envelhecer(c, x.pagamentoId, 90);
+    // A Chargebacks API não acha o caso: a única fonte da contestação no cartão é a Payments API pelo número.
+    c.provedor.respostaChargebacks.consultarContestacao = "404";
+    c.provedor.resolverContestacao(x.idCaso, { estado: "settled" });
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    expect(chamadas("situacaoDoPagamento")).toHaveLength(1);
+    const [cartao, reclamacao] = await linhas(x.pagamentoId);
+    expect(cartao).toMatchObject({ tipo: "chargeback", situacao: "a_confirmar", estadoLido: "settled" });
+    expect(cartao.avisos).not.toContain("contestacao_sem_fonte");
+    // A reclamação não recebe a leitura do cartão (nada da Payments API fala dela): continua aberta, sem fonte.
+    expect(reclamacao).toMatchObject({ tipo: "reclamacao", situacao: "aberta" });
+    expect(reclamacao.avisos).toContain("contestacao_sem_fonte");
+    expect((await db.select({ avisos: pagamentos.avisos }).from(pagamentos).where(eq(pagamentos.id, x.pagamentoId)))[0].avisos).not.toContain("contestacao_ambigua");
+  });
+
   it("dia 85 sem fonte: sem caso nem número do pagamento, o aviso contestacao_sem_fonte (em vez de esperar os 240 dias)", async () => {
     const x = await pagarEConfirmar(c);
     expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "med" }), equipe, null, minutos(20))).toMatchObject({ ok: true });

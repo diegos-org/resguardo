@@ -3256,6 +3256,16 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   como separar, confira no painel dele" (`TEXTO_LIDA_PODE_SER_RECLAMACAO`); a registrada à mão continua com o texto dela.
   O quadro mostra os dois textos desde o aceite ("Telas").
 
+**Revisão do Codex (11/10/2026).**
+- **A Payments API com disputas de tipos diferentes no mesmo pagamento** *(segue o desenho, "De onde vem cada fato",
+  item 3)*. *Antes:* depois dos 85 dias, a Payments API só era lida quando **todas** as disputas do pagamento eram no
+  cartão; com um MED ou uma reclamação registrados ao lado, a contestação no cartão ficava sem a terceira fonte e ganhava
+  `contestacao_sem_fonte`. *Agora:* ela é lida sempre que há uma disputa no cartão a reler, e a leitura vale só para as
+  disputas no cartão (`LeituraDeContestacao.soDoTipo`: o casamento a liga só às linhas desse tipo, e o MED e a reclamação
+  ao lado não a tornam ambígua). No MED e na reclamação, só a leitura do caso deles conta como fonte útil (o
+  `contestacao_sem_fonte` deles não sai por causa da Payments API). *Motivo:* o desenho pede a releitura de cada disputa
+  no cartão pela Payments API depois dos 85 dias.
+
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 
 Feitas em 11/10/2026: cada seção diz "desde o M8.2e" (ou "desde 11/10") ao lado do texto anterior.
