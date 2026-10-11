@@ -4,6 +4,7 @@ import { startTransition, useActionState, useRef, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
+import { formatBRL } from "@/lib/money";
 import type { EstadoContestacaoPainel } from "@/pagamentos/acoes-contestacao";
 import type { ResultadoNaTela } from "@/pagamentos/contestacao-tela";
 import { type AcaoContestacao, perguntaComCampos } from "./FormAcaoContestacao";
@@ -14,7 +15,8 @@ const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } a
  * "Confirmar o resultado" (M8.2e; desenho "Confirmar o resultado"), para quem cuida do financeiro. C1: o formulário começa
  * **sem nada marcado** — Ganhou ou Perdeu é sempre da equipe —, com os fatos do Mercado Pago em palavras ao lado; datas e
  * valores vêm preenchidos (o valor em disputa, o líquido que não entrou, o dia do débito). No "Ganhou": o dia em que o
- * dinheiro voltou (com o retido realizado) e, sem recebimento do pagamento, a liberação ali mesmo. No "Perdeu": o valor que
+ * dinheiro voltou (com o retido realizado) e, sem recebimento do pagamento, a liberação ali mesmo (data e líquido em branco,
+ * com o líquido lido ao lado: os dois ou nenhum). No "Perdeu": o valor que
  * a SCL perdeu, quanto nunca entrou na conta e o dia do débito. A tarifa do Mercado Pago pela disputa é opcional nos dois.
  * Com a leitura de agora podendo mostrar a disputa em andamento (e sempre depois da recusa `nota_reforcada`), a caixa da
  * nota reforçada ("o painel do Mercado Pago já mostra o resultado") aparece. O "nunca entrou na conta" é obrigatório (em
@@ -102,9 +104,10 @@ export function FormResultadoContestacao({
                 Data em que a liberação caiu na conta (opcional)
                 <input type="date" name="liberacaoData" max={hoje} />
               </label>
+              {/* Os dois em branco por padrão: o "Ganhou" sem registrar a liberação nunca é recusado por um valor já preenchido. */}
               <label>
-                Líquido que caiu (R$, opcional)
-                <input name="liberacaoLiquido" inputMode="decimal" defaultValue={r.proposta.liquido !== null ? centavosParaCampo(r.proposta.liquido) : ""} />
+                Líquido que caiu (R$, opcional{r.proposta.liquido !== null ? `; o Mercado Pago mostra ${formatBRL(r.proposta.liquido)}` : ""})
+                <input name="liberacaoLiquido" inputMode="decimal" placeholder={r.proposta.liquido !== null ? centavosParaCampo(r.proposta.liquido) : undefined} />
               </label>
             </>
           )}

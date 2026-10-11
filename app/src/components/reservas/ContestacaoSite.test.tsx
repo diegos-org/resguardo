@@ -284,6 +284,32 @@ describe("bloco Disputa na ficha da reserva (M8.2e)", () => {
     expect(m.resultado).toHaveBeenCalledTimes(1);
   });
 
+  it("ganhou sem recebimento: a data e o líquido da liberação começam em branco (o líquido lido só como referência), e o Ganhou sem a liberação segue (Codex, 11/10)", () => {
+    const confirmar = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirmar);
+    render(
+      <ContestacaoSite
+        reservaId="r1"
+        pagamento={pagamento}
+        equipe={[equipe({ situacao: "a_confirmar", situacaoTexto: "Encerrada no Mercado Pago (a confirmar)" }, { resultado: { ...resultado, semRecebimento: true } })]}
+        operacao={[]}
+        editarFinanceiro={false}
+        defesa={false}
+        hoje={HOJE}
+      />,
+    );
+    const form = screen.getByRole("form", { name: "Confirmar o resultado" });
+    fireEvent.click(within(form).getByLabelText(/Ganhou/));
+    const data = within(form).getByLabelText(/Data em que a liberação caiu/) as HTMLInputElement;
+    const liquido = within(form).getByLabelText(/Líquido que caiu/) as HTMLInputElement;
+    expect([data.value, liquido.value]).toEqual(["", ""]);
+    expect(within(form).getByText(/o Mercado Pago mostra R\$ 1\.733,71/)).toBeTruthy();
+    fireEvent.click(within(form).getByRole("button", { name: "Confirmar o resultado" }));
+    expect(m.resultado).toHaveBeenCalledTimes(1);
+    const enviado = m.resultado.mock.calls[0][1] as FormData;
+    expect([enviado.get("liberacaoData"), enviado.get("liberacaoLiquido")]).toEqual(["", ""]);
+  });
+
   it("documentos enviados: pede confirmação com a data, como toda ação da disputa", () => {
     const confirmar = vi.fn<(pergunta: string) => boolean>(() => false);
     vi.stubGlobal("confirm", confirmar);

@@ -3511,6 +3511,13 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   frase para cada estado conhecido (`Record<EstadoConhecidoContestacao, string>`), e o que não está nela diz "situação
   que o sistema não conhece", com o código lido, como já acontecia com a documentação. *Motivo:* avisar em vez de supor,
   e nunca mostrar um texto quebrado.
+- **A liberação opcional no "Ganhou" começa em branco** *(segue o desenho, "A reserva enquanto a disputa está aberta":
+  o "Ganhou" oferece registrar a liberação ali mesmo, com data e líquido)*. *Antes:* sem recebimento do pagamento, o
+  líquido da liberação vinha preenchido com o lido no Mercado Pago, e a data em branco. A ação pede os dois ou nenhum,
+  então o "Ganhou" sem registrar a liberação era sempre recusado até a equipe apagar o valor. *Agora:* os dois campos
+  começam em branco. O líquido lido aparece ao lado do campo ("o Mercado Pago mostra R$ …") e como sugestão dentro dele,
+  sem ir no envio. *Motivo:* o opcional não pode travar a confirmação, e o valor do Mercado Pago continua à vista para
+  quem registra.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 
