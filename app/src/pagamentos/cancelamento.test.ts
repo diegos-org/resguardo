@@ -448,7 +448,7 @@ describe("recusas e a assinatura da prévia (M8.2c)", () => {
     // M8.2d (D17): parte devolvida pelo painel do Mercado Pago sem o valor → a equipe informa o valor visto lá; com o valor
     // lido, o cancelamento vale, o devolvido fora fica reconhecido e a integral devolve só o restante.
     await db.update(pagamentos).set({ situacao: "devolvido_parcial" }).where(eq(pagamentos.id, x.pagamentoId));
-    expect(await previa()).toEqual({ ok: false, codigo: "devolvido_fora_sem_valor", erro: TEXTO_FORA_SEM_VALOR });
+    expect(await previa()).toEqual({ ok: false, codigo: "devolvido_fora_sem_valor", erro: TEXTO_FORA_SEM_VALOR, foraSemValor: [{ pagamentoId: x.pagamentoId, rotulo: expect.stringMatching(/^Pix de \d{2}\/\d{2} \(R\$ /) }] });
     await limpar();
     for (const mudanca of [{ devolucaoEmAndamentoLida: true }, { avisos: ["situacao_desconhecida"] }]) {
       await db.update(pagamentos).set(mudanca).where(eq(pagamentos.id, x.pagamentoId));

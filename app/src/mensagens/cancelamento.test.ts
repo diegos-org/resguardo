@@ -217,8 +217,12 @@ describe("a devolução feita do cancelamento de uma reserva alterada (M8.2d)", 
     await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(60));
     const [d] = (await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, x.pagamentoId))).filter((y) => y.origem === "cancelamento");
     for (const m of [71, 82]) await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(m));
-    expect(await enviarMensagensHospede(db, c.org, correio, minutos(83))).toMatchObject({ enviadas: 1 });
-    expect(correio.enviadas.map((m) => m.assunto)).not.toContainEqual(expect.stringContaining("Devolução"));
+    // A decisão do cancelamento e a "Devolução feita" da redução (feita antes, ainda não avisada: continua devida com a
+    // reserva cancelada); a do cancelamento espera o restante sair.
+    expect(await enviarMensagensHospede(db, c.org, correio, minutos(83))).toMatchObject({ enviadas: 2 });
+    const textos = correio.enviadas.map((m) => m.texto);
+    expect(textos.filter((t) => t.includes("A devolução de R$ 300,00 da reserva"))).toHaveLength(1);
+    expect(textos.some((t) => t.includes("A devolução de R$ 1.524,00 da reserva"))).toBe(false);
     c.provedor.respostaDevolucao = "confirmada";
     expect(await registrarDevolucaoPorFora(db, c.org, { devolucaoId: d.id }, { data: "2026-10-01", valor: TOTAL - 30000, nota: "Pix da conta da empresa" }, equipe, c.provedor, minutos(90))).toMatchObject({ ok: true });
     expect(await enviarMensagensHospede(db, c.org, correio, minutos(91))).toMatchObject({ enviadas: 1 });

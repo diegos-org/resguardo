@@ -159,8 +159,9 @@ nas prévias da Vercel e com a conta de teste do Mercado Pago (item 44 da seçã
   seguradas) e a alteração confirmada — e "Devolução feita", que agora serve ao cancelamento e à alteração. Enquanto as
   mensagens automáticas estiverem desligadas, a ficha mostra cada uma pronta para copiar, com "Mensagem enviada ao
   hóspede". Só quem vê o financeiro copia (elas levam valores). Depois de uma alteração, a mensagem de confirmação da
-  reserva não sai de novo. Se a reserva for cancelada sem devolução depois de uma redução, a devolução da diferença
-  continua, e o "Devolução feita" dela ainda sai quando o dinheiro voltar (a confirmação da alteração, não).
+  reserva não sai de novo. Se a reserva for cancelada depois de uma redução, o "Devolução feita" da diferença
+  ainda sai se o hóspede não tinha sido avisado: a que já voltou, ou a que continua no cancelamento sem devolução,
+  quando o dinheiro voltar (a confirmação da alteração, não).
 - **OTAs:** nada é escrito no Beds24. Quando uma alteração muda as datas, o Início avisa "mude o bloqueio nas OTAs (no
   Beds24, feche as novas datas e reabra as antigas)" e, depois de mudar, você marca **"Datas atualizadas nas OTAs"** na
   ficha. O aviso aparece mesmo com o envio ao Beds24 ligado, porque o envio manda só os bloqueios que você cria no

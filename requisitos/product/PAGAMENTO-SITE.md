@@ -1563,9 +1563,10 @@ e está no "Entregue em" do ROADMAP.
 - Parte devolvida pelo painel do Mercado Pago sem a leitura dizer quanto (D17), em mais de um pagamento da reserva: a
   equipe informa o valor de cada pagamento (um campo por pagamento, com a forma, o dia e o valor dele); faltando
   algum, a recusa diz quais. Um valor nunca vale para dois pagamentos.
-- Cancelamento sem devolução depois de uma redução aplicada: a devolução da diferença continua (não é absorvida), e a
-  mensagem "Devolução feita" dela sai quando se realiza, com a reserva já cancelada (a proposta e a confirmação da
-  alteração não saem mais).
+- Reserva cancelada depois de uma redução aplicada: a devolução da diferença que o cancelamento não absorveu (a já
+  feita antes, ou a que continua no cancelamento sem devolução) mantém a mensagem "Devolução feita" dela, ainda não
+  avisada, no prazo de sempre (7 dias da devolução), pelo motor e para copiar; a proposta e a confirmação da alteração
+  não saem mais.
 
 ### O que o hóspede vê (alteração)
 
