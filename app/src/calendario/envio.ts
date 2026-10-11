@@ -23,9 +23,28 @@ import { lerRegrasCalendario, type RegrasCalendario } from "./regras-config";
 export type ModoEnvio = "simulacao" | "envio";
 export type SituacaoEnvio = "ok" | "parcial" | "erro" | "ocupada" | "desligada" | "simulacao" | "incerto";
 export type ImovelEnviado = { imovelId: string; codigo: string; resumo: ResumoPlano; enviadas: number; confirmadas: number; divergentes: number; pendentes: number; falha: string };
-export type ResultadoEnvio = { ok: boolean; situacao: SituacaoEnvio; mensagem: string; envioId: string | null; imoveis: ImovelEnviado[]; avisos: string[]; totalAvisos: number };
+export type ResultadoEnvio = {
+  ok: boolean;
+  situacao: SituacaoEnvio;
+  mensagem: string;
+  envioId: string | null;
+  imoveis: ImovelEnviado[];
+  avisos: string[];
+  totalAvisos: number;
+  /** A execução que refez os imóveis cujas reservas mudaram durante esta (ver `OpcoesEnvio.refazendo`). */
+  refeito?: ResultadoEnvio;
+};
 /** `credencial` = impressão da credencial Beds24 usada (`impressaoCredencialBeds24`), gravada na execução: o veredito por imóvel só vale para ela. */
-export type OpcoesEnvio = { modo: ModoEnvio; imovelIds?: string[]; autorId?: string | null; automatica?: boolean; agora?: Date; credencial?: string };
+export type OpcoesEnvio = {
+  modo: ModoEnvio;
+  imovelIds?: string[];
+  autorId?: string | null;
+  automatica?: boolean;
+  agora?: Date;
+  credencial?: string;
+  /** A execução que refaz os imóveis cujas reservas mudaram durante a anterior (uma vez só: ela não refaz de novo). */
+  refazendo?: boolean;
+};
 /** Veredito de um imóvel numa execução que ainda não terminou (ou morreu no meio): nunca conta como incluído. */
 export const VEREDITO_PENDENTE = "Execução ainda não concluída.";
 
@@ -240,6 +259,9 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   const instanteEnvio = new Date(agora.getTime() + 1);
   const instanteReleitura = new Date(agora.getTime() + 2);
   let leituraAtualFalhou = false;
+  // Imóveis cujas reservas mudaram entre o plano e a conferência logo depois da escrita: o envio deles é refeito em
+  // seguida, numa execução nova (uma vez), com o plano das reservas de agora.
+  const refazer = new Set<string>();
   let r: ResultadoEnvio;
   try {
     const fase1 = await db.transaction(async (tx): Promise<Fase1> => {
@@ -432,10 +454,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         // Conferência final das reservas: uma reserva confirmada, cancelada ou alterada (M8.2d: a alteração aplicada muda as
         // datas da reserva, e a reserva-pedido dela fica fora do plano) entre o plano e a escrita mudaria o mínimo e as
         // sobras; nada é escrito para o imóvel nesta execução.
-        const ocupacaoAgora = assinaturaDaOcupacao(await ocupantesDoImovel(db, org, p.imovelId, p.ocupacao.inicio, p.ocupacao.fim, { paraOBeds24: true }));
-        if (ocupacaoAgora !== p.ocupacao.assinatura) {
-          res.falha = "Reservas do imóvel alteradas durante o envio: nada foi escrito para este imóvel nesta execução; o próximo envio replaneja.";
+        const ocupacaoDeAgora = async () => assinaturaDaOcupacao(await ocupantesDoImovel(db, org, p.imovelId, p.ocupacao.inicio, p.ocupacao.fim, { paraOBeds24: true }));
+        if ((await ocupacaoDeAgora()) !== p.ocupacao.assinatura) {
+          res.falha = "Reservas do imóvel alteradas durante o envio: nada foi escrito para este imóvel nesta execução; o envio dele é refeito em seguida.";
           aviso(`Imóvel ${p.codigo}: ${res.falha}`);
+          refazer.add(p.imovelId);
           continue;
         }
         try {
@@ -446,6 +469,12 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           res.falha = mensagemSeguraBeds24(e);
         }
         if (res.falha) aviso(`Imóvel ${p.codigo}: envio falhou — ${res.falha}. O quarto foi relido para registrar o que ficou gravado.`);
+        // E de novo logo depois da escrita: uma reserva que mudou entre a conferência e a escrita deixou o plano escrito
+        // velho. Tudo o que mudar depois desta conferência já é posterior à escrita (vale para o próximo envio).
+        else if ((await ocupacaoDeAgora()) !== p.ocupacao.assinatura) {
+          aviso(`Imóvel ${p.codigo}: reservas do imóvel alteradas durante a escrita no Beds24; o envio dele é refeito em seguida com as reservas de agora.`);
+          refazer.add(p.imovelId);
+        }
       }
 
       // Fase 3 (transação): releitura do destino, registro noite a noite e observação nova.
@@ -554,6 +583,15 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
     const resultado = r.imoveis.find(i => i.imovelId === linha.imovelId);
     const falha = resultado ? veredito(resultado) : `Execução não concluída para este imóvel: ${r.mensagem}`;
     await db.update(beds24EnvioImoveis).set({ falha: falha.slice(0, 300) }).where(and(eq(beds24EnvioImoveis.envioId, exec.id), eq(beds24EnvioImoveis.imovelId, linha.imovelId)));
+  }
+  // O envio dos imóveis cujas reservas mudaram durante esta execução é refeito agora (execução nova, com histórico
+  // próprio), depois de esta terminar e soltar a trava. Uma vez só: mudou de novo, fica para o próximo envio.
+  if (refazer.size && o.modo === "envio" && !o.refazendo) {
+    const codigos = new Map(r.imoveis.map((i) => [i.imovelId, i.codigo]));
+    const r2 = await enviarCalendarioBeds24(db, org, leitor, escritor, { ...o, imovelIds: [...refazer], refazendo: true, agora: new Date(agora.getTime() + 3) });
+    const nota = `Envio refeito para ${[...refazer].map((id) => codigos.get(id) ?? id).join(", ")} (reservas alteradas durante o envio): ${r2.mensagem}`.slice(0, 300);
+    r = { ...r, avisos: r.avisos.length < 100 ? [...r.avisos, nota] : r.avisos, totalAvisos: r.totalAvisos + 1, refeito: r2 };
+    await db.update(beds24Envios).set({ avisos: r.avisos }).where(eq(beds24Envios.id, exec.id));
   }
   return r;
 }

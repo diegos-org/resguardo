@@ -790,7 +790,7 @@ describe("reserva-pedido de uma alteração (M8.2d) no plano do Beds24", () => {
     expect(site.linhas.find((l) => l.data === "2026-10-03")?.livresSeguidas).toBe(0);
   });
 
-  it("a alteração aplicada entre o plano e a escrita (as datas da reserva mudam): nada é escrito para o imóvel; o próximo envio replaneja com a reserva", async () => {
+  it("a alteração aplicada entre o plano e a escrita (as datas da reserva mudam): nada é escrito pelo plano velho; o envio do imóvel é refeito em seguida com a reserva", async () => {
     const [x] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ALTP2", origem: "direta", estado: "confirmada", checkin: "2026-10-20", checkout: "2026-10-22", hospedeNome: "Hóspede Fictício", fonte: "site", idFonte: "c-altp2" }).returning({ id: reservas.id });
     // Depois da primeira transação (plano e intenção), a alteração é aplicada: a reserva passa para o sábado 3/10.
     let transacoes = 0;
@@ -810,11 +810,33 @@ describe("reserva-pedido de uma alteração (M8.2d) no plano do Beds24", () => {
     }) as Db;
     const r = await enviarCalendarioBeds24(dbCorrida, org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
     expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, confirmadas: 0, falha: expect.stringContaining("Reservas do imóvel alteradas durante o envio") }] });
-    expect(beds.escritas).toHaveLength(0);
-    // Replanejado com a reserva no sábado: a sexta 2/10 cabe só 1 noite antes dela.
-    const r2 = await enviar();
-    expect(r2.situacao).toBe("ok");
+    // Refeito em seguida (uma execução nova), com a reserva no sábado: a sexta 2/10 cabe só 1 noite antes dela.
+    expect(r.refeito).toMatchObject({ ok: true, situacao: "ok" });
+    expect(r.avisos.at(-1)).toContain("Envio refeito para 103");
+    expect(beds.escritas).toHaveLength(1);
     expect(diaFalso("2026-10-02")).toMatchObject({ minStay: 1 });
+    expect(await db.select().from(beds24Envios).where(eq(beds24Envios.organizacaoId, org))).toHaveLength(2);
+  });
+
+  it("a reserva muda durante a escrita no Beds24 (depois da conferência): o envio do imóvel é refeito em seguida, uma vez", async () => {
+    const [x] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ALTP3", origem: "direta", estado: "confirmada", checkin: "2026-10-20", checkout: "2026-10-22", hospedeNome: "Hóspede Fictício", fonte: "site", idFonte: "c-altp3" }).returning({ id: reservas.id });
+    // A primeira escrita acontece e, enquanto ela vai ao Beds24, a alteração é aplicada (a reserva passa para o sábado).
+    const escrever = beds.escreverCalendario.bind(beds);
+    let escritas = 0;
+    const escritor: EscritorBeds24 = {
+      escreverCalendario: async (pedidos) => {
+        const resposta = await escrever(pedidos);
+        if (++escritas === 1) await db.update(reservas).set({ checkin: "2026-10-03", checkout: "2026-10-04" }).where(eq(reservas.id, x.id));
+        return resposta;
+      },
+    };
+    const r = await enviarCalendarioBeds24(db, org, beds, escritor, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r.avisos.some((a) => a.includes("reservas do imóvel alteradas durante a escrita"))).toBe(true);
+    expect(r.refeito).toMatchObject({ ok: true, situacao: "ok" });
+    expect(escritas).toBe(2);
+    // A escrita refeita leva o mínimo com a reserva no sábado.
+    expect(diaFalso("2026-10-02")).toMatchObject({ minStay: 1 });
+    expect(r.refeito?.refeito).toBeUndefined();
   });
 });
 

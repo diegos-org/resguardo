@@ -1624,9 +1624,11 @@ antigas)." para a alteração aplicada que mudou as datas, ainda sem a marca e c
 **"Datas atualizadas nas OTAs"** (com confirmação, auditado). Mudar só pessoas ou valor não mexe no bloqueio. O M8.3
 vai consumir `alteracoes_reserva` com `situacao = 'aplicada'` e `ota_atualizada_em` vazio, e gravar a marca
 sozinho; a reserva-pedido nunca vai ao Beds24. O plano do envio (M3.7) também não conta as noites dela (elas podem
-vencer), e o envio confere as reservas do imóvel de novo logo antes de escrever: se uma alteração for aplicada (ou
-qualquer reserva mudar) entre o plano e a escrita, nada é escrito para o imóvel naquela execução e o próximo envio
-replaneja.
+vencer), e o envio confere as reservas do imóvel de novo logo antes e logo depois de escrever: se uma alteração for
+aplicada (ou qualquer reserva mudar) entre o plano e a escrita, nada é escrito pelo plano velho; se mudar durante a
+escrita, o que foi escrito fica velho. Nos dois casos, o envio do imóvel é refeito em seguida, numa execução nova com as
+reservas de agora (uma vez; se mudar de novo, fica para o próximo envio). O que muda depois da conferência já é
+posterior à escrita, como qualquer reserva feita depois de um envio.
 
 **Decisão de 10/10/2026 (revisão do M8.2d), vale para os três avisos das OTAs** (reserva do site paga, do M8.2a;
 cancelada, do M8.2c; alterada, do M8.2d):
