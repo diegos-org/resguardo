@@ -444,4 +444,20 @@ describe("outra disputa, documentos e prazo", () => {
     expect((await auditoriaDe("contestacao.prazo"))[0].mudancas).toMatchObject({ prazo: [null, "2026-10-30"] });
     expect(await auditoriaDe("contestacao.documentos")).toHaveLength(1);
   });
+
+  it("documentos enviados: nunca antes da abertura da disputa, mesmo com a aprovação dias antes (Codex, 11/10)", async () => {
+    // Aprovado em 01/10; a leitura da order viu a disputa em 20/10 (sem a abertura no Mercado Pago).
+    const x = await disputada();
+    expect(x.l.abertaNoProvedorEm).toBeNull();
+    expect(await marcarDocumentosEnviados(db, c.org, x.l.id, { data: "2026-10-10" }, equipe, sp("2026-10-22 10:00"))).toMatchObject({ ok: false, erro: expect.stringContaining("não pode ser antes de 20/10/2026") });
+    expect(await marcarDocumentosEnviados(db, c.org, x.l.id, { data: "2026-10-19" }, equipe, sp("2026-10-22 10:00"))).toMatchObject({ ok: false });
+    expect((await linha(x.l.id)).documentosEnviadosEm).toBeNull();
+    expect(await marcarDocumentosEnviados(db, c.org, x.l.id, { data: "2026-10-20" }, equipe, sp("2026-10-22 10:00"))).toMatchObject({ ok: true });
+    // Registrada pela equipe (aberta em 21/10 no painel do Mercado Pago): a partir desse dia.
+    const y = await pagarEConfirmar(c, { liberar: true, entrada: "2026-10-20", saida: "2026-10-23", email: "y@example.com" });
+    const r = await registrarContestacaoDaEquipe(db, c.org, y.pagamentoId, { tipo: "chargeback", abertaEm: "2026-10-21", valor: 50_000, prazo: null, idCaso: null, nota: "Aberta no painel." }, equipe, null, sp("2026-10-22 09:00"));
+    if (!r.ok) throw new Error(r.erro);
+    expect(await marcarDocumentosEnviados(db, c.org, r.contestacaoId, { data: "2026-10-20" }, equipe, sp("2026-10-22 10:00"))).toMatchObject({ ok: false, erro: expect.stringContaining("não pode ser antes de 21/10/2026") });
+    expect(await marcarDocumentosEnviados(db, c.org, r.contestacaoId, { data: "2026-10-21" }, equipe, sp("2026-10-22 10:00"))).toMatchObject({ ok: true });
+  });
 });

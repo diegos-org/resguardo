@@ -28,7 +28,7 @@ import { formatBRL } from "@/lib/money";
 import { imoveisComPortaria } from "@/portaria/portaria";
 import { partesDoProprietario } from "@/repasses/extrato";
 import { aceitesDaReserva, politicaDoPagamento } from "@/site/aceites";
-import { type FatosDaDecisao, type FatosDoResultado, previaDaDecisao, previaDoResultado } from "./contestacao";
+import { desdeADefesa, desdeAberturaDaDisputa, type FatosDaDecisao, type FatosDoResultado, previaDaDecisao, previaDoResultado } from "./contestacao";
 import { type LinhaDaDisputa, livroDaDisputa, retidoRealizado } from "./contestacao-acerto";
 import {
   avisoDeContestacao,
@@ -363,7 +363,7 @@ export type ContestacaoNaTela = {
   documentosEnviadosEm: Date | null;
   /** "Documentos enviados no painel do Mercado Pago" ainda cabe (disputa não final, sem a marca). */
   podeMarcarDocumentos: boolean;
-  /** AAAA-MM-DD: o dia da aprovação do pagamento (o mínimo das datas dos formulários). */
+  /** AAAA-MM-DD: o primeiro dia possível do envio dos documentos (a abertura da disputa, `desdeADefesa`), o mesmo que o domínio confere. */
   desde: string;
   /** Não final, não duplicada e com valor em risco: a razão de "Cancelar a reserva contestada" (o domínio confere o resto). */
   seguraValor: boolean;
@@ -527,7 +527,7 @@ function naTela(l: Contestacao, p: Pick<Pagamento, "aprovadoEm" | "criadoEm">, a
     prazo: prazoDosDocumentos(l, agora, diasAviso),
     documentosEnviadosEm: l.documentosEnviadosEm,
     podeMarcarDocumentos: editarDocumentos && contestacaoNaoFinal(l.situacao) && !l.documentosEnviadosEm,
-    desde: hojeISO(FUSO, p.aprovadoEm ?? p.criadoEm),
+    desde: desdeADefesa(p, l),
     seguraValor: contestacaoNaoFinal(l.situacao) && !l.duplicataPossivel && l.valorEmRisco > 0,
   };
 }
@@ -653,10 +653,10 @@ export async function lerContestacoesDaEquipe(db: Db, sessao: Sessao, reservaId:
             }
           : null,
       acoes: {
-        debito: editar && naoFinal && !l.duplicataPossivel && !l.retidoConfirmadoEm && !retidoRealizado(livro.retido) ? { valor: l.valorEmRisco, desde: hojeISO(FUSO, p.aprovadoEm ?? p.criadoEm) } : null,
+        debito: editar && naoFinal && !l.duplicataPossivel && !l.retidoConfirmadoEm && !retidoRealizado(livro.retido) ? { valor: l.valorEmRisco, desde: desdeAberturaDaDisputa(p, l) } : null,
         decidir: decisaoNaTela,
         outraDisputa: editar && naoFinal && l.duplicataPossivel,
-        prazo: editar && naoFinal && !l.documentacaoPrazo ? { desde: hojeISO(FUSO, l.abertaNoProvedorEm ?? l.abertaEm) } : null,
+        prazo: editar && naoFinal && !l.documentacaoPrazo ? { desde: desdeADefesa(p, l) } : null,
         resultado: editar && naoFinal && !l.duplicataPossivel && fr ? resultadoDoForm(l, p, fr, emAndamento) : null,
         semEfeito: editar && naoFinal ? { pedeVolta: retidoRealizado(livro.retido), emAndamento } : null,
         conferirAviso: editar && !naoFinal && l.avisos.includes("contestacao_resultado_mudou") ? { reabre: l.situacao === "ganha" && l.estadoLido === "in_process" } : null,

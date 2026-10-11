@@ -3345,6 +3345,15 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   um prazo anterior ao dia em que a disputa abriu (o formulário só limitava pelo dia da aprovação), e a disputa já nascia
   com o prazo vencido nos avisos. *Agora:* o prazo vai do dia da abertura em diante, no servidor e no formulário (como em
   "Informar o prazo").
+- **A data do envio dos documentos** *(segue o desenho, "Painel", ações: "Documentos enviados no painel do Mercado
+  Pago" com a data)*. *Antes:* "Documentos enviados no painel do Mercado Pago" aceitava qualquer dia desde a aprovação
+  do pagamento, no servidor e no formulário; numa disputa aberta
+  dias depois da aprovação, uma data anterior à abertura ficava gravada para sempre (a marca é uma vez só) e tirava o
+  aviso do prazo. *Agora:* uma regra só, `desdeADefesa` (`contestacao.ts`): o envio dos documentos e o prazo deles vão do
+  dia da abertura no Mercado Pago em diante, ou, sem ela, do dia em que o sistema viu ou a equipe registrou a disputa
+  (nunca antes da aprovação); o domínio e o formulário leem dali. O débito continua desde a abertura no Mercado Pago ou,
+  sem ela, desde a aprovação (`desdeAberturaDaDisputa`: o débito pode vir antes de o sistema ver a disputa), e o
+  formulário dele passa a ler a mesma regra do domínio. *Motivo:* a defesa só começa depois de a disputa abrir.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

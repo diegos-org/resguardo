@@ -77,12 +77,14 @@ describe("o bloco da disputa na ficha (item 9: quem lê o quê)", () => {
     expect(d.acoes.decidir?.opcoes[0].perguntas.imovel).toContain("Causa: Problema do imóvel");
     expect(d.acoes.decidir?.opcoes[0].perguntas.fraude).toContain("Confirma que o proprietário arca?");
     expect(d.acoes.decidir?.causas.find((k) => k.codigo === "imovel")?.frase).toBe("pela regra de 7/10, o proprietário");
-    expect(d.acoes.debito).toMatchObject({ valor: TOTAL });
+    // O débito pode vir antes de o sistema ver a disputa (sem a abertura no Mercado Pago, desde a aprovação); a defesa, não.
+    expect(d.acoes.debito).toEqual({ valor: TOTAL, desde: "2026-10-01" });
+    expect(d.desde).toBe("2026-10-05");
     expect(d.acoes.resultado?.fatos[0]).toContain("ainda mostra a disputa em andamento");
     expect(d.acoes.resultado?.emAndamento).toBe(true);
     expect(d.acoes.semEfeito).toBeTruthy();
     expect(d.acoes.conferirAviso).toBeNull();
-    expect(d.acoes.prazo).toBeTruthy(); // a order não traz o prazo dos documentos
+    expect(d.acoes.prazo).toEqual({ desde: "2026-10-05" }); // a order não traz o prazo dos documentos
     expect(d.prazo?.texto).toContain("Prazo dos documentos desconhecido");
     expect(d.avisos.join(" ")).toContain("Prazo dos documentos desconhecido");
     // Quem só lê o financeiro (sem editar) vê o bloco sem nenhuma ação.
@@ -98,6 +100,7 @@ describe("o bloco da disputa na ficha (item 9: quem lê o quê)", () => {
     expect(o.frase).toBe("O pagamento desta reserva está em disputa (contestação no cartão): quem cuida do financeiro acompanha.");
     expect(o.situacaoTexto).toBe("aberta");
     expect(o.podeMarcarDocumentos).toBe(true);
+    expect(o.desde).toBe("2026-10-05"); // o envio dos documentos: a partir da abertura da disputa, não da aprovação (01/10)
     const texto = JSON.stringify(o);
     expect(texto).not.toMatch(/R\$|182400|1824|nota|decis/i);
     // Sem reserva:ler (limpeza), nada.

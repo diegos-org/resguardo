@@ -889,10 +889,21 @@ const dataCompleta = (d: string) => d.split("-").reverse().join("/");
  * nunca antes da aprovação. Sem a abertura no provedor (a leitura só da order), a aprovação: o dia em que o sistema viu a
  * disputa pode vir depois do débito.
  */
-function desdeAberturaDaDisputa(p: Pick<Pagamento, "aprovadoEm" | "criadoEm">, l: Pick<Contestacao, "abertaNoProvedorEm">): string {
+export function desdeAberturaDaDisputa(p: Pick<Pagamento, "aprovadoEm" | "criadoEm">, l: Pick<Contestacao, "abertaNoProvedorEm">): string {
   const aprovacao = diaDe(p.aprovadoEm ?? p.criadoEm);
   const abertura = l.abertaNoProvedorEm ? diaDe(l.abertaNoProvedorEm) : null;
   return abertura && abertura > aprovacao ? abertura : aprovacao;
+}
+
+/**
+ * O primeiro dia possível de um passo da defesa (o envio dos documentos, o prazo deles): o da abertura no Mercado Pago, ou,
+ * sem ela, o dia em que o sistema viu ou a equipe registrou a disputa; nunca antes da aprovação. A defesa só começa depois
+ * de a equipe saber da disputa (o débito, não: ele pode vir antes de o sistema vê-la).
+ */
+export function desdeADefesa(p: Pick<Pagamento, "aprovadoEm" | "criadoEm">, l: Pick<Contestacao, "abertaNoProvedorEm" | "abertaEm">): string {
+  const aprovacao = diaDe(p.aprovadoEm ?? p.criadoEm);
+  const abertura = diaDe(l.abertaNoProvedorEm ?? l.abertaEm);
+  return abertura > aprovacao ? abertura : aprovacao;
 }
 
 /** O primeiro dia possível da volta do dinheiro debitado: o do débito (o do retido realizado), nunca antes da abertura. */
@@ -1046,7 +1057,8 @@ export async function confirmarDebito(db: Db, organizacaoId: string, contestacao
 
 /**
  * "Documentos enviados no painel do Mercado Pago" (`reserva:editar` ou `financeiro:editar`, conferido por quem chama): a
- * data do envio (entre a aprovação e hoje), com a disputa ainda não final. Uma vez; auditado (`contestacao.documentos`).
+ * data do envio (entre a abertura da disputa, `desdeADefesa`, e hoje), com a disputa ainda não final. Uma vez; auditado
+ * (`contestacao.documentos`).
  */
 export async function marcarDocumentosEnviados(db: Db, organizacaoId: string, contestacaoId: string, e: { data: string }, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
   const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
@@ -1054,7 +1066,7 @@ export async function marcarDocumentosEnviados(db: Db, organizacaoId: string, co
   return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
     if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
     if (l.documentosEnviadosEm) return recusada(`Os documentos já foram marcados como enviados em ${diaMes(l.documentosEnviadosEm)}.`, "nao_permitida");
-    const data = conferirData(e.data, diaDe(p.aprovadoEm ?? p.criadoEm), agora, "o dia em que os documentos foram enviados");
+    const data = conferirData(e.data, desdeADefesa(p, l), agora, "o dia em que os documentos foram enviados");
     if (!data.ok) return data;
     await gravarLinha(tx, l, { documentosEnviadosEm: instanteLocal(data.data, "12:00", FUSO), documentosEnviadosPor: autorId }, agora);
     await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: "documentos_enviados", depois: { data: data.data }, usuarioId: autorId }, agora);
@@ -1073,7 +1085,7 @@ export async function informarPrazoDocumentos(db: Db, organizacaoId: string, con
   if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
   return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
     if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
-    const desde = diaDe(l.abertaNoProvedorEm ?? l.abertaEm);
+    const desde = desdeADefesa(p, l);
     if (!e.prazo || !dataValida(e.prazo) || e.prazo < desde) return recusada(`Informe o prazo dos documentos (a partir de ${dataCompleta(desde)}).`);
     const antes = l.documentacaoPrazo ? diaDe(l.documentacaoPrazo) : null;
     await gravarLinha(tx, l, { documentacaoPrazo: instanteLocal(e.prazo, "23:59", FUSO) }, agora);
