@@ -606,8 +606,10 @@ describe("pagamento sem reserva (item 24)", () => {
     expect(pv.ok && pv.fatos.proposta.valorPerdido).toBe(0);
     expect(await confirmar({ id: rec.contestacaoId }, "perdida", sp("2026-12-11 10:00"), { valorPerdido: TAXA, debitoEm: "2026-12-10" })).toMatchObject({ ok: false, erro: textoPerdaSemReservaAcimaDaTaxa(TAXA, 0, TAXA) });
     expect(await confirmar({ id: rec.contestacaoId }, "perdida", sp("2026-12-11 10:00"), { valorPerdido: 0, debitoEm: "2026-12-10" })).toMatchObject({ ok: true });
-    const taxas = (await db.select().from(lancamentos).where(like(lancamentos.chaveOrigem, `%:taxa`))).filter((x) => x.tipo === "despesa_empresa" && x.reservaId === null);
-    expect(taxas.map((x) => x.montante)).toEqual([TAXA]);
+    // Uma despesa de taxa só, a da primeira disputa (a segunda perdeu zero).
+    const taxaDe = (id: string) => naChave({ pagamentoId: pix.pagamentoId, id }, chavesDaContestacao(pix.pagamentoId, id).taxa());
+    expect((await taxaDe(med.contestacaoId)).map((x) => x.montante)).toEqual([TAXA]);
+    expect(await taxaDe(rec.contestacaoId)).toEqual([]);
   });
 
   it("ganha: a devolução sem reserva substituída volta a ser devida; registro da equipe e duplicata confirmada como outra disputa também valem", async () => {
