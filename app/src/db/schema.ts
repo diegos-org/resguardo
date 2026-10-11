@@ -2,6 +2,20 @@ import { sql } from "drizzle-orm";
 import { type AnyPgColumn, boolean, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import type { CodigoDevolucao, ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
+import type {
+  CodigoCausaContestacao,
+  DadosDoEvento,
+  DocumentacaoDaContestacao,
+  EstadoConhecidoContestacao,
+  FonteEventoContestacao,
+  OrigemContestacao,
+  OrigemValorContestacao,
+  QuemArcaContestacao,
+  SituacaoContestacao,
+  SituacaoPagamentoAntes,
+  TipoContestacao,
+  TipoEventoContestacao,
+} from "@/pagamentos/contestacao-regras";
 import type { PeriodicidadeRepasse } from "@/repasses/periodicidade";
 import type { SituacaoDisponibilidade } from "@/site/disponibilidade";
 
@@ -1446,9 +1460,10 @@ export const SITUACOES_PAGAMENTO = ["criando", "incerta", "pendente", "aprovado"
 export type SituacaoPagamento = (typeof SITUACOES_PAGAMENTO)[number];
 /**
  * O que foi feito do dinheiro aprovado: confirmou a reserva, pagou a diferença de uma alteração aplicada (M8.2d), foi
- * devolvido pelo provedor ou devolvido por fora.
+ * devolvido pelo provedor, devolvido por fora, ou (só no pagamento sem reserva) voltou ao pagador por uma disputa
+ * perdida (M8.2e).
  */
-export const DESFECHOS_PAGAMENTO = ["reserva", "alteracao", "devolucao", "por_fora"] as const;
+export const DESFECHOS_PAGAMENTO = ["reserva", "alteracao", "devolucao", "por_fora", "contestacao"] as const;
 export type DesfechoPagamento = (typeof DESFECHOS_PAGAMENTO)[number];
 /**
  * `substituida` (M8.2d): devolução de uma alteração que nunca chegou ao Mercado Pago e foi absorvida pela devolução de um
@@ -1598,6 +1613,9 @@ export const pagamentos = pgTable(
      * pagamento já devolvido em parte). Só cresce, sob a trava, auditado.
      */
     devolvidoForaReconhecido: integer("devolvido_fora_reconhecido").notNull().default(0),
+    // --- Contestação (M8.2e)
+    /** A última busca tardia de contestações deste pagamento (uma por semana), reservada por `UPDATE … RETURNING` antes da chamada. */
+    contestacoesBuscadasEm: timestamp("contestacoes_buscadas_em", { withTimezone: true }),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1882,6 +1900,167 @@ export const alteracoesReserva = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Contestação do pagamento no site (M8.2e): a disputa (contestação no cartão, MED do Pix ou reclamação no Mercado
+// Pago), lida pela order, pela Chargebacks API e pela Payments API, ou registrada pela equipe; a decisão de quem arca, o
+// resultado (sempre confirmado pela equipe, C1) e o caixa. "Contestação" aqui é sempre a do pagamento (a dos
+// adiantamentos, M4.4, é outra). Listas fechadas em pagamentos/contestacao-regras.ts; colunas de texto sem CHECK, como as
+// do M8.2a. Nenhum dado pessoal: só ids do Mercado Pago, códigos, valores, datas e notas validadas (até 300). Toda
+// gravação acontece sob `travarCotacao`. Nunca apagada.
+// ---------------------------------------------------------------------------
+
+export const contestacoesPagamento = pgTable(
+  "contestacoes_pagamento",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    pagamentoId: uuid("pagamento_id").notNull().references(() => pagamentos.id),
+    /** A reserva cujo dinheiro está em disputa (pagamento com desfecho `reserva` ou `alteracao`); null no pagamento sem reserva. */
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    // --- Identificação
+    tipo: text("tipo").$type<TipoContestacao>().notNull(),
+    origem: text("origem").$type<OrigemContestacao>().notNull(),
+    /** O caso da Chargebacks API (o `case_id` da order): só algarismos, até 20. */
+    idCaso: text("id_caso"),
+    /** A contestação na order (CBK…). */
+    idContestacao: text("id_contestacao"),
+    /** O `transaction_id` da contestação (PAY…): só pista, nunca casa sozinho. */
+    idTransacao: text("id_transacao"),
+    /** 1; uma disputa ganha reaberta ("Conferir o aviso") ganha a rodada seguinte, numa linha nova com a mesma identificação. */
+    rodada: integer("rodada").notNull().default(1),
+    /** Segunda disputa no mesmo pagamento com outra ainda não final: não segura nada até "Confirmar que é outra disputa". */
+    duplicataPossivel: boolean("duplicata_possivel").notNull().default(false),
+    confirmadaOutraEm: timestamp("confirmada_outra_em", { withTimezone: true }),
+    confirmadaOutraPor: uuid("confirmada_outra_por").references(() => usuarios.id, { onDelete: "set null" }),
+    // --- Situação
+    situacao: text("situacao").$type<SituacaoContestacao>().notNull().default("aberta"),
+    /** A do pagamento antes da primeira linha não final dele: para onde ele volta se a SCL ganhar. */
+    situacaoPagamentoAntes: text("situacao_pagamento_antes").$type<SituacaoPagamentoAntes>().notNull(),
+    // --- Leitura
+    /** O último estado conhecido (`in_process`, `settled`, `reimbursed`); o desconhecido nunca o sobrescreve. */
+    estadoLido: text("estado_lido").$type<EstadoConhecidoContestacao>(),
+    /** O código cru curto, inclusive o desconhecido. */
+    codigo: text("codigo"),
+    /** `coverage_applied`: pela página atual do Mercado Pago, o resultado (o sentido está a conferir). */
+    coberturaAplicada: boolean("cobertura_aplicada"),
+    coberturaElegivel: boolean("cobertura_elegivel"),
+    /** `reason_id` (só algarismos) e o código do motivo (`reason` só quando é um código: nunca o texto livre). */
+    motivoId: text("motivo_id"),
+    motivoCodigo: text("motivo_codigo"),
+    /** Centavos em disputa; null = ilegível (o valor em risco usa o pago, com o aviso). */
+    valor: integer("valor"),
+    valorOrigem: text("valor_origem").$type<OrigemValorContestacao>().notNull(),
+    /** O derivado (`valorEmRisco`), gravado sob a trava a cada mudança: é o que a regra da conferência em SQL lê. */
+    valorEmRisco: integer("valor_em_risco").notNull().default(0),
+    /** Primeira vez vista ou registrada. */
+    abertaEm: timestamp("aberta_em", { withTimezone: true }).notNull(),
+    abertaNoProvedorEm: timestamp("aberta_no_provedor_em", { withTimezone: true }),
+    documentacao: text("documentacao").$type<DocumentacaoDaContestacao>(),
+    documentacaoPrazo: timestamp("documentacao_prazo", { withTimezone: true }),
+    /** "Documentos enviados no painel do Mercado Pago" (auditado). */
+    documentosEnviadosEm: timestamp("documentos_enviados_em", { withTimezone: true }),
+    documentosEnviadosPor: uuid("documentos_enviados_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Retrato da verificação do banco do pagamento na abertura. */
+    tresDSStatus: text("tres_ds_status").$type<StatusTresDS>(),
+    aoVivo: boolean("ao_vivo"),
+    consultadaEm: timestamp("consultada_em", { withTimezone: true }),
+    /** O início da chamada da última leitura aplicada (uma leitura iniciada antes é descartada). */
+    lidaEm: timestamp("lida_em", { withTimezone: true }),
+    /** `date_last_updated` do caso (uma leitura com data mais antiga é descartada). */
+    atualizadoNoProvedorEm: timestamp("atualizado_no_provedor_em", { withTimezone: true }),
+    proximaLeituraEm: timestamp("proxima_leitura_em", { withTimezone: true }),
+    falhasLeitura: integer("falhas_leitura").notNull().default(0),
+    /** Os avisos desta disputa (`AVISOS_DE_CONTESTACAO`); `pagamentos.avisos` leva a união deles. */
+    avisos: jsonb("avisos").$type<string[]>().notNull().default([]),
+    /** A nota do registro pela equipe (validada). */
+    notaRegistro: text("nota_registro").notNull().default(""),
+    // --- Decisão de quem arca
+    causa: text("causa").$type<CodigoCausaContestacao>(),
+    quemArca: text("quem_arca").$type<QuemArcaContestacao>(),
+    /** Nota obrigatória da decisão (até 300, validada); nunca vai ao proprietário. */
+    decisaoNota: text("decisao_nota").notNull().default(""),
+    /** Explicação ao proprietário (opcional, até 300, validada): no extrato, no PDF e no e-mail, ao lado da causa. */
+    explicacaoProprietario: text("explicacao_proprietario").notNull().default(""),
+    decisaoPor: uuid("decisao_por").references(() => usuarios.id, { onDelete: "set null" }),
+    decisaoEm: timestamp("decisao_em", { withTimezone: true }),
+    /** 0 = sem decisão; sobe a cada mudança (e a cada "Atualizar o valor segurado"). */
+    decisaoVersao: integer("decisao_versao").notNull().default(0),
+    /** O retrato da divisão (D e C, as partes efetivas da reserva), congelado na decisão. */
+    baseParteProprietario: integer("base_parte_proprietario"),
+    baseComissao: integer("base_comissao"),
+    /** O valor em risco usado na versão em vigor e a divisão em vigor. */
+    exposicao: integer("exposicao"),
+    parteProprietario: integer("parte_proprietario"),
+    parteScl: integer("parte_scl"),
+    // --- Resultado (confirmado pela equipe)
+    /** A data do resultado informada. */
+    resultadoEm: date("resultado_em", { mode: "string" }),
+    resultadoPor: uuid("resultado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    resultadoNota: text("resultado_nota").notNull().default(""),
+    valorPerdido: integer("valor_perdido"),
+    /** Quanto deste pagamento nunca entrou na conta (o Mercado Pago não liberou). */
+    liquidoNaoEntrou: integer("liquido_nao_entrou"),
+    /** O dia em que o Mercado Pago debitou. */
+    debitoEm: date("debito_em", { mode: "string" }),
+    /** Tarifa do Mercado Pago pela disputa (despesa da SCL), quando houver. */
+    tarifa: integer("tarifa"),
+    /** Os lançamentos definitivos feitos (a guarda de idempotência da perdida). */
+    definitivoEm: timestamp("definitivo_em", { withTimezone: true }),
+    /** A nota do "Encerrar sem efeito". */
+    encerradaNota: text("encerrada_nota").notNull().default(""),
+    /** "Conferir o aviso" (`contestacao_resultado_mudou` numa linha final). */
+    avisoConferidoEm: timestamp("aviso_conferido_em", { withTimezone: true }),
+    avisoConferidoPor: uuid("aviso_conferido_por").references(() => usuarios.id, { onDelete: "set null" }),
+    avisoConferidoNota: text("aviso_conferido_nota").notNull().default(""),
+    // --- Caixa
+    /** O retido em vigor (previsto até "Confirmar o débito do Mercado Pago"; realizado depois). */
+    retidoLancamentoId: uuid("retido_lancamento_id").references(() => lancamentos.id),
+    retidoConfirmadoEm: timestamp("retido_confirmado_em", { withTimezone: true }),
+    retidoConfirmadoPor: uuid("retido_confirmado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Ganha: o retido realizado que voltou. */
+    voltaLancamentoId: uuid("volta_lancamento_id").references(() => lancamentos.id),
+    /** Perdida: o caixa final. Chave estrangeira com nome próprio (abaixo): o automático passaria dos 63 caracteres. */
+    caixaFinalLancamentoId: uuid("caixa_final_lancamento_id"),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Casamento e idempotência: um caso e um CBK por pagamento e rodada, e uma disputa sem identificação não final por pagamento.
+    uniqueIndex("contestacoes_pagamento_caso").on(t.pagamentoId, t.idCaso, t.rodada).where(sql`${t.idCaso} is not null`),
+    uniqueIndex("contestacoes_pagamento_cbk").on(t.pagamentoId, t.idContestacao, t.rodada).where(sql`${t.idContestacao} is not null`),
+    uniqueIndex("contestacoes_pagamento_sem_id")
+      .on(t.pagamentoId)
+      .where(sql`${t.idCaso} is null and ${t.idContestacao} is null and ${t.situacao} in ('aberta', 'a_confirmar')`),
+    index("contestacoes_pagamento_situacao").on(t.organizacaoId, t.situacao),
+    index("contestacoes_pagamento_leitura").on(t.proximaLeituraEm).where(sql`${t.situacao} in ('aberta', 'a_confirmar')`),
+    index("contestacoes_pagamento_reserva").on(t.reservaId),
+    index("contestacoes_pagamento_pagamento").on(t.pagamentoId),
+    foreignKey({ columns: [t.caixaFinalLancamentoId], foreignColumns: [lancamentos.id], name: "contestacoes_pagamento_caixa_final_fk" }),
+  ],
+);
+
+/**
+ * A linha do tempo de uma disputa ("registro de cada evento"): o que o sistema leu (`usuario_id` null) e o que a equipe
+ * fez. `antes` e `depois` só com códigos, datas e centavos (nunca notas). Nunca apagada, ao contrário de
+ * `eventos_pagamento` (que some em 90 dias e não se liga ao pagamento).
+ */
+export const eventosContestacao = pgTable(
+  "eventos_contestacao",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    contestacaoId: uuid("contestacao_id").notNull().references(() => contestacoesPagamento.id),
+    fonte: text("fonte").$type<FonteEventoContestacao>().notNull(),
+    tipo: text("tipo").$type<TipoEventoContestacao>().notNull(),
+    antes: jsonb("antes").$type<DadosDoEvento>(),
+    depois: jsonb("depois").$type<DadosDoEvento>(),
+    /** null = o sistema. */
+    usuarioId: uuid("usuario_id").references(() => usuarios.id, { onDelete: "set null" }),
+    em: timestamp("em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("eventos_contestacao_contestacao").on(t.contestacaoId, t.em)],
+);
+
 /**
  * De onde veio a devolução: `sem_reserva` (M8.2a: pagamento aprovado que não confirmou a reserva), `cancelamento`
  * (M8.2c: reserva cancelada pela política) ou `alteracao` (M8.2d: a diferença de uma alteração, pela política). A
@@ -1969,6 +2148,13 @@ export const devolucoesPagamento = pgTable(
     taxaAtribuida: integer("taxa_atribuida"),
     /** O formato do corpo enviado com `chave_atual` (true = corpo vazio, integral): todo reenvio com a chave usa o mesmo. */
     corpoIntegral: boolean("corpo_integral"),
+    // --- M8.2e
+    /**
+     * A disputa do pagamento que substitui esta devolução (pedida sem aceite ou recusada quando a disputa abriu): o
+     * dinheiro volta ao hóspede pela disputa. O vínculo fica no histórico quando a substituição acaba. Chave estrangeira com
+     * nome próprio (abaixo).
+     */
+    contestacaoId: uuid("contestacao_id"),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1985,6 +2171,8 @@ export const devolucoesPagamento = pgTable(
     index("devolucoes_pagamento_situacao").on(t.organizacaoId, t.situacao),
     foreignKey({ columns: [t.cancelamentoId], foreignColumns: [cancelamentosReserva.id], name: "devolucoes_pagamento_cancelamento_id_fk" }),
     foreignKey({ columns: [t.origemDevolucaoId], foreignColumns: [t.id], name: "devolucoes_pagamento_origem_devolucao_fk" }),
+    foreignKey({ columns: [t.contestacaoId], foreignColumns: [contestacoesPagamento.id], name: "devolucoes_pagamento_contestacao_id_fk" }),
+    index("devolucoes_pagamento_contestacao").on(t.contestacaoId).where(sql`${t.contestacaoId} is not null`),
   ],
 );
 

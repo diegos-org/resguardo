@@ -357,10 +357,15 @@ describe("salvar a aba Pagamento no site", () => {
     const r = await salvarConfigPagamentoSiteAcao({}, form({ oferecer: "on", nomeFatura: " SCL  Leblon ", categoriaTaxaId: "" }));
     expect(r).toEqual({ ok: true, aviso: "Salvo. Vale para os pagamentos novos; os já criados seguem como estavam." });
     // Cancelamento (M8.2c): sem a caixa no formulário, o pedido em Minha reserva fica desligado; horas vazias = 21.
+    // Disputa do pagamento (M8.2e): sem os campos no formulário, os do padrão.
+    const { categoriaDaContestacao, diasAvisoDocumentacao, causasContestacao } = (await vi.importActual<typeof import("@/configuracoes/pagamento-site")>("@/configuracoes/pagamento-site")).CONFIG_PAGAMENTO_SITE_PADRAO;
     expect(m.salvar).toHaveBeenCalledWith(
       { banco: true },
       "org",
-      { oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk", pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 21 },
+      {
+        oferecer: true, nomeFatura: "SCL Leblon", categoriaTaxaId: null, cartao: false, parcelasMaximas: null, tresDS: "on_fraud_risk", pedidoCancelamentoNoPortal: false, naoComparecimentoHoras: 21,
+        categoriaDaContestacao, diasAvisoDocumentacao, causasContestacao,
+      },
       "u",
     );
     expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");

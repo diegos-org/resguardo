@@ -5,6 +5,7 @@
  */
 import type { DesfechoPagamento, SituacaoPagamento } from "@/db/schema";
 import { formatBRL } from "@/lib/money";
+import type { AvisoDeContestacao, TipoContestacao } from "./contestacao-regras";
 import type { SituacaoCobranca } from "./provedor";
 
 export type { DesfechoPagamento, SituacaoPagamento };
@@ -95,6 +96,7 @@ export const NOMES_DESFECHO: Record<DesfechoPagamento, string> = {
   alteracao: "Diferença de uma alteração da reserva",
   devolucao: "Devolvido pelo Mercado Pago",
   por_fora: "Devolvido por fora",
+  contestacao: "Voltou ao pagador pela disputa",
 };
 
 /** Por que um pagamento aprovado ficou sem reserva (código gravado; "conflito:SCL-…" leva o código da outra reserva). */
@@ -137,6 +139,35 @@ export function textoMotivoSemReserva(m: string | null): string | null {
   return MOTIVOS_SEM_RESERVA[c];
 }
 
+/**
+ * Os avisos de uma disputa do pagamento (M8.2e; a lista fechada é `AVISOS_DE_CONTESTACAO`): cada linha de
+ * `contestacoes_pagamento` tem os seus e o pagamento leva a união deles. Os que têm valores ou datas ganham o texto
+ * completo no quadro da disputa (`textoContestacaoValorAcima`, `textoContestacaoValorMudou`, `textoContestacaoComDevolucao`).
+ */
+const TEXTOS_AVISOS_DE_CONTESTACAO = {
+  contestacao_pix: "O Mercado Pago mostra uma contestação num pagamento por Pix: a disputa foi registrada por precaução. Confira no painel do Mercado Pago.",
+  contestacao_situacao_desconhecida: "O Mercado Pago mostrou uma situação da disputa que o sistema não conhece: a disputa ficou como estava. Confira no painel do Mercado Pago.",
+  contestacao_valor_desconhecido: "O Mercado Pago não informou o valor da disputa de um jeito legível: o valor em risco usa o valor pago. Confira no painel do Mercado Pago.",
+  contestacao_valor_acima: "O valor contestado passa do valor da reserva: pode incluir os juros do parcelamento; confira no painel do Mercado Pago quanto saiu da conta.",
+  contestacao_valor_mudou: 'O valor em disputa mudou depois da decisão: o valor segurado continua o mesmo. Use "Atualizar o valor segurado" se quiser.',
+  contestacao_com_devolucao:
+    "O hóspede pode receber duas vezes: este pagamento já teve devolução e agora tem uma disputa. Envie o comprovante da devolução ao Mercado Pago como defesa e confira quanto ele debitou.",
+  contestacao_liberacao_lida: "O Mercado Pago mostra a liberação de um pagamento em disputa: registre a liberação à mão com o líquido do pagamento que caiu na conta.",
+  contestacao_ganha_sem_recebimento: "A SCL ganhou a disputa, mas o pagamento ainda não tem recebimento no financeiro: registre a liberação à mão quando o dinheiro cair.",
+  contestacao_resultado_mudou:
+    'O Mercado Pago mudou o que mostra desta disputa (voltou a mostrá-la em andamento, ou com outro resultado): confira no painel do Mercado Pago. Numa disputa já encerrada aqui, use "Conferir o aviso".',
+  contestacao_leitura_conflitante:
+    "As leituras do Mercado Pago não batem sobre o fim desta disputa (uma parece a favor da SCL, outra contra): nada mudou aqui. Confira no painel do Mercado Pago e confirme o resultado.",
+  contestacao_ambigua:
+    "O Mercado Pago mostra uma disputa que o sistema não consegue ligar ao quadro com segurança (por exemplo, uma disputa já encerrada que o sistema não conhecia): nada foi criado. Confira no painel do Mercado Pago, registre-a pelo quadro do pagamento e confirme o resultado.",
+  contestacao_possivel_duplicata: 'Esta disputa pode ser a mesma de outra do quadro: ela não segura nada até a equipe usar "Confirmar que é outra disputa" (ou encerrá-la sem efeito).',
+  contestacao_caso_de_outro_pagamento: "Este caso é de outro pagamento no Mercado Pago: nada dele foi usado.",
+  contestacao_sem_leitura: "O Mercado Pago não deixa esta conta ler as disputas (Chargebacks): acompanhe esta disputa pelo painel do Mercado Pago.",
+  contestacao_sem_fonte: "Esta disputa passou dos 85 dias e o sistema não tem mais de onde lê-la: confira o resultado no painel do Mercado Pago e confirme aqui.",
+  contestacao_fora_do_prazo: "Esta disputa está aberta há mais de 240 dias e o sistema parou de lê-la: confira o resultado no painel do Mercado Pago e confirme aqui.",
+  contestacao_prazo_desconhecido: "Prazo dos documentos desconhecido: confira no painel do Mercado Pago e informe aqui.",
+} as const satisfies Record<AvisoDeContestacao, string>;
+
 /** Avisos de uma tentativa (códigos gravados em `pagamentos.avisos`), em linguagem simples para o painel. */
 export const AVISOS_PAGAMENTO = {
   situacao_desconhecida: "O Mercado Pago informou uma situação que o sistema não conhece: confira no painel do Mercado Pago.",
@@ -151,8 +182,10 @@ export const AVISOS_PAGAMENTO = {
     "O Mercado Pago mostra este pagamento devolvido fora do sistema: a parte do proprietário desta reserva ficou em conferência (não é repassada). Cancele a reserva pela política (devolução integral) ou registre um ajuste e dê a conferência por resolvida.",
   devolucao_em_dobro: "O Mercado Pago mostra este pagamento como devolvido, e a devolução também foi registrada como feita por fora: o hóspede pode ter recebido duas vezes. Confira no Mercado Pago e fale com o hóspede.",
   situacao_inesperada:
-    'O Mercado Pago mostrou este pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva: nada foi confirmado. Devolvido em parte: use "Devolver o restante ao hóspede". Contestado: resolva pelo painel do Mercado Pago.',
-  contestado: "O pagamento foi contestado pelo pagador: confira a reserva.",
+    'O Mercado Pago mostrou este pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva: nada foi confirmado. Devolvido em parte: use "Devolver o restante ao hóspede". Contestado: acompanhe a disputa pelo quadro do pagamento.',
+  // M8.2e: só com disputa em curso (desligado quando ela termina). O quadro troca este texto pelo do tipo da disputa
+  // (`textoDoAvisoContestado`).
+  contestado: "Disputa do pagamento em curso: acompanhe no quadro da disputa.",
   ao_vivo: "O Mercado Pago marcou este pagamento como real (live_mode) no ambiente de teste.",
   pix_sem_prazo: "O Mercado Pago não informou até quando este Pix vale: confira no painel do Mercado Pago.",
   taxa_perdida_desconhecida: "Devolução confirmada: falta saber quanto da taxa o Mercado Pago não devolveu. Confira no Mercado Pago e use \"Registrar taxa que não voltou\" no quadro do pagamento (zero se voltou toda).",
@@ -182,6 +215,7 @@ export const AVISOS_PAGAMENTO = {
   // troca este texto pelo com o valor (`textoDevolucaoAguardandoLiberacaoAtrasada`).
   devolucao_aguardando_liberacao_atrasada:
     "A liberação deste pagamento passou da data prevista e a devolução de parte do valor continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.",
+  ...TEXTOS_AVISOS_DE_CONTESTACAO,
 } as const;
 export type CodigoAviso = keyof typeof AVISOS_PAGAMENTO;
 
@@ -224,6 +258,28 @@ export const textoAguardandoLiberacao = (prevista: string | null) =>
 /** O aviso `devolucao_aguardando_liberacao_atrasada` com o valor da devolução que espera (M8.2d); sem o valor (null), sem R$. */
 export const textoDevolucaoAguardandoLiberacaoAtrasada = (valor: number | null) =>
   `A liberação deste pagamento passou da data prevista e a devolução de ${valor === null ? "parte do valor" : formatBRL(valor)} continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.`;
+
+// ---------------------------------------------------------------- disputa do pagamento (M8.2e)
+
+/** O aviso `contestado` do pagamento, por tipo da disputa em curso (sem o tipo, o texto geral). */
+export const TEXTOS_AVISO_CONTESTADO: Record<TipoContestacao, string> = {
+  chargeback: "Pagamento contestado no cartão: acompanhe no quadro da disputa.",
+  med: "Devolução pedida pelo Pix (MED): acompanhe no quadro da disputa.",
+  reclamacao: "Reclamação no Mercado Pago: acompanhe no quadro da disputa.",
+};
+export const textoDoAvisoContestado = (tipo: TipoContestacao | null): string => (tipo ? TEXTOS_AVISO_CONTESTADO[tipo] : AVISOS_PAGAMENTO.contestado);
+
+/** O aviso `contestacao_valor_acima` com os valores (o contestado e o da reserva). */
+export const textoContestacaoValorAcima = (contestado: number, daReserva: number) =>
+  `O valor contestado (${formatBRL(contestado)}) passa do valor da reserva (${formatBRL(daReserva)}): pode incluir os juros do parcelamento; confira no painel do Mercado Pago quanto saiu da conta.`;
+
+/** O aviso `contestacao_valor_mudou` com os valores; a ação pronta é "Atualizar o valor segurado". */
+export const textoContestacaoValorMudou = (de: number, para: number, segurado: number) =>
+  `O valor em disputa mudou de ${formatBRL(de)} para ${formatBRL(para)}: o valor segurado continua ${formatBRL(segurado)}.`;
+
+/** O aviso `contestacao_com_devolucao` com os dois valores e o dia da devolução (dd/mm). */
+export const textoContestacaoComDevolucao = (devolucao: number, dia: string, disputa: number) =>
+  `O hóspede pode receber duas vezes: a devolução de ${formatBRL(devolucao)} (${dia}) e a disputa de ${formatBRL(disputa)}. Envie o comprovante da devolução ao Mercado Pago como defesa e confira quanto ele debitou.`;
 
 /**
  * Os avisos que são de uma devolução (M8.2d: cada devolução tem os seus em `devolucoes_pagamento.avisos`; o pagamento leva
