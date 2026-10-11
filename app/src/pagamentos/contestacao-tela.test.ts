@@ -9,10 +9,10 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
-import { contestacoesPagamento, imoveis, lancamentos, organizacoes, pagamentos, proprietarioImoveis, proprietarios } from "@/db/schema";
+import { cancelamentosReserva, contestacoesPagamento, imoveis, lancamentos, organizacoes, pagamentos, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { cancelamentoNoPortal } from "@/hospede/cancelamento";
+import { cancelamentoNoPortal, NAO_DA, pedirCancelamentoPeloHospede } from "@/hospede/cancelamento";
 import { formatBRL } from "@/lib/money";
 import { avisosDeContestacao } from "@/painel/dashboard";
 import { paraOHospede, textoDoCancelamento } from "@/site/pagamento-vista";
@@ -434,5 +434,24 @@ describe("revisão das telas (11/10/2026)", () => {
     const entrada = { resultado: "ganha" as const, data: "2026-10-06", nota: "O painel do Mercado Pago já mostra o resultado.", versao: r.versao, assinatura: r.assinatura, tarifa: null };
     expect(await confirmarResultado(db, c.org, reg.contestacaoId, { ...entrada, notaReforcada: false }, equipe, c.provedor, sp("2026-10-06 10:05"))).toMatchObject({ ok: false, codigo: "nota_reforcada" });
     expect(await confirmarResultado(db, c.org, reg.contestacaoId, { ...entrada, notaReforcada: true }, equipe, c.provedor, sp("2026-10-06 10:10"))).toMatchObject({ ok: true });
+  });
+
+  it("'Pedir o cancelamento' pelo servidor com o MED registrado num Pix que segue aprovado: recusado sob a trava, nada gravado (Codex, 11/10)", async () => {
+    const y = await pagarEConfirmar(c, { forma: "pix", liberar: true, entrada: "2026-11-02", saida: "2026-11-05" });
+    const reg = await registrarContestacaoDaEquipe(db, c.org, y.pagamentoId, { tipo: "med", abertaEm: "2026-10-05", valor: TOTAL, prazo: null, idCaso: null, nota: "MED visto no painel do Mercado Pago." }, equipe, null, sp("2026-10-05 10:00"));
+    if (!reg.ok) throw new Error(reg.erro);
+    expect((await c.tentativa(y.pagamentoId)).situacao).toBe("aprovado");
+    // O formulário velho (ou o envio direto da ação): o botão já tinha sumido, o servidor também recusa.
+    expect(await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, y.reservaCodigo, sp("2026-10-05 11:00"))).toEqual({ ok: false, erro: NAO_DA });
+    expect(await db.select().from(cancelamentosReserva).where(eq(cancelamentosReserva.reservaId, y.reservaId))).toEqual([]);
+  });
+
+  it("pagamento contestado sem linha no quadro (a leitura ambígua, ou contestado antes do M8.2e): o hóspede vê 'em conferência' e 'fale com a equipe' (Codex, 11/10)", async () => {
+    const y = await pagarEConfirmar(c, { forma: "cartao", liberar: true, entrada: "2026-11-02", saida: "2026-11-05" });
+    await db.update(pagamentos).set({ situacao: "contestado", avisos: ["contestacao_ambigua"] }).where(eq(pagamentos.id, y.pagamentoId));
+    expect(await db.select().from(contestacoesPagamento).where(eq(contestacoesPagamento.pagamentoId, y.pagamentoId))).toEqual([]);
+    expect(await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, y.reservaCodigo, sp("2026-10-05 11:00"))).toMatchObject({ podePedir: false, emConferencia: true, faleComAEquipe: true });
+    expect((await vistaDaCotacaoParaHospede(db, c.org, y.cotacaoId, sp("2026-10-05 11:00"), { comAutorizacao: true }))?.pagamentoEmConferencia).toBe(true);
+    expect(await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, y.reservaCodigo, sp("2026-10-05 11:00"))).toEqual({ ok: false, erro: NAO_DA });
   });
 });

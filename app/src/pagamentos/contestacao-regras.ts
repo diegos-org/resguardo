@@ -965,6 +965,20 @@ export function tipoDaDisputaEmCurso(linhas: readonly (LinhaEmCurso & Pick<Linha
 /** Há contestação em curso no pagamento (`disputaDoPagamento` em curso ou perdida): recusa o cancelamento, a alteração e as devoluções. */
 export const contestacaoEmCurso = (t: { contestacoes: readonly LinhaEmCurso[] }, pagamentoId: string): boolean => disputaDoPagamento(t, pagamentoId) !== null;
 
+/** O pagamento está contestado pela situação dele, ou pelo aviso `contestado` (o retrato do "em curso" gravado sob a trava). */
+export const pagamentoContestado = (p: { situacao: string; avisos: readonly string[] }): boolean => p.situacao === "contestado" || p.avisos.includes("contestado");
+
+/**
+ * A disputa de um pagamento para o que o hóspede vê (Minha reserva, a página da reserva, também a da reserva cancelada):
+ * a das linhas (`disputaDoPagamento`) ou, sem linha nenhuma deste pagamento, a situação dele: contestado é `em_curso`.
+ * Sem linha: a leitura que não casou com segurança (`contestacao_ambigua`, que não cria linha) ou o pagamento contestado
+ * antes do M8.2e. Uma regra, um lugar: as três telas e o pedido de cancelamento pelo hóspede leem daqui.
+ */
+export function disputaDoPagamentoOuSituacao(t: { contestacoes: readonly LinhaEmCurso[] }, p: { id: string; situacao: string; avisos: readonly string[] }): "em_curso" | "perdida" | null {
+  if (t.contestacoes.some((x) => x.pagamentoId === p.id)) return disputaDoPagamento(t, p.id);
+  return pagamentoContestado(p) ? "em_curso" : null;
+}
+
 export type LinhaParaConferencia = Pick<LinhaDeContestacao, "situacao" | "duplicataPossivel"> & {
   valorEmRisco: number;
   decisaoVersao: number;

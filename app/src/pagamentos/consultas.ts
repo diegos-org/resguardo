@@ -69,11 +69,12 @@ import {
 } from "./situacoes";
 import { situacaoEfetiva, valorNovo } from "./alteracao-regras";
 import {
-  disputaDoPagamento,
+  disputaDoPagamentoOuSituacao,
   type LinhaEmCurso,
   MOTIVO_CANCELAMENTO_CONTESTACAO,
   NOMES_SITUACAO_CONTESTACAO,
   NOMES_TIPO_CONTESTACAO,
+  pagamentoContestado,
   type TipoContestacao,
   tipoDaDisputaEmCurso,
 } from "./contestacao-regras";
@@ -395,9 +396,9 @@ export async function vistaDaCotacaoParaHospede(
       ...(pedido ? { pedidoCancelamentoSemPolitica: !(await politicaDoPagamento(db, organizacaoId, comReserva.id)) } : {}),
       ...(alteracao ? { alteracao } : {}),
       ...(aplicada && c.reservaCheckin && c.reservaCheckout ? { reservaAtual: { checkin: c.reservaCheckin, checkout: c.reservaCheckout, hospedes: c.reservaHospedes, valor: c.reservaValor } } : {}),
-      // M8.2e: só para quem pagou (o cookie do checkout): uma disputa em curso (aberta ou a confirmar) num pagamento com o
-      // dinheiro da reserva; com o resultado, a linha some.
-      ...(o.comAutorizacao && (await disputaEmCursoNaCotacao(db, organizacaoId, tentativas.filter(dinheiroDaReserva).map((t) => t.id))) ? { pagamentoEmConferencia: true } : {}),
+      // M8.2e: só para quem pagou (o cookie do checkout): uma disputa em curso num pagamento com o dinheiro da reserva
+      // (`disputaDoPagamentoOuSituacao`: as linhas dele, ou o pagamento contestado sem linha); com o resultado, a linha some.
+      ...(o.comAutorizacao && (await disputaEmCursoNaCotacao(db, organizacaoId, tentativas.filter(dinheiroDaReserva))) ? { pagamentoEmConferencia: true } : {}),
     };
   }
   // Dinheiro sem a reserva: confirmando, aprovado sem as datas, devolução pedida ou feita. Com mais de um pagamento,
@@ -422,14 +423,13 @@ export async function vistaDaCotacaoParaHospede(
 }
 
 /** M8.2e: algum dos pagamentos tem disputa em curso (aberta ou a confirmar), de qualquer origem (leitura ou equipe). */
-async function disputaEmCursoNaCotacao(db: Db, organizacaoId: string, pagamentoIds: readonly string[]): Promise<boolean> {
-  if (!pagamentoIds.length) return false;
-  const [c] = await db
-    .select({ id: contestacoesPagamento.id })
+async function disputaEmCursoNaCotacao(db: Db, organizacaoId: string, ps: readonly Pagamento[]): Promise<boolean> {
+  if (!ps.length) return false;
+  const contestacoes = await db
+    .select({ pagamentoId: contestacoesPagamento.pagamentoId, situacao: contestacoesPagamento.situacao, avisos: contestacoesPagamento.avisos, estadoLido: contestacoesPagamento.estadoLido })
     .from(contestacoesPagamento)
-    .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, [...pagamentoIds]), inArray(contestacoesPagamento.situacao, ["aberta", "a_confirmar"])))
-    .limit(1);
-  return !!c;
+    .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, ps.map((p) => p.id))));
+  return ps.some((p) => disputaDoPagamentoOuSituacao({ contestacoes }, p) === "em_curso");
 }
 
 /**
@@ -819,9 +819,8 @@ function estadoDoCancelamento(
  * alguma foi; senão nada. Sem linha nenhuma (pagamento lido como contestado antes do M8.2e), em curso pela situação.
  */
 function situacaoDaDisputaDaReserva(pagamentosDaReserva: readonly Pagamento[], disputas: readonly LinhaEmCurso[]): "em_curso" | "perdida" | null {
-  const dela = disputas.filter((d) => pagamentosDaReserva.some((p) => p.id === d.pagamentoId));
-  if (!dela.length) return pagamentosDaReserva.some(emDisputa) ? "em_curso" : null;
-  const situacoes = pagamentosDaReserva.map((p) => disputaDoPagamento({ contestacoes: dela }, p.id));
+  // Pagamento a pagamento: as linhas dele, ou, sem linha (lido antes do M8.2e, ou a leitura ambígua), a situação dele.
+  const situacoes = pagamentosDaReserva.map((p) => disputaDoPagamentoOuSituacao({ contestacoes: disputas }, p));
   return situacoes.includes("em_curso") ? "em_curso" : situacoes.includes("perdida") ? "perdida" : null;
 }
 
@@ -1006,7 +1005,7 @@ export type PagamentoDoPainel = {
  * o caso tardio só da Chargebacks API). O aviso `contestado` é o retrato do "em curso" (`contestacaoEmCurso`), recalculado em
  * toda gravação da disputa sob a trava (`avisosComContestacoes`): estas leituras sem trava leem dele.
  */
-const emDisputa = (p: Pick<Pagamento, "situacao" | "avisos">) => p.situacao === "contestado" || p.avisos.includes("contestado");
+const emDisputa = (p: Pick<Pagamento, "situacao" | "avisos">) => pagamentoContestado(p);
 
 /** Liberação prevista vencida sem confirmação; com disputa em curso, não (a liberação lida não lança: espera o resultado). */
 const liberacaoVencida = (p: Pagamento, agora: Date) =>

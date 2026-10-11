@@ -3354,6 +3354,19 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   (nunca antes da aprovação); o domínio e o formulário leem dali. O débito continua desde a abertura no Mercado Pago ou,
   sem ela, desde a aprovação (`desdeAberturaDaDisputa`: o débito pode vir antes de o sistema ver a disputa), e o
   formulário dele passa a ler a mesma regra do domínio. *Motivo:* a defesa só começa depois de a disputa abrir.
+- **"Pedir o cancelamento" pelo hóspede com a disputa registrada** *(segue o desenho, "Minha reserva": o botão some com a
+  disputa em curso ou perdida)*. *Antes:* o botão sumia, mas o pedido (`pedirCancelamentoPeloHospede`) não conferia a
+  disputa: um formulário aberto antes, ou o envio direto da ação, gravava o pedido num pagamento que segue aprovado com um
+  MED registrado ou um caso tardio da Chargebacks API. *Agora:* o pedido recusa ("fale com a equipe") antes e de novo sob a
+  trava, pela mesma regra do botão.
+- **O pagamento contestado sem linha no quadro, para o hóspede** *(segue o desenho, "Estados da página" e "Minha
+  reserva")*. *Antes:* a leitura ambígua (`contestacao_ambigua`, que não cria linha) ou o pagamento contestado antes do
+  M8.2e deixavam Minha reserva sem o botão e sem explicação nenhuma, e a página da reserva sem a frase "pagamento em
+  conferência". *Agora:* uma regra só, `disputaDoPagamentoOuSituacao` (`contestacao-regras.ts`): a disputa de cada pagamento
+  é a das linhas dele, ou, sem linha nenhuma, a situação dele (contestado é em curso). Minha reserva, o pedido de
+  cancelamento, a página da reserva e a da reserva cancelada pela disputa leem dali (esta última já usava a situação
+  quando a reserva não tinha linha nenhuma; agora decide pagamento a pagamento). *Motivo:* o hóspede nunca fica sem saber
+  por que não pode pedir o cancelamento.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 
