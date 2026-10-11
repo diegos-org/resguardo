@@ -1,19 +1,20 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { travarConfig, travarConfigCompartilhada } from "@/configuracoes/armazem";
+import { gravarConfig, lerConfig, travarConfig, travarConfigCompartilhada } from "@/configuracoes/armazem";
 import { salvarEmpresa } from "@/configuracoes/empresa";
 import { publicarPaginaLegal } from "@/configuracoes/paginas-legais";
 import { RASCUNHO_PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-rascunho";
+import { PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import { publicarPaginasLegaisDeTeste } from "@/configuracoes/paginas-legais-testes";
-import { aceitesSite, auditoria, cotacoes, organizacoes, pagamentos } from "@/db/schema";
+import { aceitesSite, auditoria, cotacoes, organizacoes, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { conferirTentativa } from "@/pagamentos/conferencia";
 import { podeCobrar, TEXTO_SEM_COBRANCA } from "@/pagamentos/oferta";
 import { gerarPix } from "@/pagamentos/pix";
-import { AGORA, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario } from "@/pagamentos/testes";
+import { AGORA, alterar, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario, pagarEConfirmar, usuarioDeTeste } from "@/pagamentos/testes";
 import { travarCotacao } from "@/pagamentos/travas";
-import { aceiteParaPagina, aceitesDaReserva, contarAceitesPorVersao, MENSAGENS_ACEITE, politicaDoPagamento, registrarAceiteDoHospede, versoesDoFormulario } from "./aceites";
+import { aceiteDaDiferencaParaPagina, aceiteParaPagina, aceitesDaReserva, contarAceitesPorVersao, MENSAGENS_ACEITE, politicaDoPagamento, registrarAceiteDoHospede, versoesDoFormulario } from "./aceites";
 import { criarCotacao } from "./cotacoes";
 
 // As travas são espiadas: o Pix lê as versões publicadas sob a trava COMPARTILHADA dos três documentos, depois das
@@ -267,5 +268,57 @@ describe("prova do aceite (M7.4)", () => {
     expect(await politicaDoPagamento(db, c.org, p.pagamentoId)).toEqual({ versao: 1, data: "2026-10-01", regras: { diasReembolsoIntegral: 14, arrependimentoAteEntrada: true } });
     expect(await politicaDoPagamento(db, sem.org, p.pagamentoId)).toBeNull();
     expect(await politicaDoPagamento(db, c.org, "nada")).toBeNull();
+  });
+});
+
+describe("o prazo da página depois de uma alteração (M8.2d)", () => {
+  it("reserva movida para antes: o prazo conta da entrada que conta (a menor), o mesmo do painel; movida para depois, continua da original", async () => {
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23" });
+    const cot = await c.cotacao(x.cotacaoId);
+    const pagina = async () => (await aceiteParaPagina(db, c.org, { id: cot.id, checkin: cot.checkin, fuso: "America/Sao_Paulo", reservaId: cot.reservaId }, minutos(4)))?.prazo;
+    expect(await pagina()).toEqual({ tipo: "integral_ate", data: "2026-11-06" });
+    await db.update(reservas).set({ checkin: "2026-11-10", checkout: "2026-11-13" }).where(eq(reservas.id, x.reservaId));
+    expect(await pagina()).toEqual({ tipo: "integral_ate", data: "2026-10-27" });
+    await db.update(reservas).set({ checkin: "2026-11-27", checkout: "2026-11-30" }).where(eq(reservas.id, x.reservaId));
+    expect(await pagina()).toEqual({ tipo: "integral_ate", data: "2026-11-06" });
+  });
+});
+
+describe("o aceite do pagamento da diferença na página da reserva (M8.2d, D11)", () => {
+  /** Publica a versão 2 dos Termos de uso (igual à 1; o texto não importa aqui). */
+  async function publicarTermosV2() {
+    const chave = PAGINAS_LEGAIS.termos.chave;
+    const atual = (await lerConfig(db, c.org, chave)) as { versoes: { numero: number; data: string }[] };
+    await gravarConfig(db, c.org, chave, { versoes: [...atual.versoes, { ...atual.versoes[0], numero: 2, data: "2026-10-01" }] }, null, false);
+  }
+
+  it("os Termos e a Privacidade em vigor com a política da reserva (versão e dia do aceite que a confirmou); a caixa some com o aceite dessas versões; sem aceite na reserva, a política em vigor", async () => {
+    const x = await pagarEConfirmar(c);
+    const cot = await c.cotacao(x.cotacaoId);
+    const pagina = (quando: Date) => aceiteDaDiferencaParaPagina(db, c.org, { id: cot.id, checkin: cot.checkin, fuso: "America/Sao_Paulo", reservaId: x.reservaId }, quando);
+    const [doP0] = await db.select().from(aceitesSite).where(eq(aceitesSite.id, (await c.tentativa(x.pagamentoId)).aceiteId!));
+    // As versões do pagamento que confirmou ainda em vigor: já aceitas nesta cotação, nenhuma caixa.
+    expect(await pagina(minutos(20))).toMatchObject({ versoes: V1, aceito: { versoes: V1 }, daReserva: { versao: 1, em: doP0.aceitoEm.toISOString() } });
+    // Termos e Política de cancelamento novos: a caixa pede os Termos 2 com a política 1 da reserva (o resumo e o prazo são dela).
+    await publicarTermosV2();
+    await publicarCancelamentoV2();
+    const pendente = await pagina(minutos(20));
+    expect(pendente).toMatchObject({ versoes: { termos: 2, privacidade: 1, cancelamento: 1 }, aceito: null, daReserva: { versao: 1 }, prazo: { tipo: "sem_reembolso", dias: 14 } });
+    expect(JSON.stringify(pendente?.resumo)).toContain("14 dias");
+    // O Pix da diferença com essas versões grava o aceite: a página passa a mostrar o aceite feito.
+    const equipe = await usuarioDeTeste(c);
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    const pix = await gerarPix(db, c.org, x.cotacaoId, minutos(21), c.provedor, { alteracaoId: resultado.alteracaoId, aceite: { termos: 2, privacidade: 1, cancelamento: 1 } });
+    expect(pix).toMatchObject({ ok: true });
+    expect((await pagina(minutos(22)))?.aceito).toEqual({ em: minutos(21).toISOString(), versoes: { termos: 2, privacidade: 1, cancelamento: 1 } });
+    // Reserva confirmada por um pagamento sem aceite (antes das páginas legais): vale a política em vigor, como no domínio.
+    await db.update(pagamentos).set({ aceiteId: null }).where(eq(pagamentos.id, x.pagamentoId));
+    const semAceite = await pagina(minutos(22));
+    expect(semAceite).toMatchObject({ versoes: { termos: 2, privacidade: 1, cancelamento: 2 }, aceito: null });
+    expect(semAceite?.daReserva).toBeUndefined();
+    // Outra empresa não vê nada desta reserva; sem as três páginas publicadas, nada.
+    const sem = await montarCenario(db, { semPaginasLegais: true });
+    expect(await aceiteDaDiferencaParaPagina(db, sem.org, { id: cot.id, checkin: cot.checkin, fuso: "America/Sao_Paulo", reservaId: x.reservaId }, minutos(22))).toBeNull();
   });
 });

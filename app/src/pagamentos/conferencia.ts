@@ -11,11 +11,12 @@ import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { eventosPagamento, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { expirarSeVencida } from "./alteracao-prazo";
 import { aplicarLeitura, type Efeitos, type Leitura } from "./aplicar";
 import { DESISTIR_SEM_ORDER_CARTAO_MS, paginaAindaLe } from "./andamento";
 import { type Cobranca, ErroProvedor, type ProvedorPagamento } from "./provedor";
 import type { SituacaoPagamento } from "./situacoes";
-import { type Pagamento, travarCotacao } from "./travas";
+import { dinheiroDaReserva, type Pagamento, travarCotacao } from "./travas";
 
 /** A página e os outros gatilhos não leem o provedor mais de uma vez a cada 15 s por tentativa (salvo `forcar`). */
 export const INTERVALO_CONSULTA_MS = 15_000;
@@ -47,16 +48,18 @@ const mensagemDoErro = (e: unknown) => (e instanceof ErroProvedor ? e.message : 
 const falhaQueSegura = (e: unknown) => e instanceof ErroProvedor && (e.tipo === "limite" || e.tipo === "incerto");
 
 function precisaFinanceiro(p: Pagamento, c: Cobranca, agora: Date, forcar: boolean): boolean {
-  // Taxa, líquido e liberação só servem enquanto aprovado (a taxa que não volta numa devolução a equipe informa).
-  if (c.situacao !== "aprovado") return false;
+  // Taxa, líquido e liberação só servem enquanto aprovado (a taxa que não volta numa devolução a equipe informa). M8.2d: o
+  // dinheiro da reserva devolvido em parte pelas nossas devoluções ainda espera a liberação (`aplicarLeitura` confere).
+  if (c.situacao !== "aprovado" && !(c.situacao === "devolvido_parcial" && dinheiroDaReserva(p) && !p.liberacaoConfirmadaEm)) return false;
   const primeira = p.situacao !== "aprovado" && c.situacao === "aprovado";
   // Depois do primeiro dia da aprovação, a Payments API é lida a cada 6 h (o sinal de liberação pode demorar semanas).
   const intervalo = p.aprovadoEm && agora.getTime() - p.aprovadoEm.getTime() > 24 * 3_600_000 ? 6 * 3_600_000 : INTERVALO_FINANCEIRO_MS;
   if (!primeira && !forcar && p.financeiroConsultadoEm && agora.getTime() - p.financeiroConsultadoEm.getTime() < intervalo) return false;
   if (p.taxa === null) return true;
-  if (p.desfecho === "reserva" && !p.liberacaoConfirmadaEm) return true;
+  // A liberação: do dinheiro da reserva (o que a confirmou e a diferença aplicada de uma alteração, M8.2d).
+  if (dinheiroDaReserva(p) && !p.liberacaoConfirmadaEm) return true;
   // Liberação registrada à mão: o sinal do provedor ainda concilia (ou acusa a diferença) — conferido uma vez por dia.
-  if (p.desfecho === "reserva" && p.liberacaoOrigem === "manual") {
+  if (dinheiroDaReserva(p) && p.liberacaoOrigem === "manual") {
     return forcar || !p.financeiroConsultadoEm || agora.getTime() - p.financeiroConsultadoEm.getTime() >= 24 * 3_600_000;
   }
   return false;
@@ -83,11 +86,16 @@ async function lerProvedor(p: Pagamento, provedor: ProvedorPagamento, agora: Dat
   return { cobranca, financeiro, desistir, idLido: p.idProvedor };
 }
 
-/** Aplica uma leitura numa transação curta, com as travas na ordem única; devolve os efeitos para depois dela. */
-export async function aplicarNaTransacao(db: Db, organizacaoId: string, p: Pick<Pagamento, "id" | "cotacaoId">, leitura: Leitura, agora: Date): Promise<Efeitos | null> {
+/**
+ * Aplica uma leitura numa transação curta, com as travas na ordem única; devolve os efeitos para depois dela.
+ * `o.vencerAlteracoes` (o "Conferir agora" do painel, M8.2d): antes, vence a alteração da reserva com o prazo das datas
+ * vencido (sem provedor).
+ */
+export async function aplicarNaTransacao(db: Db, organizacaoId: string, p: Pick<Pagamento, "id" | "cotacaoId">, leitura: Leitura, agora: Date, o: { vencerAlteracoes?: boolean } = {}): Promise<Efeitos | null> {
   return db.transaction(async (tx) => {
     const t = await travarCotacao(tx, organizacaoId, p.cotacaoId);
     if (!t || !t.tentativas.some((x) => x.id === p.id)) return null;
+    if (o.vencerAlteracoes) await expirarSeVencida(tx, organizacaoId, t, agora);
     return aplicarLeitura(tx, organizacaoId, t, p.id, leitura, agora);
   });
 }
@@ -165,7 +173,7 @@ export async function conferirTentativa(
   }
   let efeitos: Efeitos | null;
   try {
-    efeitos = await aplicarNaTransacao(db, organizacaoId, p, leitura, agora);
+    efeitos = await aplicarNaTransacao(db, organizacaoId, p, leitura, agora, { vencerAlteracoes: opcoes.origem === "painel" });
   } catch (e) {
     await desfazerReserva();
     throw e;

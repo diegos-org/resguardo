@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
+import { AlteracaoNaReserva } from "@/components/site/AlteracaoNaReserva";
 import { BotaoContato, Cotacao } from "@/components/site/Cotacao";
 import { FormSegurar } from "@/components/site/FormSegurar";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
@@ -7,13 +8,22 @@ import { PagamentoPix } from "@/components/site/PagamentoPix";
 import styles from "@/components/site/site.module.css";
 import { versaoAtualDaPaginaLegal } from "@/configuracoes/paginas-legais";
 import { TEXTOS_SITE_INICIAIS, TEXTOS_SITE_OBRIGATORIOS, type TextosSite } from "@/configuracoes/textos-site";
-import { aceiteParaPagina } from "@/site/aceites";
+import { aceiteDaDiferencaParaPagina, aceiteParaPagina } from "@/site/aceites";
 import { segurarDatasAcao } from "@/site/acoes";
 import { continuarPagamentoAcao, gerarPixAcao, pagarComCartaoAcao } from "@/site/acoes-pagamento";
 import { autorizadoNaCotacao } from "@/site/checkout";
 import { codigoCotacaoValido, textoDaCotacao, verCotacao } from "@/site/cotacoes";
 import { cartaoNoSite, pixPossivel, portaoDoSite, vistaDoPagamento } from "@/site/pagamento";
-import { contatoPrincipal, ESTADOS_QUE_PAGAM, linhaDaAnalise, mensagemDoContato, type TextosDoCancelamento, TITULO_PAGAMENTO } from "@/site/pagamento-vista";
+import {
+  contatoPrincipal,
+  ESTADOS_QUE_PAGAM,
+  linhaDaAnalise,
+  mensagemDoContato,
+  mensagemDoContatoDaAlteracao,
+  type TextosDaAlteracao,
+  type TextosDoCancelamento,
+  TITULO_PAGAMENTO,
+} from "@/site/pagamento-vista";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 
 export const generateMetadata = () => metadadosDoSite("Cotação");
@@ -32,11 +42,34 @@ const CHAVES_DO_CANCELAMENTO = [
   "cancelamentoSemDevolucaoEquipe",
   "cancelamentoFecho",
   "cancelamentoPedidoRecebido",
+  "devolucaoAguardaLiberacao",
 ] as const satisfies readonly (keyof TextosDoCancelamento)[];
 
 /** As frases do cancelamento (M8.2c) de Textos do site: as obrigatórias nunca saem vazias; a frase final pode. */
 const textosDoCancelamento = (t: TextosSite): TextosDoCancelamento =>
   Object.fromEntries(CHAVES_DO_CANCELAMENTO.map((k) => [k, t[k] || (TEXTOS_SITE_OBRIGATORIOS.includes(k) ? TEXTOS_SITE_INICIAIS[k] : "")])) as TextosDoCancelamento;
+
+const CHAVES_DA_ALTERACAO = [
+  "alteracaoEmAndamento",
+  "alteracaoAguardaConfirmacao",
+  "alteracaoPolitica",
+  "alteracaoConfirmada",
+  "devolucaoAguardaLiberacao",
+  "alteracaoSemDevolucao",
+  "alteracaoNaoAplicada",
+  "alteracaoNaoVale",
+  "cancelamentoDevolucaoPedida",
+  "cancelamentoEstornoNoCartao",
+  "cancelamentoVoltaPix",
+  "cancelamentoVoltaCartao",
+  "cancelamentoVoltaPorFora",
+  "cancelamentoComAEquipe",
+  "cancelamentoEmConferencia",
+] as const satisfies readonly (keyof TextosDaAlteracao)[];
+
+/** As frases da alteração (M8.2d) de Textos do site, do mesmo jeito: as obrigatórias nunca saem vazias. */
+const textosDaAlteracao = (t: TextosSite): TextosDaAlteracao =>
+  Object.fromEntries(CHAVES_DA_ALTERACAO.map((k) => [k, t[k] || (TEXTOS_SITE_OBRIGATORIOS.includes(k) ? TEXTOS_SITE_INICIAIS[k] : "")])) as TextosDaAlteracao;
 
 /**
  * Situações que mostram o aceite das páginas legais (M7.4): a caixa antes do Pix ou do cartão (M8.2b) em toda situação
@@ -47,7 +80,8 @@ const COM_ACEITE = new Set([...ESTADOS_QUE_PAGAM, "confirmada"]);
 /**
  * Página pública da cotação (M8.1): sempre revalidada ao abrir; nada é gravado só por visitar. Com o pagamento no
  * site (M8.2a), a situação do pagamento vence a da cotação ("expirada", "cancelada") e o pagamento vem primeiro (o Pix
- * em destaque; o cartão de crédito ao lado quando ligado, M8.2b).
+ * em destaque; o cartão de crédito ao lado quando ligado, M8.2b). M8.2d: a alteração da reserva paga vem acima do quadro
+ * do pagamento (`AlteracaoNaReserva`), com o pagamento da diferença no aumento e o aceite na política da reserva (D11).
  */
 export default async function PaginaCotacao({ params }: PageProps<"/reservar/[codigo]">) {
   const { codigo: bruto } = await params;
@@ -77,10 +111,42 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
   // aceitas na reserva confirmada) e, no formulário de segurar as datas, o link da Política de privacidade em vigor.
   const comFormulario = !!pagamento && (pagamento.estado === "confirmada" || pagamento.podeGerar || pagamento.podePagarCartao);
   const aceite = pagamento && COM_ACEITE.has(pagamento.estado) && comFormulario ? await aceiteParaPagina(db, organizacaoId, { id: c.id, checkin: c.checkin, fuso: c.fuso, reservaId: c.reservaId }, agora) : null;
+  // M8.2d: a alteração (a vista já traz a oferta da diferença) e, quando o Pix ou o cartão da diferença aparecem, o aceite
+  // na forma do D11 (os Termos e a Privacidade em vigor com a política da reserva).
+  const alteracao = pagamento?.alteracao ?? null;
+  const pagaDiferenca = !!alteracao?.pagamento && (alteracao.pagamento.podeGerar || alteracao.pagamento.podePagarCartao);
+  const aceiteDaDiferenca = pagaDiferenca && c.reservaId ? await aceiteDaDiferencaParaPagina(db, organizacaoId, { id: c.id, checkin: c.checkin, fuso: c.fuso, reservaId: c.reservaId }, agora) : null;
   const mostraFormulario = vista.estado === "aberta" && !vista.mudou;
   // A Política de privacidade vale assim que publicada, mesmo com os termos ou o cancelamento ainda em preparação.
   const privacidade = mostraFormulario ? await versaoAtualDaPaginaLegal(db, organizacaoId, "privacidade") : null;
   const { textos } = conteudo;
+  const reservaCodigo = pagamento?.reservaCodigo ?? null;
+  const quadroDaAlteracao =
+    pagamento && alteracao && reservaCodigo ? (
+      <AlteracaoNaReserva
+        codigo={codigo}
+        reservaCodigo={reservaCodigo}
+        alteracao={alteracao}
+        textos={textosDaAlteracao(textos)}
+        fuso={c.fuso}
+        autorizado={autorizado}
+        aceite={aceiteDaDiferenca}
+        textosPagamento={{
+          aguardando: textos.pagamentoAguardando || TEXTOS_SITE_INICIAIS.pagamentoAguardando,
+          semDatas: textos.pagamentoSemDatas || TEXTOS_SITE_INICIAIS.pagamentoSemDatas,
+          cartaoAnalise: textos.pagamentoCartaoAnalise || TEXTOS_SITE_INICIAIS.pagamentoCartaoAnalise,
+        }}
+        contato={
+          conteudo.whatsapp || conteudo.email ? (
+            <BotaoContato whatsapp={conteudo.whatsapp} email={conteudo.email} codigo={c.codigo} texto={mensagemDoContatoDaAlteracao(textoDaCotacao(vista), reservaCodigo)} secundario />
+          ) : null
+        }
+        gerarPix={gerarPixAcao.bind(null, codigo)}
+        continuar={continuarPagamentoAcao}
+        pagarComCartao={pagarComCartaoAcao.bind(null, codigo)}
+        linhaAnalise={alteracao.pagamento?.estado === "cartao_em_analise" ? linhaDaAnalise(alteracao.pagamento.prazoDasDatas, agora, c.fuso) : null}
+      />
+    ) : null;
   return (
     <Moldura conteudo={conteudo}>
       <div className={styles.largo}>
@@ -99,6 +165,7 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
           email={conteudo.email}
           pagamentoNoSite={pagamentoNoSite}
           comCartao={cartaoNoPagamento}
+          reservaAtual={pagamento?.reservaAtual && reservaCodigo ? { codigo: reservaCodigo, ...pagamento.reservaAtual } : null}
           formulario={
             mostraFormulario ? (
               <FormSegurar codigo={codigo} minutos={regras.site.minutosHold} acao={segurarDatasAcao} comPagamento={pagamentoNoSite} comCartao={cartaoNoPagamento} privacidade={privacidade} />
@@ -109,36 +176,39 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
               ? {
                   titulo: TITULO_PAGAMENTO[pagamento.estado],
                   conteudo: (
-                    <PagamentoPix
-                      codigo={codigo}
-                      pagamento={pagamento}
-                      autorizado={autorizado}
-                      fuso={c.fuso}
-                      total={c.total}
-                      textos={{
-                        convite: textos.pagamentoConvite || TEXTOS_SITE_INICIAIS.pagamentoConvite,
-                        aguardando: textos.pagamentoAguardando || TEXTOS_SITE_INICIAIS.pagamentoAguardando,
-                        semDatas: textos.pagamentoSemDatas || TEXTOS_SITE_INICIAIS.pagamentoSemDatas,
-                        cartaoAnalise: textos.pagamentoCartaoAnalise || TEXTOS_SITE_INICIAIS.pagamentoCartaoAnalise,
-                        cancelamento: textosDoCancelamento(textos),
-                      }}
-                      contato={
-                        conteudo.whatsapp || conteudo.email ? (
-                          <BotaoContato
-                            whatsapp={conteudo.whatsapp}
-                            email={conteudo.email}
-                            codigo={c.codigo}
-                            texto={mensagemDoContato(textoDaCotacao(vista), pagamento.estado, pagamento.reservaCodigo, pagamento.forma)}
-                            secundario={!contatoPrincipal(pagamento)}
-                          />
-                        ) : null
-                      }
-                      gerarPix={gerarPixAcao.bind(null, codigo)}
-                      continuar={continuarPagamentoAcao}
-                      pagarComCartao={pagarComCartaoAcao.bind(null, codigo)}
-                      aceite={aceite}
-                      linhaAnalise={pagamento.estado === "cartao_em_analise" ? linhaDaAnalise(pagamento.prazoDasDatas, agora, c.fuso) : null}
-                    />
+                    <>
+                      {quadroDaAlteracao}
+                      <PagamentoPix
+                        codigo={codigo}
+                        pagamento={pagamento}
+                        autorizado={autorizado}
+                        fuso={c.fuso}
+                        total={c.total}
+                        textos={{
+                          convite: textos.pagamentoConvite || TEXTOS_SITE_INICIAIS.pagamentoConvite,
+                          aguardando: textos.pagamentoAguardando || TEXTOS_SITE_INICIAIS.pagamentoAguardando,
+                          semDatas: textos.pagamentoSemDatas || TEXTOS_SITE_INICIAIS.pagamentoSemDatas,
+                          cartaoAnalise: textos.pagamentoCartaoAnalise || TEXTOS_SITE_INICIAIS.pagamentoCartaoAnalise,
+                          cancelamento: textosDoCancelamento(textos),
+                        }}
+                        contato={
+                          conteudo.whatsapp || conteudo.email ? (
+                            <BotaoContato
+                              whatsapp={conteudo.whatsapp}
+                              email={conteudo.email}
+                              codigo={c.codigo}
+                              texto={mensagemDoContato(textoDaCotacao(vista), pagamento.estado, pagamento.reservaCodigo, pagamento.forma)}
+                              secundario={!contatoPrincipal(pagamento)}
+                            />
+                          ) : null
+                        }
+                        gerarPix={gerarPixAcao.bind(null, codigo)}
+                        continuar={continuarPagamentoAcao}
+                        pagarComCartao={pagarComCartaoAcao.bind(null, codigo)}
+                        aceite={aceite}
+                        linhaAnalise={pagamento.estado === "cartao_em_analise" ? linhaDaAnalise(pagamento.prazoDasDatas, agora, c.fuso) : null}
+                      />
+                    </>
                   ),
                 }
               : undefined

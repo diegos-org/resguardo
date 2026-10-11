@@ -94,6 +94,22 @@ function CancelarReserva({ codigo, c, textos, agora }: { codigo: string; c: Canc
   );
 }
 
+/**
+ * M8.2d: a linha da alteração com as novas datas seguradas — o que ela espera (o pagamento da diferença ou a confirmação),
+ * até quando (horário de Brasília) e o link da página da reserva no site; passado o prazo com o pagamento da diferença
+ * ainda em andamento (a carência), que ele está em andamento. Nunca valores.
+ */
+function LinhaDaAlteracao({ a }: { a: NonNullable<ReservaDoHospede["alteracao"]> }) {
+  return (
+    <p className={styles.aviso} role="note">
+      {a.pagamentoEmAndamento
+        ? "Há uma alteração da sua reserva com o pagamento da diferença em andamento: "
+        : `Há uma alteração da sua reserva esperando ${a.espera === "pagamento" ? "o pagamento da diferença" : "a sua confirmação"} até ${diaHoraBrasilia(a.ate)} (horário de Brasília): `}
+      <a href={a.link}>ver a alteração no site</a>.
+    </p>
+  );
+}
+
 function Reserva({ r, cancelamento, textos, agora }: { r: ReservaDoHospede; cancelamento: CancelamentoNoPortal | null; textos: Pick<TextosSite, "cancelamentoMinhaReservaIntro" | "cancelamentoPedidoRecebido">; agora: Date }) {
   return (
     <article className={styles.cartao}>
@@ -122,6 +138,7 @@ function Reserva({ r, cancelamento, textos, agora }: { r: ReservaDoHospede; canc
             </>
           )}
         </dl>
+        {r.alteracao && !r.encerrada && <LinhaDaAlteracao a={r.alteracao} />}
         {r.encerrada ? (
           <p className={styles.miudo}>Obrigado pela estadia!</p>
         ) : r.instrucoes.liberadas ? (

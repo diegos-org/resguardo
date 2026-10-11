@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import type { EstadoRegrasCalendario } from "@/calendario/acoes";
-import { APLICACOES_ULTIMA_HORA, centesimosParaMultiplicador, dataBr, type RegrasCalendario } from "@/calendario/regras-config";
+import { APLICACOES_ULTIMA_HORA, centesimosParaMultiplicador, dataBr, LIMITES_MINUTOS_HOLD_ALTERACAO, type RegrasCalendario } from "@/calendario/regras-config";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { DIAS_SEMANA } from "@/imoveis/regras-venda";
 import styles from "../formularios.module.css";
@@ -82,7 +82,9 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
         <label>Máximo de noites por consulta online<input name="siteMaximoNoites" type="number" min={1} max={364} defaultValue={campo("siteMaximoNoites", String(regras.site.maximoNoitesConsulta))} {...invalido("siteMaximoNoites")} />{erro("siteMaximoNoites")}</label>
         <label>Minutos que &quot;segurar as datas&quot; reserva no site<input name="siteMinutosHold" type="number" min={5} max={240} defaultValue={campo("siteMinutosHold", String(regras.site.minutosHold))} {...invalido("siteMinutosHold")} />{erro("siteMinutosHold")}</label>
         <label>Minutos a mais que um cartão em análise segura as datas (uma vez por cotação; 0 = nenhum)<input name="siteMinutosAnaliseCartao" type="number" min={0} max={240} defaultValue={campo("siteMinutosAnaliseCartao", String(regras.site.minutosAnaliseCartao))} {...invalido("siteMinutosAnaliseCartao")} />{erro("siteMinutosAnaliseCartao")}</label>
+        <label>Minutos que as novas datas de uma alteração de reserva paga pelo site ficam seguradas<input name="siteMinutosHoldAlteracao" type="number" min={LIMITES_MINUTOS_HOLD_ALTERACAO[0]} max={LIMITES_MINUTOS_HOLD_ALTERACAO[1]} defaultValue={campo("siteMinutosHoldAlteracao", String(regras.site.minutosHoldAlteracao))} {...invalido("siteMinutosHoldAlteracao")} />{erro("siteMinutosHoldAlteracao")}</label>
       </div>
+      <p style={nota}>Ao preparar a alteração de uma reserva paga pelo site, as novas noites ficam seguradas por esse tempo (padrão 60 minutos, até 48 horas); o Pix da diferença estende o prazo. Não muda o tempo do site.</p>
       <p style={nota}>Ao segurar as datas, o visitante cria um pedido que ocupa o calendário por esse tempo (padrão 30 minutos). Se a equipe não confirmar nem o pagamento acontecer até lá, o pedido vence sozinho e as noites voltam à venda.</p>
       <p style={nota}>Com o pagamento no site ligado, cada Pix segura as datas por pelo menos 30 minutos (até 3 por cotação, um de cada vez); com o cartão, a verificação do banco segura as datas por até 42 minutos e o cartão em análise por mais {regras.site.minutosAnaliseCartao} minutos (uma vez por cotação). Se a análise aprovar depois do prazo, a reserva só é confirmada com as noites ainda livres; senão, o valor fica para devolver.</p>
     </fieldset>

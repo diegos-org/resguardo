@@ -12,11 +12,11 @@
  */
 import {
   chaveIdempotenciaValida, CODIGOS_TOKEN, emailPlausivel, ErroProvedor, idDevolucaoValido, idProvedorValido, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida,
-  STATUS_TRES_DS, urlDoDesafio, validadePixMinutos, valorPagoNaOrder,
+  STATUS_TRES_DS, urlDoDesafio, validadePixMinutos,
 } from "./provedor";
 import type {
-  Cobranca, CodigoDevolucao, DadosCartao, DetalheFinanceiro, DevolucaoLida, EstadoDevolucaoLida, FormaPagamento, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento,
-  ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca, StatusTresDS,
+  Cobranca, CodigoDevolucao, DadosCartao, DetalheFinanceiro, DevolucaoLida, EstadoDevolucaoLida, FormaPagamento, OpcoesDevolucao, PedidoCartao, PedidoPix, ProvedorPagamento,
+  ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca, StatusTresDS,
 } from "./provedor";
 
 const BASE = "https://api.mercadopago.com";
@@ -769,21 +769,26 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
 
   /**
    * Integral: corpo vazio. Parcial: { transactions: [{ id: PAY…, amount }] }. Nunca lança: falha de transporte vira
-   * `incerta` (repetir com a mesma chave depois de reconsultar). Respostas (documentação de 9/10/2026; `codigo` só da
-   * lista fechada, nunca do texto do provedor):
-   * - 200/201: confirmada (todas as devoluções da resposta confirmadas) ou pedida. `idDevolucao` = a devolução da resposta
-   *   que não estava na leitura de antes do pedido (`c.devolucoes`); nenhuma ou mais de uma nova = null (não dá para saber
-   *   qual é a nossa — nunca "a última da lista"). Com a chave repetida (`o.repetida`) e nenhuma nova, a resposta é a
-   *   repetição da do pedido anterior com esta chave: se ela lista uma devolução só, é a dele (já na leitura de antes).
+   * `incerta` (repetir com a mesma chave depois de reconsultar). Num valor explícito não há limite local (M8.2d): o domínio
+   * confere o limite sob a trava, contra o pago congelado na aprovação, e o `refund_amount_exceeds` do Mercado Pago é a
+   * última barreira (o `total_paid_amount` depois de uma devolução não é documentado). Respostas (documentação de
+   * 9 e 10/10/2026; `codigo` só da lista fechada, nunca do texto do provedor):
+   * - 200/201: a nossa devolução é a única listada que não estava na leitura de antes do pedido (`c.devolucoes`) nem entre as
+   *   conhecidas do banco (`o.conhecidas`); nenhuma ou mais de uma = null (nunca "a última da lista"). Com a chave repetida
+   *   (`o.repetida`) e nenhuma nova, a resposta é a repetição da do pedido anterior com esta chave: a única listada que o
+   *   banco não conhece é a dele. `confirmada` só com a NOSSA devolução processada (as outras da order não contam); sem
+   *   saber qual é a nossa, `pedida` (a leitura confirma).
    * - order_refund_already_in_process ou refund_in_progress (qualquer status): aguarde/em_andamento — há uma devolução em
    *   curso que não é deste pedido; movement_operations_pending, 425 e 423: aguarde/transitorio.
-   * - 409 order_already_refunded: confirmada.
-   * - 409 cannot_refund_order ou operation_not_supported: recusada/nao_permitido; refund_period_exceeded (400/409):
-   *   recusada/prazo; 428 ou insufficient_money_for_refund: recusada/saldo_insuficiente; 400 refund_amount_exceeds:
-   *   recusada/valor_excede; outro 400: recusada sem código; 404: recusada/nao_encontrado.
-   * - 409 idempotency_key_already_used (ou outro 409), 5xx, 429 e rede: incerta.
+   * - 409 order_already_refunded: integral, confirmada; parte do valor com a chave repetida, incerta (o pedido anterior
+   *   provavelmente completou a order: a leitura decide); parte do valor com chave nova, recusada/ja_devolvido.
+   * - 409 cannot_refund_order ou operation_not_supported, 400 unsupported_partially_refunds, 422 payment_not_refundable ou
+   *   max_refunds_exceeded: recusada/nao_permitido; 422 amount_not_refundable e 400 refund_amount_exceeds:
+   *   recusada/valor_excede (o Mercado Pago aceita outro valor); refund_period_exceeded (400/409): recusada/prazo; 428 ou
+   *   insufficient_money_for_refund: recusada/saldo_insuficiente; outro 400: recusada sem código; 404: recusada/nao_encontrado.
+   * - 409 idempotency_key_already_used (ou outro 409), outro 422, 5xx, 429 e rede: incerta.
    */
-  async devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null, o: { repetida?: boolean } = {}): Promise<ResultadoDevolucao> {
+  async devolver(c: Cobranca, chaveIdempotencia: string, valor: number | null, o: OpcoesDevolucao = { repetida: false, conhecidas: [] }): Promise<ResultadoDevolucao> {
     const recusada = (mensagem: string, codigo: CodigoDevolucao | null = null): ResultadoDevolucao => ({ situacao: "recusada", idDevolucao: null, mensagem, codigo });
     const incerta = (mensagem: string): ResultadoDevolucao => ({ situacao: "incerta", idDevolucao: null, mensagem, codigo: null });
     const aguarde = (codigo: "em_andamento" | "transitorio"): ResultadoDevolucao => ({
@@ -796,7 +801,6 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     if (!chaveIdempotenciaValida(chaveIdempotencia)) return recusada("Chave de idempotência inválida.");
     if (valor !== null) {
       if (!Number.isSafeInteger(valor) || valor <= 0) return recusada("Valor da devolução inválido.");
-      if (valor > valorPagoNaOrder(c) - c.devolvido) return recusada("O valor passa do que ainda pode ser devolvido.");
       if (!c.idTransacao || !idProvedorValido(c.idTransacao)) return recusada("Falta o id da transação para a devolução parcial.");
     }
     const corpo = valor === null ? {} : { transactions: [{ id: c.idTransacao, amount: centavosParaValorApi(valor) }] };
@@ -810,14 +814,17 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     if (r.status === 200 || r.status === 201) {
       const devolucoes = lista(obj(r.corpo) && obj(r.corpo.transactions) ? r.corpo.transactions.refunds : null).filter(obj);
       const daTransacao = devolucoes.filter((d) => !c.idTransacao || d.transaction_id === undefined || d.transaction_id === c.idTransacao);
-      // A nossa é a que não aparecia na leitura de antes do pedido. A resposta pode listar todas as devoluções da order.
-      const conhecidas = new Set(c.devolucoes.map((d) => d.id));
-      const listadas = [...new Set((daTransacao.length ? daTransacao : devolucoes).map((d) => d.id).filter(idDevolucaoValido))];
+      // A resposta pode listar todas as devoluções da order: a nossa é a que nem a leitura de antes nem o banco conheciam.
+      const itens = daTransacao.length ? daTransacao : devolucoes;
+      const doBanco = new Set(o.conhecidas);
+      const conhecidas = new Set([...c.devolucoes.map((d) => d.id), ...o.conhecidas]);
+      const listadas = [...new Set(itens.map((d) => d.id).filter(idDevolucaoValido))];
       const novas = listadas.filter((id) => !conhecidas.has(id));
-      // Chave repetida sem nada novo: o Mercado Pago repetiu a resposta do pedido anterior (a devolução dele, sozinha nela).
-      const idDevolucao = novas.length === 1 ? novas[0] : o.repetida && novas.length === 0 && listadas.length === 1 ? listadas[0] : null;
-      const confirmadas = devolucoes.length > 0 && devolucoes.every((d) => STATUS_DEVOLUCAO_CONFIRMADA.has(codigo(d.status) ?? ""));
-      return confirmadas
+      // Chave repetida sem nada novo: o Mercado Pago repetiu a resposta do pedido anterior (a única que o banco não conhece).
+      const foraDoBanco = listadas.filter((id) => !doBanco.has(id));
+      const idDevolucao = novas.length === 1 ? novas[0] : o.repetida && novas.length === 0 && foraDoBanco.length === 1 ? foraDoBanco[0] : null;
+      const nossa = idDevolucao ? itens.find((d) => d.id === idDevolucao) : undefined;
+      return nossa && STATUS_DEVOLUCAO_CONFIRMADA.has(codigo(nossa.status) ?? "")
         ? { situacao: "confirmada", idDevolucao, mensagem: "Devolução confirmada pelo Mercado Pago.", codigo: null }
         : { situacao: "pedida", idDevolucao, mensagem: "Devolução pedida; aguardando confirmação do Mercado Pago.", codigo: null };
     }
@@ -827,15 +834,22 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     if (r.status === 404) return recusada("O Mercado Pago não encontrou o pagamento ou a transação.", "nao_encontrado");
     if (r.status === 428 || codigos.has("insufficient_money_for_refund")) return recusada("O Mercado Pago pediu saldo disponível na conta para fazer a devolução.", "saldo_insuficiente");
     if ((r.status === 400 || r.status === 409) && codigos.has("refund_period_exceeded")) return recusada("O prazo para devolver este pagamento pelo Mercado Pago acabou.", "prazo");
+    if ((r.status === 400 || r.status === 422) && (codigos.has("unsupported_partially_refunds") || codigos.has("payment_not_refundable") || codigos.has("max_refunds_exceeded"))) {
+      return recusada("O Mercado Pago não permite devolver este pagamento (ou mais uma parte dele) pelo sistema.", "nao_permitido");
+    }
+    if ((r.status === 400 || r.status === 422) && (codigos.has("refund_amount_exceeds") || codigos.has("amount_not_refundable"))) return recusada("O valor passa do que ainda pode ser devolvido.", "valor_excede");
     if (r.status === 409) {
-      if (codigos.has("order_already_refunded")) return { situacao: "confirmada", idDevolucao: null, mensagem: "O Mercado Pago informa que o pagamento já foi devolvido.", codigo: null };
+      if (codigos.has("order_already_refunded")) {
+        if (valor === null) return { situacao: "confirmada", idDevolucao: null, mensagem: "O Mercado Pago informa que o pagamento já foi devolvido.", codigo: null };
+        // Parte do valor: com a chave repetida, o pedido anterior provavelmente completou a order (a leitura decide).
+        if (o.repetida) return incerta("O Mercado Pago informa que o pagamento já foi devolvido inteiro: conferir pela leitura se foi este pedido.");
+        return recusada("O Mercado Pago informa que o pagamento já foi devolvido inteiro: conferir pela leitura antes de pedir de novo.", "ja_devolvido");
+      }
       if (codigos.has("idempotency_key_already_used")) return incerta("Chave já usada: conferir a devolução no Mercado Pago antes de tentar de novo.");
       if (codigos.has("cannot_refund_order") || codigos.has("operation_not_supported")) return recusada("O Mercado Pago não permite devolver este pagamento agora.", "nao_permitido");
       return incerta("Resposta inesperada do Mercado Pago; conferir a devolução antes de tentar de novo.");
     }
-    if (r.status === 400) {
-      return codigos.has("refund_amount_exceeds") ? recusada("O valor passa do que ainda pode ser devolvido.", "valor_excede") : recusada("O Mercado Pago recusou o pedido de devolução.");
-    }
+    if (r.status === 400) return recusada("O Mercado Pago recusou o pedido de devolução.");
     if (r.status >= 500) return incerta(codigos.has("idempotency_validation_failed") ? "Não deu para confirmar a devolução; conferir no Mercado Pago antes de tentar de novo." : MENSAGENS.erroServidor);
     return incerta("Resposta inesperada do Mercado Pago; conferir a devolução antes de tentar de novo.");
   }

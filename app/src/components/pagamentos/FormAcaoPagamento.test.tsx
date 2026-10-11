@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ conferir: vi.fn(), devolver: vi.fn(), porFora: vi.fn(), liberar: vi.fn(), estornar: vi.fn() }));
 vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: m.conferir, devolverAcao: m.devolver, devolucaoPorForaAcao: m.porFora, registrarLiberacaoAcao: m.liberar, estornarLiberacaoAcao: m.estornar, registrarTaxaPerdidaAcao: vi.fn() }));
-import type { PagamentoDoPainel } from "@/pagamentos/consultas";
+import type { DevolucaoDoPainel, PagamentoDoPainel } from "@/pagamentos/consultas";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { FormAcaoPagamento } from "./FormAcaoPagamento";
 
@@ -117,4 +117,89 @@ it("taxa que não voltou: a pergunta de confirmação mostra o valor digitado (1
   fireEvent.change(form.querySelector('input[name="valor"]')!, { target: { value: "18,06" } });
   fireEvent.click(screen.getByRole("button", { name: "Registrar taxa que não voltou" }));
   expect(confirmar.mock.calls[1][0]).toContain("Registrar R$ 18,06 como a taxa");
+});
+
+describe("o restante do pagamento sem reserva (D17, M8.2d): a pergunta mostra o restante que sai, calculado do valor do painel digitado", () => {
+  const DEV = "44444444-4444-4444-8444-444444444444";
+  const nenhuma = { conferir: false, pedirDeNovo: false, porFora: false, confirmarVista: false, registrarRecusaNoPainel: false, parar: false, registrarTaxa: false, corrigirTaxa: false, pedirRestante: false, restantePorFora: false };
+  const parada: DevolucaoDoPainel = {
+    id: DEV,
+    origem: "sem_reserva",
+    alteracaoId: null,
+    cancelamentoId: null,
+    valor: 182400,
+    situacao: "recusada",
+    valorConfirmado: null,
+    ultimoCodigo: null,
+    avisos: ["devolucao_parada"],
+    restanteDe: null,
+    temRestante: false,
+    caixaLancadoEm: null,
+    taxaPerdida: null,
+    criadoEm: new Date("2026-10-01T15:10:00Z"),
+    confirmadaEm: null,
+    porForaData: null,
+    porForaValor: null,
+    tentativas: 0,
+    falhas: 0,
+    confirmadaPor: null,
+    confirmadaNota: "",
+    porForaNota: "",
+    recusaNoPainelEm: null,
+    paradaEm: null,
+    paradaPeloPrazo: false,
+    aguardandoLiberacao: false,
+    restanteSemReserva: { semValor: true, base: 182400 },
+    acoes: { ...nenhuma, pedirDeNovo: true, porFora: true },
+  };
+  const parcial = (devolucoes: DevolucaoDoPainel[], restante: PagamentoDoPainel["restante"]): PagamentoDoPainel => ({
+    ...semReserva,
+    situacao: "devolvido_parcial",
+    devolucoes,
+    devolvidoLido: 0,
+    foraReconhecido: 0,
+    restante,
+  });
+
+  it("pelo pagamento: sem o Mercado Pago dizer quanto, a pergunta faz a conta com o valor do painel (nunca o pago inteiro nem 'R$ 0,00 devolvidos')", () => {
+    render(<PagamentoNoSite pagamentos={[parcial([], { semValor: true, base: 182400 })]} verValores editar hoje="2026-10-09" />);
+    const form = screen.getByRole("form", { name: "Devolver o restante ao hóspede" });
+    fireEvent.change(form.querySelector('input[name="valorForaInformado"]')!, { target: { value: "10,00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Devolver o restante ao hóspede" }));
+    expect(confirmar).toHaveBeenCalledWith("Devolver ao hóspede o restante pelo Mercado Pago: R$ 1.814,00, que é o pago (R$ 1.824,00) menos os R$ 10,00 que o painel do Mercado Pago mostra devolvidos? A devolução não pode ser desfeita.");
+    // Sem o valor digitado (ou acima do pago), a pergunta não inventa um número.
+    fireEvent.change(form.querySelector('input[name="valorForaInformado"]')!, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Devolver o restante ao hóspede" }));
+    expect(confirmar.mock.calls[1][0]).toContain("o restante pelo Mercado Pago: (confira o valor informado), que é o pago (R$ 1.824,00)");
+  });
+
+  it("pela devolução parada: pedir de novo leva o id dela e o valor do painel; a pergunta mostra o restante; com o valor lido, o restante dela", async () => {
+    confirmar.mockReturnValue(true);
+    m.devolver.mockResolvedValue({ ok: true, mensagem: "Devolução pedida ao Mercado Pago." });
+    render(<PagamentoNoSite pagamentos={[parcial([parada], { semValor: true, base: 182400 })]} verValores editar hoje="2026-10-09" />);
+    const form = screen.getByRole("form", { name: "Pedir a devolução de novo" });
+    fireEvent.change(form.querySelector('input[name="valorForaInformado"]')!, { target: { value: "10,00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pedir a devolução de novo" }));
+    expect(confirmar).toHaveBeenCalledWith(
+      "Pedir de novo ao Mercado Pago esta devolução pelo restante do pagamento: R$ 1.814,00, que é o pago (R$ 1.824,00) menos os R$ 10,00 que o painel do Mercado Pago mostra devolvidos? Confira antes no painel do Mercado Pago que a anterior não saiu.",
+    );
+    await waitFor(() => expect(m.devolver).toHaveBeenCalled());
+    const dados = m.devolver.mock.calls[0][1] as FormData;
+    expect(dados.get("devolucaoId")).toBe(DEV);
+    expect(dados.get("valorForaInformado")).toBe("10,00");
+    // A por fora da linha: a pergunta mostra o valor digitado e o restante esperado.
+    const porFora = screen.getByRole("form", { name: "Registrar devolução feita por fora" });
+    fireEvent.change(porFora.querySelector('input[name="valor"]')!, { target: { value: "1814,00" } });
+    fireEvent.change(porFora.querySelector('input[name="valorForaInformado"]')!, { target: { value: "10,00" } });
+    confirmar.mockReturnValue(false);
+    fireEvent.click(screen.getByRole("button", { name: "Registrar devolução feita por fora" }));
+    expect(confirmar.mock.calls.at(-1)![0]).toContain("Registrar que R$ 1.814,00 já voltou ao hóspede por fora do Mercado Pago? Vale só o restante do pagamento: R$ 1.814,00, que é o pago (R$ 1.824,00) menos o que o painel do Mercado Pago mostra devolvido");
+  });
+
+  it("com o valor lido: a pergunta de pedir de novo é do restante (não do valor antigo da devolução)", () => {
+    render(<PagamentoNoSite pagamentos={[parcial([{ ...parada, restanteSemReserva: { semValor: false, valor: 181400 } }], { semValor: false, valor: 181400 })]} verValores editar hoje="2026-10-09" />);
+    expect(screen.getByRole("form", { name: "Pedir a devolução de novo" }).querySelector('input[name="valorForaInformado"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Pedir a devolução de novo" }));
+    expect(confirmar).toHaveBeenCalledWith("Pedir de novo ao Mercado Pago esta devolução, pelo restante do pagamento (R$ 1.814,00)? Confira antes no painel do Mercado Pago que a anterior não saiu.");
+  });
 });

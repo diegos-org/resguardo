@@ -24,15 +24,17 @@ function periodoPadrao(hoje: string): { de: string; ate: string } {
 }
 
 /** O que foi feito do dinheiro (ou o que falta fazer), em palavras simples. */
-function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "motivoSemReservaTexto" | "situacao" | "cancelada">): string {
+function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "motivoSemReservaTexto" | "situacao" | "cancelada"> & Partial<Pick<LinhaPagamento, "alteracaoEm">>): string {
   // M8.2c: a reserva que o pagamento confirmou foi cancelada pela política (a mesma situação da página do hóspede).
   if (p.desfecho === "reserva" && p.cancelada) return canceladaEmPalavras(p.cancelada);
+  // M8.2d: a diferença paga de uma alteração aplicada (de qual alteração: o dia em que foi preparada).
+  if (p.desfecho === "alteracao") return p.alteracaoEm ? `Diferença da alteração de ${dataBr(hojeISO(FUSO, p.alteracaoEm))}` : NOMES_DESFECHO.alteracao;
   if (p.desfecho) return NOMES_DESFECHO[p.desfecho];
   if (p.devolucao?.situacao === "pedida") return "Devolução pedida ao Mercado Pago";
   if (p.devolucao?.situacao === "recusada") return "Devolução parada: o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora";
   if (p.situacao === "aprovado" && p.motivoSemReservaTexto) return `Sem reserva, a devolver: ${p.motivoSemReservaTexto}`;
   if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto)
-    return `Sem reserva: ${p.motivoSemReservaTexto} O resto se resolve pelo painel do Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d).`;
+    return `Sem reserva: ${p.motivoSemReservaTexto} ${p.situacao === "devolvido_parcial" ? "Devolva o restante pelo quadro do pagamento." : "A contestação se resolve pelo painel do Mercado Pago."}`;
   if (p.situacao === "aprovado") return "Confirmando a reserva";
   return "—";
 }
@@ -54,7 +56,7 @@ export default async function PagamentosDoSite({ searchParams }: PageProps<"/pai
     <>
       <h1>Pagamentos do site</h1>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
-        Cada Pix gerado no site, com o que foi feito do dinheiro. Os pagamentos desta fase são de teste (nenhuma cobrança real). As ações — conferir, registrar
+        Cada pagamento feito no site (Pix ou cartão, inclusive a diferença de uma alteração da reserva), com o que foi feito do dinheiro. Os pagamentos desta fase são de teste (nenhuma cobrança real). As ações — conferir, registrar
         a liberação, devolver — ficam no quadro &ldquo;Pagamento no site&rdquo; de cada reserva.
       </p>
       <form method="get" className={styles.linha} style={{ alignItems: "flex-end" }} aria-label="Filtro dos pagamentos">

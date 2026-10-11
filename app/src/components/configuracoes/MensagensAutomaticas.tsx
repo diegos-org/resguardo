@@ -6,7 +6,7 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import type { EstadoForm } from "@/configuracoes/acoes";
 import styles from "../formularios.module.css";
 
-/** `textoBase`: as mensagens do cancelamento (M8.2c) têm um texto-base, usado nos botões de copiar da ficha sem modelo escolhido. */
+/** `textoBase`: as mensagens do cancelamento (M8.2c) e da alteração (M8.2d) têm um texto-base, usado nos botões de copiar da ficha sem modelo escolhido. */
 type Tipo = { id: string; nome: string; selecionado: string; textoBase?: string };
 type Envio = { id: string; codigo: string; reservaId: string; tipo: string; estado: string; tentativas: number; modeloNome: string; erro: string; quando: string };
 
@@ -47,6 +47,12 @@ export function MensagensAutomaticas({
         (até 7 dias depois dela). Enquanto o envio estiver desligado, ou sem modelo escolhido, a ficha da reserva mostra a mensagem pronta para copiar (com o
         texto-base abaixo, se não houver modelo) e o botão &ldquo;Mensagem enviada ao hóspede&rdquo;. Para mudar o texto, crie um modelo (pode começar pelo
         texto-base) e escolha-o aqui.
+      </p>
+      <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
+        Alteração de reserva paga pelo site: a proposta (enquanto as novas datas estão seguradas), a confirmação (até 7 dias depois de aplicada) e a devolução
+        da diferença feita (a mesma mensagem &ldquo;Devolução feita&rdquo; do cancelamento, até 7 dias depois dela). Do mesmo jeito: enquanto o envio estiver
+        desligado, ou sem modelo escolhido, a ficha da reserva mostra a mensagem pronta para copiar e o botão &ldquo;Mensagem enviada ao hóspede&rdquo;. O
+        modelo da proposta precisa usar <code>{"{alteracao}"}</code> e <code>{"{link}"}</code>; o da confirmação, <code>{"{alteracao}"}</code>.
       </p>
       <form action={enviar} className={styles.form} aria-label="Configurar mensagens automáticas">
         <label className={styles.check}>

@@ -127,3 +127,30 @@ describe("textos do cancelamento (M8.2c): editáveis, com texto-base", () => {
     }
   });
 });
+
+describe("textos da alteração de reserva paga (M8.2d): editáveis, com texto-base", () => {
+  const chaves = ["alteracaoEmAndamento", "alteracaoAguardaConfirmacao", "alteracaoPolitica", "alteracaoConfirmada", "devolucaoAguardaLiberacao", "alteracaoSemDevolucao", "alteracaoNaoAplicada", "alteracaoNaoVale"] as const;
+  const obrigatorias = ["alteracaoEmAndamento", "alteracaoAguardaConfirmacao", "alteracaoNaoAplicada", "alteracaoPolitica", "devolucaoAguardaLiberacao"];
+
+  it("as chaves novas existem com texto-base dentro do limite; as que o hóspede precisa ler não ficam vazias", () => {
+    for (const k of chaves) {
+      const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === k);
+      expect(campo, k).toBeTruthy();
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeGreaterThan(10);
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeLessThanOrEqual(campo!.limite);
+      expect(TEXTOS_SITE_OBRIGATORIOS.includes(k), k).toBe(obrigatorias.includes(k));
+    }
+    expect(TEXTOS_SITE_INICIAIS.alteracaoEmAndamento).toBe("Pague a diferença até esse horário para confirmar a alteração; até lá, a sua reserva continua como está.");
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, alteracaoConfirmada: "", alteracaoSemDevolucao: "", alteracaoNaoVale: "" })).toMatchObject({ ok: true });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, alteracaoEmAndamento: " ", devolucaoAguardaLiberacao: "" })).toEqual({
+      ok: false,
+      erros: { alteracaoEmAndamento: "Este texto não pode ficar vazio.", devolucaoAguardaLiberacao: "Este texto não pode ficar vazio." },
+    });
+  });
+
+  it("o texto-base não cita o Beds24, não traz valor, data nem dado pessoal; a devolução que espera a liberação nunca diz que já foi pedida", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/beds24|R\$|\d|@/i);
+    expect(TEXTOS_SITE_INICIAIS.devolucaoAguardaLiberacao).not.toMatch(/já pedimos/i);
+    expect(TEXTOS_SITE_INICIAIS.devolucaoAguardaLiberacao).toContain("quando ele liberar o seu pagamento");
+  });
+});

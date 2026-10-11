@@ -15,12 +15,15 @@ import { devolvidaNoProvedorDaReserva, obterReserva } from "@/reservas/repositor
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { AlteracaoSite } from "@/components/reservas/AlteracaoSite";
 import { CancelamentoSite } from "@/components/reservas/CancelamentoSite";
 import { Horarios } from "@/components/reservas/Horarios";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas";
 import { Recebimentos } from "@/components/reservas/Recebimentos";
 import { hojeISO } from "@/lib/datas";
+import { alteracaoDoPortador, alteracoesDaReserva } from "@/pagamentos/alteracao-painel";
+import { textoDoResultadoDaAlteracao } from "@/pagamentos/alteracao-tela";
 import { cancelamentoDaReserva, momentosDoCancelamento } from "@/pagamentos/cancelamento-painel";
 import { textoDoResultado } from "@/pagamentos/cancelamento-tela";
 import { pagamentosDaReserva } from "@/pagamentos/consultas";
@@ -28,14 +31,16 @@ import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebiment
 import { aceitesDaReserva } from "@/site/aceites";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
 
-const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
+// M8.2d: a diferença de uma alteração também é valor (o histórico da reserva nunca leva o valor a quem não lê o financeiro).
+const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento", "diferenca"];
+const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d).replace(", ", " às ");
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c));
 
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
   const sessao = await exigirSessaoPainel();
   const { id } = await params;
-  const { salvo, erro, cancelamento: resultadoCancelamento } = await searchParams;
+  const { salvo, erro, cancelamento: resultadoCancelamento, alteracao: resultadoAlteracao } = await searchParams;
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
@@ -66,7 +71,19 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const agora = new Date();
   const cancelamentoSite = pagamentoQueConfirmou ? await cancelamentoDaReserva(db, sessao.organizacaoId, r.id, agora) : null;
   const momentos = pagamentoQueConfirmou && editarReserva && editarFinanceiro && r.estado === "confirmada" ? await momentosDoCancelamento(db, sessao.organizacaoId, r.id) : null;
+  const capacidade = imovel?.capacidade ?? null;
   const textoCancelamento = textoDoResultado(resultadoCancelamento);
+  // M8.2d: as alterações da reserva paga pelo site (a segurada, as aplicadas, o histórico) e, numa reserva-pedido que segura
+  // as novas noites de uma alteração, a reserva alterada (a ficha dela não confirma, não cancela nem guarda horários).
+  const alteracoes = pagamentoQueConfirmou ? await alteracoesDaReserva(db, sessao.organizacaoId, r.id, agora) : [];
+  const portador = await alteracaoDoPortador(db, sessao.organizacaoId, r, agora);
+  const ultimaAplicada = alteracoes.find((a) => a.situacao === "aplicada") ?? null;
+  const textoAlteracao = textoDoResultadoDaAlteracao(resultadoAlteracao, {
+    holdAte: alteracoes.find((a) => a.situacao === "segurada")?.holdAte ?? null,
+    valorADevolver: verValores ? (ultimaAplicada?.valorADevolver ?? null) : null,
+    previstaEm: ultimaAplicada?.devolucao?.previstaEm ?? null,
+    agora,
+  });
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
 
@@ -96,7 +113,16 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     <>
       <h1>Reserva {r.codigo}</h1>
       {r.estado === "consulta" && <p role="note">Consulta: não é uma reserva confirmada, não ocupa o calendário e não entra como receita. A situação será atualizada na próxima importação do Beds24.</p>}
-      {r.estado === "pedido" && <p role="note">Pedido de reserva: ainda aguarda confirmação na origem e não entra como receita. Confira a situação no canal antes de tratar como reserva confirmada.</p>}
+      {portador ? (
+        <p role="note">
+          Datas seguradas para a alteração da reserva <a href={`/painel/reservas/${portador.reservaId}`}>{portador.reservaCodigo}</a>
+          {portador.holdAte ? ` até ${horaSP(portador.holdAte)}` : ""}
+          {portador.situacao === "segurada" ? "." : ": a alteração não está mais com as datas seguradas (as noites voltaram à venda)."} Elas somem sozinhas quando a alteração é aplicada, desistida
+          ou vence; não se confirmam nem se cancelam por aqui.
+        </p>
+      ) : (
+        r.estado === "pedido" && <p role="note">Pedido de reserva: ainda aguarda confirmação na origem e não entra como receita. Confira a situação no canal antes de tratar como reserva confirmada.</p>
+      )}
       {typeof erro === "string" && (
         <p role="alert" className={styles.alerta}>
           {erro}
@@ -112,6 +138,11 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           {textoCancelamento}
         </p>
       )}
+      {textoAlteracao && (
+        <p role="status" className={styles.sucesso}>
+          {textoAlteracao}
+        </p>
+      )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
         {linhas.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>
@@ -120,12 +151,12 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </div>
         ))}
       </dl>
-      {r.estado !== "cancelada" && !r.hospedeEmail && (
+      {!portador && r.estado !== "cancelada" && !r.hospedeEmail && (
         <p role="note" className={styles.alerta} style={{ maxWidth: 820 }}>
           Sem e-mail do hóspede: ele não consegue entrar em &ldquo;Minha reserva&rdquo; no site. Cadastre o e-mail abaixo.
         </p>
       )}
-      {podeFazer(sessao.papel, "reserva:editar") && (
+      {!portador && podeFazer(sessao.papel, "reserva:editar") && (
         <form action={salvarEmailHospedeAcao} className={styles.form} aria-label="E-mail do hóspede" style={{ maxWidth: 480 }}>
           <input type="hidden" name="id" value={r.id} />
           <label>
@@ -137,7 +168,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </button>
         </form>
       )}
-      {(r.estado === "pendente" || r.estado === "pedido") && podeFazer(sessao.papel, "reserva:editar") && (
+      {!portador && (r.estado === "pendente" || r.estado === "pedido") && podeFazer(sessao.papel, "reserva:editar") && (
         <form action={confirmar}>
           <input type="hidden" name="id" value={r.id} />
           <p style={{ margin: "0 0 8px", color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>
@@ -153,7 +184,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </BotaoConfirmar>
         </form>
       )}
-      {r.estado !== "cancelada" && editarReserva && !pagamentoQueConfirmou && (
+      {!portador && r.estado !== "cancelada" && editarReserva && !pagamentoQueConfirmou && (
         <form action={cancelar}>
           <input type="hidden" name="id" value={r.id} />
           <BotaoConfirmar
@@ -169,11 +200,28 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
         verValores={verValores}
         editar={editarFinanceiro}
         hoje={hojeISO()}
+        alteracoes={alteracoes.map((a) => ({ id: a.id, criadaEm: a.criadaEm }))}
+        alteracao={
+          pagamentoQueConfirmou ? (
+            <AlteracaoSite
+              reserva={{ id: r.id, codigo: r.codigo, estado: r.estado, checkin: r.checkin, checkout: r.checkout, hospedes: r.hospedes, valorBruto: verValores ? r.valorBruto : null }}
+              capacidade={capacidade}
+              alteracoes={alteracoes}
+              comCancelamento={!!cancelamentoSite}
+              entradaEm={momentos?.entradaEm ?? null}
+              editarReserva={editarReserva}
+              editarFinanceiro={editarFinanceiro}
+              verValores={verValores}
+              agora={agora}
+            />
+          ) : null
+        }
         cancelamento={
           pagamentoQueConfirmou ? (
             <CancelamentoSite
               reserva={{ id: r.id, codigo: r.codigo, estado: r.estado, checkin: r.checkin }}
               pagamento={pagamentoQueConfirmou}
+              pagamentos={pagamentosSite}
               cancelamento={cancelamentoSite}
               momentos={momentos}
               editarReserva={editarReserva}
@@ -250,7 +298,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           cancelada={r.estado === "cancelada"}
         />
       )}
-      <Horarios id={r.id} horarios={horarios} vigentes={{ entrada: acordoVigente(horarios, "entrada", r), saida: acordoVigente(horarios, "saida", r) }} editar={r.estado === "confirmada" && podeFazer(sessao.papel, "reserva:editar")} />
+      {!portador && <Horarios id={r.id} horarios={horarios} vigentes={{ entrada: acordoVigente(horarios, "entrada", r), saida: acordoVigente(horarios, "saida", r) }} editar={r.estado === "confirmada" && podeFazer(sessao.papel, "reserva:editar")} />}
       <HistoricoAlteracoes linhas={verValores ? historico : ocultarCampos(historico, CAMPOS_FINANCEIROS)} />
     </>
   );

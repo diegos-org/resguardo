@@ -57,6 +57,25 @@ parágrafo. Para valer no portal, Diego cola o parágrafo na seção "Cancelamen
 seção 6), o que pede o aceite de novo de cada proprietário. A mudança do rascunho só aparece sozinha para uma
 empresa que ainda não publicou a versão 1.
 
+## Alteração das reservas pagas pelo site (M8.2d, 10/10/2026)
+
+O que o sistema faz (`PAGAMENTO-SITE.md`, seção "Alteração de reserva paga (M8.2d)"): antes da entrada, a
+alteração refaz a divisão com os valores novos (datas, pessoas ou valor); a diferença retida pela política entra
+na divisão como uma reserva normal; depois de um aumento, a parte do proprietário espera também a liberação do
+pagamento da diferença pelo Mercado Pago. O portal e o relatório mostram a reserva com as datas e o valor novos, e
+os meses que a estadia deixou ficam vazios.
+
+A frase para a seção "Cancelamentos" do documento, na mesma publicação da versão 2 que leva o parágrafo do M8.2c
+(GUIA, seção 6, item 42), para o proprietário aceitar uma vez só:
+
+> Se o hóspede de uma reserva paga pelo site alterar as datas ou o valor antes da entrada, a divisão é refeita com
+> os valores novos; se a política reter parte da diferença, ela entra na divisão como uma reserva normal.
+
+**Desvio do desenho (registrado em 10/10/2026):** o desenho do M8.2d previa a mesma frase também no rascunho
+sugerido (`como-funciona.ts`); o código desta entrega não mudou o rascunho. Como a SCL já publicou a versão 1 e o
+formulário mostra o texto publicado, a frase só chega ao portal pela publicação de Diego. Se uma empresa nova
+precisar do rascunho com a frase, é uma mudança pequena de texto, num PR seguinte.
+
 ## Fora deste item
 
 - Páginas legais do site (termos, privacidade, cancelamento) com aceite no checkout: M7.4, pronto em

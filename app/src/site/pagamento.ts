@@ -7,6 +7,9 @@
  * Cartão (M8.2b): a oferta do cartão ao lado da do Pix, o formulário (chave pública, valor, parcelas) só com o cookie, e
  * uma lista fechada de mensagens: toda recusa do banco ou da análise de risco tem o mesmo texto (quem testa cartões
  * roubados usa textos diferentes como oráculo).
+ *
+ * Alteração da reserva paga (M8.2d): a vista da alteração vem junto (`alteracao`); no aumento com as datas seguradas, o
+ * pagamento da diferença tem a própria oferta (Pix e cartão, conferidas para a alteração) e o mesmo formato do da cotação.
  */
 import { and, eq } from "drizzle-orm";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
@@ -49,6 +52,7 @@ export const MENSAGENS_PIX_HOSPEDE: Record<CodigoFalhaPix, string> = {
   ao_vivo: "O pagamento pelo site não está disponível agora. Fale com a equipe pelo WhatsApp.",
   aceite_pendente: "Para gerar o Pix, marque que leu e aceita os Termos de uso e a Política de cancelamento.",
   aceite_mudou: "Os termos ou as políticas do site mudaram enquanto a página estava aberta. Leia a versão atual e marque de novo.",
+  alteracao_mudou: "A alteração da sua reserva mudou enquanto a página estava aberta: atualize a página.",
 };
 
 /** Sem o cookie do pedido (outro aparelho, link repassado): nada é gerado. */
@@ -82,6 +86,7 @@ export const MENSAGENS_CARTAO_HOSPEDE: Record<CodigoFalhaCartao, string> = {
   aceite_pendente: MENSAGEM_ACEITE_PENDENTE_CARTAO,
   aceite_mudou: "Os termos ou as políticas do site mudaram enquanto a página estava aberta. Leia a versão atual e marque de novo.",
   prazo: "O prazo das datas desta cotação acabou durante o pagamento: nada foi cobrado.",
+  alteracao_mudou: "A alteração da sua reserva mudou enquanto a página estava aberta: atualize a página.",
 };
 
 /** Por que o Pix não é oferecido, em linguagem do hóspede (o motivo interno fica no painel). */
@@ -89,6 +94,17 @@ export function mensagemSemPix(m: MotivoSemPix): string {
   if (m === "cotacao_nao_encontrada") return MENSAGENS_PIX_HOSPEDE.nao_encontrada;
   if (m === "prazo_vencido") return "O prazo das datas desta cotação acabou.";
   if (m === "nao_segurada") return "As datas desta cotação não estão seguradas.";
+  return MENSAGENS_PIX_HOSPEDE.nao_oferecido;
+}
+
+/**
+ * M8.2d: por que o pagamento da diferença de uma alteração não é oferecido, em linguagem do hóspede. A alteração que não
+ * existe mais nesta cotação ou não está mais segurada (aplicada, desistida, outra): a página mudou; o prazo das novas
+ * datas acabou: a reserva continua como estava.
+ */
+export function mensagemSemPixDaAlteracao(m: MotivoSemPix): string {
+  if (m === "cotacao_nao_encontrada" || m === "nao_segurada") return MENSAGENS_PIX_HOSPEDE.alteracao_mudou;
+  if (m === "prazo_vencido") return "O prazo das novas datas acabou: a sua reserva continua como estava.";
   return MENSAGENS_PIX_HOSPEDE.nao_oferecido;
 }
 
@@ -164,7 +180,23 @@ export async function vistaDoPagamento(
     if (oferta.oferecer && vista.estado === "sem_pagamento") vista = await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao, oferecido: true });
   }
   if (!vista) return null;
+  // M8.2d: a diferença de uma alteração segurada (aumento) se paga na mesma página, com a oferta conferida para ela.
+  let diferenca: { podeGerar: boolean; cartao: CartaoNaPagina | null } | null = null;
+  const alt = vista.alteracao;
+  if (alt?.situacao === "segurada" && alt.rumo === "aumento" && alt.pagamento && !alt.pagamento.aoVivo && estadoQuePaga(alt.pagamento.estado) && alt.holdAte) {
+    const gate = await o.gate();
+    const oferta = await ofertaDePix(db, organizacaoId, cotacaoId, agora, gate, { alteracaoId: alt.id });
+    let cartaoDaDiferenca: CartaoNaPagina | null = null;
+    if (oferta.oferecer && alt.pagamento.cartaoRestantes > 0) {
+      const doCartao = await ofertaDeCartao(db, organizacaoId, cotacaoId, agora, gate, { alteracaoId: alt.id });
+      if (doCartao.oferecer) cartaoDaDiferenca = { chavePublica: doCartao.chavePublica, valor: alt.diferenca, parcelasMaximas: doCartao.parcelasMaximas, emailTeste: gate.ok && gate.ambiente === "teste" ? EMAIL_PAGADOR_SANDBOX : null };
+    }
+    diferenca = { podeGerar: oferta.oferecer && alt.pagamento.pixRestantes > 0 && alt.pagamento.estado !== "pix_aguardando", cartao: cartaoDaDiferenca };
+    if (oferta.oferecer && alt.pagamento.estado === "sem_pagamento") vista = (await vistaDaCotacaoParaHospede(db, organizacaoId, cotacaoId, agora, { comAutorizacao: o.comAutorizacao, oferecido: false, oferecidoAlteracao: true })) ?? vista;
+  }
   const r: PagamentoDoHospede = { ...paraOHospede(vista), podeGerar, podePagarCartao: cartao !== null, cartao: o.comAutorizacao ? cartao : null };
+  if (r.alteracao?.pagamento && diferenca)
+    r.alteracao = { ...r.alteracao, pagamento: { ...r.alteracao.pagamento, podeGerar: diferenca.podeGerar, podePagarCartao: diferenca.cartao !== null, cartao: o.comAutorizacao ? diferenca.cartao : null } };
   const semOferta = { podeGerar: false, podePagarCartao: false, cartao: null };
   if ((r.estado === "sem_pagamento" || r.estado === "pix_esgotado") && r.dinheiroSemDesfecho) return { ...r, ...semOferta, estado: "verificando" };
   // Sem pagamento a mostrar, mas um Pix recusado, cancelado ou vencido há pouco ainda pode virar dinheiro (mesmo com o

@@ -17,10 +17,17 @@
  *   Só o manual se estorna, e só por aqui: a taxa volta ao que o provedor tinha informado antes (ou a nada).
  * - Cartão (M8.2b): a mesma regra. Liberação parcela a parcela (money_release_schema) e "parcelamento sem acréscimo"
  *   nunca lançam sozinhos (`aplicarLeitura` liga o aviso); a equipe registra à mão.
+ * - Vários pagamentos por reserva (M8.2d: a diferença de uma alteração): a taxa da reserva é uma regra só
+ *   (`taxaDaReserva`: a soma das taxas conhecidas dos pagamentos que contam, menos a atribuída ao principal devolvido nas
+ *   alterações); cada pagamento da reserva tem a sua liberação (`mercadopago:<pagamento>:recebimento`), também o devolvido
+ *   em parte sem devolução inexplicada; e a liberação (do provedor ou à mão) lança as saídas de caixa de devoluções que
+ *   esperavam por ela (`acertarCaixasPendentes`) e acorda as devoluções de parte do valor que esperavam a liberação (D13).
+ *   Na reserva cancelada com devolução integral, a liberação (do provedor, ou à mão quando uma devolução de parte do valor
+ *   espera por ela) fica registrada só no pagamento: nada entra no livro.
  */
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { auditoria, lancamentos, pagamentos, reservas } from "@/db/schema";
+import { auditoria, devolucoesPagamento, lancamentos, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import { estornar, lancar, LancamentoInvalido, mudarEstado } from "@/financeiro/ledger";
@@ -32,8 +39,23 @@ import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReserva } from "@/repasses/recebimentos";
 import { dataValida } from "@/reservas/regras";
+import { acertarCaixasPendentes } from "./acerto-cancelamento";
+import { sincronizarAvisosDoPagamento } from "./avisos-devolucao";
 import type { CodigoAviso } from "./situacoes";
-import { devolucaoDoPagamento, type Pagamento, type ReservaTravada, travarCotacao } from "./travas";
+import {
+  type Alteracao,
+  devolucaoInexplicada,
+  devolucoesDoPagamento,
+  dinheiroDaReserva,
+  esperaLiberacao,
+  type Pagamento,
+  pagamentosDaReserva,
+  possivelmenteNoProvedor,
+  type ReservaTravada,
+  type Travado,
+  taxaAtribuidaDaDevolucao,
+  travarCotacao,
+} from "./travas";
 
 export const FUSO_PAGAMENTO = "America/Sao_Paulo";
 export const chaveRecebimento = (pagamentoId: string) => `mercadopago:${pagamentoId}:recebimento`;
@@ -59,24 +81,115 @@ export async function recebimentosDoPagamento(tx: Db, organizacaoId: string, pag
 }
 
 /**
- * Grava a taxa do pagamento na reserva e aplica o motor, nessa ordem (quem chama já tem as travas). null = taxa
- * desconhecida (volta a reserva ao "sem taxa", como antes de qualquer leitura).
+ * A taxa da reserva (uma regra, um lugar; M8.2d): a soma das taxas CONHECIDAS dos pagamentos que contam (o que confirmou
+ * e as diferenças aplicadas), menos a taxa atribuída ao principal devolvido nas alterações (congelada na devolução, ou
+ * calculada agora quando ainda não congelou). Uma taxa desconhecida não apaga as conhecidas: `desconhecida` avisa, e o
+ * pagamento continua com o aviso dele. Nenhuma conhecida (um pagamento só, sem a taxa): `taxa` 0, `conhecida` false — a
+ * reserva fica sem taxa, como antes de qualquer leitura. Um pagamento só, sem devolução de alteração: exatamente a taxa
+ * dele (o M8.2c não muda). A devolução de alteração confirmada a menos (D15) conta pelo valor decidido até o restante
+ * dela ser registrado.
+ * `o.taxaNova`: a taxa de um pagamento que esta transação ainda vai gravar (a aprovação da diferença); `o.partes`: as
+ * devoluções da alteração que está sendo aplicada (ainda não gravadas), cada uma com o valor dela.
  */
-export async function gravarTaxaNaReserva(tx: Db, organizacaoId: string, reservaId: string, taxa: number | null, liquido: number | null, autorId: string | null, pagamentoId: string, agora: Date): Promise<void> {
+export function taxaDaReserva(
+  t: Pick<Travado, "tentativas" | "devolucoes">,
+  o: { alteracao?: Pick<Alteracao, "id">; taxaNova?: { pagamentoId: string; taxa: number | null }; partes?: readonly { pagamentoId: string; valor: number }[] } = {},
+): { taxa: number; desconhecida: boolean; conhecida: boolean } {
+  let taxa = 0;
+  let desconhecida = false;
+  let conhecida = false;
+  for (const p of pagamentosDaReserva(t)) {
+    const f = o.taxaNova?.pagamentoId === p.id ? o.taxaNova.taxa : p.taxa;
+    if (f === null) {
+      desconhecida = true;
+      continue;
+    }
+    conhecida = true;
+    const comTaxa = { ...p, taxa: f };
+    // As devoluções de alteração deste pagamento, na ordem em que a taxa congela: as congeladas, depois as outras (por id).
+    const devs = devolucoesDoPagamento(t, p.id).map((d) => ({ ...d }));
+    const daAlteracao = devs.filter((d) => d.origem === "alteracao").sort((a, b) => Number(a.taxaAtribuida === null) - Number(b.taxaAtribuida === null));
+    let atribuida = 0;
+    for (const d of daAlteracao) {
+      const x = d.taxaAtribuida ?? taxaAtribuidaDaDevolucao(comTaxa, d, devs) ?? 0;
+      d.taxaAtribuida = x;
+      atribuida += x;
+    }
+    // D15: a confirmada a menos ainda sem o restante registrado conta pelo decidido (a reserva já foi reduzida pelo todo):
+    // o que falta leva a taxa dele como se já estivesse registrado, e a taxa da reserva não sobe e desce com o restante.
+    for (const d of daAlteracao) {
+      const falta = d.situacao === "confirmada" && d.valorConfirmado !== null ? d.valor - d.valorConfirmado : 0;
+      if (falta <= 0 || devs.some((x) => x.origemDevolucaoId === d.id)) continue;
+      const resto = { id: `resto:${d.id}`, situacao: "pedida" as const, valor: falta, valorConfirmado: null, porForaValor: null, taxaAtribuida: null };
+      const x = taxaAtribuidaDaDevolucao(comTaxa, resto, devs) ?? 0;
+      devs.push({ ...resto, taxaAtribuida: x } as (typeof devs)[number]);
+      atribuida += x;
+    }
+    for (const parte of o.partes ?? []) {
+      if (parte.pagamentoId !== p.id) continue;
+      const nova = { id: `parte:${parte.pagamentoId}`, situacao: "pedida" as const, valor: parte.valor, valorConfirmado: null, porForaValor: null, taxaAtribuida: null };
+      const x = taxaAtribuidaDaDevolucao(comTaxa, nova, devs) ?? 0;
+      devs.push({ ...nova, taxaAtribuida: x } as (typeof devs)[number]);
+      atribuida += x;
+    }
+    taxa += f - atribuida;
+  }
+  return { taxa, desconhecida, conhecida };
+}
+
+/**
+ * Grava na reserva a taxa da reserva (`taxaDaReserva`) e aplica o motor, nessa ordem (quem chama já tem as travas e já
+ * atualizou o retrato do pagamento). Nenhuma taxa conhecida = null (a reserva volta ao "sem taxa", como antes de qualquer
+ * leitura). O líquido: o do pagamento, quando ele é o único e não tem devolução de alteração; senão, o bruto menos a taxa.
+ */
+export async function gravarTaxaNaReserva(tx: Db, organizacaoId: string, t: Travado, autorId: string | null, pagamentoId: string, agora: Date): Promise<void> {
   // Mesmo modo da trava da cotação (NO KEY UPDATE): um FOR UPDATE aqui subiria a trava da reserva (ver travas.ts).
-  const [r] = await tx.select({ taxaCanal: reservas.taxaCanal, valorLiquido: reservas.valorLiquido }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId))).for("no key update");
-  if (!r || (r.taxaCanal === taxa && r.valorLiquido === liquido)) return;
+  const [r] = await tx
+    .select({ taxaCanal: reservas.taxaCanal, valorLiquido: reservas.valorLiquido, valorBruto: reservas.valorBruto })
+    .from(reservas)
+    .where(and(eq(reservas.id, t.reserva.id), eq(reservas.organizacaoId, organizacaoId)))
+    .for("no key update");
+  if (!r) return;
+  const { taxa: soma, conhecida } = taxaDaReserva(t);
+  const taxa = conhecida ? soma : null;
+  const contam = pagamentosDaReserva(t);
+  const unicoIntocado = contam.length === 1 && !t.devolucoes.some((d) => d.pagamentoId === contam[0].id && d.origem === "alteracao" && d.situacao !== "substituida");
+  const liquido = taxa === null ? null : unicoIntocado ? contam[0].liquido : r.valorBruto === null ? null : r.valorBruto - taxa;
+  if (r.taxaCanal === taxa && r.valorLiquido === liquido) return;
   // Campo do financeiro mudou: uma conferência dada por resolvida volta a valer (como na sincronização).
-  await tx.update(reservas).set({ taxaCanal: taxa, valorLiquido: liquido, conferenciaResolvidaEm: null, atualizadoEm: agora }).where(eq(reservas.id, reservaId));
-  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.taxa", entidade: "reserva", entidadeId: reservaId, mudancas: { taxaCanal: [r.taxaCanal, taxa], valorLiquido: [r.valorLiquido, liquido], pagamento: [null, pagamentoId] } });
-  await aplicarMotor(tx, organizacaoId, reservaId, autorId);
+  await tx.update(reservas).set({ taxaCanal: taxa, valorLiquido: liquido, conferenciaResolvidaEm: null, atualizadoEm: agora }).where(eq(reservas.id, t.reserva.id));
+  Object.assign(t.reserva, { taxaCanal: taxa, valorLiquido: liquido, conferenciaResolvidaEm: null });
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.taxa", entidade: "reserva", entidadeId: t.reserva.id, mudancas: { taxaCanal: [r.taxaCanal, taxa], valorLiquido: [r.valorLiquido, liquido], pagamento: [null, pagamentoId] } });
+  await aplicarMotor(tx, organizacaoId, t.reserva.id, autorId);
+}
+
+/**
+ * A taxa que a reserva teria agora (null = nenhuma conhecida): para quem decide se precisa gravar (`gravarTaxaNaReserva`
+ * não muda nada quando já está igual).
+ */
+export const taxaCanalDaReserva = (t: Pick<Travado, "tentativas" | "devolucoes">) => {
+  const { taxa, conhecida } = taxaDaReserva(t);
+  return conhecida ? taxa : null;
+};
+
+/**
+ * D13: a liberação do pagamento chegou (do provedor ou à mão): as devoluções de parte do valor dele que esperavam a
+ * liberação são pedidas na próxima volta (rotina ou "Conferir agora"), sem esperar a data prevista. Sob as travas.
+ */
+export async function acordarDevolucoesQueEsperam(tx: Db, t: Travado, p: Pagamento, agora: Date): Promise<void> {
+  for (const d of devolucoesDoPagamento(t, p.id)) {
+    if (d.situacao !== "pedida" || possivelmenteNoProvedor(d) || d.ultimoCodigo !== "aguardando_liberacao") continue;
+    await tx.update(devolucoesPagamento).set({ proximaTentativaEm: agora, atualizadoEm: agora }).where(eq(devolucoesPagamento.id, d.id));
+    d.proximaTentativaEm = agora;
+  }
 }
 
 /**
  * O provedor disse que liberou: lança o recebimento conciliado com o líquido INFORMADO por ele nesta leitura, com a
  * data de caixa no dia desta leitura (ou concilia o registrado à mão, se o valor bate; a data dele fica). Recebimento
- * já lançado com outro valor: aviso, sem mexer. Quem chama já conferiu desfecho `reserva`, reserva confirmada e
- * situação aprovada, dentro das travas, e já gravou a taxa desse líquido na reserva (quando não havia recebimento).
+ * já lançado com outro valor: aviso, sem mexer. Quem chama já conferiu o dinheiro da reserva (desfecho `reserva` ou
+ * `alteracao`), a reserva calculada pelo motor e a situação (aprovada, ou devolvida em parte sem devolução inexplicada),
+ * dentro das travas, e já gravou a taxa desse líquido na reserva (quando não havia recebimento).
  */
 export async function liberarPeloProvedor(tx: Db, organizacaoId: string, p: Pagamento, r: ReservaTravada, liquidoInformado: number, liberacaoPrevista: Date | null, agora: Date): Promise<{ aviso: CodigoAviso | null; confirmada: boolean }> {
   // "Liberado" com a data prevista ainda no futuro: sinais que não batem, não fecha (aviso).
@@ -131,6 +244,9 @@ async function cotacaoDoPagamento(db: Db, organizacaoId: string, pagamentoId: st
  * que pode vir dias depois do pagamento (nas prévias nada confere sozinho). A taxa é
  * derivada (valor − líquido) e gravada na reserva com o motor; o recebimento fica `realizado`, com a chave do
  * pagamento. A auditoria guarda a taxa de antes (a que o provedor tinha informado, ou nada): o estorno volta a ela.
+ * Reserva cancelada com devolução integral (M8.2d, D13): só quando uma devolução de parte do valor deste pagamento espera
+ * a liberação (no teste o sinal do provedor nunca chega; o cartão parcelado só se libera à mão): a taxa e o líquido ficam no
+ * pagamento, nada entra no livro, e a devolução acorda.
  */
 export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pagamentoId: string, d: { data: string; liquido: number }, autorId: string | null, agora: Date = new Date()): Promise<Resultado> {
   if (!dataValida(d.data)) return { ok: false, erro: "Data da liberação inválida." };
@@ -142,20 +258,52 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
     const t = await travarCotacao(tx, organizacaoId, cotacaoId);
     const p = t?.tentativas.find((x) => x.id === pagamentoId);
     if (!t || !p) return { ok: false as const, erro: "Pagamento não encontrado." };
-    if (p.desfecho !== "reserva") return { ok: false as const, erro: "Só o pagamento que confirmou a reserva tem liberação registrada." };
-    if (p.situacao !== "aprovado") return { ok: false as const, erro: "Este pagamento não está mais aprovado no Mercado Pago: confira antes de registrar a liberação." };
+    if (!dinheiroDaReserva(p)) return { ok: false as const, erro: "Só o pagamento que confirmou a reserva (ou a diferença de uma alteração aplicada) tem liberação registrada." };
+    // Devolvido em parte pelas devoluções do sistema (uma alteração com devolução): a liberação ainda vale. Com uma
+    // devolução que o sistema não explica (painel do Mercado Pago), não.
+    const emParteExplicada = p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devolucoesDoPagamento(t, p.id));
+    if (p.situacao !== "aprovado" && !emParteExplicada) return { ok: false as const, erro: "Este pagamento não está mais aprovado no Mercado Pago: confira antes de registrar a liberação." };
     // Confirmada, ou cancelada com valor retido pela política (M8.2c): o dinheiro ficou com a empresa. Cancelada com
-    // devolução integral: o dinheiro volta ao hóspede e nunca entra no livro.
-    if (!reservaCalculadaPeloMotor(t.reserva)) return { ok: false as const, erro: "A reserva não está confirmada nem cancelada com valor retido: o dinheiro deste pagamento volta ao hóspede." };
+    // devolução integral: o dinheiro volta ao hóspede e nunca entra no livro — a liberação só se registra (M8.2d, D13)
+    // quando uma devolução de parte do valor deste pagamento espera por ela, como faz a liberação lida do Mercado Pago.
+    const calculada = reservaCalculadaPeloMotor(t.reserva);
+    const devs = devolucoesDoPagamento(t, p.id);
+    const canceladaIntegral = t.reserva.estado === "cancelada" && t.cancelamento?.situacao === "cancelada" && t.cancelamento.direito === "integral";
+    const destrava = canceladaIntegral && devs.some((x) => x.situacao === "pedida" && esperaLiberacao(p, x, devs));
+    if (!calculada && !destrava) return { ok: false as const, erro: "A reserva não está confirmada nem cancelada com valor retido: o dinheiro deste pagamento volta ao hóspede." };
     if (d.liquido > p.valor) return { ok: false as const, erro: `O líquido não pode passar do valor pago (${formatBRL(p.valor)}).` };
     // O dinheiro não cai antes de o pagamento existir (a hora da criação é nossa e confiável).
     const criadoNoDia = hojeISO(FUSO_PAGAMENTO, p.criadoEm);
     if (d.data < criadoNoDia) return { ok: false as const, erro: `A data da liberação não pode ser antes da criação do pagamento (${dataBr(criadoNoDia)}).` };
+    if (!calculada) {
+      // Só registrada aqui (nada entra no livro, a taxa não volta à reserva cancelada): a taxa e o líquido do pagamento ficam
+      // conhecidos, as saídas de caixa que esperavam se acertam sem lançar e a devolução que esperava a liberação acorda. A
+      // liberação que o Mercado Pago já sinalizou sem informar o líquido fica como estava; só a taxa passa a ser conhecida.
+      const taxaAntes = p.taxa;
+      const mudanca = { taxa: p.valor - d.liquido, liquido: d.liquido, liberacaoConfirmadaEm: p.liberacaoConfirmadaEm ?? agora, liberacaoOrigem: p.liberacaoOrigem ?? ("manual" as const), atualizadoEm: agora };
+      await tx.update(pagamentos).set(mudanca).where(eq(pagamentos.id, p.id));
+      Object.assign(p, mudanca);
+      await acertarCaixasPendentes(tx, organizacaoId, t, p, d.data, agora);
+      await acordarDevolucoesQueEsperam(tx, t, p, agora);
+      await sincronizarAvisosDoPagamento(tx, t, p, agora);
+      await registrarAuditoria(tx, {
+        organizacaoId,
+        usuarioId: autorId,
+        acao: "pagamento.liberacao_manual",
+        entidade: "pagamento",
+        entidadeId: p.id,
+        mudancas: { liberacao: [null, `${d.liquido} em ${d.data} (só registrada: reserva cancelada com devolução integral)`], taxa: [taxaAntes, mudanca.taxa] },
+      });
+      return { ok: true as const };
+    }
     const { emVigor, proxima } = await recebimentosDoPagamento(tx, organizacaoId, p.id);
     if (emVigor.length) return { ok: false as const, erro: emVigor[0].estado === "conciliado" ? "A liberação já foi confirmada pelo Mercado Pago." : "A liberação já está registrada: estorne a registrada à mão antes de registrar de novo." };
     const taxa = p.valor - d.liquido;
-    await tx.update(pagamentos).set({ taxa, liquido: d.liquido, liberacaoConfirmadaEm: agora, liberacaoOrigem: "manual", atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
-    await gravarTaxaNaReserva(tx, organizacaoId, t.reserva.id, taxa, d.liquido, autorId, p.id, agora);
+    const taxaAntes = p.taxa;
+    const mudanca = { taxa, liquido: d.liquido, liberacaoConfirmadaEm: agora, liberacaoOrigem: "manual" as const, atualizadoEm: agora };
+    await tx.update(pagamentos).set(mudanca).where(eq(pagamentos.id, p.id));
+    Object.assign(p, mudanca);
+    await gravarTaxaNaReserva(tx, organizacaoId, t, autorId, p.id, agora);
     await lancar(
       tx,
       organizacaoId,
@@ -176,7 +324,12 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
       ],
       autorId,
     );
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_manual", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [null, `${d.liquido} em ${d.data}`], taxa: [p.taxa, taxa] } });
+    // As saídas de caixa que esperavam este recebimento (devolução por fora antes da liberação) e as devoluções de parte do
+    // valor que esperavam a liberação (D13).
+    await acertarCaixasPendentes(tx, organizacaoId, t, p, d.data, agora);
+    await acordarDevolucoesQueEsperam(tx, t, p, agora);
+    await sincronizarAvisosDoPagamento(tx, t, p, agora);
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_manual", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [null, `${d.liquido} em ${d.data}`], taxa: [taxaAntes, taxa] } });
     return { ok: true as const };
   });
 }
@@ -217,8 +370,15 @@ export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pag
     const l = emVigor[0];
     if (!l) return { ok: false as const, erro: "Não há liberação registrada para estornar." };
     if (l.estado !== "realizado") return { ok: false as const, erro: "A liberação foi confirmada pelo Mercado Pago: não se estorna pelo painel." };
-    // M8.2c: a saída do caixa da devolução ao hóspede espelha este recebimento; estornar a liberação deixaria a saída sem a entrada.
-    if (devolucaoDoPagamento(t, p.id)?.saidaLancamentoId) return { ok: false as const, erro: "A devolução ao hóspede já espelhou esta liberação: corrija com um ajuste." };
+    // M8.2c: a saída do caixa da devolução ao hóspede espelha este recebimento; estornar a liberação deixaria a saída sem a
+    // entrada. M8.2d (D13): nem com uma devolução de parte do valor já pedida ao Mercado Pago (ela só saiu porque o pagamento
+    // estava liberado) nem com uma devolução realizada à espera do caixa.
+    const devs = devolucoesDoPagamento(t, p.id);
+    if (devs.some((x) => x.saidaLancamentoId)) return { ok: false as const, erro: "A devolução ao hóspede já espelhou esta liberação: corrija com um ajuste." };
+    if (devs.some((x) => x.situacao === "pedida" && x.tentativas > 0 && x.corpoIntegral === false))
+      return { ok: false as const, erro: "Há uma devolução de parte deste pagamento já pedida ao Mercado Pago (ela só sai com o pagamento liberado): espere ela se resolver e corrija com um ajuste." };
+    if (devs.some((x) => (x.situacao === "confirmada" || x.situacao === "por_fora") && !x.caixaLancadoEm))
+      return { ok: false as const, erro: "Há uma devolução deste pagamento esperando a liberação para acertar o caixa: corrija com um ajuste." };
     // M8.2c: cancelada com devolução integral, a liberação não se registra de novo (`registrarLiberacaoManual`), e a taxa
     // nunca volta à reserva (gravá-la reabriria a conferência que o acerto do cancelamento deu por resolvida).
     if (!reservaCalculadaPeloMotor(t.reserva)) return { ok: false as const, erro: ERRO_ESTORNO_LIBERACAO_CANCELADA };
@@ -233,15 +393,15 @@ export async function estornarLiberacaoManual(db: Db, organizacaoId: string, pag
     }
     const taxa = p.liberacaoOrigem === "manual" ? await taxaAntesDoManual(tx, organizacaoId, p.id) : p.taxa;
     const liquido = taxa === null ? null : p.valor - taxa;
+    const taxaAntes = p.taxa;
     // O aviso de liberação divergente apontava para o recebimento que acabou de sair: sai junto (a próxima leitura liga
     // de novo se o provedor ainda não bater com o que for registrado depois).
-    await tx
-      .update(pagamentos)
-      .set({ liberacaoConfirmadaEm: null, liberacaoOrigem: null, taxa, liquido, financeiroConsultadoEm: null, avisos: p.avisos.filter((a) => a !== "liberacao_divergente"), atualizadoEm: agora })
-      .where(eq(pagamentos.id, p.id));
+    const mudanca = { liberacaoConfirmadaEm: null, liberacaoOrigem: null, taxa, liquido, financeiroConsultadoEm: null, avisos: p.avisos.filter((a) => a !== "liberacao_divergente"), atualizadoEm: agora };
+    await tx.update(pagamentos).set(mudanca).where(eq(pagamentos.id, p.id));
+    Object.assign(p, mudanca);
     // A reserva volta à taxa do provedor (ou a nenhuma) antes de qualquer novo recebimento: o motor recalcula.
-    if (p.desfecho === "reserva") await gravarTaxaNaReserva(tx, organizacaoId, t.reserva.id, taxa, liquido, autorId, p.id, agora);
-    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_estornar", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [`${l.montante} em ${l.dataCaixa}`, null], taxa: [p.taxa, taxa] } });
+    if (dinheiroDaReserva(p)) await gravarTaxaNaReserva(tx, organizacaoId, t, autorId, p.id, agora);
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.liberacao_estornar", entidade: "pagamento", entidadeId: p.id, mudancas: { liberacao: [`${l.montante} em ${l.dataCaixa}`, null], taxa: [taxaAntes, taxa] } });
     return { ok: true as const };
   });
 }

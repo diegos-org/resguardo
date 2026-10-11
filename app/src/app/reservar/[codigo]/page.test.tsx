@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import type { AceiteNaPagina } from "@/site/aceites";
 import type { CotacaoVista } from "@/site/cotacoes";
-import type { PagamentoDoHospede } from "@/site/pagamento-vista";
+import type { AlteracaoDoHospede, PagamentoDoHospede } from "@/site/pagamento-vista";
 import Page from "./page";
 
 const m = vi.hoisted(() => ({
@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   autorizado: vi.fn(),
   gerarPix: vi.fn(),
   aceite: vi.fn(),
+  aceiteDiferenca: vi.fn(),
   versaoPrivacidade: vi.fn(),
   cartaoNoSite: vi.fn(),
   pagarComCartao: vi.fn(),
@@ -24,7 +25,7 @@ vi.mock("@/site/cotacoes", async (orig) => ({ ...(await orig<typeof import("@/si
 vi.mock("@/calendario/regras-config", () => ({ lerRegrasCalendario: async () => ({ site: { minutosHold: 30 } }) }));
 vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, vistaDoPagamento: m.vistaPagamento, pixPossivel: m.pixPossivel, cartaoNoSite: m.cartaoNoSite }));
 vi.mock("@/site/checkout", () => ({ autorizadoNaCotacao: m.autorizado }));
-vi.mock("@/site/aceites", () => ({ aceiteParaPagina: m.aceite }));
+vi.mock("@/site/aceites", () => ({ aceiteParaPagina: m.aceite, aceiteDaDiferencaParaPagina: m.aceiteDiferenca }));
 vi.mock("@/configuracoes/paginas-legais", () => ({ versaoAtualDaPaginaLegal: m.versaoPrivacidade }));
 vi.mock("@/site/acoes", () => ({ segurarDatasAcao: vi.fn() }));
 vi.mock("@/site/acoes-pagamento", () => ({ gerarPixAcao: m.gerarPix, continuarPagamentoAcao: vi.fn(), pagarComCartaoAcao: m.pagarComCartao }));
@@ -62,6 +63,7 @@ beforeEach(() => {
   m.vistaPagamento.mockResolvedValue(pagamento({}));
   m.gerarPix.mockResolvedValue({});
   m.aceite.mockResolvedValue(null);
+  m.aceiteDiferenca.mockResolvedValue(null);
   m.versaoPrivacidade.mockResolvedValue(null);
   m.cartaoNoSite.mockResolvedValue(false);
   m.pagarComCartao.mockResolvedValue({});
@@ -339,6 +341,7 @@ describe("reserva cancelada pela política (M8.2c)", () => {
     valorConfirmado: 182400,
     devolucaoEm: "2026-10-11T15:00:00.000Z",
     porFora: false,
+    algumaPorFora: false,
     confirmadaPor: "leitura" as const,
     forma: "pix" as const,
     estornoPelaEquipe: false,
@@ -365,5 +368,98 @@ describe("reserva cancelada pela política (M8.2c)", () => {
     // A frase final pode ficar vazia (não volta o texto-base).
     m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, cancelamentoFecho: "" } } });
     expect(await html()).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoFecho);
+  });
+
+  it("devolução que espera o Mercado Pago liberar o pagamento (M8.2d): a frase editável de Textos do site, nunca 'já pedimos'", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("cancelada"));
+    const esperando = { ...cancelamento, valorConfirmado: null, devolucaoEm: null, aguardandoLiberacao: { previstaEm: "2026-11-15" } };
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "cancelada_devolucao_pedida", holdAte: null, podeGerar: false, reservaCodigo: "SCL-TESTE1", forma: "cartao", cancelamento: esperando }));
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, devolucaoAguardaLiberacao: "PEDIMOS QUANDO O MERCADO PAGO LIBERAR" } } });
+    const h = await html();
+    expect(h).toContain("Devolução de R$ 1.824,00 (previsto para 15/11). PEDIMOS QUANDO O MERCADO PAGO LIBERAR");
+    expect(h).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoDevolucaoPedida);
+    // Vazia (obrigatória), volta o texto-base.
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, devolucaoAguardaLiberacao: "" } } });
+    expect(await html()).toContain(TEXTOS_SITE_INICIAIS.devolucaoAguardaLiberacao);
+  });
+});
+
+describe("alteração da reserva paga pelo site (M8.2d)", () => {
+  const ID = "44444444-4444-4444-8444-444444444444";
+  const alteracao = (over: Partial<AlteracaoDoHospede> = {}): AlteracaoDoHospede => ({
+    id: ID,
+    situacao: "segurada",
+    rumo: "aumento",
+    antes: { checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 4, valor: 182400 },
+    depois: { checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 235200 },
+    diferenca: 52800,
+    valorNovo: 235200,
+    holdAte: "2026-10-01T16:20:00.000Z",
+    preparadaEm: "2026-10-01T15:20:00.000Z",
+    aplicadaEm: null,
+    reducao: null,
+    devolucao: null,
+    pagoSemAlteracao: null,
+    pagamento: pagamento({ estado: "pagar", holdAte: "2026-10-01T16:20:00.000Z", podeGerar: true }),
+    politicaVersao: 1,
+    entradaDaPolitica: "2026-10-12",
+    entradaDosPrazos: "2026-10-12",
+    ...over,
+  });
+  const ACEITE_D11: AceiteNaPagina = {
+    versoes: { termos: 2, privacidade: 1, cancelamento: 1 },
+    aceito: null,
+    resumo: [{ tipo: "paragrafo", texto: "RESUMO DA POLÍTICA DA RESERVA" }],
+    prazo: { tipo: "sem_reembolso", dias: 14 },
+    daReserva: { versao: 1, em: "2026-10-01T15:00:00.000Z" },
+  };
+  const confirmada = (a: AlteracaoDoHospede | null) => pagamento({ estado: "confirmada", holdAte: null, podeGerar: false, reservaCodigo: "SCL-TESTE1", forma: "pix", alteracao: a });
+  beforeEach(() => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("convertida", { reserva: { codigo: "SCL-TESTE1", estado: "confirmada" } }));
+  });
+
+  it("segurada com a diferença a pagar: o quadro da alteração antes do pagamento, o Pix da diferença com a alteração e o aceite do D11 lido para esta reserva", async () => {
+    m.vistaPagamento.mockResolvedValue(confirmada(alteracao()));
+    m.aceiteDiferenca.mockResolvedValue(ACEITE_D11);
+    const h = await html();
+    expect(m.aceiteDiferenca).toHaveBeenCalledWith({}, "org", { id: cotacao.id, checkin: "2026-10-12", fuso: "America/Sao_Paulo", reservaId: cotacao.reservaId }, expect.any(Date));
+    expect(h.indexOf("Alteração da sua reserva")).toBeGreaterThan(-1);
+    expect(h.indexOf("Alteração da sua reserva")).toBeLessThan(h.indexOf("Pagamento aprovado: reserva SCL-TESTE1 confirmada."));
+    expect(h).toContain("Alteração da reserva SCL-TESTE1: de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–16/10 (4 noites, 4 pessoas).");
+    expect(h).toContain("Diferença a pagar: <strong>R$ 528,00</strong>");
+    expect(h).toContain(`name="alteracao" value="${ID}"`);
+    expect(h).toContain("A sua reserva continua na ");
+    expect(h).toContain("RESUMO DA POLÍTICA DA RESERVA");
+    expect(h).toContain(encodeURIComponent("Quero falar sobre a alteração da minha reserva SCL-TESTE1."));
+    expect(h).not.toMatch(/Beds24/i);
+    expect(h).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  });
+
+  it("as frases da alteração vêm de Textos do site (as editadas; as obrigatórias vazias voltam ao texto-base)", async () => {
+    m.vistaPagamento.mockResolvedValue(confirmada(alteracao()));
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...TEXTOS_SITE_INICIAIS, alteracaoEmAndamento: "PAGUE A DIFERENÇA EDITADA", alteracaoPolitica: "" } } });
+    const h = await html();
+    expect(h).toContain("PAGUE A DIFERENÇA EDITADA");
+    expect(h).toContain(TEXTOS_SITE_INICIAIS.alteracaoPolitica);
+  });
+
+  it("aplicada (sem pagamento da diferença) ou nenhuma alteração: o aceite da diferença nem é lido; a aplicada mostra a alteração confirmada", async () => {
+    m.vistaPagamento.mockResolvedValue(confirmada(alteracao({ situacao: "aplicada", aplicadaEm: "2026-10-01T15:30:00.000Z", pagamento: null })));
+    const h = await html();
+    expect(h).toContain("Alteração confirmada em 01/10: 12/10–16/10, 4 pessoas, R$ 2.352,00.");
+    expect(h).not.toContain('name="alteracao"');
+    expect(m.aceiteDiferenca).not.toHaveBeenCalled();
+    m.vistaPagamento.mockResolvedValue(confirmada(null));
+    expect(await html()).not.toContain("Alteração");
+    expect(m.aceiteDiferenca).not.toHaveBeenCalled();
+  });
+
+  it("reserva já alterada: o resumo diz que é o da cotação original e mostra as datas, as pessoas e o valor de agora (também depois que a alteração sai do quadro)", async () => {
+    m.vistaPagamento.mockResolvedValue({ ...confirmada(null), reservaAtual: { checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 235200 } });
+    const h = await html();
+    expect(h).toContain("A sua reserva <strong>SCL-TESTE1</strong> foi alterada depois desta cotação: agora é de 12/10/2026 a 16/10/2026 · 4 noites · 4 pessoas · valor da reserva R$ 2.352,00. O resumo abaixo é o da cotação original.");
+    expect(h).not.toMatch(/Beds24/i);
+    m.vistaPagamento.mockResolvedValue(confirmada(null));
+    expect(await html()).not.toContain("foi alterada depois desta cotação");
   });
 });

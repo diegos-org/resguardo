@@ -13,10 +13,10 @@ export { CODIGOS_FALHA_DO_PROVEDOR, CODIGOS_TOKEN } from "./provedor";
 /** Recusas ou respostas incertas do provedor até a devolução ficar "recusada" (sempre depois de reler a order sem sinal de devolução). */
 export const MAXIMO_FALHAS_DEVOLUCAO = 3;
 /**
- * Origens de devolução que esta versão sabe tratar (M8.2c). Um banco de prévia compartilhado pode ter linhas de uma
- * versão mais nova (o M8.2d acrescenta `alteracao`): a rotina, o pedido ao provedor e a leitura ignoram essas linhas.
+ * Origens de devolução que esta versão sabe tratar (M8.2c; o M8.2d acrescenta `alteracao`). Um banco de prévia
+ * compartilhado pode ter linhas de uma versão mais nova: a rotina, o pedido ao provedor e a leitura ignoram essas linhas.
  */
-export const ORIGENS_DEVOLUCAO_CONHECIDAS = ["sem_reserva", "cancelamento"] as const;
+export const ORIGENS_DEVOLUCAO_CONHECIDAS = ["sem_reserva", "cancelamento", "alteracao"] as const;
 export const origemDeDevolucaoConhecida = (origem: string) => (ORIGENS_DEVOLUCAO_CONHECIDAS as readonly string[]).includes(origem);
 
 /** Tentativas ainda sem resposta final do provedor: seguram as datas (com a carência) e travam ações da equipe. */
@@ -92,6 +92,7 @@ export const NOMES_SITUACAO_PAGAMENTO: Record<SituacaoPagamento, string> = {
 
 export const NOMES_DESFECHO: Record<DesfechoPagamento, string> = {
   reserva: "Confirmou a reserva",
+  alteracao: "Diferença de uma alteração da reserva",
   devolucao: "Devolvido pelo Mercado Pago",
   por_fora: "Devolvido por fora",
 };
@@ -107,6 +108,12 @@ export const MOTIVOS_SEM_RESERVA = {
   recebimento_manual: "A reserva já tinha recebimento registrado à mão pela equipe: o pagamento do site não se liga a ela.",
   ao_vivo: "O Mercado Pago informou um pagamento real (live_mode) no ambiente de teste.",
   situacao_inesperada: "O Mercado Pago mostrou o pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva.",
+  // Pagamento da diferença de uma alteração (M8.2d) que não pôde aplicar a alteração: vai para "Devolver ao hóspede".
+  alteracao_noites_ocupadas: "Diferença de uma alteração aprovada depois do prazo, com as novas noites já ocupadas: a reserva continua como estava.",
+  alteracao_sem_leitura: "Diferença de uma alteração aprovada depois do prazo, sem leitura atual do Beds24 para conferir as novas noites: a reserva continua como estava.",
+  alteracao_desistida: "A alteração foi desfeita pela equipe antes da aprovação da diferença: a reserva continua como estava.",
+  alteracao_reserva_mudou: "A reserva mudou (cancelada, com pedido de cancelamento ou alterada de outro jeito) antes da aprovação da diferença.",
+  alteracao_nao_aplicada: "A alteração não pôde ser aplicada na aprovação da diferença: a reserva continua como estava.",
   outro: "A reserva não estava numa situação que permitisse confirmar pelo pagamento.",
 } as const;
 export type MotivoSemReserva = keyof typeof MOTIVOS_SEM_RESERVA;
@@ -126,6 +133,7 @@ export function textoMotivoSemReserva(m: string | null): string | null {
   if (!quem) return MOTIVOS_SEM_RESERVA[c];
   if (c === "conflito") return `As noites ficaram ocupadas ${quem}.`;
   if (c === "noites_ocupadas") return `Aprovado depois do prazo, com as noites já ocupadas ${quem}.`;
+  if (c === "alteracao_noites_ocupadas") return `Diferença de uma alteração aprovada depois do prazo, com as novas noites já ocupadas ${quem}: a reserva continua como estava.`;
   return MOTIVOS_SEM_RESERVA[c];
 }
 
@@ -142,13 +150,15 @@ export const AVISOS_PAGAMENTO = {
   devolvido_por_fora:
     "O Mercado Pago mostra este pagamento devolvido fora do sistema: a parte do proprietário desta reserva ficou em conferência (não é repassada). Cancele a reserva pela política (devolução integral) ou registre um ajuste e dê a conferência por resolvida.",
   devolucao_em_dobro: "O Mercado Pago mostra este pagamento como devolvido, e a devolução também foi registrada como feita por fora: o hóspede pode ter recebido duas vezes. Confira no Mercado Pago e fale com o hóspede.",
-  situacao_inesperada: "O Mercado Pago mostrou este pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva: nada foi confirmado. O que falta resolver se resolve pelo painel do Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d).",
+  situacao_inesperada:
+    'O Mercado Pago mostrou este pagamento já devolvido (no todo ou em parte) ou contestado antes de o sistema decidir a reserva: nada foi confirmado. Devolvido em parte: use "Devolver o restante ao hóspede". Contestado: resolva pelo painel do Mercado Pago.',
   contestado: "O pagamento foi contestado pelo pagador: confira a reserva.",
   ao_vivo: "O Mercado Pago marcou este pagamento como real (live_mode) no ambiente de teste.",
   pix_sem_prazo: "O Mercado Pago não informou até quando este Pix vale: confira no painel do Mercado Pago.",
   taxa_perdida_desconhecida: "Devolução confirmada: falta saber quanto da taxa o Mercado Pago não devolveu. Confira no Mercado Pago e use \"Registrar taxa que não voltou\" no quadro do pagamento (zero se voltou toda).",
   devolucao_falhou: "O Mercado Pago recusou ou não respondeu três vezes: confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora.",
-  devolucao_parada: "O Mercado Pago não mostra este pagamento como aprovado e inteiro (devolvido em parte, contestado ou em outra situação): a devolução pelo sistema parou (devolver o valor inteiro agora poderia devolver a mais). Confira no painel do Mercado Pago; a devolução de parte do valor pelo sistema chega no M8.2d.",
+  devolucao_parada:
+    'O Mercado Pago mostra uma devolução que o sistema não pediu, uma contestação ou outra situação neste pagamento: a devolução pelo sistema parou (para não devolver a mais). Confira no painel do Mercado Pago; se a devolução saiu por lá, confirme com o valor visto; se parte já voltou, use "Devolver o restante ao hóspede".',
   devolucao_sem_confirmacao:
     "O Mercado Pago aceitou a devolução, mas o pagamento ainda não aparece como devolvido: confira no painel do Mercado Pago. O sistema não pede de novo (poderia devolver duas vezes) e confirma sozinho quando a devolução aparecer. Se o painel do Mercado Pago mostrar a devolução concluída, use \"Confirmar devolução feita no painel do Mercado Pago\"; se mostrar recusada, use Conferir agora e, se a devolução continuar pedida aqui, \"Registrar que o Mercado Pago recusou a devolução no painel\".",
   andamento_fora_do_prazo: "Este pagamento ficou em andamento por mais de 85 dias e o Mercado Pago só deixa consultar pagamentos de até três meses: o sistema parou de conferir. Confira no painel do Mercado Pago: se o pagamento foi aprovado, fale com o hóspede e registre o que aconteceu com um ajuste.",
@@ -164,18 +174,71 @@ export const AVISOS_PAGAMENTO = {
   desafio_sem_url: "O Mercado Pago pediu a verificação do banco, mas não mandou um endereço válido para ela: o pagamento foi cancelado.",
   outra_reserva_mesmo_email:
     "Este pagamento confirmou a reserva depois que o mesmo e-mail já tinha outra reserva confirmada pelo site: o hóspede pode ter pago duas vezes. Confira com ele.",
-  // Cancelamento pela política (M8.2c). O quadro do pagamento troca este texto pelo com os valores (`textoDevolucaoAMenor`).
-  devolucao_a_menor:
-    "O Mercado Pago devolveu menos do que foi pedido neste cancelamento: confira no painel do Mercado Pago. Se o restante sair por lá, confirme a devolução; senão, a devolução da diferença chega com o M8.2d (ou registre um ajuste).",
+  // Uma devolução que o Mercado Pago fez a menos (M8.2c; M8.2d, D15). O quadro do pagamento troca este texto pelo com os
+  // valores (`textoDevolucaoAMenor`).
+  devolucao_a_menor: "O Mercado Pago devolveu menos do que foi pedido numa devolução deste pagamento: confira no painel do Mercado Pago e peça o restante ao Mercado Pago (ou registre o restante devolvido por fora).",
   devolucao_data_a_conferir: "A devolução foi feita pelo painel do Mercado Pago antes de o sistema ver: a data no financeiro é a de hoje. Confira a data real e ajuste se precisar.",
+  // Devolução de parte do valor (M8.2d): só é pedida depois de o Mercado Pago liberar o pagamento. O quadro do pagamento
+  // troca este texto pelo com o valor (`textoDevolucaoAguardandoLiberacaoAtrasada`).
+  devolucao_aguardando_liberacao_atrasada:
+    "A liberação deste pagamento passou da data prevista e a devolução de parte do valor continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.",
 } as const;
 export type CodigoAviso = keyof typeof AVISOS_PAGAMENTO;
 
 export const textosDosAvisos = (codigos: readonly string[]) => codigos.filter((c): c is CodigoAviso => c in AVISOS_PAGAMENTO).map((c) => AVISOS_PAGAMENTO[c]);
 
-/** O aviso `devolucao_a_menor` com os dois valores (o que o Mercado Pago devolveu e o pedido no cancelamento). */
-export const textoDevolucaoAMenor = (devolvido: number, devido: number) =>
-  `O Mercado Pago devolveu ${formatBRL(devolvido)} de ${formatBRL(devido)} pedidos neste cancelamento: confira no painel do Mercado Pago. Se o restante sair por lá, confirme a devolução; senão, a devolução da diferença chega com o M8.2d (ou registre um ajuste).`;
+/**
+ * O aviso `devolucao_a_menor` com os dois valores (o que o Mercado Pago devolveu e o pedido nesta devolução, D15). A
+ * devolução por fora do restante entra só quando ela é permitida (no cartão, pela regra do cartão). Sem os valores (null:
+ * quem não lê o financeiro), o mesmo aviso sem nenhum R$.
+ */
+export const textoDevolucaoAMenor = (devolvido: number | null, devido: number | null, restantePorFora = true) =>
+  `O Mercado Pago devolveu ${devolvido === null || devido === null ? "menos do que foi pedido" : `${formatBRL(devolvido)} de ${formatBRL(devido)} pedidos`} nesta devolução: o que voltou já está no financeiro. Peça o restante ao Mercado Pago${restantePorFora ? " ou registre o restante devolvido por fora" : ""}.`;
+
+/**
+ * O aviso `devolucao_a_menor` de uma devolução que a leitura mostra a menos SEM o id dela (D15): `devolvido` é o que a
+ * leitura mostra além das outras devoluções confirmadas e do reconhecido devolvido fora. Nada foi acertado no financeiro:
+ * a equipe confirma o valor que o painel do Mercado Pago mostra.
+ */
+export const textoDevolucaoAMenorSemId = (devolvido: number | null, devido: number | null) =>
+  `O Mercado Pago mostra ${devolvido === null || devido === null ? "menos devolvido do que foi pedido" : `${formatBRL(devolvido)} devolvidos de ${formatBRL(devido)} pedidos`} nesta devolução, sem dizer qual devolução é: nada foi acertado no financeiro. Confira no painel do Mercado Pago e use "Confirmar devolução feita no painel do Mercado Pago" com o valor que aparece lá (ou registre um ajuste).`;
+
+/**
+ * O aviso `devolucao_a_menor` do restante que o Mercado Pago recusou com "valor acima do que se pode devolver" ou "não
+ * permitido" (D15): o restante pode já ter saído por lá, ou não sair mais pelo sistema. `porFora`: a devolução por fora
+ * dele é permitida agora (no cartão, pela regra do cartão).
+ */
+export const textoRestanteRecusado = (devido: number | null, porFora: boolean) =>
+  `O Mercado Pago recusou o pedido do restante${devido === null ? "" : ` (${formatBRL(devido)})`} desta devolução: confira no painel do Mercado Pago. Se o restante já voltou por lá, use "Confirmar devolução feita no painel do Mercado Pago" com o valor que aparece lá; se não, ${porFora ? "registre o restante devolvido por fora" : 'registre a recusa do painel do Mercado Pago (a devolução por fora do cartão fica liberada)'} ou um ajuste.`;
+
+/**
+ * O aviso `devolucao_data_a_conferir` da devolução que completou um pagamento com parte já devolvida pelo painel do
+ * Mercado Pago, fora do sistema (D17): essa parte não tem saída de caixa própria, e o que tinha entrado sai todo nesta.
+ */
+export const TEXTO_CAIXA_COM_DEVOLVIDO_FORA = "Parte deste pagamento já tinha sido devolvida pelo painel do Mercado Pago: o caixa ficou todo no dia desta devolução; ajuste a data se precisar.";
+
+/** A dica do quadro do pagamento para a devolução que espera a liberação (D13; só no painel). */
+export const textoAguardandoLiberacao = (prevista: string | null) =>
+  `A devolução de parte do valor é pedida ao Mercado Pago assim que ele liberar este pagamento${prevista ? ` (previsto para ${prevista})` : ""}: antes disso o sistema não pede. No teste, registre a liberação à mão.`;
+
+/** O aviso `devolucao_aguardando_liberacao_atrasada` com o valor da devolução que espera (M8.2d); sem o valor (null), sem R$. */
+export const textoDevolucaoAguardandoLiberacaoAtrasada = (valor: number | null) =>
+  `A liberação deste pagamento passou da data prevista e a devolução de ${valor === null ? "parte do valor" : formatBRL(valor)} continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.`;
+
+/**
+ * Os avisos que são de uma devolução (M8.2d: cada devolução tem os seus em `devolucoes_pagamento.avisos`; o pagamento leva
+ * a união deles). Os outros avisos são do pagamento.
+ */
+export const AVISOS_DE_DEVOLUCAO = [
+  "devolucao_falhou",
+  "devolucao_parada",
+  "devolucao_sem_confirmacao",
+  "devolucao_fora_do_prazo",
+  "devolucao_a_menor",
+  "taxa_perdida_desconhecida",
+  "devolucao_data_a_conferir",
+  "devolucao_aguardando_liberacao_atrasada",
+] as const satisfies readonly CodigoAviso[];
 
 // ---------------------------------------------------------------- cartão (M8.2b)
 

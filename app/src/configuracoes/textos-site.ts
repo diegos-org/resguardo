@@ -48,12 +48,23 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "cancelamentoFecho", rotulo: "Cancelamento: frase final da página da reserva cancelada", limite: 240, linhas: 2 },
   { chave: "cancelamentoPedidoRecebido", rotulo: "Cancelamento: pedido recebido, ainda sem decisão (página da reserva e Minha reserva, depois da data e hora do pedido)", limite: 240, linhas: 2 },
   { chave: "cancelamentoMinhaReservaIntro", rotulo: "Cancelamento: abertura do quadro \"Cancelar a reserva\" em Minha reserva (antes dos prazos da política)", limite: 240, linhas: 2 },
+  // Alteração de reserva paga pelo site (M8.2d): só as frases. As datas, horas, valores, a diferença e a versão da política
+  // são escritos pelo sistema na página da reserva e nas mensagens (nunca editáveis aqui).
+  { chave: "alteracaoEmAndamento", rotulo: "Alteração com diferença a pagar: frase depois das novas datas, do valor e do horário até quando elas ficam seguradas (escritos pelo sistema)", limite: 240, linhas: 2 },
+  { chave: "alteracaoAguardaConfirmacao", rotulo: "Alteração sem diferença a pagar (redução ou mesmo valor): como o hóspede confirma", limite: 240, linhas: 2 },
+  { chave: "alteracaoPolitica", rotulo: "Alteração: a política que continua valendo (depois da versão e da data de que os prazos contam)", limite: 240, linhas: 2 },
+  { chave: "alteracaoConfirmada", rotulo: "Alteração confirmada (depois das novas datas e do valor)", limite: 240, linhas: 2 },
+  { chave: "devolucaoAguardaLiberacao", rotulo: "Devolução de parte do valor esperando o Mercado Pago liberar o pagamento (depois do valor e da data prevista)", limite: 240, linhas: 2 },
+  { chave: "alteracaoSemDevolucao", rotulo: "Alteração em que a política não devolve a diferença", limite: 240, linhas: 2 },
+  { chave: "alteracaoNaoAplicada", rotulo: "Alteração não aplicada: a diferença foi paga, mas as novas datas não puderam ser seguradas", limite: 400, linhas: 3 },
+  { chave: "alteracaoNaoVale", rotulo: "Alteração preparada que não vale mais (o prazo passou ou a equipe desistiu)", limite: 240, linhas: 2 },
 ] as const;
 export type ChaveTextoSite = (typeof CAMPOS_TEXTOS_SITE)[number]["chave"];
 export type TextosSite = Record<ChaveTextoSite, string>;
 /**
- * Textos que não podem ficar vazios: o título, os do pagamento e os do cancelamento que o hóspede precisa ler (o que
- * acontece com o dinheiro dele). A frase final e a abertura do quadro em Minha reserva podem ficar vazias.
+ * Textos que não podem ficar vazios: o título, os do pagamento e os do cancelamento e da alteração que o hóspede precisa
+ * ler (o que acontece com o dinheiro e com a reserva dele). A frase final e a abertura do quadro em Minha reserva podem
+ * ficar vazias, e as frases da alteração que só completam uma linha que o sistema já escreve também.
  */
 export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = [
   "titulo",
@@ -73,6 +84,11 @@ export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = [
   "cancelamentoSemDevolucaoNaoComparecimento",
   "cancelamentoSemDevolucaoEquipe",
   "cancelamentoPedidoRecebido",
+  "alteracaoEmAndamento",
+  "alteracaoAguardaConfirmacao",
+  "alteracaoNaoAplicada",
+  "alteracaoPolitica",
+  "devolucaoAguardaLiberacao",
 ];
 
 export const TEXTOS_SITE_INICIAIS: TextosSite = {
@@ -122,6 +138,16 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   cancelamentoFecho: "Se tiver dúvida, fale com a equipe.",
   cancelamentoPedidoRecebido: "A equipe confirma com você, por escrito, o valor da devolução pela política que você aceitou.",
   cancelamentoMinhaReservaIntro: "Precisa cancelar? Faça o pedido aqui: a data e a hora em que ele chega ficam registradas na hora, e é esse momento que vale pela política.",
+  // Alteração (M8.2d): texto-base para Diego revisar. Nunca cita o Beds24 nem traz dado pessoal; a devolução de parte do
+  // valor espera a liberação do pagamento (nunca "já pedimos" antes disso).
+  alteracaoEmAndamento: "Pague a diferença até esse horário para confirmar a alteração; até lá, a sua reserva continua como está.",
+  alteracaoAguardaConfirmacao: "Para confirmar, responda à nossa mensagem aceitando a alteração; até lá, a sua reserva continua como está.",
+  alteracaoPolitica: "A sua reserva continua seguindo a Política de cancelamento que você aceitou ao pagar.",
+  alteracaoConfirmada: "As novas datas valem a partir de agora.",
+  devolucaoAguardaLiberacao: "Ela será pedida ao Mercado Pago quando ele liberar o seu pagamento; a página da sua reserva mostra quando for feita.",
+  alteracaoSemDevolucao: "O valor da reserva continua o mesmo.",
+  alteracaoNaoAplicada: "As novas datas não puderam ser seguradas: a sua reserva continua como estava e vamos devolver esse valor. A nossa equipe fala com você.",
+  alteracaoNaoVale: "A sua reserva continua como está. Fale com a equipe se ainda quiser mudar.",
 };
 
 /**

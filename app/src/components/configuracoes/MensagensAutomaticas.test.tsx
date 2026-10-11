@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { TEXTOS_BASE_CANCELAMENTO } from "@/configuracoes/modelos-texto";
+import { TEXTOS_BASE_ALTERACAO, TEXTOS_BASE_CANCELAMENTO } from "@/configuracoes/modelos-texto";
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
 import { MensagensAutomaticas } from "./MensagensAutomaticas";
 import { Modelos } from "./Modelos";
@@ -32,8 +32,34 @@ describe("mensagens ao hóspede: as do cancelamento (M8.2c)", () => {
 
   it("a lista de variáveis diz onde as do cancelamento valem", () => {
     const h = renderToStaticMarkup(<Modelos lista={[]} criar={acao} editar={acao} />);
-    expect(h).toContain("<code>{valor}</code> valor devolvido (só em “Cancelamento: devolução feita”)");
-    expect(h).toContain("<code>{recebido}</code> data e hora em que recebemos o pedido (só em “Cancelamento: pedido recebido”, “Cancelamento: decisão”, “Cancelamento: devolução feita”)");
+    // M8.2d: a devolução feita serve também à alteração (nome novo).
+    expect(h).toContain("<code>{valor}</code> valor devolvido (só em “Devolução feita (cancelamento ou alteração)”)");
+    expect(h).toContain("<code>{recebido}</code> data e hora em que recebemos o pedido (só em “Cancelamento: pedido recebido”, “Cancelamento: decisão”, “Devolução feita (cancelamento ou alteração)”)");
     expect(h).toContain("<code>{hospede}</code> nome do hóspede</span>");
+  });
+});
+
+describe("mensagens ao hóspede: as da alteração (M8.2d)", () => {
+  it("a proposta e a confirmação mostram o texto-base com o botão de copiar, e a tela diz quando cada uma sai e o que o modelo precisa usar", () => {
+    const h = renderToStaticMarkup(
+      <MensagensAutomaticas
+        ativo={false}
+        ativoDesde={null}
+        origens={[]}
+        tipos={[
+          { id: "alteracao_proposta", nome: "Alteração: proposta (e pagamento da diferença, se houver)", selecionado: "", textoBase: TEXTOS_BASE_ALTERACAO.alteracao_proposta },
+          { id: "alteracao_confirmada", nome: "Alteração: confirmada", selecionado: "", textoBase: TEXTOS_BASE_ALTERACAO.alteracao_confirmada },
+        ]}
+        modelos={[]}
+        envios={[]}
+        ultimaExecucao={null}
+        salvar={acao}
+      />,
+    );
+    expect(h).toContain("Alteração de reserva paga pelo site: a proposta (enquanto as novas datas estão seguradas), a confirmação (até 7 dias depois de aplicada)");
+    expect(h).toContain("O modelo da proposta precisa usar <code>{alteracao}</code> e <code>{link}</code>; o da confirmação, <code>{alteracao}</code>.");
+    expect(h).toContain("Texto-base (sem modelo): “Olá, {hospede}! Preparamos a alteração da sua reserva {codigo}: {alteracao}");
+    expect(h.match(/Copiar o texto-base/g)).toHaveLength(2);
+    expect(h).toContain('name="modelo_alteracao_proposta"');
   });
 });

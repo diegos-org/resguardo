@@ -5,7 +5,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { imoveis, lancamentos, organizacoes, pagamentos, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { devolucoesPagamento, imoveis, lancamentos, organizacoes, pagamentos, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
@@ -77,12 +77,16 @@ describe("pagamento do site devolvido no Mercado Pago fora da política (D21, M8
     expect(await partesDisponiveis(db, org, dono, agora)).toHaveLength(1);
     expect(await emConferencia(r.id)).toBe(0);
     expect(await devolvidaSql(r.id)).toBe(false);
-    expect(devolvidaNoProvedor(await pagamento(pagamentoId), null)).toBe(false);
+    expect(devolvidaNoProvedor([await pagamento(pagamentoId)], [], null)).toBe(false);
+    // M8.2d: o aviso `devolvido_por_fora` é saída da regra, nunca entrada — sozinho, não põe a reserva em conferência.
+    await db.update(pagamentos).set({ avisos: ["devolvido_por_fora"] }).where(eq(pagamentos.id, pagamentoId));
+    expect(await devolvidaSql(r.id)).toBe(false);
+    expect(devolvidaNoProvedor([await pagamento(pagamentoId)], [], null)).toBe(false);
     // Cada forma de o Mercado Pago mostrar a devolução: os dois gêmeos concordam.
-    for (const leitura of [{ situacao: "devolvido" as const }, { situacao: "devolvido_parcial" as const }, { devolvidoLido: 500 }, { avisos: ["devolvido_por_fora"] }]) {
+    for (const leitura of [{ situacao: "devolvido" as const }, { situacao: "devolvido_parcial" as const }, { devolvidoLido: 500 }]) {
       await db.update(pagamentos).set({ situacao: "aprovado", devolvidoLido: 0, avisos: [], ...leitura }).where(eq(pagamentos.id, pagamentoId));
       expect(await devolvidaSql(r.id)).toBe(true);
-      expect(devolvidaNoProvedor(await pagamento(pagamentoId), null)).toBe(true);
+      expect(devolvidaNoProvedor([await pagamento(pagamentoId)], [], null)).toBe(true);
       // A ficha (quadro "Em conferência") lê a mesma regra, só da própria organização.
       expect(await devolvidaNoProvedorDaReserva(db, org, r.id)).toBe(true);
       expect(await emConferencia(r.id)).toBe(4);
@@ -114,7 +118,7 @@ describe("pagamento do site devolvido no Mercado Pago fora da política (D21, M8
     const p1 = await pagamentoDoSiteDeTeste(db, org, integral, { situacao: "devolvido" });
     await cancelamentoDeTeste(db, org, { reservaId: integral.id, pagamentoId: p1, direito: "integral" });
     expect(await devolvidaSql(integral.id)).toBe(false);
-    expect(devolvidaNoProvedor(await pagamento(p1), { situacao: "cancelada", direito: "integral" })).toBe(false);
+    expect(devolvidaNoProvedor([await pagamento(p1)], [], { situacao: "cancelada", direito: "integral" })).toBe(false);
 
     const retida = await criar(reserva("2026-10-20", "2026-10-23"));
     const p2 = await pagamentoDoSiteDeTeste(db, org, retida);
@@ -126,7 +130,7 @@ describe("pagamento do site devolvido no Mercado Pago fora da política (D21, M8
     // O Mercado Pago mostra o pagamento dela devolvido (fora do sistema): em conferência.
     await db.update(pagamentos).set({ situacao: "devolvido" }).where(eq(pagamentos.id, p2));
     expect(await devolvidaSql(retida.id)).toBe(true);
-    expect(devolvidaNoProvedor(await pagamento(p2), { situacao: "cancelada", direito: "nenhum" })).toBe(true);
+    expect(devolvidaNoProvedor([await pagamento(p2)], [], { situacao: "cancelada", direito: "nenhum" })).toBe(true);
     expect(await emConferencia(retida.id)).toBe(4);
   });
 
@@ -142,5 +146,56 @@ describe("pagamento do site devolvido no Mercado Pago fora da política (D21, M8
     expect(await emConferencia(r.id)).toBe(0);
     expect(await resolverConferencia(db, org, r.id, null)).toBe(false);
     for (const mes of ["2026-10", "2026-11"]) expect((await preverRepasses(db, org, mes, "2026-12-02", [dono], true))[0].bloqueios.join(" ")).not.toContain("acerto pendente");
+  });
+});
+
+describe("devoluções nossas não parecem devoluções de fora (D21, M8.2d)", () => {
+  type Dev = Partial<typeof devolucoesPagamento.$inferInsert>;
+  type Caso = { nome: string; pagamento: Partial<typeof pagamentos.$inferInsert>; devs: Dev[]; esperado: boolean; cancelamento?: "integral" | "nenhum" };
+  const enviada: Dev = { situacao: "pedida", tentativas: 1, chaveAtual: "k1", chaveAceita: true };
+  const casos: Caso[] = [
+    { nome: "parcial nossa confirmada", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 30000 }, devs: [{ valor: 30000, situacao: "confirmada", valorConfirmado: 30000 }], esperado: false },
+    { nome: "parcial nossa em dúvida (resposta perdida)", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 30000 }, devs: [{ ...enviada, valor: 30000, chaveAceita: false, chaveEmDuvida: true }], esperado: false },
+    { nome: "parcial nossa aceita, ainda não confirmada", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 30000 }, devs: [{ ...enviada, valor: 30000 }], esperado: false },
+    { nome: "pedida nunca enviada não explica", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 30000 }, devs: [{ valor: 30000, situacao: "pedida" }], esperado: true },
+    { nome: "parcial nossa + outra pelo painel", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 50000 }, devs: [{ valor: 30000, situacao: "confirmada", valorConfirmado: 30000 }], esperado: true },
+    { nome: "só pelo painel", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 20000 }, devs: [], esperado: true },
+    { nome: "pelo painel, reconhecida", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 20000, devolvidoForaReconhecido: 20000 }, devs: [], esperado: false },
+    { nome: "devolvido sem valor e sem nada nosso", pagamento: { situacao: "devolvido", devolvidoLido: 0 }, devs: [], esperado: true },
+    { nome: "devolvido sem valor, nossa integral confirmada", pagamento: { situacao: "devolvido", devolvidoLido: 0 }, devs: [{ valor: 100000, situacao: "confirmada" }], esperado: false },
+    { nome: "devolvido com a nossa integral", pagamento: { situacao: "devolvido", devolvidoLido: 100000 }, devs: [{ valor: 100000, situacao: "confirmada", valorConfirmado: 100000 }], esperado: false },
+    { nome: "a menor: confirmada pelo que voltou", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 25000 }, devs: [{ valor: 30000, situacao: "confirmada", valorConfirmado: 25000 }], esperado: false },
+    { nome: "duas parciais nossas", pagamento: { situacao: "devolvido_parcial", devolvidoLido: 50000 }, devs: [{ valor: 30000, situacao: "confirmada", valorConfirmado: 30000 }, { ...enviada, valor: 20000 }], esperado: false },
+    { nome: "devolvido na cancelada pela política com integral", pagamento: { situacao: "devolvido", devolvidoLido: 100000 }, devs: [], esperado: false, cancelamento: "integral" },
+    { nome: "devolvido de fora na cancelada sem direito", pagamento: { situacao: "devolvido", devolvidoLido: 100000 }, devs: [], esperado: true, cancelamento: "nenhum" },
+  ];
+
+  it("o gêmeo SQL diz o mesmo que a regra TS, caso a caso", async () => {
+    for (const [i, caso] of casos.entries()) {
+      const dia = String(i + 1).padStart(2, "0");
+      const r = await criar(reserva(`2026-10-${dia}`, `2026-10-${String(i + 2).padStart(2, "0")}`));
+      const pid = await pagamentoDoSiteDeTeste(db, org, r, caso.pagamento);
+      for (const d of caso.devs) await db.insert(devolucoesPagamento).values({ organizacaoId: org, pagamentoId: pid, motivo: "Teste", valor: 0, origem: "cancelamento", ...d });
+      const canc = caso.cancelamento ? { situacao: "cancelada" as const, direito: caso.cancelamento } : null;
+      if (caso.cancelamento) await cancelamentoDeTeste(db, org, { reservaId: r.id, pagamentoId: pid, direito: caso.cancelamento });
+      const devs = await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.pagamentoId, pid));
+      const ts = devolvidaNoProvedor([await pagamento(pid)], devs, canc);
+      expect({ caso: caso.nome, ts }).toEqual({ caso: caso.nome, ts: caso.esperado });
+      expect({ caso: caso.nome, sql: await devolvidaSql(r.id) }).toEqual({ caso: caso.nome, sql: caso.esperado });
+    }
+  });
+
+  it("a diferença de uma alteração conta como dinheiro da reserva; o pagamento sem reserva não", async () => {
+    const r = await criar(reserva("2026-10-20", "2026-10-23"));
+    const p0 = await pagamento(await pagamentoDoSiteDeTeste(db, org, r));
+    const [{ id: p2 }] = await db
+      .insert(pagamentos)
+      .values({ organizacaoId: org, cotacaoId: p0.cotacaoId, reservaId: r.id, imovelId: a, ambiente: "teste", forma: "pix", referencia: `${p0.referencia}-2`, chaveIdempotencia: `${p0.chaveIdempotencia}-2`, valor: 20000, desfecho: "alteracao", situacao: "devolvido_parcial", devolvidoLido: 5000, aprovadoEm: new Date("2026-09-02T12:00:00Z") })
+      .returning({ id: pagamentos.id });
+    expect(await devolvidaSql(r.id)).toBe(true);
+    expect(devolvidaNoProvedor(await db.select().from(pagamentos).where(eq(pagamentos.reservaId, r.id)), [], null)).toBe(true);
+    await db.update(pagamentos).set({ desfecho: null, motivoSemReserva: "valor_divergente" }).where(eq(pagamentos.id, p2));
+    expect(await devolvidaSql(r.id)).toBe(false);
+    expect(devolvidaNoProvedor(await db.select().from(pagamentos).where(eq(pagamentos.reservaId, r.id)), [], null)).toBe(false);
   });
 });

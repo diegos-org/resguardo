@@ -8,7 +8,6 @@ import { conferirTentativa } from "./conferencia";
 import {
   chaveDevolucao,
   chaveTaxaPerdida,
-  confirmarDevolucaoVistaNoProvedor,
   corrigirTaxaPerdida,
   devolverPeloProvedor,
   ERRO_POR_FORA_CARTAO,
@@ -17,6 +16,7 @@ import {
   MAXIMO_FALHAS_DEVOLUCAO,
   PRAZO_DEVOLUCAO_CARTAO_DIAS,
   pararDevolucaoPedida,
+  pedirRestanteDaDevolucao,
   porForaPermitidoNoCartao,
   registrarDevolucaoPorFora,
   registrarRecusaNoPainel,
@@ -486,7 +486,7 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     await conferirPendentes(db, c.org, c.provedor, minutos(60));
     expect(pedidos()).toHaveLength(3);
     c.provedor.falhas.devolver = null;
-    expect(await porFora(x.pagamentoId, minutos(70), { valor: TOTAL - 100 })).toMatchObject({ ok: false, erro: expect.stringContaining("só o valor integral") });
+    expect(await porFora(x.pagamentoId, minutos(70), { valor: TOTAL - 100 })).toEqual({ ok: false, erro: "A devolução por fora registra o valor desta devolução: R$ 1.824,00." });
     expect(await registrarDevolucaoPorFora(db, c.org, x.pagamentoId, { data: "2026-10-02", valor: TOTAL, nota: "" }, null, c.provedor, minutos(70))).toMatchObject({ ok: false, erro: expect.stringContaining("futuro") });
     expect(await porFora(x.pagamentoId, minutos(70))).toEqual({ ok: true, situacao: "por_fora" });
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ desfecho: "por_fora", avisos: [] });
@@ -552,9 +552,14 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", desfecho: null, avisos: expect.arrayContaining(["devolvido_por_fora"]) });
     expect(await devolucao(x.pagamentoId)).toBeUndefined();
 
+    // M8.2d (D17): devolvido em parte no painel do Mercado Pago — o devolvido fora fica reconhecido e o por fora registra
+    // só o restante (o integral, recusado com o valor certo).
     const y = await semReserva({ taxa: 1806 }, outras(0));
     c.provedor.devolverNoProvedor(y.idProvedor, 1000);
-    expect(await porFora(y.pagamentoId, minutos(13))).toMatchObject({ ok: false, erro: expect.stringContaining("no todo ou em parte") });
+    expect(await porFora(y.pagamentoId, minutos(13))).toEqual({ ok: false, erro: "A devolução por fora registra o valor desta devolução: R$ 1.814,00." });
+    expect(await porFora(y.pagamentoId, minutos(13), { valor: TOTAL - 1000 })).toEqual({ ok: true, situacao: "por_fora" });
+    expect(await c.tentativa(y.pagamentoId)).toMatchObject({ desfecho: "por_fora", devolvidoForaReconhecido: 1000 });
+    expect(await devolucao(y.pagamentoId)).toMatchObject({ situacao: "por_fora", valor: TOTAL - 1000, porForaValor: TOTAL - 1000 });
     const z = await semReserva({ taxa: 1806 }, outras(1));
     c.provedor.contestar(z.idProvedor);
     expect(await porFora(z.pagamentoId, minutos(14))).toMatchObject({ ok: false, erro: expect.stringContaining("contestado") });
@@ -572,12 +577,19 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect((await c.tentativa(x.pagamentoId)).desfecho).toBeNull();
   });
 
-  it("por fora: o integral é o que o hóspede pagou pela leitura (valor divergente da cotação), não o valor pedido na criação", async () => {
-    const x = await semReserva();
+  it("por fora: o integral é o que o hóspede pagou pela leitura que aprovou (valor divergente da cotação), não o valor pedido na criação; uma leitura depois não muda o pago (D28)", async () => {
+    const s = await c.segurar();
+    const x = { ...s, ...(await c.pix(s.cotacaoId)) };
+    await db.update(cotacoes).set({ total: TOTAL + 1 }).where(eq(cotacoes.id, s.cotacaoId));
+    c.provedor.aprovar(x.idProvedor, { taxa: 1806 });
     const [order] = c.provedor.todas().filter((o) => o.idProvedor === x.idProvedor);
     const pago = TOTAL - 10_000;
     vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, pago });
-    expect(await porFora(x.pagamentoId, minutos(10))).toMatchObject({ ok: false, erro: expect.stringContaining("valor integral pago") });
+    await conferir(x.pagamentoId, minutos(3));
+    expect(await c.tentativa(x.pagamentoId)).toMatchObject({ motivoSemReserva: "valor_divergente", valorPago: pago });
+    // Uma leitura depois com outro total pago (depois de uma devolução ele pode vir líquido) não muda o pago congelado.
+    vi.spyOn(c.provedor, "consultar").mockResolvedValue({ ...order, pago: pago - 500 });
+    expect(await porFora(x.pagamentoId, minutos(10))).toEqual({ ok: false, erro: "A devolução por fora registra o valor desta devolução: R$ 1.724,00." });
     expect(await porFora(x.pagamentoId, minutos(11), { valor: pago })).toEqual({ ok: true, situacao: "por_fora" });
     vi.restoreAllMocks();
     expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "por_fora", porForaValor: pago });
@@ -954,35 +966,46 @@ describe("devolução do cancelamento pela política e as regras do M8.2c", () =
     const x = await cancelada({ liberar: true });
     expect(x.resultado.devolucao).toBe("confirmada");
     expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", confirmadaPor: "leitura", valorConfirmado: TOTAL });
-    // A situação gravada não muda para "desconhecido" (nunca sobrescreve): fica o aviso.
+    // M8.2d (D27): "processed/refunded" explicado pelas nossas devoluções é a order devolvida, sem o aviso de situação desconhecida.
     const t = await c.tentativa(x.pagamentoId);
-    expect(t.situacao).toBe("aprovado");
-    expect(t.avisos).toContain("situacao_desconhecida");
+    expect(t.situacao).toBe("devolvido");
+    expect(t.avisos).not.toContain("situacao_desconhecida");
     expect((await doLivro(x.reservaId)).filter((l) => l.tipo === "devolucao")).toMatchObject([{ montante: TOTAL - 1824, estado: "conciliado" }]);
   });
 
-  it("devolvida a menos: aviso com os dois valores, a espera para (a rotina não relê nem pede), nada acertado; a equipe pode confirmar o integral visto no painel", async () => {
+  it("devolvida a menos (D15, M8.2d): confirmada pelo que voltou, com o aviso dos dois valores e o caixa do que voltou; a rotina não pede nada; a equipe pede o restante ao Mercado Pago", async () => {
     const x = await cancelada({ liberar: true, antes: () => c.provedor.devolverAMenos(TOTAL - 5000) });
-    expect(x.resultado.devolucao).toBe("pedida");
+    expect(x.resultado.devolucao).toBe("confirmada");
     const t = await c.tentativa(x.pagamentoId);
     expect(t.situacao).toBe("devolvido_parcial");
     expect(t.avisos).toContain("devolucao_a_menor");
-    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "pedida", chaveAceita: true, proximaTentativaEm: null });
-    expect((await doLivro(x.reservaId)).filter((l) => l.tipo === "devolucao")).toEqual([]);
+    const d = await devolucao(x.pagamentoId);
+    expect(d).toMatchObject({ situacao: "confirmada", valor: TOTAL, valorConfirmado: TOTAL - 5000, confirmadaPor: "leitura", avisos: expect.arrayContaining(["devolucao_a_menor"]) });
+    // O caixa do que voltou: o devolvido menos a taxa atribuída a ele (o resto sai com o restante).
+    expect(d.taxaAtribuida).toBe(Math.round((1824 * (TOTAL - 5000)) / TOTAL));
+    expect((await doLivro(x.reservaId)).filter((l) => l.tipo === "devolucao")).toMatchObject([{ montante: TOTAL - 5000 - d.taxaAtribuida!, estado: "conciliado" }]);
+    expect((await db.select().from(auditoria).where(and(eq(auditoria.entidadeId, x.pagamentoId), eq(auditoria.acao, "pagamento.devolucao_a_menor")))).length).toBe(1);
+    // A rotina não pede de novo nem relê esta devolução (já confirmada).
     const enviados = pedidos().length;
-    const lidas = c.provedor.chamadas.filter((ch) => ch.metodo === "consultar").length;
     await conferirPendentes(db, c.org, c.provedor, minutos(200));
     expect(pedidos().length).toBe(enviados);
-    expect(await tentarDevolucao(db, c.org, (await devolucao(x.pagamentoId)).id, c.provedor, minutos(201))).toBe("pedida");
-    expect(c.provedor.chamadas.filter((ch) => ch.metodo === "consultar").length).toBeLessThanOrEqual(lidas + 1);
-    expect((await db.select().from(auditoria).where(and(eq(auditoria.entidadeId, x.pagamentoId), eq(auditoria.acao, "pagamento.devolucao_a_menor")))).length).toBe(1);
-    const r = await confirmarDevolucaoVistaNoProvedor(db, c.org, x.pagamentoId, { data: "2026-10-01", nota: "O painel mostra o integral devolvido" }, x.equipe, c.provedor, minutos(210));
-    expect(r).toEqual({ ok: true, situacao: "confirmada" });
-    expect(await devolucao(x.pagamentoId)).toMatchObject({ situacao: "confirmada", confirmadaPor: "equipe", confirmadaNota: "O painel mostra o integral devolvido" });
-    expect((await doLivro(x.reservaId)).filter((l) => l.tipo === "devolucao")).toMatchObject([{ montante: TOTAL - 1824, estado: "realizado", origem: "manual", dataCaixa: "2026-10-01" }]);
+    expect(await tentarDevolucao(db, c.org, d.id, c.provedor, minutos(201))).toBe("confirmada");
+    expect(pedidos().length).toBe(enviados);
+    // "Pedir o restante ao Mercado Pago": a devolução nova de R$ 50,00, com o valor explícito; confirmada pela leitura.
+    const r = await pedirRestanteDaDevolucao(db, c.org, d.id, x.equipe, c.provedor, minutos(210));
+    expect(r).toMatchObject({ ok: true, situacao: "confirmada" });
+    expect(pedidos().at(-1)).toMatchObject({ valor: 5000 });
+    const [restante] = await db.select().from(devolucoesPagamento).where(eq(devolucoesPagamento.origemDevolucaoId, d.id));
+    expect(restante).toMatchObject({ id: r.ok ? r.devolucaoId : "", origem: "cancelamento", cancelamentoId: d.cancelamentoId, situacao: "confirmada", valor: 5000, valorConfirmado: 5000 });
     const depois = await c.tentativa(x.pagamentoId);
+    expect(depois.situacao).toBe("devolvido");
     expect(depois.avisos).not.toContain("devolucao_a_menor");
     expect(depois.avisos).toContain("taxa_perdida_desconhecida");
+    // O caixa das duas: tudo o que entrou sai (o restante completa o pagamento).
+    expect((await doLivro(x.reservaId)).filter((l) => l.tipo === "devolucao").reduce((soma, l) => soma + (l.montante ?? 0), 0)).toBe(TOTAL - 1824);
+    // Uma vez só.
+    expect(await pedirRestanteDaDevolucao(db, c.org, d.id, x.equipe, c.provedor, minutos(220))).toMatchObject({ ok: false });
+    expect(pedidos().length).toBe(enviados + 1);
   });
 
   it("cartão: saldo insuficiente fica guardado e nunca abre a devolução por fora; a regra pura (recusas definitivas, 180 dias, recusa no painel, a nossa devolução solta)", async () => {

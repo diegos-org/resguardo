@@ -41,7 +41,7 @@ it.each(["proprietario", "limpeza", "hospede"])("%s não lê a prévia mesmo por
 });
 it("prefere 103, mostra plano por noite, leitura parcial e horário local; operação não vê envio nem histórico", async () => {
   const h = await html({ inicio: "2026-10-02", fim: "2026-10-03" });
-  expect(m.planejar).toHaveBeenCalledWith({}, "org", expect.anything(), imovel, expect.any(Date), { inicio: "2026-10-02", fim: "2026-10-03" });
+  expect(m.planejar).toHaveBeenCalledWith({}, "org", expect.anything(), imovel, expect.any(Date), { inicio: "2026-10-02", fim: "2026-10-03" }, { paraOBeds24: true });
   expect(h).toContain("2 noites nesta consulta · 1 com leitura do Beds24 · 2 a enviar");
   expect(h).toContain("12:00");
   expect(h).toContain("R$ 450,00 → R$ 450,00 (R$ 337,50)");
@@ -82,7 +82,7 @@ it("intervalo inválido ou excessivo não planeja; noites de um envio só com id
 it("sem 103 seleciona 403; com lista vazia apresenta cadastro", async () => {
   m.imoveis.mockResolvedValue([{ ...imovel, id: "i403", codigo: "403" }]);
   await html({ inicio: "2026-10-02", fim: "2026-10-03" });
-  expect(m.planejar).toHaveBeenCalledWith({}, "org", expect.anything(), { ...imovel, id: "i403", codigo: "403" }, expect.any(Date), { inicio: "2026-10-02", fim: "2026-10-03" });
+  expect(m.planejar).toHaveBeenCalledWith({}, "org", expect.anything(), { ...imovel, id: "i403", codigo: "403" }, expect.any(Date), { inicio: "2026-10-02", fim: "2026-10-03" }, { paraOBeds24: true });
   m.imoveis.mockResolvedValue([]); m.planejar.mockClear();
   expect(await html()).toContain("Cadastre um imóvel para começar");
   expect(m.planejar).not.toHaveBeenCalled();

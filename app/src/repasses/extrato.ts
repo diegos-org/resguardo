@@ -28,7 +28,7 @@ import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
-import { liberacoesDoSite } from "@/pagamentos/andamento";
+import { liberacoesDoSiteComAlvo } from "@/pagamentos/andamento";
 import { lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
 import { espelhoAnulaAParte, parteAnuladaPeloEspelho } from "./descontos";
 import { dataBr, ladoDoInicio, type PagamentoDaReserva, pagamentoDe, quemRecebeDe } from "./inicio";
@@ -78,7 +78,7 @@ export type ParteBruta = {
    * Reserva paga pelo site (M8.2a): o dinheiro entra quando o Mercado Pago libera. `prevista` = data prevista da
    * liberação (AAAA-MM-DD, São Paulo), null = a confirmar. Ausente = não é reserva paga pelo site.
    */
-  liberacaoSite?: { prevista: string | null } | null;
+  liberacaoSite?: { prevista: string | null; daDiferenca?: boolean } | null;
   /** Origem do lançamento da parte ("motor"; "cancelamento" = o espelho da parte no mês do cancelamento, M8.2c). */
   origemLancamento?: string;
   /** A reserva foi cancelada pela política sem devolução (valor retido, M8.2c): dividida como uma reserva normal. */
@@ -147,10 +147,25 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
   if (p.emConferencia) return com("a_liberar", "Reserva em conferência: a empresa precisa esclarecer os valores antes do repasse.");
   if (p.checkin >= p.hoje && p.canceladaComRetencao)
     return com("a_liberar", `Reserva cancelada sem devolução ao hóspede (política de cancelamento): o valor retido é dividido como uma reserva normal. Libera depois da data de entrada original (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
-  if (p.checkin >= p.hoje) return com("a_liberar", `Libera depois do check-in (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
+  // Reserva paga pelo site com dinheiro ainda no Mercado Pago (M8.2d, §7): depois de um aumento, toda a parte espera o
+  // pagamento da diferença (uma regra de dinheiro por reserva), e o texto diz qual pagamento falta.
+  const doSite = p.liberacaoSite && !dinheiroComAEmpresa(p.recebido) ? p.liberacaoSite : null;
+  const daDiferenca = doSite?.daDiferenca === true;
+  if (p.checkin >= p.hoje) {
+    if (doSite)
+      return com(
+        "a_liberar",
+        `Libera depois do check-in (${dataBr(p.checkin)}) e da liberação do pagamento${daDiferenca ? " da diferença" : ""} pelo Mercado Pago (${doSite.prevista ? `prevista para ${dataBr(doSite.prevista)}` : "a confirmar"}).`,
+      );
+    return com("a_liberar", `Libera depois do check-in (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
+  }
   if (!dinheiroComAEmpresa(p.recebido)) {
-    if (p.liberacaoSite) {
-      const quando = p.liberacaoSite.prevista ? `o Mercado Pago libera em ${dataBr(p.liberacaoSite.prevista)}` : "liberação do Mercado Pago a confirmar";
+    if (doSite) {
+      const quando = doSite.prevista
+        ? `o Mercado Pago libera ${daDiferenca ? "o pagamento da diferença " : ""}em ${dataBr(doSite.prevista)}`
+        : daDiferenca
+          ? "liberação do pagamento da diferença pelo Mercado Pago a confirmar"
+          : "liberação do Mercado Pago a confirmar";
       return com("a_liberar", `Reserva paga pelo site: ${quando}; nunca se repassa o que ainda não entrou.`);
     }
     return com(
@@ -242,7 +257,7 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
     .where(and(eq(repasseItens.organizacaoId, organizacaoId), inArray(repasseItens.lancamentoId, linhas.map((l) => l.lancamentoId)), isNull(repasseItens.liberadoEm)));
   const porLancamento = new Map(itens.map((i) => [i.lancamentoId, { id: i.id, tipo: i.tipo, data: i.data, situacao: i.situacao, dataPagamento: i.dataPagamento, valor: i.valor } satisfies RepasseDaParte]));
   const recebidos = await recebidoPorReserva(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
-  const doSite = await liberacoesDoSite(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
+  const doSite = await liberacoesDoSiteComAlvo(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
   const inicioDoSistema = await lerInicioDoSistema(db, organizacaoId);
   const versoes = await lerVersoesRegras(db, organizacaoId);
   return linhas.map((l) =>
@@ -267,7 +282,7 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
         pagamento: pagamentoDe({ quemRecebe: quemRecebeDe(l), origem: l.origem, checkin: l.checkin }, recebidos.get(l.reservaId!) ?? { recebido: 0, devido: 0 }, versoes),
         emConferencia: l.emConferencia === true,
         repasse: porLancamento.get(l.lancamentoId) ?? null,
-        liberacaoSite: doSite.has(l.reservaId!) ? { prevista: doSite.get(l.reservaId!) ? hojeISO("America/Sao_Paulo", doSite.get(l.reservaId!)!) : null } : null,
+        liberacaoSite: doSite.has(l.reservaId!) ? liberacaoDaParte(doSite.get(l.reservaId!)!) : null,
         origemLancamento: l.origemLancamento,
         canceladaComRetencao: l.canceladaComRetencao === true,
         ...(l.estorno === true ? { anulacao: "estorno" as const } : l.anulada === true ? { anulacao: "anulada" as const } : {}),
@@ -276,6 +291,9 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
     ),
   );
 }
+
+/** A liberação prevista do site como a parte a leva (o dia em São Paulo; "da diferença" quando só ela falta). */
+const liberacaoDaParte = (x: { prevista: Date | null; daDiferenca: boolean }) => ({ prevista: x.prevista ? hojeISO("America/Sao_Paulo", x.prevista) : null, daDiferenca: x.daDiferenca });
 
 /** Só as partes disponíveis (as que um repasse antecipado reúne). */
 export async function partesDisponiveis(db: Db, organizacaoId: string, proprietarioId: string, agora: Date = new Date()): Promise<Parte[]> {

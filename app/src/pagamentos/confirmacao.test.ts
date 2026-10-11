@@ -17,7 +17,8 @@ import { gerarPix } from "./pix";
 import { conferirPendentes } from "./rotina";
 import type { Cobranca } from "./provedor";
 import { textosDosAvisos } from "./situacoes";
-import { AGORA, type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, envelhecer, liberar, minutos, montarCenario, pagarEConfirmar, TOTAL, usuarioDeTeste } from "./testes";
+import { chaveCriacao, referenciaDaTentativa } from "./criacao";
+import { AGORA, alteracaoGravada, alterar, type Cenario, cancelar, EMAIL_HOSPEDE, entradaPadrao, envelhecer, liberar, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -577,5 +578,92 @@ describe("a leitura do pagamento depois do cancelamento pela política (M8.2c)",
     expect(await c.tentativa(x.pagamentoId)).toMatchObject({ situacao: "devolvido", devolvidoLido: TOTAL, devolucaoEmAndamentoLida: false, devolvidoVistoEm: minutos(70) });
     await conferir(x.pagamentoId, minutos(90));
     expect((await c.tentativa(x.pagamentoId)).devolvidoVistoEm).toEqual(minutos(70));
+  });
+});
+
+describe("a aprovação do pagamento da diferença de uma alteração (M8.2d)", () => {
+  /** A leitura do Beds24 renovada pouco antes de `quando` (as noites continuam livres). */
+  const lerAgenda = (quando: Date) => db.update(beds24Calendario).set({ observadoEm: new Date(quando.getTime() - 3_600_000) }).where(eq(beds24Calendario.organizacaoId, c.org));
+  /** Uma alteração com aumento (uma noite a mais, pela cotação) segurada e o Pix da diferença gerado, ainda sem pagar. */
+  async function comDiferenca(o: { entrada?: string; saida?: string; checkin?: string; checkout?: string } = {}) {
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, { entrada: o.entrada, saida: o.saida });
+    const r = await c.reserva(x.reservaId);
+    const { resultado } = await alterar(c, x.reservaId, { checkin: o.checkin ?? r.checkin, checkout: o.checkout ?? "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    const pix = await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25), aprovar: false });
+    return { x, antes: r, alteracaoId: resultado.alteracaoId, pix };
+  }
+  /** Mais uma tentativa da diferença da mesma alteração (o Pix e o cartão na corrida), pendente no Mercado Pago falso. */
+  async function outraTentativa(x: { cotacaoId: string; reservaId: string }, alteracaoId: string | null, valor: number, criadoEm: Date) {
+    const id = crypto.randomUUID();
+    const criada = await c.provedor.criarPix({ referencia: referenciaDaTentativa(id), chaveIdempotencia: chaveCriacao(id), valor, email: EMAIL_HOSPEDE, nome: "", validadeMinutos: 30, descricao: "", descricaoFatura: null });
+    if (!criada.ok || !criada.cobranca) throw new Error("Pix falso não criado");
+    await db.insert(pagamentos).values({ id, organizacaoId: c.org, cotacaoId: x.cotacaoId, reservaId: x.reservaId, imovelId: c.imovel, ambiente: "teste", forma: "pix", referencia: referenciaDaTentativa(id), chaveIdempotencia: chaveCriacao(id), situacao: "pendente", idProvedor: criada.cobranca.idProvedor, valor, pixExpiraEm: new Date(criadoEm.getTime() + 30 * 60_000), alteracaoId, criadoEm, atualizadoEm: criadoEm });
+    return { pagamentoId: id, idProvedor: criada.cobranca.idProvedor };
+  }
+
+  it("aprovação tardia depois da NOVA entrada, mudando de mês (D1): sem reserva ('alteracao_nao_aplicada:estadia_iniciada'); nada lançado no mês que passou", async () => {
+    // 02/11–05/11, adiantada para 30/10 (três noites a mais antes, em outubro e novembro), pela cotação.
+    const s = await comDiferenca({ entrada: "2026-11-02", saida: "2026-11-05", checkin: "2026-10-30", checkout: "2026-11-05" });
+    expect(await alteracaoGravada(c, s.alteracaoId)).toMatchObject({ noitesNovasInicio: "2026-10-30", noitesNovasFim: "2026-11-02" });
+    // O Pix é pago em 01/11, depois da nova entrada (30/10) e antes da original (02/11), com a agenda do Beds24 atual.
+    const tarde = new Date("2026-11-01T13:00:00Z");
+    await lerAgenda(tarde);
+    c.provedor.aprovar(s.pix.idProvedor, { taxa: 1000 });
+    await conferir(s.pix.pagamentoId, tarde);
+    expect(await c.tentativa(s.pix.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: null, motivoSemReserva: "alteracao_nao_aplicada:estadia_iniciada" });
+    expect(await c.reserva(s.x.reservaId)).toMatchObject({ checkin: "2026-11-02", checkout: "2026-11-05", valorBruto: s.antes.valorBruto, taxaCanal: s.antes.taxaCanal });
+    expect(await alteracaoGravada(c, s.alteracaoId)).toMatchObject({ situacao: "expirada", aplicadaEm: null });
+    // Nada no livro em outubro (o mês que passou), nem estorno: o motor da reserva continua em novembro.
+    const livro = await db.select().from(lancamentos).where(eq(lancamentos.reservaId, s.x.reservaId));
+    expect(livro.filter((l) => l.competencia < "2026-11-01")).toEqual([]);
+    expect(livro.filter((l) => l.estornoDe)).toEqual([]);
+  });
+
+  it("duas aprovações da mesma alteração (o Pix e outro na corrida): a primeira aplica, a segunda fica sem reserva ('outra_tentativa'); a reserva muda uma vez", async () => {
+    const s = await comDiferenca();
+    const segunda = await outraTentativa(s.x, s.alteracaoId, 52800, minutos(26));
+    c.provedor.aprovar(s.pix.idProvedor, { taxa: 528 });
+    c.provedor.aprovar(segunda.idProvedor, { taxa: 528 });
+    await conferir(s.pix.pagamentoId, minutos(27));
+    await conferir(segunda.pagamentoId, minutos(28));
+    expect(await c.tentativa(s.pix.pagamentoId)).toMatchObject({ desfecho: "alteracao" });
+    expect(await c.tentativa(segunda.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: null, motivoSemReserva: "outra_tentativa" });
+    expect(await c.reserva(s.x.reservaId)).toMatchObject({ checkout: "2026-10-16", valorBruto: TOTAL + 52800, taxaCanal: 1824 + 528 });
+    expect(await alteracaoGravada(c, s.alteracaoId)).toMatchObject({ situacao: "aplicada" });
+  });
+
+  it("aprovação tardia de uma tentativa antiga do pagamento da reserva, depois de uma alteração aplicada: 'outra_tentativa' (a alteração não confunde a regra)", async () => {
+    const s = await comDiferenca();
+    c.provedor.aprovar(s.pix.idProvedor, { taxa: 528 });
+    await conferir(s.pix.pagamentoId, minutos(27));
+    expect(await alteracaoGravada(c, s.alteracaoId)).toMatchObject({ situacao: "aplicada" });
+    // Um Pix da própria reserva, de antes do pagamento que a confirmou, pago agora.
+    const antiga = await outraTentativa(s.x, null, TOTAL, minutos(-5));
+    c.provedor.aprovar(antiga.idProvedor, { taxa: 1824 });
+    await conferir(antiga.pagamentoId, minutos(40));
+    expect(await c.tentativa(antiga.pagamentoId)).toMatchObject({ situacao: "aprovado", desfecho: null, motivoSemReserva: "outra_tentativa" });
+    expect(await c.reserva(s.x.reservaId)).toMatchObject({ checkout: "2026-10-16", valorBruto: TOTAL + 52800, taxaCanal: 1824 + 528 });
+  });
+
+  it("taxa da diferença ainda desconhecida na aprovação: a reserva fica com a taxa conhecida (F1), sem apagá-la; quando F2 chega, F1 + F2; reler o pagamento da reserva não volta atrás", async () => {
+    const s = await comDiferenca();
+    c.provedor.aprovar(s.pix.idProvedor, {});
+    await conferir(s.pix.pagamentoId, minutos(27));
+    expect(await c.tentativa(s.pix.pagamentoId)).toMatchObject({ desfecho: "alteracao", taxa: null });
+    expect(await alteracaoGravada(c, s.alteracaoId)).toMatchObject({ situacao: "aplicada", taxaDepois: 1824 });
+    expect(await c.reserva(s.x.reservaId)).toMatchObject({ valorBruto: TOTAL + 52800, taxaCanal: 1824, valorLiquido: TOTAL + 52800 - 1824 });
+    const taxaDoMotor = async () => (await doMotor(s.x.reservaId)).filter((l) => l.tipo === "taxa_canal" && !l.estornoDe).reduce((t, l) => t + l.valor, 0);
+    // F2 chega numa leitura seguinte: a reserva passa a F1 + F2 e o motor divide de novo.
+    c.provedor.atualizarFinanceiro(s.pix.idProvedor, { taxa: 528, liquido: 52800 - 528 });
+    await conferir(s.pix.pagamentoId, minutos(40));
+    expect(await c.tentativa(s.pix.pagamentoId)).toMatchObject({ taxa: 528 });
+    expect(await c.reserva(s.x.reservaId)).toMatchObject({ taxaCanal: 2352, valorLiquido: TOTAL + 52800 - 2352 });
+    const depoisDeF2 = await taxaDoMotor();
+    // Reler o pagamento que confirmou a reserva (taxa F1) não troca a taxa da reserva de volta.
+    await conferir(s.x.pagamentoId, minutos(50));
+    expect(await c.reserva(s.x.reservaId)).toMatchObject({ taxaCanal: 2352 });
+    expect(await taxaDoMotor()).toBe(depoisDeF2);
   });
 });

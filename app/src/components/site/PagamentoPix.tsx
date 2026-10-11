@@ -32,6 +32,26 @@ const quando = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short"
 const hora = (iso: string, fuso: string) => formato(fuso, { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const dia = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short" }).format(new Date(iso));
 
+/** O que a rota de acompanhamento devolve (só os campos que a página lê). */
+type RespostaDaRota = {
+  estado?: EstadoPagamentoHospede;
+  podeGerar?: boolean;
+  podePagarCartao?: boolean;
+  acompanhar?: boolean;
+  alteracao?: { id?: string; situacao?: string; pagamento?: { estado?: EstadoPagamentoHospede; podeGerar?: boolean; podePagarCartao?: boolean; acompanhar?: boolean } | null } | null;
+};
+
+/**
+ * Da resposta da rota, o pagamento que esta caixa acompanha: o da cotação, ou (M8.2d) o da diferença da alteração
+ * `alteracaoId`. null = a alteração não está mais segurada com a diferença a pagar (aplicada, vencida, outra): a página
+ * recarrega para mostrar o que vale agora.
+ */
+function pagamentoDaResposta(j: RespostaDaRota, alteracaoId: string | null): Omit<RespostaDaRota, "alteracao"> | null {
+  if (!alteracaoId) return j;
+  const a = j.alteracao;
+  return a && a.id === alteracaoId && a.situacao === "segurada" && a.pagamento?.estado ? a.pagamento : null;
+}
+
 /**
  * Acompanha o pagamento (M8.2a): enquanto a situação é de espera, consulta a rota da cotação a cada 5 s (a primeira
  * logo ao abrir, para a página conferir quem volta pelo link), pausa com a aba escondida e volta quando ela aparece.
@@ -42,6 +62,9 @@ const dia = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short" })
  *
  * `adiarRecarga` (M8.2b): com o formulário do cartão aberto, uma mudança que não seja dinheiro fica para quando ele
  * fechar (devolve true quando adiou); dinheiro (confirmando, confirmada…) recarrega na hora.
+ *
+ * `alteracaoId` (M8.2d): acompanha o pagamento da diferença dessa alteração (a mesma rota, o campo `alteracao`); a
+ * alteração deixou de estar segurada (aplicada pelo pagamento, vencida, desistida): recarrega na hora e para.
  */
 export function useAcompanharPagamento(
   codigo: string,
@@ -49,6 +72,7 @@ export function useAcompanharPagamento(
   ofertas: { podeGerar: boolean; podePagarCartao: boolean },
   ativo: boolean,
   adiarRecarga?: () => boolean,
+  alteracaoId: string | null = null,
 ) {
   const router = useRouter();
   const { podeGerar, podePagarCartao } = ofertas;
@@ -76,10 +100,17 @@ export function useAcompanharPagamento(
         const r = await fetch(`/reservar/${encodeURIComponent(codigo)}/pagamento`, { cache: "no-store", headers: { accept: "application/json" } });
         if (r.status === 429) proxima = ESPERA_DEPOIS_DO_LIMITE_MS;
         else if (r.ok) {
-          const j = (await r.json()) as { estado?: EstadoPagamentoHospede; podeGerar?: boolean; podePagarCartao?: boolean; acompanhar?: boolean };
-          const gerar = typeof j.podeGerar === "boolean" ? j.podeGerar : ultimoPodeGerar;
-          const cartao = typeof j.podePagarCartao === "boolean" ? j.podePagarCartao : ultimoPodeCartao;
-          if (!parado && j.estado) {
+          const resposta = (await r.json()) as RespostaDaRota;
+          const j: Omit<RespostaDaRota, "alteracao"> | null = resposta.estado ? pagamentoDaResposta(resposta, alteracaoId) : {};
+          if (parado) {
+            // Desmontou no meio da consulta: nada a fazer.
+          } else if (j === null) {
+            // A alteração mudou (o pagamento da diferença a aplicou, o prazo passou): a página mostra o que vale agora.
+            parado = true;
+            router.refresh();
+          } else if (j.estado) {
+            const gerar = typeof j.podeGerar === "boolean" ? j.podeGerar : ultimoPodeGerar;
+            const cartao = typeof j.podePagarCartao === "boolean" ? j.podePagarCartao : ultimoPodeCartao;
             if (!deveAcompanhar({ estado: j.estado, acompanhar: j.acompanhar })) parado = true;
             if (assinatura(j.estado, gerar, cartao) !== ultimo) {
               ultimo = assinatura(j.estado, gerar, cartao);
@@ -108,7 +139,7 @@ export function useAcompanharPagamento(
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", aoMudarVisibilidade);
     };
-  }, [codigo, estado, podeGerar, podePagarCartao, ativo, router, adiarRecarga]);
+  }, [codigo, estado, podeGerar, podePagarCartao, ativo, router, adiarRecarga, alteracaoId]);
 }
 
 /**
@@ -174,10 +205,12 @@ function Contagem({ ate }: { ate: string }) {
  * caixa de aceite (resumo da política, prazo desta reserva, a caixa obrigatória e as versões); já aceitas, só a linha
  * do aceite feito. Quem confere é o servidor, na mesma transação do Pix.
  */
-function GerarPix({ acao, rotulo, aceite, fuso }: { acao: AcaoPix; rotulo: string; aceite: AceiteNaPagina | null; fuso: string }) {
+function GerarPix({ acao, rotulo, aceite, fuso, alteracaoId }: { acao: AcaoPix; rotulo: string; aceite: AceiteNaPagina | null; fuso: string; alteracaoId: string | null }) {
   const [estado, enviar, enviando] = useActionState(acao, {});
   return (
     <form action={enviar} className={styles.pixAcao}>
+      {/* M8.2d: o Pix da diferença leva a alteração; quem confere se ela ainda está segurada é o servidor. */}
+      {alteracaoId && <input type="hidden" name="alteracao" value={alteracaoId} />}
       {aceite && (aceite.aceito ? <AceiteFeito aceito={aceite.aceito} fuso={fuso} /> : <BlocoAceite aceite={aceite} fuso={fuso} />)}
       <button type="submit" className={styles.botao} disabled={enviando}>
         {enviando ? "Gerando o Pix…" : rotulo}
@@ -244,12 +277,12 @@ function QrDoPix({ pix }: { pix: NonNullable<PagamentoDoHospede["pix"]> }) {
 }
 
 /** Pix aguardando, com a autorização: copia e cola primeiro (no celular), o QR, o prazo e "pode fechar e voltar". */
-function PixAguardando({ pix, textos, fuso, total }: { pix: NonNullable<PagamentoDoHospede["pix"]>; textos: TextosPagamento; fuso: string; total: number }) {
+function PixAguardando({ pix, textos, fuso, total, rotuloValor }: { pix: NonNullable<PagamentoDoHospede["pix"]>; textos: TextosPagamento; fuso: string; total: number; rotuloValor: string }) {
   return (
     <>
       <p className={styles.texto}>{textos.aguardando}</p>
       <p className={styles.pixValor}>
-        Valor: <strong>{brl(total)}</strong>
+        {rotuloValor} <strong>{brl(total)}</strong>
       </p>
       <div className={styles.pixCodigos}>
         <div className={styles.pixCopia}>
@@ -313,7 +346,7 @@ function FormasDePagamento({ pix, cartao }: { pix: ReactNode | null; cartao: ((i
 }
 
 /** Pix aguardando com o cartão também oferecido: "Prefere pagar com cartão?" troca o QR pelo formulário (e volta). */
-function PixOuCartao({ pix, cartao }: { pix: ReactNode; cartao: ((irParaPix?: () => void) => ReactNode) | null }) {
+function PixOuCartao({ pix, cartao, dif = false }: { pix: ReactNode; cartao: ((irParaPix?: () => void) => ReactNode) | null; dif?: boolean }) {
   const [comCartao, setComCartao] = useState(false);
   if (!cartao) return <>{pix}</>;
   if (!comCartao) {
@@ -330,7 +363,7 @@ function PixOuCartao({ pix, cartao }: { pix: ReactNode; cartao: ((irParaPix?: ()
   }
   return (
     <>
-      <p className={styles.miudo}>Ao pagar com cartão, o Pix desta cotação é cancelado. {NOTA_JUROS_CARTAO}</p>
+      <p className={styles.miudo}>Ao pagar com cartão, o Pix {dif ? "da diferença" : "desta cotação"} é cancelado. {NOTA_JUROS_CARTAO}</p>
       {cartao(() => setComCartao(false))}
       <p>
         <button type="button" className={styles.linkBotao} onClick={() => setComCartao(false)}>
@@ -372,6 +405,12 @@ function DesafioOuOutro({ codigo, desafioUrl, pix, cartao }: { codigo: string; d
  * e o aceite que vale nesta cotação (a caixa antes do Pix ou do formulário do cartão; na reserva confirmada, as versões
  * aceitas e o prazo do reembolso); null quando as três não estão publicadas. `linhaAnalise`: a linha fixa do cartão em
  * análise (com a hora, montada no servidor).
+ *
+ * `alteracaoId` (M8.2d): a mesma caixa para o pagamento da diferença de uma alteração segurada (`pagamento` é o da
+ * diferença e `total`, a diferença): o Pix e o cartão levam a alteração, os textos falam da diferença e das novas datas, e
+ * o acompanhamento lê o pagamento da alteração na rota. Sem convite editável (`textos.convite` vazio), o parágrafo não
+ * aparece: a linha da alteração acima já diz o que fazer. As situações de depois do pagamento (confirmada, cancelada,
+ * devolução) não são da diferença: quem conta é a alteração.
  */
 export function PagamentoPix({
   codigo,
@@ -386,6 +425,7 @@ export function PagamentoPix({
   pagarComCartao,
   aceite = null,
   linhaAnalise = null,
+  alteracaoId = null,
 }: {
   codigo: string;
   pagamento: PagamentoDoHospede;
@@ -399,14 +439,23 @@ export function PagamentoPix({
   pagarComCartao?: AcaoCartao;
   aceite?: AceiteNaPagina | null;
   linhaAnalise?: string | null;
+  alteracaoId?: string | null;
 }) {
   const { bloqueio, adiar } = useTravaDeRecarga();
-  useAcompanharPagamento(codigo, v.estado, { podeGerar: v.podeGerar, podePagarCartao: v.podePagarCartao }, deveAcompanhar(v), adiar);
+  // Cada caixa acompanha só o próprio pagamento (a da cotação não olha a diferença da alteração, que tem a dela).
+  useAcompanharPagamento(codigo, v.estado, { podeGerar: v.podeGerar, podePagarCartao: v.podePagarCartao }, deveAcompanhar({ estado: v.estado, acompanhar: v.acompanhar }), adiar, alteracaoId);
+  const dif = alteracaoId !== null;
+  // Os textos da diferença (M8.2d): as novas datas, a alteração a confirmar.
+  const asDatas = dif ? "as novas datas" : "as datas";
+  const AsDatas = dif ? "As novas datas" : "As datas";
+  const paraConcluir = dif ? "para confirmar a alteração" : "para reservar";
+  const desta = dif ? "da diferença" : "desta cotação";
+  const rotuloValor = dif ? "Diferença a pagar:" : "Valor:";
   // O cancelamento pela política (ou o pedido de cancelamento recebido): o compositor único dos textos, no fuso do imóvel.
   const cancelamento = textos.cancelamento ? textoDoCancelamento(v, textos.cancelamento, fuso) : { linhas: [], decisao: "", comoVolta: null };
   const prazo = v.holdAte ? (
     <p className={styles.texto}>
-      As datas estão seguradas para você até <strong>{quando(v.holdAte, fuso)}</strong>.
+      {AsDatas} estão seguradas para você até <strong>{quando(v.holdAte, fuso)}</strong>.
     </p>
   ) : null;
   const outraOpcao = contato ? (
@@ -425,6 +474,7 @@ export function PagamentoPix({
       ? (irParaPix?: () => void) => (
           <PagamentoCartao
             codigo={codigo}
+            alteracaoId={alteracaoId}
             chavePublica={dados.chavePublica}
             valor={dados.valor}
             parcelasMaximas={dados.parcelasMaximas}
@@ -437,10 +487,10 @@ export function PagamentoPix({
           />
         )
       : null;
-  const pix = (rotulo: string) => (autorizado && temPix ? <GerarPix acao={gerarPix} rotulo={rotulo} aceite={aceite} fuso={fuso} /> : null);
+  const pix = (rotulo: string) => (autorizado && temPix ? <GerarPix acao={gerarPix} rotulo={rotulo} aceite={aceite} fuso={fuso} alteracaoId={alteracaoId} /> : null);
   const formas = (rotulo: string) => (autorizado ? <FormasDePagamento pix={pix(rotulo)} cartao={cartao} /> : continuarAqui);
   const secao = (filhos: ReactNode, o: { classe?: string; aoVivo?: boolean } = {}) => (
-    <section className={o.classe ? `${styles.pix} ${o.classe}` : styles.pix} aria-label="Pagamento" aria-live={o.aoVivo ? "polite" : undefined}>
+    <section className={o.classe ? `${styles.pix} ${o.classe}` : styles.pix} aria-label={dif ? "Pagamento da diferença" : "Pagamento"} aria-live={o.aoVivo ? "polite" : undefined}>
       {filhos}
     </section>
   );
@@ -449,10 +499,10 @@ export function PagamentoPix({
     case "pagar":
       return secao(
         <>
-          <h3>{temPix && temCartao ? "Pagamento" : temCartao ? "Pague com cartão de crédito" : "Pague com Pix"}</h3>
-          <p className={styles.texto}>{textos.convite}</p>
+          <h3>{dif ? (temPix && temCartao ? "Pagar a diferença" : temCartao ? "Pague a diferença com cartão de crédito" : "Pague a diferença com Pix") : temPix && temCartao ? "Pagamento" : temCartao ? "Pague com cartão de crédito" : "Pague com Pix"}</h3>
+          {textos.convite && <p className={styles.texto}>{textos.convite}</p>}
           <p className={styles.pixValor}>
-            Valor: <strong>{brl(total)}</strong>
+            {rotuloValor} <strong>{brl(total)}</strong>
           </p>
           {prazo}
           {formas("Gerar Pix")}
@@ -462,12 +512,12 @@ export function PagamentoPix({
     case "pix_aguardando":
       return secao(
         <>
-          <h3>Pix gerado</h3>
+          <h3>{dif ? "Pix da diferença gerado" : "Pix gerado"}</h3>
           {autorizado && v.pix ? (
-            <PixOuCartao pix={<PixAguardando pix={v.pix} textos={textos} fuso={fuso} total={total} />} cartao={cartao} />
+            <PixOuCartao pix={<PixAguardando pix={v.pix} textos={textos} fuso={fuso} total={total} rotuloValor={rotuloValor} />} cartao={cartao} dif={dif} />
           ) : (
             <>
-              <p className={styles.texto}>Há um Pix desta cotação aguardando pagamento. A página atualiza sozinha quando o pagamento chegar.</p>
+              <p className={styles.texto}>Há um Pix {desta} aguardando pagamento. A página atualiza sozinha quando o pagamento chegar.</p>
               {prazo}
               {!autorizado && continuarAqui}
             </>
@@ -483,9 +533,9 @@ export function PagamentoPix({
             <>
               <p className={styles.texto}>
                 {temPix && temCartao
-                  ? `O Pix venceu sem pagamento, mas as datas continuam seguradas. Gere outro Pix${v.pixRestantes > 0 ? ` (ainda dá para gerar ${v.pixRestantes})` : ""} ou pague com cartão de crédito.`
+                  ? `O Pix venceu sem pagamento, mas ${asDatas} continuam seguradas. Gere outro Pix${v.pixRestantes > 0 ? ` (ainda dá para gerar ${v.pixRestantes})` : ""} ou pague com cartão de crédito.`
                   : temPix
-                    ? `O Pix venceu sem pagamento, mas as datas continuam seguradas. Gere outro para pagar${v.pixRestantes > 0 ? ` (ainda dá para gerar ${v.pixRestantes})` : ""}.`
+                    ? `O Pix venceu sem pagamento, mas ${asDatas} continuam seguradas. Gere outro para pagar${v.pixRestantes > 0 ? ` (ainda dá para gerar ${v.pixRestantes})` : ""}.`
                     : "O Pix venceu sem pagamento. Você pode pagar com cartão de crédito."}
               </p>
               {prazo}
@@ -494,7 +544,7 @@ export function PagamentoPix({
             </>
           ) : (
             <>
-              <p className={styles.texto}>O Pix venceu sem pagamento, e o pagamento pelo site não está disponível agora. As datas continuam seguradas: para reservar, fale com a equipe.</p>
+              <p className={styles.texto}>O Pix venceu sem pagamento, e o pagamento pelo site não está disponível agora. {AsDatas} continuam seguradas: {paraConcluir}, fale com a equipe.</p>
               {prazo}
               {contato}
             </>
@@ -505,7 +555,7 @@ export function PagamentoPix({
       if (temCartao) {
         return secao(
           <>
-            <p className={styles.texto}>Esta cotação já gerou o máximo de Pix. Você ainda pode pagar com cartão de crédito.</p>
+            <p className={styles.texto}>{dif ? "O pagamento da diferença já gerou o máximo de Pix." : "Esta cotação já gerou o máximo de Pix."} Você ainda pode pagar com cartão de crédito.</p>
             {prazo}
             {formas("Gerar Pix")}
             {outraOpcao}
@@ -514,7 +564,7 @@ export function PagamentoPix({
       }
       return secao(
         <>
-          <p className={styles.texto}>Esta cotação já gerou o máximo de Pix sem pagamento. Para reservar, fale com a equipe.</p>
+          <p className={styles.texto}>{dif ? "O pagamento da diferença já gerou o máximo de Pix sem pagamento. Para confirmar a alteração, fale com a equipe." : "Esta cotação já gerou o máximo de Pix sem pagamento. Para reservar, fale com a equipe."}</p>
           {prazo}
           {contato}
         </>,
@@ -533,7 +583,7 @@ export function PagamentoPix({
             </>
           ) : (
             <>
-              <p className={styles.texto}>O pagamento pelo site não está disponível agora. As datas continuam seguradas: para reservar, fale com a equipe.</p>
+              <p className={styles.texto}>O pagamento pelo site não está disponível agora. {AsDatas} continuam seguradas: {paraConcluir}, fale com a equipe.</p>
               {contato}
             </>
           )}
@@ -547,7 +597,7 @@ export function PagamentoPix({
             <DesafioOuOutro codigo={codigo} desafioUrl={v.desafioUrl} pix={pix("Gerar Pix")} cartao={cartao} />
           ) : (
             <>
-              <p className={styles.texto}>Há um pagamento com cartão desta cotação aguardando a verificação do banco. A página atualiza sozinha quando ela terminar.</p>
+              <p className={styles.texto}>Há um pagamento com cartão {desta} aguardando a verificação do banco. A página atualiza sozinha quando ela terminar.</p>
               {prazo}
               {continuarAqui}
             </>
@@ -575,11 +625,12 @@ export function PagamentoPix({
     case "confirmando":
       return secao(
         <p className={styles.texto}>
-          <strong>Pagamento recebido, confirmando sua reserva.</strong> A página atualiza sozinha em instantes.
+          <strong>{dif ? "Pagamento da diferença recebido, confirmando a alteração." : "Pagamento recebido, confirmando sua reserva."}</strong> A página atualiza sozinha em instantes.
         </p>,
         { classe: styles.pixOk, aoVivo: true },
       );
     case "confirmada":
+      if (dif) return null;
       return secao(
         <>
           <p className={styles.texto}>
@@ -616,6 +667,7 @@ export function PagamentoPix({
     case "cancelada_com_a_equipe":
     case "cancelada_em_conferencia":
     case "cancelada_sem_devolucao":
+      if (dif) return null;
       return secao(
         <>
           {cancelamento.linhas.map((l, i) => (
@@ -628,6 +680,7 @@ export function PagamentoPix({
         { classe: v.estado === "cancelada_devolvida" || v.estado === "cancelada_sem_devolucao" ? undefined : styles.pixAtencao },
       );
     case "aprovado_sem_datas":
+      if (dif) return null;
       return secao(
         <>
           <p className={styles.texto}>{textos.semDatas}</p>
@@ -636,6 +689,7 @@ export function PagamentoPix({
         { classe: styles.pixAtencao },
       );
     case "devolucao_pedida":
+      if (dif) return null;
       return secao(
         <>
           <p className={styles.texto}>
@@ -646,6 +700,7 @@ export function PagamentoPix({
         { classe: styles.pixAtencao },
       );
     case "devolvido":
+      if (dif) return null;
       return secao(
         <>
           <p className={styles.texto}>O valor do pagamento foi devolvido{v.devolucao?.em ? ` em ${dia(v.devolucao.em, fuso)}` : ""}.</p>

@@ -129,3 +129,27 @@ describe("Minha reserva: pedir o cancelamento (M8.2c)", () => {
     expect(await html({ erro: "<b>oi</b>" })).not.toContain("oi</b>");
   });
 });
+
+describe("Minha reserva: a alteração em andamento (M8.2d)", () => {
+  it("a linha da alteração com as novas datas seguradas: o que ela espera, até quando (horário de Brasília) e o link da página; nunca valores", async () => {
+    m.reservas.mockResolvedValue([{ ...reserva, alteracao: { espera: "pagamento", ate: new Date("2026-10-01T16:20:00Z"), pagamentoEmAndamento: false, link: "/reservar/COT-ABCDEFGH" } }]);
+    let h = await html();
+    expect(h).toContain("Há uma alteração da sua reserva esperando o pagamento da diferença até 01/10 às 13:20 (horário de Brasília):");
+    expect(h).toContain('<a href="/reservar/COT-ABCDEFGH">ver a alteração no site</a>');
+    expect(h).not.toContain("R$");
+    m.reservas.mockResolvedValue([{ ...reserva, alteracao: { espera: "confirmacao", ate: new Date("2026-10-01T16:20:00Z"), pagamentoEmAndamento: false, link: "/reservar/COT-ABCDEFGH" } }]);
+    h = await html();
+    expect(h).toContain("esperando a sua confirmação até 01/10 às 13:20");
+    // Na carência (o prazo acabou, o pagamento da diferença ainda em andamento): a linha diz isso, sem um horário já passado.
+    m.reservas.mockResolvedValue([{ ...reserva, alteracao: { espera: "pagamento", ate: new Date("2026-10-01T16:20:00Z"), pagamentoEmAndamento: true, link: "/reservar/COT-ABCDEFGH" } }]);
+    h = await html();
+    expect(h).toContain("Há uma alteração da sua reserva com o pagamento da diferença em andamento: ");
+    expect(h).toContain('<a href="/reservar/COT-ABCDEFGH">ver a alteração no site</a>');
+    expect(h).not.toContain("13:20");
+    // Sem alteração (ou estadia encerrada), nenhuma linha.
+    m.reservas.mockResolvedValue([{ ...reserva, alteracao: null }]);
+    expect(await html()).not.toContain("Há uma alteração");
+    m.reservas.mockResolvedValue([{ ...reserva, encerrada: true, alteracao: { espera: "pagamento", ate: new Date("2026-10-01T16:20:00Z"), pagamentoEmAndamento: false, link: "/reservar/COT-ABCDEFGH" } }]);
+    expect(await html()).not.toContain("Há uma alteração");
+  });
+});

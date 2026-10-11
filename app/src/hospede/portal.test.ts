@@ -6,6 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
+import { alteracaoGravada, alterar, EMAIL_HOSPEDE, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, usuarioDeTeste } from "@/pagamentos/testes";
 import { salvarEmailHospede } from "@/reservas/repositorio";
 import { hospedeTemAcesso, instanteLocal, liberacaoDasInstrucoes, pedirCodigoHospede, reservasDoHospede, verificarCodigoHospede } from "./portal";
 import { criarSessaoHospede, lerSessaoHospede, VALIDADE_SESSAO_HOSPEDE_MS } from "./sessao";
@@ -182,5 +183,41 @@ describe("e-mail do hóspede no painel (M9.1)", () => {
     const hist = await db.select().from(auditoria);
     expect(hist.filter((h) => h.acao === "reserva.email_hospede")).toHaveLength(2);
     expect(JSON.stringify(hist)).not.toMatch(/ana@example|nova@example/);
+  });
+});
+
+describe("Minha reserva com uma alteração em andamento (M8.2d)", () => {
+  it("a linha da alteração com as novas datas seguradas: o que ela espera, até quando e o link da página; passado o prazo, some; sem valores", async () => {
+    const c = await montarCenario(db);
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, { liberar: true });
+    expect((await reservasDoHospede(db, c.org, EMAIL_HOSPEDE, minutos(19)))[0].alteracao).toBeNull();
+    const aumento = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!aumento.resultado.ok) throw new Error(aumento.resultado.erro);
+    const [r] = await reservasDoHospede(db, c.org, EMAIL_HOSPEDE, minutos(21));
+    expect(r.alteracao).toEqual({ espera: "pagamento", ate: minutos(80), pagamentoEmAndamento: false, link: `/reservar/${x.codigo}` });
+    expect(JSON.stringify(r.alteracao)).not.toMatch(/R\$|\d{3,}00\b/);
+    // Outra empresa no mesmo banco não vê a alteração; passado o prazo das novas datas, a linha some.
+    expect(await reservasDoHospede(db, org, EMAIL_HOSPEDE, minutos(21))).toEqual([]);
+    expect((await reservasDoHospede(db, c.org, EMAIL_HOSPEDE, minutos(81)))[0].alteracao).toBeNull();
+    // Redução: espera a confirmação do hóspede (ele responde à mensagem).
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05", email: "outra@example.com", liberar: true, quando: minutos(90) });
+    const reducao = await alterar(c, y.reservaId, { checkout: "2026-11-04" }, minutos(100), { autorId: equipe });
+    if (!reducao.resultado.ok) throw new Error(reducao.resultado.erro);
+    expect((await reservasDoHospede(db, c.org, "outra@example.com", minutos(101)))[0].alteracao).toMatchObject({ espera: "confirmacao", link: `/reservar/${y.codigo}` });
+  });
+
+  it("passado o prazo com o pagamento da diferença em andamento (a carência), a linha continua — a mesma situação do painel e da página da reserva; depois da carência, some", async () => {
+    const c = await montarCenario(db);
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c, { liberar: true });
+    const aumento = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: equipe });
+    if (!aumento.resultado.ok) throw new Error(aumento.resultado.erro);
+    await pagarDiferenca(c, x.cotacaoId, aumento.resultado.alteracaoId, { quando: minutos(25), aprovar: false });
+    const holdAte = (await alteracaoGravada(c, aumento.resultado.alteracaoId)).holdAte!;
+    const em = (n: number) => new Date(holdAte.getTime() + n * 60_000);
+    expect((await reservasDoHospede(db, c.org, EMAIL_HOSPEDE, em(-1)))[0].alteracao).toMatchObject({ espera: "pagamento", pagamentoEmAndamento: false });
+    expect((await reservasDoHospede(db, c.org, EMAIL_HOSPEDE, em(5)))[0].alteracao).toEqual({ espera: "pagamento", ate: holdAte, pagamentoEmAndamento: true, link: `/reservar/${x.codigo}` });
+    expect((await reservasDoHospede(db, c.org, EMAIL_HOSPEDE, em(16)))[0].alteracao).toBeNull();
   });
 });

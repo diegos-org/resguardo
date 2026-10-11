@@ -1,8 +1,8 @@
 /**
  * A regra da Política de cancelamento do site (M8.2c), pura e testável: dada a versão aceita no pagamento, a data de
  * entrada, o momento em que a SCL recebeu o pedido e quem cancela, diz se a política dá a devolução integral ou nada
- * (a devolução de parte do valor é do M8.2d). Uma regra, um lugar: a prévia e o cancelamento no painel, Minha reserva
- * e a página da reserva leem daqui. O que a equipe pode escolher (exceção, sem política, não comparecimento com pedido,
+ * do valor-base (o pago num cancelamento; a diferença numa redução de alteração, M8.2d). Uma regra, um lugar: a prévia
+ * e o cancelamento no painel, a alteração, Minha reserva e a página da reserva leem daqui. O que a equipe pode escolher (exceção, sem política, não comparecimento com pedido,
  * saída antecipada) não mora aqui: é a decisão final do cancelamento (`pagamentos/cancelamento.ts`).
  *
  * - Os dias são datas do calendário no fuso do imóvel; o reembolso integral vale até 23h59 do último dia
@@ -11,6 +11,9 @@
  *   integral mesmo dentro dos N dias; pela versão aceita, só até o horário de entrada (`arrependimentoAteEntrada`,
  *   ausente = sim, como no texto-base publicado).
  * - A SCL cancela: integral a qualquer momento. Não comparecimento: nada.
+ * - Depois de uma alteração (M8.2d), os prazos contam da entrada que conta (`entradaQueConta`: a menor entre a da
+ *   cotação original e a atual) e o começo da estadia, da entrada atual (`entradaAtual`): mudar para antes nunca reabre o
+ *   prazo, e mudar para depois nunca o estende.
  */
 import type { BaseCancelamento, QuemCancelaReserva } from "@/db/schema";
 import { hojeISO, instanteLocal, somarDias } from "@/lib/datas";
@@ -24,8 +27,14 @@ export type QuemCancela = QuemCancelaReserva;
 export type EntradaPolitica = {
   /** Da versão aceita no pagamento; null = sem política (pagamento sem aceite das páginas legais). */
   regras: RegrasCancelamento | null;
-  /** AAAA-MM-DD: a entrada ORIGINAL (o M8.2d passa a original numa alteração). */
+  /** AAAA-MM-DD: a data de que a política conta: `entradaQueConta(entrada da cotação, entrada atual, as das alterações aplicadas)`. */
   checkin: string;
+  /**
+   * AAAA-MM-DD: a entrada de agora (depois de uma alteração, a nova). Só para o instante da entrada, o "a estadia já
+   * começou" e o limite do arrependimento; com ela, o prazo integral também exige que a estadia não tenha começado.
+   * Ausente = `checkin` (M8.2c, sem alteração).
+   */
+  entradaAtual?: string;
   /** "HH:MM" (imoveis_detalhes.checkin_a_partir_de). */
   horaEntrada: string;
   /** imoveis.fuso */
@@ -47,7 +56,7 @@ export type DecisaoPolitica = {
   integralAte: string | null;
   /** Último dia do arrependimento (até 23h59); null sem política. */
   arrependimentoAte: string | null;
-  /** Instante da entrada (limite do arrependimento, começo da estadia). */
+  /** Instante da entrada atual (limite do arrependimento, começo da estadia). */
   entradaEm: Date;
   /** O pedido chegou no instante da entrada ou depois. */
   comecou: boolean;
@@ -87,15 +96,41 @@ function fusoValido(fuso: string): boolean {
   }
 }
 
+/** AAAA-MM-DD de um dia que existe (31/02 não vira 03/03). */
+const dataDeEntradaValida = (d: string) => DATA.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+
+/**
+ * A data de entrada de que a política conta depois de uma alteração (M8.2d): a menor entre a da cotação original, a
+ * atual e as que a reserva teve em cada alteração aplicada (`anteriores`, de `entradasDasAlteracoes`): adiantar a
+ * entrada uma vez encurta os prazos para sempre, e adiar depois não os reabre. Uma regra só para o painel (alteração e
+ * cancelamento), a página da reserva e Minha reserva.
+ */
+export function entradaQueConta(original: string, atual: string, anteriores: readonly string[] = []): string {
+  const todas = [original, atual, ...anteriores];
+  if (!todas.every(dataDeEntradaValida)) throw new Error("Data de entrada inválida.");
+  return todas.reduce((menor, d) => (d < menor ? d : menor));
+}
+
+/**
+ * O fim do direito de arrependimento como o hóspede o lê (a mesma regra de `decidirPelaPolitica`): 7 dias depois do
+ * pagamento (`arrependimentoAte`) ou, com `arrependimentoAteEntrada`, a entrada da estadia quando ela vem antes (a
+ * decisão para quando a estadia começa). `ateEntrada`: o fim é a entrada.
+ */
+export function fimDoArrependimento(arrependimentoAte: string, arrependimentoAteEntrada: boolean | null, entrada: string | null): { ate: string; ateEntrada: boolean } {
+  if (arrependimentoAteEntrada && entrada && entrada <= arrependimentoAte) return { ate: entrada, ateEntrada: true };
+  return { ate: arrependimentoAte, ateEntrada: false };
+}
+
 export function decidirPelaPolitica(e: EntradaPolitica): DecisaoPolitica {
   // Entrada inválida é erro de quem chama (como em `prazoDoReembolso`): nunca uma decisão por palpite.
-  if (!DATA.test(e.checkin) || Number.isNaN(Date.parse(`${e.checkin}T00:00:00Z`))) throw new Error("Data de entrada inválida.");
+  if (!dataDeEntradaValida(e.checkin)) throw new Error("Data de entrada inválida.");
+  if (e.entradaAtual !== undefined && !dataDeEntradaValida(e.entradaAtual)) throw new Error("Data de entrada inválida.");
   if (!HORA.test(e.horaEntrada)) throw new Error("Horário de entrada inválido.");
   if (!fusoValido(e.fuso)) throw new Error("Fuso inválido.");
   if (!instanteValido(e.aprovadoEm) || !instanteValido(e.pedidoRecebidoEm)) throw new Error("Instante inválido.");
   if (!Number.isSafeInteger(e.valorBase) || e.valorBase < 0) throw new Error("Valor inválido.");
 
-  const entradaEm = instanteLocal(e.checkin, e.horaEntrada, e.fuso);
+  const entradaEm = instanteLocal(e.entradaAtual ?? e.checkin, e.horaEntrada, e.fuso);
   const hojeDoPedido = hojeISO(e.fuso, e.pedidoRecebidoEm);
   const comecou = e.pedidoRecebidoEm.getTime() >= entradaEm.getTime();
   if (e.regras === null) return { calculado: "sem_politica", base: "sem_politica", valorADevolver: 0, integralAte: null, arrependimentoAte: null, entradaEm, comecou };
@@ -104,7 +139,8 @@ export function decidirPelaPolitica(e: EntradaPolitica): DecisaoPolitica {
   // Com "hoje" no começo dos tempos, `prazoDoReembolso` sempre devolve a data (o último dia do integral).
   const prazo = prazoDoReembolso(e.checkin, regras.diasReembolsoIntegral, "0000-01-01");
   const integralAte = prazo.tipo === "integral_ate" ? prazo.data : e.checkin;
-  const noPrazo = hojeDoPedido <= integralAte;
+  // Depois de uma alteração, o prazo integral nunca vale com a estadia já começada (a entrada que conta pode ser outra).
+  const noPrazo = hojeDoPedido <= integralAte && (e.entradaAtual === undefined || !comecou);
   const arrependimentoAte = somarDias(hojeISO(e.fuso, e.aprovadoEm), DIAS_ARREPENDIMENTO);
   const noArrependimento = hojeDoPedido <= arrependimentoAte && (!regras.arrependimentoAteEntrada || !comecou);
 

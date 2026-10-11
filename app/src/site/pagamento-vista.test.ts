@@ -10,6 +10,7 @@ import {
   linhaDaAnalise,
   linkDoPix,
   mensagemDoContato,
+  mensagemDoContatoDaAlteracao,
   paraOHospede,
   type TextosDoCancelamento,
   textoDoCancelamento,
@@ -181,6 +182,8 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
     expect(mensagemDoContato(texto, "verificando", null, "pix")).toContain("Fiz o pagamento por Pix e a página ainda está conferindo.");
     expect(mensagemDoContato(texto, "cartao_em_analise", null, "cartao")).toBe("Olá! Fiz a cotação COT-ABCDEFGH no site.\nEntrada: 12/10 · Saída: 15/10.\nPaguei com cartão e a página diz que o pagamento está em análise.");
     expect(mensagemDoContato(texto, "cartao_recusado", null, "cartao")).toBe(texto);
+    // M8.2d: no quadro da alteração, a linha cita a reserva.
+    expect(mensagemDoContatoDaAlteracao(texto, "SCL-TESTE1")).toBe("Olá! Fiz a cotação COT-ABCDEFGH no site.\nEntrada: 12/10 · Saída: 15/10.\nQuero falar sobre a alteração da minha reserva SCL-TESTE1.");
   });
 });
 
@@ -211,6 +214,7 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     valorConfirmado: null,
     devolucaoEm: null,
     porFora: false,
+    algumaPorFora: false,
     confirmadaPor: null,
     forma: "pix",
     estornoPelaEquipe: false,
@@ -248,6 +252,22 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     expect(texto("cancelada_em_conferencia").decisao).toContain("[em conferência]");
   });
 
+  it("devoluções por meios diferentes (reserva no Pix, diferença no cartão): as duas frases de como o dinheiro volta", () => {
+    expect(texto("cancelada_devolucao_pedida", { forma: null }).comoVolta).toBe("[volta Pix] [volta cartão]");
+    expect(texto("cancelada_devolvida", { forma: null, devolucaoEm: "2026-10-06T15:00:00.000Z", confirmadaPor: "leitura" }).linhas).toContain("[volta Pix] [volta cartão]");
+  });
+
+  it("uma parte por fora e outra pelo Mercado Pago: as frases dos dois caminhos, e o total nunca 'pelo Mercado Pago'", () => {
+    const feita = texto("cancelada_devolvida", { forma: "cartao", algumaPorFora: true, devolucaoEm: "2026-10-06T15:00:00.000Z", valorConfirmado: 182400, confirmadaPor: "leitura" });
+    expect(feita.decisao).toContain("Devolução de R$ 1.824,00 feita em 06/10.");
+    expect(feita.decisao).not.toContain("Mercado Pago");
+    expect(feita.comoVolta).toBe("[volta cartão] [volta por fora]");
+    expect(texto("cancelada_devolucao_pedida", { forma: "pix", algumaPorFora: true }).comoVolta).toBe("[volta Pix] [volta por fora]");
+    expect(texto("cancelada_devolucao_pedida", { forma: null, algumaPorFora: true }).comoVolta).toBe("[volta Pix] [volta cartão] [volta por fora]");
+    // Todas por fora: só a transferência.
+    expect(texto("cancelada_devolvida", { porFora: true, algumaPorFora: true, devolucaoEm: "2026-10-06T15:00:00.000Z" }).comoVolta).toBe("[volta por fora]");
+  });
+
   it("quem cancela e a base: a SCL (com o motivo), exceção (decisão da equipe), sem devolução pelo prazo (o arrependimento só quando vai além), não comparecimento, sem política", () => {
     expect(texto("cancelada_devolucao_pedida", { quemCancela: "empresa", base: "empresa", motivoEmpresa: "imovel_sem_condicoes" }).linhas[0]).toBe("Nós cancelamos a sua reserva SCL-ABC123: o apartamento ficou sem condições de receber você.");
     expect(texto("cancelada_devolucao_pedida", { quemCancela: "empresa", base: "empresa", motivoEmpresa: "outro" }).linhas[0]).toBe("Nós cancelamos a sua reserva SCL-ABC123.");
@@ -258,6 +278,15 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     // Paga já depois do prazo do reembolso integral (aprovada em 10/10, prazo até 06/10): nenhum prazo que nunca valeu.
     expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-06", arrependimentoAte: "2026-10-17" }).decisao).toBe(
       "Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até 17/10. [sem devolução: prazo]",
+    );
+    // A política para o arrependimento na entrada, e a entrada (15/10, 15:00) vem antes dos 7 dias: o texto diz a entrada.
+    const comEntrada = { ...semDevolucao, integralAte: "2026-10-06", arrependimentoAte: "2026-10-17", entradaEm: "2026-10-15T18:00:00.000Z" };
+    expect(texto("cancelada_sem_devolucao", { ...comEntrada, arrependimentoAteEntrada: true }).decisao).toBe(
+      "Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até a entrada, em 15/10. [sem devolução: prazo]",
+    );
+    expect(texto("cancelada_sem_devolucao", { ...comEntrada, arrependimentoAteEntrada: false }).decisao).toContain("Arrependimento: até 17/10.");
+    expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-01", arrependimentoAte: "2026-10-08", arrependimentoAteEntrada: true, entradaEm: "2026-10-05T18:00:00.000Z" }).decisao).toBe(
+      "Prazo de reembolso integral: pedidos até 01/10, às 23h59. Arrependimento: até a entrada, em 05/10. [sem devolução: prazo]",
     );
     const naoVeio = texto("cancelada_sem_devolucao", { ...semDevolucao, quemCancela: "nao_comparecimento", base: "nao_comparecimento" });
     expect(naoVeio.linhas[0]).toBe("A reserva SCL-ABC123 foi cancelada por não comparecimento.");

@@ -47,7 +47,7 @@ export default async function Previa({ searchParams }: PageProps<"/painel/calend
   const inicio = primeiro(sp.inicio) ?? hoje;
   const fim = primeiro(sp.fim) ?? somarDias(hoje, 29);
   const erro = validarIntervaloPrevia(inicio, fim);
-  const plano = escolhido && !erro ? await planejarImovel(db, org, regras, escolhido, new Date(), { inicio, fim }) : null;
+  const plano = escolhido && !erro ? await planejarImovel(db, org, regras, escolhido, new Date(), { inicio, fim }, { paraOBeds24: true }) : null;
   const vinculos = escolhido ? mapas.filter(m => m.imovelId === escolhido.id) : [];
   const execucaoId = primeiro(sp.execucao);
   const [envios, noitesExecucao] = s.papel === "admin" ? await Promise.all([ultimosEnvios(db, org, 10), execucaoId && uuidValido(execucaoId) ? noitesDoEnvio(db, org, execucaoId) : Promise.resolve([])]) : [[], []];

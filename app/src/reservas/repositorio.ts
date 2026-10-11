@@ -5,6 +5,7 @@ import { violouUnicidade } from "@/db/erros";
 import { bloqueios, imoveis, reservas, cotacoes } from "@/db/schema";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
+import { travarMotorDaReserva } from "@/financeiro/trava";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { hojeISO } from "@/lib/datas";
@@ -107,6 +108,8 @@ export async function sincronizarReserva(
   autorId: string | null = null,
   /** Relógio das datas de confirmação/cancelamento (o pagamento do site passa o seu). */
   agora: Date = new Date(),
+  /** M8.2d: o motivo dos estornos do recálculo do motor (a alteração de uma reserva paga leva o id dela). */
+  o: { motivoEstorno?: string } = {},
 ): Promise<ResultadoReserva> {
   if (!fonte || !idFonte) return { ok: false, erros: { geral: "Fonte e id da fonte são obrigatórios." } };
   const erros = validarReserva(dados);
@@ -189,7 +192,7 @@ export async function sincronizarReserva(
       ? ["Reserva já iniciada: o financeiro anterior foi preservado. Confira se é necessário um ajuste manual."] : [];
     if (Object.keys(mudancas).length === 0) {
       // Reserva igual: o financeiro só muda se o contrato mudou (idempotente).
-      const m = await aplicarMotor(tx, organizacaoId, existente.id, autorId, undefined, { soConferir: preservarPassado });
+      const m = await aplicarMotor(tx, organizacaoId, existente.id, autorId, undefined, { soConferir: preservarPassado, motivoEstorno: o.motivoEstorno });
       return { ok: true as const, reserva: existente, criada: false, financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: m?.avisos };
     }
     // Cancelou agora → data de agora; continua cancelada → mantém; voltou a valer → limpa.
@@ -212,7 +215,7 @@ export async function sincronizarReserva(
       entidadeId: reserva.id,
       mudancas: semContato(mudancas),
     });
-    const m = await aplicarMotor(tx, organizacaoId, reserva.id, autorId, undefined, { soConferir: preservarPassado });
+    const m = await aplicarMotor(tx, organizacaoId, reserva.id, autorId, undefined, { soConferir: preservarPassado, motivoEstorno: o.motivoEstorno });
     return { ok: true as const, reserva, criada: false, alterada: true, canceladaAgora: existente.estado !== "cancelada" && reserva.estado === "cancelada", financeiroNaoAtualizado: m?.protegido, avisosFinanceiro: [...(m?.avisos ?? []), ...avisoPassado] };
   });
 }
@@ -261,16 +264,19 @@ const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { tim
  * Por que a equipe não mexe à mão num pedido com pagamento do site (M8.2a). Também o texto do cancelamento pela política
  * (M8.2c) quando há uma tentativa em andamento.
  */
-export function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "cancelar" | "confirmar"): string {
+export function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "cancelar" | "confirmar" | "alterar"): string {
   if (p.situacao === "criando" || p.situacao === "incerta" || p.situacao === "pendente") {
     if (p.forma === "cartao") {
       // M8.2b: um cartão em andamento (verificação do banco, processamento ou análise) não tem prazo que a equipe veja.
       const andamento = "há um pagamento com cartão em andamento (verificação do banco, processamento ou análise do Mercado Pago)";
+      if (acao === "alterar") return `Não alterada: ${andamento}. Aguarde a resposta dele.`;
       return acao === "confirmar"
         ? `Não confirmada: ${andamento}. Aguarde a resposta do Mercado Pago antes de confirmar à mão.`
         : `Não cancelada: ${andamento}. Aguarde a resposta dele.`;
     }
     const ate = p.pixExpiraEm ? ` até ${horaBr(p.pixExpiraEm, fuso)}` : "";
+    // M8.2d: a alteração de uma reserva paga espera o pagamento em andamento, como o cancelamento.
+    if (acao === "alterar") return `Não alterada: há um Pix do site em andamento${ate}. Aguarde o prazo dele.`;
     return acao === "confirmar"
       ? `Não confirmada: há um Pix em andamento${ate}. Aguarde o pagamento (ou o prazo dele) antes de confirmar à mão.`
       : `Não cancelada: há um Pix do site em andamento${ate}. Aguarde o prazo dele.`;
@@ -301,6 +307,9 @@ export async function tentarCancelarReserva(
       .where(and(eq(reservas.id, id), eq(reservas.organizacaoId, organizacaoId)))
       .for("update");
     if (!r || r.estado === "cancelada") return { ok: false };
+    // M8.2d: as datas seguradas de uma alteração (reserva-pedido de fonte "alteracao") só somem pela própria alteração
+    // (`cancelarPortador`): aplicada, desistida ou vencida.
+    if (r.fonte === FONTE_ALTERACAO) return { ok: false, aviso: avisoDoPortador(r, "cancelar") };
     if (!o.vencimento) {
       const p = await pagamentoEmAndamentoOuAprovado(tx, r.id);
       if (p) {
@@ -330,6 +339,76 @@ export async function cancelarReserva(db: Db, organizacaoId: string, id: string,
 class ConfirmacaoRecusada extends Error {}
 
 /**
+ * Os dados de uma reserva do site como a porta única da sincronização (fonte `site`) recebe, tirados da PRÓPRIA reserva
+ * (o contato do hóspede só está aqui), confirmada e com quem recebe = a empresa (o dinheiro entrou na conta dela: é fato,
+ * não regra configurada). Um construtor só: a confirmação pelo pagamento e a alteração da reserva paga (M8.2d) partem
+ * daqui e trocam só o que muda.
+ */
+export function dadosDoSite(r: Reserva): DadosReserva {
+  return {
+    imovelId: r.imovelId,
+    origem: r.origem,
+    estado: "confirmada",
+    reservadaEm: r.reservadaEm,
+    checkin: r.checkin,
+    checkout: r.checkout,
+    hospedes: r.hospedes,
+    hospedeNome: r.hospedeNome,
+    hospedeEmail: r.hospedeEmail,
+    hospedeTelefone: r.hospedeTelefone,
+    hospedeOrigem: r.hospedeOrigem,
+    moeda: r.moeda,
+    valorBruto: r.valorBruto,
+    taxaCanal: r.taxaCanal,
+    valorLiquido: r.valorLiquido,
+    recebimento: "empresa",
+    codigoCanal: r.codigoCanal,
+    observacoes: r.observacoes,
+  };
+}
+
+// ---------------------------------------------------------------- reserva-pedido de uma alteração (M8.2d)
+
+/**
+ * A fonte da reserva-pedido que segura as noites novas de uma alteração de reserva paga pelo site (`idFonte` = a
+ * alteração): ocupa as noites pela regra de ocupação de sempre (`pedido`), nunca é confirmada, nunca vai ao Beds24 e
+ * nunca tem lançamento.
+ */
+export const FONTE_ALTERACAO = "alteracao";
+
+/** O código da reserva alterada, tirado do nome da reserva-pedido ("Alteração SCL-…"). */
+const reservaDoPortador = (r: Pick<Reserva, "hospedeNome">) => /SCL-[A-Z0-9]+/.exec(r.hospedeNome)?.[0] ?? "alterada";
+
+/** Por que a equipe não confirma nem cancela à mão a reserva-pedido de uma alteração. */
+export function avisoDoPortador(r: Pick<Reserva, "hospedeNome">, acao: "cancelar" | "confirmar"): string {
+  const codigo = reservaDoPortador(r);
+  return acao === "confirmar"
+    ? `Estas são as datas seguradas de uma alteração da reserva ${codigo}: elas não se confirmam por aqui.`
+    : `Estas são as datas seguradas de uma alteração da reserva ${codigo}: elas somem sozinhas quando a alteração é aplicada, desistida ou vence.`;
+}
+
+/**
+ * Cancela a reserva-pedido que segurava as noites novas de uma alteração (aplicada, desistida ou vencida), sob as travas de
+ * quem chama, na ordem única: o motor da reserva alterada primeiro (reentrante; quem chama normalmente já o tem), depois a
+ * linha da reserva-pedido (FOR NO KEY UPDATE, nunca FOR UPDATE: ver pagamentos/travas.ts) e o motor dela. Nunca por
+ * `tentarCancelarReserva` (que recusa a fonte "alteracao"). Devolve se cancelou agora.
+ */
+export async function cancelarPortador(tx: Db, organizacaoId: string, a: { id: string; reservaId: string; holdReservaId: string | null }, autorId: string | null, agora: Date, motivo: string): Promise<boolean> {
+  if (!a.holdReservaId) return false;
+  await travarMotorDaReserva(tx, organizacaoId, a.reservaId);
+  const [portador] = await tx
+    .select({ id: reservas.id, estado: reservas.estado, fonte: reservas.fonte, idFonte: reservas.idFonte })
+    .from(reservas)
+    .where(and(eq(reservas.id, a.holdReservaId), eq(reservas.organizacaoId, organizacaoId)))
+    .for("no key update");
+  if (!portador || portador.fonte !== FONTE_ALTERACAO || portador.idFonte !== a.id || portador.estado === "cancelada") return false;
+  await tx.update(reservas).set({ estado: "cancelada", canceladaEm: agora, confirmadaEm: null, conferenciaResolvidaEm: null, atualizadoEm: agora }).where(eq(reservas.id, portador.id));
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "reserva.cancelar", entidade: "reserva", entidadeId: portador.id, mudancas: { estado: [portador.estado, "cancelada"], motivo: [null, motivo] } });
+  await aplicarMotor(tx, organizacaoId, portador.id, autorId);
+  return true;
+}
+
+/**
  * Confirma uma reserva pendente ou um pedido (feito no painel, vindo de fora ou segurado pelo site): a
  * partir daí entra no financeiro.
  * Se ela já movimentou dinheiro e o cálculo novo não bate com o que ficou no livro (o motor não mexe
@@ -354,6 +433,8 @@ async function confirmarNaTransacao(db: Db, organizacaoId: string, id: string, a
       .for("update");
     // Pendente (painel/fora) ou pedido (hold do site, M8.1; pedido vindo do Beds24 também): vira confirmada.
     if (!r || (r.estado !== "pendente" && r.estado !== "pedido")) return { ok: false };
+    // M8.2d: as datas seguradas de uma alteração nunca viram reserva por aqui.
+    if (r.fonte === FONTE_ALTERACAO) return { ok: false, aviso: avisoDoPortador(r, "confirmar") };
     // Pedido do site com o prazo vencido (a rotina ainda não passou): não confirma — vence agora, como a
     // rotina faria, e a equipe pede uma cotação nova ao hóspede. A página da cotação já o mostra vencido.
     if (r.estado === "pedido" && r.fonte === "site") {
@@ -423,25 +504,9 @@ export async function confirmarPedidoPago(
     if (!r || r.fonte !== "site" || !r.idFonte) return { ok: false as const, erro: "Pedido do site não encontrado." };
     if (r.estado === "confirmada") return { ok: false as const, erro: "A reserva já está confirmada." };
     const dados: DadosReserva = {
-      imovelId: r.imovelId,
-      origem: r.origem,
-      estado: "confirmada",
-      reservadaEm: r.reservadaEm,
-      checkin: r.checkin,
-      checkout: r.checkout,
-      hospedes: r.hospedes,
-      hospedeNome: r.hospedeNome,
-      hospedeEmail: r.hospedeEmail,
-      hospedeTelefone: r.hospedeTelefone,
-      hospedeOrigem: r.hospedeOrigem,
-      moeda: r.moeda,
-      valorBruto: r.valorBruto,
+      ...dadosDoSite(r),
       taxaCanal: o.taxaCanal !== undefined && o.taxaCanal !== null ? o.taxaCanal : r.taxaCanal,
       valorLiquido: o.valorLiquido !== undefined && o.valorLiquido !== null ? o.valorLiquido : r.valorLiquido,
-      // O dinheiro entrou na conta da empresa: é fato, não regra configurada.
-      recebimento: "empresa",
-      codigoCanal: r.codigoCanal,
-      observacoes: r.observacoes,
     };
     const s = await sincronizarReserva(tx, organizacaoId, r.fonte, r.idFonte, dados, null, o.agora);
     if (!s.ok) return { ok: false as const, erro: Object.values(s.erros)[0] ?? "Não foi possível confirmar a reserva." };

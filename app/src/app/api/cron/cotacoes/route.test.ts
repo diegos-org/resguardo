@@ -58,6 +58,16 @@ it("hold que não deu para fechar aparece no resumo (a rotina segue com os outro
   expect(resumos[0]).toContain("Pedidos: 2 vencido(s), 1 confirmado(s), 0 cancelado(s), 1 não fechado(s) nesta volta");
 });
 
+it("M8.2d: as alterações com as datas seguradas vencidas entram no resumo (só com alguma vencida)", async () => {
+  m.gate.mockResolvedValue({ ok: false, motivo: "so_nas_previas", texto: "nas prévias" });
+  m.rotina.mockResolvedValue({ pagamentos: null, holds, alteracoes: { expiradas: 2, falhas: 0, puladas: 0 }, eventosApagados: 0 });
+  await GET(req("cron-teste"));
+  expect(resumos[0]).toBe("Pagamentos: não conferidos neste ambiente (o teste roda nas prévias) · Pedidos: 2 vencido(s), 1 confirmado(s), 0 cancelado(s) · Alterações: 2 vencida(s)");
+  m.rotina.mockResolvedValue({ pagamentos: null, holds, alteracoes: { expiradas: 0, falhas: 0, puladas: 0 }, eventosApagados: 0 });
+  await GET(req("cron-teste"));
+  expect(resumos[1]).not.toContain("Alterações");
+});
+
 it("sem provedor (deploy de produção): só vence os holds", async () => {
   m.gate.mockResolvedValue({ ok: false, motivo: "so_nas_previas", texto: "nas prévias" });
   m.rotina.mockResolvedValue({ pagamentos: null, holds });

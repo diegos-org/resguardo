@@ -39,21 +39,43 @@ export function PrazoDoReembolso({ prazo, fuso }: { prazo: AceiteNaPagina["prazo
  * links para as versões que a página mostra e, escondidas, essas versões — o servidor confere se ainda são as
  * publicadas e grava o aceite na mesma transação do pagamento. `aoMarcar` (cartão): avisa quem usa a caixa quando ela é
  * marcada ou desmarcada (o formulário do cartão só carrega depois da caixa marcada).
+ *
+ * Pagamento da diferença de uma alteração (M8.2d, D11, `aceite.daReserva`): a reserva continua na Política de
+ * cancelamento aceita no pagamento que a confirmou; a caixa aceita só os Termos e a Privacidade em vigor e diz qual
+ * política continua valendo (o resumo e o prazo são dela). As versões escondidas são as que o servidor confere.
  */
 export function BlocoAceite({ aceite, fuso, aoMarcar }: { aceite: AceiteNaPagina; fuso: string; aoMarcar?: (marcado: boolean) => void }) {
-  const { versoes } = aceite;
+  const { versoes, daReserva } = aceite;
   return (
     <fieldset className={styles.aceiteLegal}>
       <legend>Antes de pagar</legend>
-      <p className={styles.miudo}>Resumo da Política de cancelamento:</p>
+      <p className={styles.miudo}>{daReserva ? "Resumo da Política de cancelamento da sua reserva:" : "Resumo da Política de cancelamento:"}</p>
       <DocumentoLegal blocos={aceite.resumo} />
       <PrazoDoReembolso prazo={aceite.prazo} fuso={fuso} />
       <label className={styles.opcao}>
         <input type="checkbox" name="aceite" value="sim" required onChange={aoMarcar ? (e) => aoMarcar(e.currentTarget.checked) : undefined} />
-        <span>
-          Li e aceito os <LinkLegal doc="termos" versoes={versoes} /> e a <LinkLegal doc="cancelamento" versoes={versoes} />, e li a{" "}
-          <LinkLegal doc="privacidade" versoes={versoes} />.
-        </span>
+        {daReserva ? (
+          <span>
+            Li e aceito os{" "}
+            <LinkLegal doc="termos" versoes={versoes}>
+              Termos (versão {versoes.termos})
+            </LinkLegal>{" "}
+            e li a{" "}
+            <LinkLegal doc="privacidade" versoes={versoes}>
+              Privacidade (versão {versoes.privacidade})
+            </LinkLegal>
+            . A sua reserva continua na{" "}
+            <LinkLegal doc="cancelamento" versoes={versoes}>
+              Política de cancelamento versão {daReserva.versao}
+            </LinkLegal>
+            , aceita em {formato(fuso, { day: "2-digit", month: "2-digit" }).format(new Date(daReserva.em))}.
+          </span>
+        ) : (
+          <span>
+            Li e aceito os <LinkLegal doc="termos" versoes={versoes} /> e a <LinkLegal doc="cancelamento" versoes={versoes} />, e li a{" "}
+            <LinkLegal doc="privacidade" versoes={versoes} />.
+          </span>
+        )}
       </label>
       {DOCUMENTOS_LEGAIS.map((doc) => (
         <input key={doc} type="hidden" name={CAMPOS_VERSAO[doc]} value={versoes[doc]} />

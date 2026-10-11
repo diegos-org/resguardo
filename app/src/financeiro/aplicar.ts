@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
 import { cancelamentosReserva, lancamentos, type OrigemReserva, proprietarioImoveis, type RecebimentoReserva, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -41,6 +41,9 @@ export async function dadosDoMotor(db: Db, organizacaoId: string, imovelId: stri
   return { contratos, donos: donos.map((x) => x.id), recebimentoDoImovel, regras: regras ?? (await lerRegrasFinanceiras(db, organizacaoId, checkin)) };
 }
 
+/** O motivo dos estornos do motor quando quem chama não diz outro. */
+export const MOTIVO_ESTORNO_PADRAO = "Recalculado pelo motor (reserva ou contrato mudou)";
+
 /** `protegido`: o cálculo mudou, mas a reserva já movimentou dinheiro e nada foi alterado. */
 export type ResultadoAplicacao = { criados: number; estornados: number; mantidos: number; avisos: string[]; protegido?: boolean };
 
@@ -56,8 +59,12 @@ export async function aplicarMotor(
   autorId: string | null,
   /** Sem regras: usa as da organização vigentes na data de entrada (Configurações → Regras financeiras). */
   regras?: RegrasMotor,
-  /** Só confere: marca a divergência com o dinheiro já movimentado, sem mexer no livro (reserva do passado). */
-  o: { soConferir?: boolean } = {},
+  /**
+   * Só confere: marca a divergência com o dinheiro já movimentado, sem mexer no livro (reserva do passado).
+   * `motivoEstorno` (M8.2d): o motivo dos estornos deste recálculo (a alteração de uma reserva paga leva o id dela, para
+   * os estornos serem rastreáveis até a alteração); sem ele, o texto de sempre.
+   */
+  o: { soConferir?: boolean; motivoEstorno?: string } = {},
 ): Promise<ResultadoAplicacao | null> {
   if (!uuidValido(reservaId)) return null;
   return db.transaction(async (tx) => {
@@ -158,7 +165,7 @@ export async function aplicarMotor(
         mantidas.add(base);
         continue;
       }
-      await estornar(tx, organizacaoId, a.id, "Recalculado pelo motor (reserva ou contrato mudou)", autorId);
+      await estornar(tx, organizacaoId, a.id, o.motivoEstorno?.trim() || MOTIVO_ESTORNO_PADRAO, autorId);
       estornados++;
     }
 
@@ -218,6 +225,9 @@ export async function recalcularReservas(
         eq(reservas.organizacaoId, organizacaoId),
         f.imovelId ? eq(reservas.imovelId, f.imovelId) : undefined,
         gte(reservas.checkin, aPartirDe),
+        // As reservas-pedido que seguram as noites de uma alteração (M8.2d, `FONTE_ALTERACAO`) nunca têm lançamentos, e
+        // só a própria alteração trava o motor delas (sempre depois do da reserva alterada): o recálculo não passa por elas.
+        ne(reservas.fonte, "alteracao"),
       ),
     )
     .orderBy(asc(reservas.checkin), asc(reservas.id));

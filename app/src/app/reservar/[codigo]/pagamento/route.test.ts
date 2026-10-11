@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vite
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
-import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario } from "@/pagamentos/testes";
+import { AGORA, alterar, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario, pagarEConfirmar, usuarioDeTeste } from "@/pagamentos/testes";
 import { nomeDoCookieDoPedido } from "@/site/checkout";
 
 const m = vi.hoisted(() => ({ db: null as unknown as Db, org: "" as string | null }));
@@ -53,4 +53,20 @@ it("código inválido ou malformado: 400 sem cache; site sem organização: 404"
   }
   m.org = null;
   expect((await pedir("COT-ABCDEFGH")).status).toBe(404);
+});
+
+it("M8.2d: a rota traz a alteração e o pagamento da diferença (a página acompanha os dois); nada pessoal nem Beds24", async () => {
+  const x = await pagarEConfirmar(c, { liberar: true });
+  const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: await usuarioDeTeste(c) });
+  if (!resultado.ok) throw new Error(resultado.erro);
+  vi.setSystemTime(minutos(21));
+  const r = await pedir(x.codigo);
+  expect(r.status).toBe(200);
+  const j = await r.json();
+  // Sem as chaves do Mercado Pago no ambiente do teste, o portão da rota fica fechado: a diferença não é oferecida agora
+  // (a oferta é a de `vistaDoPagamento`, testada no domínio), mas a alteração e o pagamento dela vêm para a página acompanhar.
+  expect(j).toMatchObject({ estado: "confirmada", alteracao: { id: resultado.alteracaoId, situacao: "segurada", rumo: "aumento", diferenca: 52800, pagamento: { estado: "sem_pagamento", podeGerar: false } } });
+  const texto = JSON.stringify(j);
+  expect(texto).not.toContain(EMAIL_HOSPEDE);
+  expect(texto).not.toMatch(/beds24/i);
 });

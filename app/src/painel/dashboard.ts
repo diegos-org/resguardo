@@ -5,7 +5,7 @@
 import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
-import { lancamentos, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
+import { alteracoesReserva, lancamentos, pagamentos as pagamentosTabela, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
@@ -15,10 +15,14 @@ import type { Imovel } from "@/imoveis/repositorio";
 import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
 import { contarPendentes as contarCadastrosPendentes } from "@/marketplace/cadastro";
 import { contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "@/pagamentos/ambiente";
-import { avisosDeCancelamento, avisosDePagamento } from "@/pagamentos/consultas";
+import { alteracoesComMensagemPendente } from "@/mensagens/hospede";
+import { situacaoEfetiva } from "@/pagamentos/alteracao-regras";
+import { ATENCAO_AVISAR_HOSPEDE_HORAS, avisosDeCancelamento, avisosDePagamento } from "@/pagamentos/consultas";
+import { carenciaNoTravado } from "@/pagamentos/travas";
 import type { ProvedorPagamento } from "@/pagamentos/provedor";
 import { contarPedidosNovos } from "@/proprietarios/pedidos-contato";
 import { avisosDeDescontos } from "@/repasses/descontos";
+import { hojeISO } from "@/lib/datas";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
 import { rotinasPendentes } from "@/rotinas/rotinas";
@@ -118,6 +122,8 @@ export async function carregarDashboard(
   // Cancelamento pela política (M8.2c): da operação, fora dos avisos do financeiro e sem valores.
   // A mensagem pendente ao hóspede (decisão, devolução feita) leva o valor: o aviso dela só para quem lê o financeiro.
   if (o.verCancelamentos) alertas.push(...(await avisosDeCancelamento(db, organizacaoId, o.agora ?? new Date(), { mensagensComValor: o.verPagamentos === true })));
+  // Alteração de reserva paga pelo site (M8.2d): as mesmas pessoas e a mesma regra das mensagens com valor.
+  if (o.verCancelamentos) alertas.push(...(await avisosDeAlteracao(db, organizacaoId, o.agora ?? new Date(), { mensagensComValor: o.verPagamentos === true })));
   // Pagamento no site (M8.2a): da empresa toda, sem depender do filtro de imóveis (aprovado sem reserva, devoluções,
   // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo, datas a fechar nas OTAs).
   if (o.verPagamentos) {
@@ -301,4 +307,86 @@ export async function carregarDashboard(
     porMes,
     alertas,
   };
+}
+
+// ---------------------------------------------------------------- alteração de reserva paga pelo site (M8.2d)
+
+const horaSP = (d: Date, agora: Date) => {
+  const f = (x: Date, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(x);
+  const hora = f(d, { hour: "2-digit", minute: "2-digit" });
+  return f(d, { day: "2-digit", month: "2-digit" }) === f(agora, { day: "2-digit", month: "2-digit" }) ? hora : `${f(d, { day: "2-digit", month: "2-digit" })} às ${hora}`;
+};
+/** Os códigos das reservas do aviso (até 5; o resto em número): quem lê sabe qual abrir. */
+const codigosDoAviso = (xs: readonly { codigo: string }[]) => (xs.length <= 5 ? xs.map((x) => x.codigo).join(", ") : `${xs.slice(0, 5).map((x) => x.codigo).join(", ")} e mais ${xs.length - 5}`);
+const linkDoAviso = (xs: readonly { reservaId: string }[]) => (xs.length === 1 ? `/painel/reservas/${xs[0].reservaId}` : "/painel/reservas");
+
+/**
+ * Os avisos da alteração de reserva paga pelo site no Início (da operação: quem edita reservas, sem valores, da empresa
+ * toda): cada alteração com as datas seguradas agora (pela situação que vale agora, com a carência do pagamento), as
+ * reservas alteradas cujo bloqueio nas OTAs ainda não foi mudado (o envio ao Beds24 não muda datas de reservas), e as
+ * mensagens ao hóspede pendentes (a proposta e a devolução feita levam valor: só para quem lê o financeiro).
+ */
+export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Date = new Date(), o: { mensagensComValor?: boolean } = {}): Promise<Alerta[]> {
+  const hoje = hojeISO("America/Sao_Paulo", agora);
+  const alertas: Alerta[] = [];
+  const seguradas = await db
+    .select({ a: alteracoesReserva, codigo: reservasTabela.codigo })
+    .from(alteracoesReserva)
+    .innerJoin(reservasTabela, eq(reservasTabela.id, alteracoesReserva.reservaId))
+    .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), eq(alteracoesReserva.situacao, "segurada")))
+    .orderBy(reservasTabela.codigo);
+  const tentativas = seguradas.length
+    ? await db
+        .select()
+        .from(pagamentosTabela)
+        .where(and(eq(pagamentosTabela.organizacaoId, organizacaoId), inArray(pagamentosTabela.alteracaoId, seguradas.map((x) => x.a.id))))
+    : [];
+  const carencia = carenciaNoTravado({ tentativas }, agora);
+  for (const { a, codigo } of seguradas) {
+    if (situacaoEfetiva(a, agora, carencia(a)) !== "segurada" || !a.holdAte) continue;
+    const prazo = a.holdAte.getTime() > agora.getTime() ? `datas seguradas até ${horaSP(a.holdAte, agora)}` : "prazo das datas acabou, com um pagamento da diferença em andamento";
+    alertas.push({
+      nivel: "info",
+      texto: `Alteração da reserva ${codigo}: ${prazo}, esperando ${a.diferenca > 0 ? "o pagamento da diferença" : "a confirmação do hóspede"}.`,
+      link: `/painel/reservas/${a.reservaId}`,
+    });
+  }
+  // Aplicada e o bloqueio nas OTAs ainda não mudado (o M8.3 vai gravar sozinho; até lá, à mão), com alguma noite (de antes
+  // ou de agora) ainda por vir. A reserva-pedido das datas seguradas nunca vai às OTAs. Só a que mudou as datas: as pessoas
+  // ou o valor não mexem no bloqueio.
+  const otas = await db
+    .select({ reservaId: alteracoesReserva.reservaId, codigo: reservasTabela.codigo })
+    .from(alteracoesReserva)
+    .innerJoin(reservasTabela, eq(reservasTabela.id, alteracoesReserva.reservaId))
+    .where(
+      and(
+        eq(alteracoesReserva.organizacaoId, organizacaoId),
+        eq(alteracoesReserva.situacao, "aplicada"),
+        isNull(alteracoesReserva.otaAtualizadaEm),
+        or(ne(alteracoesReserva.checkinAntes, alteracoesReserva.checkinDepois), ne(alteracoesReserva.checkoutAntes, alteracoesReserva.checkoutDepois)),
+        eq(reservasTabela.estado, "confirmada"),
+        sql`greatest(${alteracoesReserva.checkoutAntes}, ${alteracoesReserva.checkoutDepois}) >= ${hoje}::date`,
+      ),
+    )
+    .orderBy(reservasTabela.codigo);
+  const alteradas = [...new Map(otas.map((x) => [x.reservaId, x])).values()];
+  // Sempre, mesmo com o envio ao Beds24 ligado: o envio fecha só os bloqueios do SCL, nunca as datas das reservas (até o M8.3).
+  if (alteradas.length)
+    alertas.push({
+      nivel: "info",
+      texto: `${alteradas.length} reserva(s) do site alterada(s) (${codigosDoAviso(alteradas)}): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).`,
+      link: linkDoAviso(alteradas),
+    });
+  // A proposta leva a diferença e a devolução feita leva o valor: só quem as pode copiar (quem lê o financeiro) recebe o aviso.
+  if (o.mensagensComValor === false) return alertas;
+  const pendentes = await alteracoesComMensagemPendente(db, organizacaoId, agora);
+  if (pendentes.length) {
+    const atrasada = pendentes.some((x) => agora.getTime() - x.desde.getTime() >= ATENCAO_AVISAR_HOSPEDE_HORAS * 3_600_000);
+    alertas.push({
+      nivel: atrasada ? "atencao" : "info",
+      texto: `${pendentes.length} alteração(ões) com mensagem ao hóspede pendente (proposta, confirmação ou devolução feita): avise o hóspede (${codigosDoAviso(pendentes)}).`,
+      link: linkDoAviso(pendentes),
+    });
+  }
+  return alertas;
 }

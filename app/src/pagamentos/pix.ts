@@ -23,6 +23,12 @@
  *
  * O e-mail e o nome do pagador saem da reserva, no servidor (no teste, o adaptador troca o e-mail pelo do
  * sandbox); a página nunca os recebe.
+ *
+ * A diferença de uma alteração da reserva paga (M8.2d, `o.alteracaoId`): o mesmo caminho, na mesma cotação, com o alvo da
+ * cobrança (`alvoDaCobranca`): o valor é a diferença, o prazo é o das datas seguradas da alteração, e "já pago", "em
+ * andamento", "em análise", o Pix anterior a cancelar e o teto de 3 Pix contam só as tentativas desta alteração. Um
+ * pagamento marcado como real (live_mode) em qualquer tentativa da cotação continua impedindo todo Pix novo. O aceite é o
+ * dos Termos e da Privacidade em vigor com a política da reserva (D11).
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
@@ -33,16 +39,16 @@ import { travaOcupada } from "@/db/erros";
 import { pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { aceiteVigenteTravado } from "@/site/aceites";
-import { estenderHold, voltarHold } from "@/site/cotacoes";
+import { aceiteVigenteTravado, versaoDaPoliticaDoPagamento } from "@/site/aceites";
+import { type AlvoDaCobranca, alvoDaCobranca, falhaDoAlvo, TEXTO_ALTERACAO_MUDOU } from "./alvo";
 import { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO } from "./andamento";
 import { aplicarLeitura } from "./aplicar";
 import { cancelarNoProvedor, chaveCancelamento } from "./conferencia";
 import { chaveCriacao, conferirOuOcupado, leituraDaCriacao, referenciaDaTentativa, relerEncerradasRecentes } from "./criacao";
-import { motivoSemPixDaCotacao, TEXTO_SEM_PIX } from "./oferta";
+import { motivoSemPixDaAlteracao, motivoSemPixDaCotacao, TEXTO_SEM_PIX } from "./oferta";
 import { ErroProvedor, type PedidoPix, PIX_VALIDADE_MINIMA_MINUTOS, type ProvedorPagamento, type ResultadoCriacao } from "./provedor";
 import { comDinheiro, type SituacaoPagamento } from "./situacoes";
-import { travarCotacao } from "./travas";
+import { type Travado, travarCotacao } from "./travas";
 
 export { FOLGA_PRAZO_PIX_MS, MAXIMO_PIX_POR_COTACAO };
 // Movidas para `criacao.ts` (o cartão usa as mesmas); reexportadas aqui para quem já importava do Pix.
@@ -63,7 +69,8 @@ export type CodigoFalhaPix =
   | "ocupado"
   | "ao_vivo"
   | "aceite_pendente"
-  | "aceite_mudou";
+  | "aceite_mudou"
+  | "alteracao_mudou";
 export type ResultadoPix = { ok: true; pagamentoId: string; reaproveitado: boolean } | { ok: false; erro: string; codigo: CodigoFalhaPix };
 
 const MENSAGENS: Record<CodigoFalhaPix, string> = {
@@ -80,6 +87,7 @@ const MENSAGENS: Record<CodigoFalhaPix, string> = {
   ao_vivo: "O Mercado Pago marcou este Pix como pagamento real no ambiente de teste: ele foi cancelado na hora. Fale com a equipe.",
   aceite_pendente: "Para gerar o Pix, marque que leu e aceita os termos e a política de cancelamento.",
   aceite_mudou: "Os termos ou as políticas mudaram enquanto a página estava aberta: leia a versão atual e marque de novo.",
+  alteracao_mudou: TEXTO_ALTERACAO_MUDOU,
 };
 const falha = (codigo: CodigoFalhaPix, erro = MENSAGENS[codigo]): ResultadoPix => ({ ok: false, codigo, erro });
 
@@ -89,19 +97,52 @@ type Fase1 =
   | { tipo: "cancelar"; id: string; idProvedor: string }
   | { tipo: "criar"; id: string; pedido: PedidoPix; holdAnterior: Date; holdProvisorio: Date | null };
 
-async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Date, aceite: VersoesLegais | null): Promise<Fase1> {
+/**
+ * O alvo da cobrança sob as travas e se o site o oferece agora (a cotação segurada, ou a diferença da alteração segurada).
+ * Uma regra para o Pix e o cartão (`cartao.ts`): `motivo` é o motivo de não oferecer (texto do painel).
+ */
+export async function alvoOferecido(
+  tx: Db,
+  organizacaoId: string,
+  t: Travado,
+  alteracaoId: string | null,
+  agora: Date,
+  motivoDaAlteracao: typeof motivoSemPixDaAlteracao = motivoSemPixDaAlteracao,
+): Promise<{ alvo: AlvoDaCobranca; motivo: string | null } | { erro: "nao_oferecido" | "alteracao_mudou" }> {
+  const achado = alvoDaCobranca(tx, organizacaoId, t, alteracaoId, agora);
+  if (falhaDoAlvo(achado)) return achado;
+  if (achado.tipo === "reserva") {
+    const m = await motivoSemPixDaCotacao(tx, organizacaoId, t.cotacao, t.reserva.estado, agora);
+    return { alvo: achado, motivo: m ? TEXTO_SEM_PIX[m] : null };
+  }
+  const m = await motivoDaAlteracao(tx, organizacaoId, achado.alteracao!, { id: t.reserva.id, imovelId: t.reserva.imovelId, estado: t.reserva.estado, cancelamentoAtivo: !!t.cancelamento }, agora);
+  return { alvo: achado, motivo: m ? TEXTO_SEM_PIX[m] : null };
+}
+
+/** As versões do aceite que valem para o alvo: na diferença de uma alteração, a política da reserva (a do pagamento que a confirmou). */
+export async function politicaDoAlvo(tx: Db, organizacaoId: string, t: Travado, alvo: AlvoDaCobranca): Promise<{ cancelamentoDaReserva?: number | null }> {
+  if (alvo.tipo === "reserva") return {};
+  const p0 = t.tentativas.find((x) => x.desfecho === "reserva");
+  return { cancelamentoDaReserva: p0 ? await versaoDaPoliticaDoPagamento(tx, organizacaoId, p0.id) : null };
+}
+
+async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Date, aceite: VersoesLegais | null, alteracaoId: string | null): Promise<Fase1> {
   const erro = (codigo: CodigoFalhaPix, texto?: string): Fase1 => ({ tipo: "erro", resultado: falha(codigo, texto) });
   const t = await travarCotacao(tx, organizacaoId, cotacaoId);
   if (!t) return erro("nao_encontrada");
-  const motivo = await motivoSemPixDaCotacao(tx, organizacaoId, t.cotacao, t.reserva.estado, agora);
-  if (motivo) return erro("nao_oferecido", TEXTO_SEM_PIX[motivo]);
-  if (t.tentativas.some((x) => x.situacao === "criando" || x.situacao === "incerta")) return erro("em_andamento");
-  if (t.tentativas.some((x) => comDinheiro(x.situacao))) return erro("ja_pago");
+  const oferecido = await alvoOferecido(tx, organizacaoId, t, alteracaoId, agora);
+  if ("erro" in oferecido) return erro(oferecido.erro);
+  const { alvo } = oferecido;
+  if (oferecido.motivo) return erro("nao_oferecido", oferecido.motivo);
+  // As tentativas do alvo: as da reserva, ou as da diferença desta alteração (M8.2d).
+  const doAlvo = alvo.tentativas;
+  if (doAlvo.some((x) => x.situacao === "criando" || x.situacao === "incerta")) return erro("em_andamento");
+  if (doAlvo.some((x) => comDinheiro(x.situacao))) return erro("ja_pago");
   // Um pagamento desta cotação (Pix ou cartão) já veio marcado como real (live_mode) no teste: nenhum Pix (nem o mesmo,
   // se o cancelamento ainda não pegou) — as tentativas da cotação não se gastam à toa. A equipe confere no painel do
   // Mercado Pago.
   if (t.tentativas.some((x) => x.aoVivo === true)) return erro("ao_vivo", "O Mercado Pago marcou um pagamento desta cotação como pagamento real no ambiente de teste: nenhum Pix é gerado. Fale com a equipe.");
-  const pendentes = t.tentativas.filter((x) => x.situacao === "pendente");
+  const pendentes = doAlvo.filter((x) => x.situacao === "pendente");
   // Cartão pendente (M8.2b): em análise, nada de outro jeito (o Mercado Pago não cancela e pode aprovar); processando
   // (ou sem etapa), espera; no desafio do banco com a order conhecida, é cancelado mais abaixo (como um Pix anterior).
   const cartoes = pendentes.filter((x) => x.forma === "cartao");
@@ -112,10 +153,10 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
   if (valido) return { tipo: "reaproveitar", id: valido.id };
   // M7.4: páginas legais aceitas nas versões publicadas agora (o aceite enviado junto é gravado nesta mesma transação,
   // e fica gravado mesmo que o teto ou o cancelamento abaixo impeçam o Pix desta vez). Recusado: nada é criado.
-  const a = await aceiteVigenteTravado(tx, organizacaoId, { cotacaoId, reservaId: t.reserva.id }, aceite, "pix", agora);
+  const a = await aceiteVigenteTravado(tx, organizacaoId, { cotacaoId, reservaId: t.reserva.id }, aceite, "pix", agora, await politicaDoAlvo(tx, organizacaoId, t, alvo));
   if (!a.ok) return a.motivo === "nao_publicadas" ? erro("nao_oferecido", TEXTO_SEM_PIX.sem_paginas_legais) : erro(a.motivo === "mudou" ? "aceite_mudou" : "aceite_pendente");
   // Teto antes de cancelar: com 3 Pix já gerados, o último (ainda pagável) não é cancelado à toa.
-  if (t.tentativas.filter((x) => x.forma === "pix").length >= MAXIMO_PIX_POR_COTACAO) return erro("limite");
+  if (doAlvo.filter((x) => x.forma === "pix").length >= MAXIMO_PIX_POR_COTACAO) return erro("limite");
   // Pix novo só depois de cancelar o anterior no provedor (cancelado, já cancelado ou vencido), ou o cartão no desafio do
   // banco: quem pediu o cancelamento foi o hóspede (conta no disjuntor do cartão, se o desafio tinha endereço).
   const anterior = pendentes.find((x) => x.idProvedor);
@@ -126,7 +167,7 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
   if (pendentes.length) return erro("em_andamento");
 
   const id = randomUUID();
-  const holdAte = t.cotacao.holdAte!;
+  const holdAte = alvo.holdAte!;
   // O Pix vale pelo menos 30 minutos (regra do provedor) e, se as datas ainda valem mais que isso, o mesmo tanto.
   const validade = Math.max(PIX_VALIDADE_MINIMA_MINUTOS, Math.ceil((holdAte.getTime() - agora.getTime()) / 60_000));
   await tx.insert(pagamentos).values({
@@ -140,14 +181,15 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
     referencia: referenciaDaTentativa(id),
     chaveIdempotencia: chaveCriacao(id),
     situacao: "criando",
-    valor: t.cotacao.total,
+    valor: alvo.valor,
     aceiteId: a.aceite.id,
+    alteracaoId: alvo.alteracaoId,
     criadoEm: agora,
     atualizadoEm: agora,
   });
   // Prazo provisório: a rotina não vence o pedido enquanto a chamada está no ar (desfeito se nada for criado).
   const provisorio = new Date(agora.getTime() + validade * 60_000 + FOLGA_PRAZO_PIX_MS);
-  const estendeu = await estenderHold(tx, organizacaoId, cotacaoId, provisorio, agora, id);
+  const estendeu = await alvo.estender(provisorio, id);
   const empresa = await nomeDaEmpresa(tx, organizacaoId);
   return {
     tipo: "criar",
@@ -157,11 +199,11 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
     pedido: {
       referencia: referenciaDaTentativa(id),
       chaveIdempotencia: chaveCriacao(id),
-      valor: t.cotacao.total,
+      valor: alvo.valor,
       email: t.reserva.hospedeEmail,
       nome: t.reserva.hospedeNome,
       validadeMinutos: validade,
-      descricao: `${empresa} — reserva ${t.reserva.codigo} (${t.imovel.nome})`,
+      descricao: alvo.descricao(empresa),
       descricaoFatura: await nomeNaFatura(tx, organizacaoId),
     },
   };
@@ -183,17 +225,20 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
       const t = await travarCotacao(tx, organizacaoId, cotacaoId);
       const p = t?.tentativas.find((x) => x.id === f.id);
       if (!t || !p) return null;
+      // O alvo da tentativa (a reserva, ou a alteração cuja diferença ela cobra): o prazo dele é o que se estende.
+      const achado = alvoDaCobranca(tx, organizacaoId, t, p.alteracaoId, agora, { daLeitura: true });
+      const alvo = falhaDoAlvo(achado) ? null : achado;
       if (!leitura) {
         // O pedido não chegou ao provedor (sem conexão, chave recusada, limite de chamadas): nada foi criado, e o
         // prazo provisório das datas volta ao que era.
         await tx.delete(pagamentos).where(eq(pagamentos.id, p.id));
-        await desfazerProvisorio(tx, organizacaoId, cotacaoId, f, agora);
+        await desfazerProvisorio(alvo, f);
         return { situacao: null, cancelar: [], pedidoValido: true, aoVivo: false };
       }
       // `aplicarLeitura` atualiza este mesmo objeto (`p`, de `t.tentativas`) com o que gravou: daqui em diante ele já
       // tem o id da order e o prazo do Pix que o provedor devolveu.
       const ef = await aplicarLeitura(tx, organizacaoId, t, p.id, leitura, agora);
-      const pedidoValido = t.reserva.estado === "pedido" && t.cotacao.estado === "segurada";
+      const pedidoValido = !!alvo && alvo.valido(agora);
       const cancelar = [...ef.cancelar];
       // Order marcada como real (live_mode) no teste: falha sempre, seja qual for a situação (pendente, já aprovada...);
       // a pendente a leitura já mandou cancelar. As datas não ficam presas a ela.
@@ -201,9 +246,9 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
       // Criação recusada pelo provedor (order recusada, ou dados inválidos sem order) ou já encerrada: não há Pix para
       // pagar, e o prazo provisório das datas volta ao que era (10ª rodada do Codex).
       const semPixPagavel = ef.situacao === "recusado" || ef.situacao === "cancelado" || ef.situacao === "expirado";
-      if (aoVivo || semPixPagavel) await desfazerProvisorio(tx, organizacaoId, cotacaoId, f, agora);
+      if (aoVivo || semPixPagavel) await desfazerProvisorio(alvo, f);
       else if (ef.situacao === "pendente") {
-        if (pedidoValido && p.pixExpiraEm) await estenderHold(tx, organizacaoId, cotacaoId, new Date(p.pixExpiraEm.getTime() + FOLGA_PRAZO_PIX_MS), agora, p.id);
+        if (pedidoValido && p.pixExpiraEm) await alvo!.estender(new Date(p.pixExpiraEm.getTime() + FOLGA_PRAZO_PIX_MS), p.id);
         else if (!pedidoValido && p.idProvedor) cancelar.push({ id: p.id, idProvedor: p.idProvedor });
       }
       return { situacao: ef.situacao, cancelar, pedidoValido, aoVivo };
@@ -224,14 +269,15 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
   return { ok: true, pagamentoId: f.id, reaproveitado: false };
 }
 
-/** Volta o prazo das datas ao de antes da extensão provisória da fase 1 (só se ninguém mexeu nele desde então). */
-async function desfazerProvisorio(tx: Db, organizacaoId: string, cotacaoId: string, f: Extract<Fase1, { tipo: "criar" }>, agora: Date): Promise<void> {
-  if (f.holdProvisorio) await voltarHold(tx, organizacaoId, cotacaoId, f.holdAnterior, f.holdProvisorio, agora, f.id);
+/** Volta o prazo das datas do alvo ao de antes da extensão provisória da fase 1 (só se ninguém mexeu nele desde então). */
+async function desfazerProvisorio(alvo: AlvoDaCobranca | null, f: Extract<Fase1, { tipo: "criar" }>): Promise<void> {
+  if (alvo && f.holdProvisorio) await alvo.voltar(f.holdAnterior, f.holdProvisorio, f.id);
 }
 
 /**
  * Gera (ou mostra de novo) o Pix da cotação. `provedor` = o liberado por `podeCobrar`. `o.aceite`: as versões das
  * páginas legais que o hóspede acabou de aceitar (a caixa marcada); sem ele, vale o aceite já gravado na cotação.
+ * `o.alteracaoId` (M8.2d): o Pix da diferença dessa alteração (a que está com as datas seguradas agora).
  */
 export async function gerarPix(
   db: Db,
@@ -239,20 +285,22 @@ export async function gerarPix(
   cotacaoId: string,
   agora: Date,
   provedor: ProvedorPagamento,
-  o: { aceite?: VersoesLegais | null } = {},
+  o: { aceite?: VersoesLegais | null; alteracaoId?: string | null } = {},
 ): Promise<ResultadoPix> {
   if (!uuidValido(cotacaoId)) return falha("nao_encontrada");
+  const alteracaoId = o.alteracaoId || null;
+  if (alteracaoId && !uuidValido(alteracaoId)) return falha("alteracao_mudou");
   // Antes de qualquer coisa nova: uma criação que ficou no ar é procurada pela referência, e uma tentativa encerrada há
   // pouco (que ainda pode ter sido paga: `paginaAindaLe`) é relida; se virou dinheiro, nenhum outro Pix sai. A pendente
   // fica com a fase 1 (mostrada de novo, ou cancelada e relida antes do novo). Os cliques já passam pelo freio por
   // endereço ("gerar_pix").
-  const relida = await relerEncerradasRecentes(db, organizacaoId, cotacaoId, provedor, agora);
+  const relida = await relerEncerradasRecentes(db, organizacaoId, cotacaoId, provedor, agora, { alteracaoId });
   if (relida.tipo === "ocupado") return falha("ocupado");
   if (relida.tipo === "provedor") return falha("provedor", relida.erro);
   for (let volta = 0; volta < 3; volta++) {
     let f: Fase1;
     try {
-      f = await db.transaction((tx) => fase1(tx, organizacaoId, cotacaoId, agora, o.aceite ?? null));
+      f = await db.transaction((tx) => fase1(tx, organizacaoId, cotacaoId, agora, o.aceite ?? null, alteracaoId));
     } catch (e) {
       if (travaOcupada(e)) return falha("ocupado");
       throw e;

@@ -17,6 +17,13 @@
 > e a documentação de devolução das Orders relida em 9/10/2026: seção "Cancelamento pela política
 > (M8.2c)" e itens 30 a 43 de "A conferir no sandbox". A devolução de parte do valor que o M8.2a e o
 > M8.2c deixaram de fora passou para o M8.2d.
+> **M8.2d (alteração de reserva paga e devolução de parte do valor) pronto em 10/10/2026**, só no teste, com o
+> desenho revisado por quatro leituras adversariais (dinheiro, concorrência, produto e API/segurança) e a
+> documentação de devolução das Orders relida em 10/10/2026: seção "Alteração de reserva paga (M8.2d)" e itens 44
+> a 58 de "A conferir no sandbox". Com ele, várias devoluções por pagamento, a devolução de parte do valor (pedida
+> ao Mercado Pago só depois da liberação do pagamento) e o que o M8.2a e o M8.2c deixaram (o restante de um
+> pagamento já devolvido em parte, a devolução parcial por fora, a devolução feita a menos). As frases "chega no
+> M8.2d" das seções anteriores ficam como histórico, com o que vale desde 10/10 ao lado.
 
 ## As cinco partes
 
@@ -25,19 +32,23 @@
 | **M8.2a** | **Pix em teste e a base de tudo:** adaptador, aviso assinado, conferência, confirmação só com as datas seguradas (inclusive aprovação tardia), taxa real, liberação virando o recebimento do M4.10, devolução do pagamento que ficou sem reserva, o que o hóspede vê em cada situação, painel e as travas. | M8.1 |
 | **M8.2b** | **Cartão** (pronto em 9/10/2026, seção "Cartão (M8.2b)"): Card Payment Brick, parcelas com juros do hóspede e máximo configurável, freios contra teste de cartão roubado, identificação do aparelho, análise do cartão. | M8.2a |
 | **M8.2c** | Cancelamento de reserva paga pela política (pronto em 10/10/2026, seção "Cancelamento pela política (M8.2c)"): integral até 14 dias antes, nada depois, arrependimento de 7 dias; lançamentos por componente, taxa que não volta com a SCL, dinheiro retido no cancelamento sem reembolso, desconto da parte já repassada no repasse seguinte. | M8.2a |
-| **M8.2d** | Alteração de reserva paga (datas ou valor), com novas datas seguradas, cobrança da diferença ou devolução parcial; e a devolução de parte do valor que o M8.2a e o M8.2c deixaram (o restante de um pagamento já devolvido em parte, a devolução parcial por fora, a devolução que o Mercado Pago fez a menos). | M8.2c |
+| **M8.2d** | Alteração de reserva paga (pronta em 10/10/2026, seção "Alteração de reserva paga (M8.2d)"; datas, pessoas ou valor, só antes da entrada), com novas datas seguradas, cobrança da diferença ou devolução parcial; e a devolução de parte do valor que o M8.2a e o M8.2c deixaram (o restante de um pagamento já devolvido em parte, a devolução parcial por fora, a devolução que o Mercado Pago fez a menos). | M8.2c |
 | **M8.2e** | Contestação (chargeback): registro, conferência, decisão de quem arca, lançamentos. | M8.2b, M8.2c |
 
 O pagamento **de verdade** só liga com as cinco partes e o M7.4 feitos (o M7.4 ficou pronto em
 9/10/2026: páginas legais e aceite antes do Pix, desenho em `PAGINAS-LEGAIS.md`; o M8.2b ficou pronto
-em 9/10/2026 e o M8.2c em 10/10/2026; faltam o M8.2d e o M8.2e), e com as decisões pendentes de Diego: taxa do pagamento (hoje sai antes da divisão; se a SCL passar a arcar, o motor precisa de
+em 9/10/2026, o M8.2c e o M8.2d em 10/10/2026; falta o M8.2e), e com as decisões pendentes de Diego: taxa do pagamento (hoje sai antes da divisão; se a SCL passar a arcar, o motor precisa de
 base por canal, porque a opção atual vale para todos), arrependimento conferido com o contador (e o
 limite "até o horário de entrada", com o advogado),
 a verificação do banco (3DS) do cartão (padrão "quando houver risco"; com "nunca", toda contestação
 por cartão roubado fica com a SCL), a devolução por fora do cartão, o campo de e-mail do formulário do
 cartão em produção (seção "Cartão (M8.2b)"), quem arca com a taxa e a parte do proprietário quando a SCL
 cancela ou dá uma exceção, e ligar os e-mails ao hóspede (recibo do pedido de cancelamento, decisão e
-devolução; seção "Cancelamento pela política (M8.2c)").
+devolução; seção "Cancelamento pela política (M8.2c)"). Desde o M8.2d, também: a redução contando da entrada
+original ou da nova, a que vier primeiro; a taxa do Mercado Pago sobre a parte devolvida com a SCL; a política e
+o arrependimento depois de uma alteração (a versão e a aprovação do primeiro pagamento); a devolução de parte
+esperando a liberação do pagamento; e os e-mails da alteração (seção "Alteração de reserva paga (M8.2d)"; GUIA,
+seção 7).
 
 ## Perímetro do teste (parte a)
 
@@ -115,7 +126,9 @@ disso, a página mostra o fluxo de hoje, e a aba de pagamento lista cada imóvel
 - **`devolucoes_pagamento`**: uma por pagamento (índice único; toda busca passa por
   `devolucaoDoPagamento`, a regra que o M8.2d muda); motivo, valor, situação (`pedida`, `confirmada`,
   `recusada`, `por_fora`), tentativas, chave da tentativa atual (`devolucao:<id>:<n>`), próxima
-  tentativa, id da devolução no provedor. Desde o M8.2c, também a origem (abaixo).
+  tentativa, id da devolução no provedor. Desde o M8.2c, também a origem (abaixo). **Desde o M8.2d, várias por
+  pagamento**: o índice único virou cinco parciais (uma `pedida` por pagamento) e `devolucaoDoPagamento` saiu
+  (migração 0068, abaixo; regras em "Alteração de reserva paga (M8.2d)", "Várias devoluções por pagamento").
 - **`eventos_pagamento`**: avisos com assinatura válida (tipo, ação, id, request-id, ts, quando,
   resultado), índice único por (request-id, ts, id) para não processar repetição (o evento e o "último
   aviso válido" são gravados numa transação só: se um falhar, nada fica, e o reenvio é processado como novo); apagados depois de
@@ -155,11 +168,39 @@ disso, a página mostra o fluxo de hoje, e a aba de pagamento lista cada imóvel
     caixa foram lançados, `espelhado`, as marcas das OTAs e de "hóspede avisado" (pedido, decisão,
     devolução), o descarte (quem, quando, motivo; no pedido do site, canal e hora da desistência). Linhas
     descartadas nunca são apagadas;
-  - em `devolucoes_pagamento`: `origem` (`sem_reserva` do M8.2a, `cancelamento`; o M8.2d acrescenta
+  - em `devolucoes_pagamento`: `origem` (`sem_reserva` do M8.2a, `cancelamento`; o M8.2d acrescentou
     `alteracao`), `cancelamento_id`, `saida_lancamento_id`, `confirmada_por` (`leitura` ou `equipe`),
     `confirmada_nota`, `valor_confirmado`, `ultimo_codigo` (lista fechada), a recusa registrada do painel do
     Mercado Pago (quando, quem, nota) e a parada (quando, nota). O comentário de `falhas` foi corrigido:
     resposta incerta conta; "aguarde" não.
+- **Migração 0068 (M8.2d), idempotente como a 0067:**
+  - tabela **`alteracoes_reserva`** (sem dado pessoal): reserva, cotação original, o pagamento que confirmou a
+    reserva, situação (`segurada`, `aplicada`, `expirada`, `desistida`; no máximo uma segurada por reserva, índice
+    único parcial `alteracoes_reserva_uma_segurada`), quem pede (`hospede`, `empresa`) e o motivo da SCL, o momento
+    e o canal do pedido, nota validada, antes e depois (datas, pessoas, valor), origem do valor (`cotacao`,
+    `mantido`, `digitado`) com motivo de lista fechada e nota, o retrato da cotação das datas novas, a diferença
+    (com sinal), a entrada de que a política conta, as noites novas, o prazo das datas seguradas e a reserva-pedido
+    que as segura (índice único), o retrato da política e da decisão (só na redução), o valor a devolver, a
+    assinatura, a taxa e o resultado por mês depois de aplicada, quem e quando aplicou (e se foi tardia), venceu ou
+    desistiu (com o motivo), as marcas das OTAs (`ota_atualizada_em/por`) e de "hóspede avisado" (proposta,
+    confirmação, devolução). Linhas nunca apagadas; as chaves estrangeiras de nome longo têm nome explícito;
+  - em `pagamentos`: `alteracao_id` (as tentativas da diferença) e `devolvido_fora_reconhecido` (centavos que o
+    painel do Mercado Pago devolveu fora do sistema e a equipe reconheceu numa decisão; só cresce, sob a trava,
+    auditado); índices `pagamentos_um_desfecho_alteracao` (um desfecho `alteracao` por alteração) e
+    `pagamentos_alteracao`;
+  - em `devolucoes_pagamento`: `alteracao_id`, `origem_devolucao_id` (o restante de uma devolução feita a menos),
+    `avisos` (os da própria devolução), `caixa_lancado_em` (o caixa desta devolução acertado), `taxa_atribuida` (a
+    taxa da parte devolvida, congelada) e `corpo_integral` (a forma do corpo enviado com a chave atual);
+  - o índice `devolucoes_pagamento_um_por_pagamento` sai e entram cinco parciais (`devolucoes_pagamento_sem_reserva`,
+    `_do_cancelamento`, `_da_alteracao`, `_restante` e `_uma_pedida`) e um simples por pagamento
+    (`devolucoes_pagamento_pagamento`);
+  - duas cópias de dados, que só mexem em linhas ainda no padrão (rodar de novo não muda nada): os avisos de
+    devolução do pagamento passam para a devolução (até aqui, uma por pagamento) e o caixa já acertado das
+    devoluções de cancelamento fica marcado na própria devolução;
+  - listas no código, sem migração: desfecho `alteracao`, origem de devolução `alteracao`, situação de devolução
+    `substituida`, reserva de fonte `alteracao`, os motivos "sem reserva" da diferença, os códigos `ja_devolvido` e
+    `aguardando_liberacao`, o aviso `devolucao_aguardando_liberacao_atrasada`, as duas mensagens novas e
+    `regras.site.minutosHoldAlteracao`.
 
   As listas fechadas ficam no código (texto sem CHECK, como as outras tabelas novas). A configuração muda
   só no JSON (`pagamento_site`, versões da `politica_cancelamento`, `textos_site`, `mensagens_hospede`).
@@ -186,6 +227,12 @@ A reserva continua `pedido` enquanto o hóspede paga. Não há estado novo de re
 imóvel (`FOR NO KEY UPDATE`) → reserva (`FOR NO KEY UPDATE`) → cotação → tentativas da cotação (por
 id) → devolução → **cancelamento ativo da reserva** (M8.2c) → **motor da reserva**
 (`travarMotorDaReserva`, M8.2c) → documentos legais / disjuntor / livro. Motor e livro travam depois, como já fazem.
+**Desde o M8.2d:** … → cancelamento ativo → **todas as alterações da reserva** (por id) → motor da reserva →
+**linha da reserva-pedido da alteração** (`FOR NO KEY UPDATE`, só pelo código da alteração: `cancelarPortador`) →
+motor da reserva-pedido → documentos legais / disjuntor / livro. Segurar uma alteração toma o motor da reserva e
+depois cria a reserva-pedido (`sincronizarReserva`, trava consultiva da fonte, motor dela): a mesma ordem. O
+cancelamento à mão (`tentarCancelarReserva`) recusa a reserva-pedido, e o recálculo de toda a empresa não passa por
+ela. `segurarDatas` e `criarBloqueio` vencem as alterações do imóvel em savepoints, depois da trava do imóvel.
 Desde o M8.2c, a trava do proprietário no fechamento, no antecipado (`travarDono`) e no estorno de repasse é
 `FOR NO KEY UPDATE` (antes `FOR UPDATE`): fechamentos e antecipados do mesmo proprietário continuam em fila, mas
 não esperam mais a conferência da chave estrangeira de quem grava um lançamento dele (o desconto do cancelamento),
@@ -491,7 +538,9 @@ Screen Brick).
 - **Antes da liberação:** no cartão, devolver antes de o Mercado Pago liberar o dinheiro pode pedir saldo
   disponível na conta; o texto de `devolucao_falhou` do cartão diz isso e manda conferir no Mercado Pago
   (sandbox, item 24).
-- Devolução de parte do valor: M8.2d (o M8.2c só devolve o valor integral).
+- Devolução de parte do valor: M8.2d (o M8.2c só devolve o valor integral). **Feita no M8.2d (10/10/2026)**, só
+  depois da liberação do pagamento; no cartão, o restante por fora segue a mesma regra do cartão (seção "Alteração
+  de reserva paga (M8.2d)").
 
 ### Taxa e liberação
 
@@ -644,11 +693,13 @@ noites nunca foram liberadas), seja qual for o relógio.
    impede gerar o Pix, sob a trava da reserva que o recebimento à mão também toma); dinheiro que chega **já devolvido em parte ou
    contestado**, sem uma leitura "aprovado" antes (motivo "situação inesperada", com aviso: nunca
    confirma sozinho; o resto se resolve pelo painel do Mercado Pago, e a devolução de parte do valor pelo
-   sistema chega no M8.2d).
+   sistema chega no M8.2d — desde 10/10, "Devolver o restante ao hóspede").
 4. **Reserva confirmada à mão pela equipe** (sem recebimento manual e sem outra tentativa com
    desfecho `reserva`): o pagamento vira o desfecho `reserva` dela.
 5. Recusado, cancelado ou expirado: nada muda; o hóspede pode tentar de novo enquanto as datas
    estiverem seguradas.
+6. **Pagamento da diferença de uma alteração (M8.2d):** decidido antes de tudo isso, num savepoint, pela alteração
+   (seção "Alteração de reserva paga (M8.2d)", "Aumento"); nunca confirma a reserva de novo.
 
 Confirmar à mão um pedido que tem pagamento aprovado sem reserva (a devolver) fica recusado, com a
 mensagem apontando o quadro do pagamento: o pagamento não se liga à reserva depois.
@@ -696,6 +747,12 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   essas reservas.
 - Reserva paga que um recálculo deixe sem lançamento do motor (contrato encerrado, troca para
   marketplace): aviso "dinheiro recebido sem cálculo".
+- **Desde o M8.2d:** a taxa da reserva é a de `taxaDaReserva` (as taxas conhecidas dos pagamentos da reserva menos a
+  atribuída às devoluções de alteração); a liberação lança o recebimento de qualquer pagamento da reserva (desfecho
+  `reserva` ou `alteracao`), também devolvido em parte sem devolução inexplicada; a liberação à mão também lança, na
+  mesma transação, as saídas de devolução que esperavam o recebimento (`acertarCaixasPendentes`) e acorda as
+  devoluções de parte que esperavam a liberação; o `valor_pago` fica congelado na aprovação. Seção "Alteração de
+  reserva paga (M8.2d)", "Lançamentos".
 
 ## Devolução na parte (a): só do pagamento sem reserva
 
@@ -747,13 +804,15 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   devolução em andamento ou contestada = recusa; sem conseguir ler (ou sem o provedor, como no deploy
   de produção) = recusa também. Nesta parte, só o valor integral **pago**, pela leitura de agora (o
   total pago quando vier, senão o valor da order: no valor divergente, o que o hóspede pagou, não o
-  total da cotação; devolução de parte do valor é o M8.2d). Desde o M8.2c, a nota passa pelo validador de
+  total da cotação; devolução de parte do valor é o M8.2d — desde 10/10, a por fora de parte vale pelo valor que a
+  devolução ainda deve, e o restante do pagamento sem reserva já devolvido em parte também). Desde o M8.2c, a nota passa pelo validador de
   dados pessoais e a taxa que não voltou é **calculada** no registro (abaixo). O dinheiro que chegou já **contestado** (situação
   inesperada) continua com essa opção: a situação local nunca volta a "aprovado", e a releitura só
   aceita quando o Mercado Pago mostra o pagamento aprovado de novo (contestação resolvida). O que
   chegou já **devolvido em parte** não tem essa opção (o Mercado Pago sempre mostra a parte
   devolvida): o quadro explica e oferece só "Conferir agora", e o resto se resolve pelo painel do
-  Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d). Se o Mercado Pago mostrar depois o pagamento devolvido com o desfecho
+  Mercado Pago (a devolução de parte do valor pelo sistema chega no M8.2d; desde 10/10, "Devolver o restante ao
+  hóspede", com o valor que o painel do Mercado Pago mostra quando a leitura não diz). Se o Mercado Pago mostrar depois o pagamento devolvido com o desfecho
   "por fora", aviso de **devolução em dobro** (a releitura diária inclui
   esses pagamentos). Os textos do painel nunca afirmam que o Mercado Pago "não fez": mandam conferir
   lá antes de registrar por fora.
@@ -774,7 +833,8 @@ do M9.2 passa a valer para reservas pagas quando Diego ligar as mensagens.
   - **"Corrigir taxa que não voltou"** (quem edita o financeiro): estorna a despesa atual com o motivo e lança
     a nova com a chave `#N+1`, auditado; e a despesa com chave `mercadopago:` não se estorna mais em
     Despesas ("corrija pelo quadro Pagamento no site da reserva");
-  - a despesa leva a reserva quando a devolução é de um cancelamento. Categoria escolhida na aba de pagamento (criada no
+  - a despesa leva a reserva quando a devolução é de um cancelamento (desde o M8.2d, de qualquer pagamento da reserva:
+    cancelamento, alteração e os restantes delas). Categoria escolhida na aba de pagamento (criada no
   primeiro uso, editável). Regra derivada (a decisão de 7/10 fala do reembolso integral da política;
   aqui a falha é do sistema): está no GUIA para Diego confirmar.
 - Cancelar à mão (o botão de sempre) uma reserva com tentativa pendente fica recusado, com mensagem.
@@ -865,13 +925,17 @@ fuso do imóvel (fuso diferente de `America/Sao_Paulo` = aviso na prévia). O in
   mostram "O proprietário deixa de receber R$ X…" (na SCL que cancela, só quando o pedido do hóspede, no
   horário dele, não teria devolução). Quem arca é decisão pendente de Diego (GUIA, seção 7).
 
-O resultado é sempre **integral ou nada**: devolução de parte do valor é o M8.2d.
+O resultado é sempre **integral ou nada**: devolução de parte do valor é o M8.2d. **Desde o M8.2d**, o integral
+de um pagamento já devolvido em parte (por uma redução ou no painel do Mercado Pago, reconhecido) devolve o restante,
+e o prazo conta de `entradaQueConta` (seção "Alteração de reserva paga (M8.2d)", "Cancelar depois de alterar").
 
 **Recusas antes de decidir:** reserva não confirmada ou já cancelada; sem pagamento com desfecho `reserva`
 (vale o cancelamento de sempre); outra tentativa sem resposta criada dentro do prazo de leitura (`em_andamento`;
 fora dele, só aviso); pagamento que a última leitura mostra devolvido em parte, com devolução em andamento,
 `devolvido_lido > 0` sem estar devolvido, ou em situação que o sistema não reconhece ("…o cancelamento pela
-política espera isso se resolver… a devolução de parte do valor chega com o M8.2d."); contestado ("…espera a
+política espera isso se resolver… a devolução de parte do valor chega com o M8.2d."; desde o M8.2d, o devolvido em
+parte e o `devolvido_lido > 0` não recusam mais por si: só a devolução em andamento, a situação desconhecida e o
+devolvido fora sem o valor informado); contestado ("…espera a
 contestação (M8.2e)"); a parte do proprietário num repasse **ainda não pago** ("estorne esse repasse (o
 proprietário recebe o resto no próximo) e então cancele. Se ele já foi pago de fato, marque-o como pago
 antes…"); notas com dado pessoal.
@@ -927,7 +991,8 @@ devolução do cancelamento tem `origem = 'cancelamento'`; código, rotina e lei
   o sistema lê como situação desconhecida de propósito). Guarda `valor_confirmado`.
 - **Devolução a menos:** confirmadas < devido, ou `devolvido_parcial`, com o pedido aceito → aviso
   `devolucao_a_menor` com os dois valores, a espera para e nada é acertado (M8.2d, ou o painel do Mercado Pago
-  mais a confirmação da equipe).
+  mais a confirmação da equipe). **Desde o M8.2d:** com o id, a devolução é confirmada pelo que voltou e a equipe pede
+  o restante ou o registra por fora; sem o id, a equipe confirma o valor que o painel mostra (D15).
 - **Pedir de novo** (devolução recusada, pagamento até 78 dias): reaproveita a linha, com chave nova.
 - **Por fora** ("Registrar devolução feita por fora"): Pix sempre que a devolução está recusada e sem pedido
   aceito; cartão só pela regra estrita da seção "Cartão (M8.2b)", "Devolução". A reserva continua com o
@@ -1074,8 +1139,8 @@ ao escolher o modelo, ao editar um modelo já escolhido e ao copiar (modelo que 
 
 ### OTAs e o gancho do M8.3
 
-Nada é escrito no Beds24. Enquanto o envio ao Beds24 estiver desligado, o Início (para quem edita reservas)
-lista as reservas do site canceladas com saída no futuro e sem a marca: "reabra as datas nas OTAs (no Beds24,
+Nada é escrito no Beds24. O Início (para quem edita reservas), com ou sem o envio ao Beds24 ligado (ver a decisão
+de 10/10 em "OTAs e o gancho do M8.3" do M8.2d), lista as reservas do site canceladas com saída no futuro e sem a marca: "reabra as datas nas OTAs (no Beds24,
 apague o bloqueio)", com o botão **"Datas reabertas nas OTAs"** na ficha (com confirmação, auditado). As datas
 voltam à venda no site na hora do cancelamento. O M8.3 vai consumir `cancelamentos_reserva` com
 `situacao = 'cancelada'` e `ota_liberada_em` vazio, e gravar a marca sozinho.
@@ -1083,14 +1148,544 @@ voltam à venda no site na hora do cancelamento. O M8.3 vai consumir `cancelamen
 ### Limites do M8.2c
 
 - Só integral ou nada; um cancelamento integral não se desfaz; um retido não vira devolução por exceção depois
-  (M8.2d, ou por fora mais um ajuste).
+  (M8.2d, ou por fora mais um ajuste). O M8.2d não fez essa troca: continua por fora mais um ajuste.
 - Pagamento devolvido em parte, contestado, com devolução em andamento ou em situação desconhecida não se
-  cancela pela política até isso se resolver.
+  cancela pela política até isso se resolver. Desde o M8.2d, o devolvido em parte se cancela (o restante).
 - Os e-mails ao hóspede (recibo do pedido — o decreto do comércio eletrônico pede a confirmação imediata —,
   decisão e devolução) estão prontos, mas só saem quando Diego ligar as mensagens; até lá, copiar e marcar.
 - Se a taxa e os juros do cartão voltam numa devolução integral é desconhecido (itens 7, 18, 35 e 36 de "A
   conferir no sandbox"): a equipe informa a taxa que não voltou, e o aviso fica até lá.
 - Testar só na prévia mais nova: as prévias antigas usam o mesmo banco e não conhecem `origem = 'cancelamento'`.
+
+## Alteração de reserva paga (M8.2d)
+
+Pronta em 10/10/2026, só no teste, nas prévias, com as mesmas travas. Calcular, segurar, aplicar, desistir e
+devolver usam `provedorDeConferencia`; o pagamento da diferença passa por `podeCobrar`, como qualquer cobrança.
+Código: `app/src/pagamentos/alteracao.ts` (prévia, segurar, aplicar, desistir, aprovação da diferença),
+`alteracao-regras.ts` (regras puras), `alteracao-prazo.ts` (vencimento), `alvo.ts` (o alvo da cobrança),
+`alteracao-tela.ts`, `alteracao-painel.ts` e `acoes-alteracao.ts` (o painel), `devolucao.ts`, `aplicar.ts`,
+`liberacao.ts`, `acerto-cancelamento.ts` e `travas.ts` (várias devoluções por pagamento),
+`app/src/site/disponibilidade.ts` e `app/src/calendario/envio.ts` (a cotação que não conta a própria reserva),
+`app/src/site/pagamento-vista.ts` (`textoDaAlteracao`); telas `components/reservas/AlteracaoSite.tsx`,
+`FormAlteracaoSite.tsx` e `components/site/AlteracaoNaReserva.tsx`; migração 0068. O desenho passou por quatro
+leituras adversariais (dinheiro, concorrência, produto e API/segurança) e a documentação de devolução das Orders
+foi relida em 10/10/2026: a devolução de parte do valor é documentada (o exemplo da referência responde uma parcial
+com `processed/refunded`); várias parciais na mesma order, a taxa que volta e o formato da resposta ficam para os
+itens 44 a 58 de "A conferir no sandbox".
+
+### Quem pode
+
+| Ação | Permissão |
+|---|---|
+| Calcular, segurar, aplicar e desistir de uma alteração | `reserva:editar` **e** `financeiro:editar` |
+| "Datas atualizadas nas OTAs"; "Mensagem enviada ao hóspede" | `reserva:editar` (copiar as mensagens, que levam valores, só com `financeiro:ler`) |
+| Ações das devoluções (pedir de novo, pedir o restante, restante por fora, por fora, confirmar o que se viu no painel do Mercado Pago com o valor, registrar a recusa de lá, parar, taxa que não voltou) | `financeiro:editar` |
+
+Hoje só o admin tem o financeiro: só Diego altera reservas pagas pelo site. Sem `financeiro:editar`, a ficha diz
+"Esta reserva foi paga pelo site: a alteração é feita por quem cuida do financeiro." e mostra a alteração segurada
+sem valores. As ações seguem sessão → permissão → validação → domínio; os ids (`alteracaoId`, `devolucaoId`) são
+resolvidos com o filtro da organização antes de qualquer trava (`cotacaoDaAlteracao`, `cotacaoDaDevolucao`): id de
+outra empresa = "não encontrada", sem chamada ao provedor nem gravação. Só a equipe prepara uma alteração; o
+hóspede não tem botão de pedir alteração (ele pede pelos canais de sempre).
+
+### Só antes da entrada
+
+A alteração vale enquanto agora é antes do instante da entrada atual (`checkin_a_partir_de` no dia da entrada, no
+fuso do imóvel) e com a nova entrada a partir de hoje; nova entrada hoje só antes do horário de entrada ("A nova
+entrada (hoje) já passou do horário de entrada (HH:MM): escolha uma data a partir de amanhã."). Todo caminho que
+aplica confere de novo: agora antes da entrada **mais cedo** das duas (a de antes e a nova), a nova entrada a partir
+de hoje e nenhum mês da estadia nova antes do mês corrente. Assim nenhuma linha do motor da reserva movimentou
+dinheiro (antes da entrada nada é repassado e as linhas do motor de uma reserva do site nunca são realizadas) e
+todos os meses envolvidos são o corrente ou depois. Depois da entrada: "A estadia já começou: a alteração pelo
+sistema vale só antes da entrada…": mais noites são uma reserva nova (no painel, com o pagamento registrado, ou
+pelo site quando a estadia mínima permitir); a saída antecipada não tem devolução pela política e a reserva fica
+como está (as noites seguem ocupadas e a limpeza de saída fica na data original).
+
+Fora do escopo: acrescentar noites antes **e** depois ao mesmo tempo (`duas_pontas`: "faça em duas alterações");
+trocar de apartamento (cancelar e reservar de novo); mudar o número de pessoas num apartamento sem a capacidade
+cadastrada.
+
+### O pedido, a prévia e a assinatura
+
+Formulário em dois passos, no quadro "Pagamento no site" da ficha, bloco **Alteração da reserva**:
+- **"Calcular a alteração"**: nova entrada, nova saída, pessoas (de 1 à capacidade); quem pede ("O hóspede pediu" ou
+  "A SCL propõe (apartamento sem condições, força maior ou outro)", com o motivo da SCL); o valor ("Pela cotação do
+  site (preços de hoje)", "Manter o valor atual (R$ Y)" ou "Outro valor", os dois últimos com motivo de uma lista —
+  A SCL propôs a alteração, Cortesia comercial, Erro da SCL, Acordo com o hóspede, Preço a confirmar, Outro — e nota
+  obrigatória); quando o pedido chegou e por onde (pedido do hóspede); onde está o pedido (opcional).
+- A **prévia** mostra antes e depois (datas, noites, pessoas, valor e de onde veio o valor), a diferença, a política
+  aceita (versão, último dia do integral, contando da entrada que conta, arrependimento), a decisão e a base, como a
+  devolução sai por pagamento, o financeiro antes, depois e a diferença por componente (valor bruto, taxa do Mercado
+  Pago, comissão da SCL, parte do proprietário) e por mês, as noites novas seguradas e por quanto tempo, os avisos e
+  "Copiar a proposta para o hóspede" (o modelo `alteracao_proposta` preenchido pela prévia).
+- O botão segue o rumo: aumento → **"Segurar as novas datas e liberar o pagamento da diferença"**; redução ou mesmo
+  valor → **"Aplicar a alteração"** (segura e aplica numa transação só) e **"Só segurar as datas (o hóspede ainda
+  decide)"**. Cada um com `BotaoConfirmar` e a pergunta montada pelo domínio (`pergunta`), que repete as datas, as
+  pessoas, os valores e, na redução, a política, como a devolução sai e a taxa sobre a parte devolvida; na redução e
+  no mesmo valor, começa por "Confirme que o hóspede aceitou por escrito"; na proposta da SCL com aumento pela
+  cotação, "A alteração é proposta pela SCL: confirme que o hóspede paga a diferença".
+- A ação exige a **assinatura** da prévia (hash de antes e depois, cotação, origem do valor, diferença, entrada que
+  conta, decisão, direito, base, valor a devolver, partes, financeiro, versão da política, momento do pedido, quem
+  pede e a leitura de cada pagamento): mudou → `previa_mudou` ("O cálculo mudou desde a prévia (reserva, pagamento,
+  leitura do Mercado Pago, preços ou agenda): calcule de novo antes de seguir."). Mudou um campo do formulário →
+  "calcule de novo".
+
+**Recusas** (texto fixo de cada uma): reserva não confirmada pelo site; sem pagamento com desfecho `reserva`; outra
+tentativa da cotação sem resposta dentro do prazo de leitura (fora dele, só aviso); pagamento contestado (espera o
+M8.2e); devolução fora do sistema não reconhecida ou situação desconhecida (`devolvido_fora`); uma devolução com a
+chave em voo, ainda pedida ou devolvida a menos sem o restante (`devolucao_em_andamento`), ou esperando a liberação
+("A devolução de R$ X espera o Mercado Pago liberar o pagamento (previsto para dd/mm): depois disso a reserva pode
+ser alterada de novo."); pedido de cancelamento ativo; outra alteração segurada ("Já há uma alteração com as datas
+seguradas até HH:MM…"); estadia iniciada; nova entrada antes de hoje; nada muda (`sem_mudanca`); `duas_pontas`;
+novas datas indisponíveis ou noites novas ocupadas (reserva, bloqueio ou agenda do Beds24); leitura do Beds24 velha
+nas noites novas (`sem_leitura`); valor "a confirmar" com "pela cotação" (`a_confirmar`: mantenha ou digite); o
+financeiro não calcula nas novas datas (`sem_calculo`, com a pendência); dinheiro já movimentado ou reserva em
+conferência (guardas: antes da entrada não acontecem); aumento com a cobrança pelo site fechada (`sem_cobranca`, com
+o motivo do portão); redução só de valor com a política retendo (`sem_efeito`: "Pela política, a diferença não é
+devolvida e nada muda; para dar o desconto, use a exceção."); saldo dos pagamentos que não cobre a devolução
+(`sem_saldo`); momento do pedido no futuro ou antes do pagamento; nota com dado pessoal; trava ocupada (`ocupado`).
+
+### O novo valor
+
+- **Pela cotação** (padrão quando o hóspede pede): `consultarDisponibilidade(…, { propria })` cota a **estadia
+  inteira nova** com a regra de hoje, sem contar a própria reserva: `planejarImovel` ignora a reserva (e recorta das
+  noites dela o bloqueio de fonte Beds24 que a equipe fechou até o M8.3); nas noites que já eram dela, nem a
+  ocupação nem o fechamento da leitura contam, mas o preço segue a regra (fonte Beds24 sem leitura atual = a
+  confirmar). A entrada ou a saída que não muda já foi vendida: nela não valem antecedência, horizonte, dias de
+  entrada e de saída nem as restrições de entrada e saída do Beds24; sem mudar as datas (só pessoas ou valor), o
+  mínimo e o máximo de noites também não. As noites novas passam pela conferência de sempre e, de novo, por
+  `noitesLivres` com leitura atual.
+- **Manter o valor atual** ou **Outro valor** (de R$ 0,01 a R$ 10.000.000,00), sempre com motivo e nota, auditados
+  na alteração. A prévia mostra "Cotação do site para as novas datas: R$ C; valor usado: R$ V (motivo)".
+- **A SCL propõe:** o formulário começa em "Manter o valor atual" com o motivo "A SCL propôs a alteração" (o
+  hóspede não paga pelo problema da SCL); escolher a cotação com aumento mostra o aviso "A alteração é proposta pela
+  SCL: cobrar R$ D do hóspede?" e a frase na pergunta. Numa redução proposta pela SCL, a diferença é sempre
+  devolvida.
+- Aviso quando noites e valor andam em direções opostas ("Menos noites e valor maior pela cotação de hoje…" e o
+  contrário).
+- O que a reserva guarda (`valorNovo`): aumento = antes + diferença; redução devolvida = o novo; redução retida e
+  mesmo valor = o de antes.
+
+### Datas novas seguradas
+
+- As noites acrescentadas (um intervalo só) ficam seguradas por uma **reserva-pedido da alteração**: fonte
+  `alteracao`, `idFonte` = id da alteração, estado `pedido`, origem `site`, nome "Alteração SCL-…", sem e-mail nem
+  telefone, sem valores, observações sem valores. Ocupa as noites pela regra de sempre; nunca é confirmada, nunca vai
+  ao Beds24, nunca tem lançamentos; a importação do Beds24 e da planilha nunca a casam. Confirmar ou cancelar pela
+  ficha é recusado ("Estas são as datas seguradas de uma alteração da reserva SCL-……"); a ficha dela mostra "Datas
+  seguradas para a alteração da reserva SCL-… até HH:MM", sem e-mail, Confirmar, Cancelar e Horários. Sem noite
+  nova, não há reserva-pedido.
+- **Prazo próprio:** `regras.site.minutosHoldAlteracao`, em Configurações → Calendário e preços ("Minutos que as
+  novas datas de uma alteração de reserva paga pelo site ficam seguradas"; padrão 60, de 5 a 2880), separado do
+  prazo do visitante do site (`minutosHold`). O pagamento da diferença estende o prazo com as regras da cotação
+  (Pix: a validade dele mais a folga; desafio do banco; cartão em análise uma vez por alteração), e o prazo
+  **nunca passa do horário de entrada** (a primeira das duas entradas): na gravação, nas extensões e no alvo da
+  cobrança; a prévia avisa quando o prazo fica limitado por isso. Carência de 15 minutos depois do prazo enquanto um
+  pagamento da diferença está em andamento (`alteracaoEmCarencia`).
+- **Situação que vale agora** (`situacaoEfetiva`): uma segurada com o prazo e a carência vencidos vale como
+  `expirada` em toda guarda e tela, antes de alguém gravar. **Vencimento preguiçoso:** toda ação da alteração, o
+  cancelamento, a aprovação da diferença e o "Conferir agora" da reserva vencem primeiro (`expirarSeVencida`, sob as
+  travas, sem chamar o provedor); `segurarDatas` (M8.1) e `criarBloqueio` vencem as do mesmo imóvel antes de
+  conferir as noites, cada uma num savepoint (trava ocupada = pulada); e a rotina (só em produção) vence as
+  vencidas. Vencer = `expirada`, a reserva-pedido cancelada (`cancelarPortador`, que trava a linha dela com `FOR NO
+  KEY UPDATE`), auditoria.
+- **Desistir** ("Desistir da alteração", motivo obrigatório, com confirmação): só a segurada; recusada com um
+  pagamento da diferença sendo criado ou um cartão em análise ("Há um pagamento da diferença em andamento: espere ele
+  terminar."); a reserva-pedido é cancelada e os Pix da diferença ainda pendentes são cancelados no Mercado Pago
+  depois do commit. Um Pix pago nessa corrida vira aprovação tardia e sem reserva (`alteracao_desistida`), para
+  devolver.
+
+### Aumento: o pagamento da diferença
+
+- É uma tentativa nova **na cotação original** (`cotacao_id` = a original, `reserva_id` = a reserva, `alteracao_id` =
+  a alteração, valor = a diferença); aprovada e aplicada, desfecho `alteracao` (no máximo um por alteração, índice
+  único parcial). A trava, o cookie do hóspede e "Continuar o pagamento" ficam os mesmos.
+- **Alvo da cobrança** (`alvoDaCobranca`): toda regra que olhava "as tentativas da cotação" olha as do alvo (a
+  reserva original ou uma alteração): o limite de 3 Pix e 3 cartões, o "já pago", o cartão em análise, o cancelamento
+  do Pix anterior, a extensão do prazo e o cancelamento das irmãs (`aplicar.ts` e `rotina.ts`: só as do mesmo alvo).
+  Sem isso, a releitura do pagamento original cancelaria o Pix da diferença. A guarda do `live_mode` continua na
+  cotação inteira. A rotina cancela as tentativas pendentes de uma alteração que não está mais segurada.
+- **Oferta** (Pix e cartão): alteração segurada com prazo, diferença > 0, reserva confirmada sem cancelamento, cotação
+  da alteração disponível (ou valor da equipe, cujas noites já passaram pela leitura atual), imóvel público e ativo, o
+  motor calculando nas novas datas, sem recebimento registrado à mão. O formulário leva o id da alteração (campo
+  escondido); alteração mudada com a página aberta → `alteracao_mudou` ("A alteração mudou enquanto a página estava
+  aberta: atualize a página.").
+- **Aceite (D11):** a reserva continua na Política de cancelamento aceita no pagamento que a confirmou. A caixa diz
+  "Li e aceito os Termos (versão T) e li a Privacidade (versão P). A sua reserva continua na Política de
+  cancelamento versão N, aceita em dd/mm." e só aparece quando as versões em vigor ainda não foram aceitas nesta
+  cotação; o aceite grava `{ termos: T, privacidade: P, cancelamento: N }` (`aceiteVigenteTravado` com
+  `cancelamentoDaReserva`). O pagamento da diferença não abre outro prazo de arrependimento: toda decisão de política
+  da reserva (alteração e cancelamento) usa a versão e a aprovação do primeiro pagamento.
+- **Aprovação** (`decidirAprovacaoDaAlteracao`, antes de `valorConfere(total da cotação)` e de `outra_tentativa`,
+  num **savepoint**): valor diferente da diferença → `valor_divergente`; outra tentativa da mesma alteração já
+  aplicada → `outra_tentativa`; alteração desistida → `alteracao_desistida`; reserva não confirmada ou com pedido de
+  cancelamento → `alteracao_reserva_mudou` (`cancelada_pela_equipe` quando cancelada); segurada (com a carência) →
+  aplica; vencida com a reserva igual ao retrato, nenhuma alteração da reserva criada depois e as datas ainda no
+  futuro → tenta as noites de novo com leitura atual e aplica (`alteracao_tardia`); senão, ou numa recusa da
+  aplicação, "aprovado sem reserva" com o motivo: `alteracao_noites_ocupadas`, `alteracao_sem_leitura`,
+  `alteracao_desistida`, `alteracao_reserva_mudou` ou `alteracao_nao_aplicada:<código>` (inclusive `estadia_iniciada`
+  e `financeiro_movimentado`, que desfaz até o savepoint). Esse pagamento segue a devolução do M8.2a ("Devolver ao
+  hóspede", por fora); Início: "N pagamento(s) da diferença de uma alteração aprovado(s) sem a alteração: devolva ao
+  hóspede". Nenhuma aprovação fica sem desfecho e a leitura nunca é desfeita pelo erro da aplicação.
+- A mensagem de confirmação da reserva (M9.2) não sai de novo por causa da alteração.
+
+### Redução: a política, contando da entrada que conta
+
+- `decidirPelaPolitica` com a versão aceita no pagamento que confirmou (`politicaDoPagamento`), a aprovação dele, o
+  momento do pedido e quem pede, com **`checkin: entradaQueConta(entrada da cotação, entrada atual)`** — a mais
+  cedo das duas — e `entradaAtual` = a entrada de agora (para "a estadia começou" e o limite do arrependimento; com
+  ela, "no prazo" exige também a estadia não iniciada). `entradaQueConta` (`configuracoes/politica-cancelamento.ts`)
+  é a única fonte para o painel (alteração e cancelamento), `/reservar` (`site/aceites.ts`) e Minha reserva
+  (`hospede/cancelamento.ts`). **Registro de decisão (10/10/2026):** o texto-base publicado da política e a pergunta
+  de 9/10 no GUIA diziam "contando os dias a partir da data de entrada original"; o M8.2d conta da original **ou da
+  atual, a que vier primeiro**, porque contar só da original deixaria uma estadia adiantada ser cancelada com
+  devolução integral no meio da estadia (entrada original 15/01, adiantada para 28/11, pedido em 01/12: pela
+  original ainda daria integral). Adiar nunca reabre o prazo e adiantar o fecha. Objetivo: a alteração nunca virar
+  um cancelamento sem perda. Padrão em uso, ★ decisão 1 de Diego (GUIA, seção 7); a frase da v2 da política está no
+  GUIA (seção 6, item 42). **Ajuste de 11/10/2026 (revisão do M8.2d):** com mais de uma alteração, conta a menor de
+  **todas** as entradas que a reserva teve (a da cotação, a atual e as de cada alteração aplicada,
+  `entradasDasAlteracoes`/`entradasDaReserva`); antes, só a original e a atual, e uma reserva de 15/01 adiantada para
+  28/11 e depois adiada para 01/02 voltava a contar de 15/01, reabrindo o prazo que o adiantamento fechou.
+- Integral → a diferença é devolvida **depois** de a alteração ser aplicada; nada → retida: a reserva fica com o
+  valor de antes nas datas novas, dividido como uma reserva normal, e as noites liberadas voltam à venda (a prévia
+  avisa). Pela mesma regra do M8.2c: a SCL propõe → integral; política `nenhum` + exceção (motivo da lista e nota) →
+  integral; sem política aceita → a equipe escolhe "Devolver a diferença" ou "Não devolver", com motivo; um direito
+  integral nunca vira nada. Os textos dizem quem decidiu ("Pela política", "Por exceção", "Como a alteração é
+  proposta pela SCL", "Por decisão da equipe"); "pela política" só quando a política decidiu.
+- **Partes:** a devolução se divide entre os pagamentos que contam (`dividirDevolucao`): primeiro os que podem sair
+  agora (no prazo de 78 dias, liberados, com a taxa conhecida), dos mais novos para os mais antigos; cada um até o
+  principal que ainda pode devolver. Pagamento com mais de 78 dias → `fora_do_prazo` (painel do Mercado Pago no
+  cartão, por fora no Pix). A prévia avisa a parte que espera a liberação, a com mais de 78 dias e o cartão com
+  juros ("a devolução é da diferença do valor da reserva; os juros seguem as regras do cartão").
+
+### A ordem: aplica, depois devolve
+
+`aplicarNaTransacao` (segurar e aplicar, aplicar de uma segurada, aprovação da diferença), sob travas → alterações →
+motor da reserva → linha da reserva-pedido → motor dela: confere tudo de novo (reserva confirmada, sem
+cancelamento, igual ao retrato — senão `reserva_mudou`: "A reserva mudou depois que as datas foram seguradas:
+desista desta alteração e prepare outra." —, as datas do "só antes da entrada", o motor sem nada movimentado e, na
+redução, os pagamentos); as noites novas de novo (excluindo a própria reserva e a reserva-pedido; leitura atual só
+na aprovação tardia); cancela a reserva-pedido; grava a reserva pela porta de sempre (`sincronizarReserva`, com
+`dadosDoSite`, o mesmo construtor da reserva do site, e a taxa de `taxaDaReserva`), acrescenta às observações
+"Alterada em dd/mm: de dd/mm–dd/mm (N noites, P pessoas) para …" (nunca valores); marca a alteração `aplicada`
+com o resultado por mês; **só então** cria as devoluções da diferença (origem `alteracao`, uma por parte, motivo
+"Alteração da reserva SCL-…: devolução da diferença pela política" ou quem decidiu, `pedida`, ou `recusada` com
+`devolucao_fora_do_prazo`), depois do teto (D12). Auditoria `reserva.alterar` com datas, pessoas e `valorBruto`
+(escondido sem `financeiro:ler`); os valores da alteração ficam na auditoria da entidade `alteracao`. O pedido ao
+Mercado Pago vem depois do commit (fase 2). Nunca fica pela metade: `financeiroNaoAtualizado` lança
+`ErroAlteracaoProtegida` e a transação (ou o savepoint da aprovação) desfaz tudo.
+
+"Aplicar" de uma alteração segurada ("Conferir para aplicar (o hóspede aceitou)" → "Aplicar a alteração") nunca cota
+de novo: `montarAplicacao` lê o retrato gravado (datas, pessoas, valor, diferença, cotação, política, momento do
+pedido) e refaz só o estado do dinheiro (leituras, devoluções, datas, motor, a decisão com as mesmas entradas, que
+precisa dar a mesma, as partes e as noites novas); a assinatura da aplicação cobre o retrato que decide (situação,
+prazo, datas, valor, diferença, política) e o dinheiro de agora — marcar o hóspede avisado não a invalida; uma
+leitura nova da agenda ou um preço mudado durante o prazo não bloqueiam; uma leitura do pagamento mudada, sim.
+
+### Várias devoluções por pagamento
+
+- O índice único `devolucoes_pagamento_um_por_pagamento` virou cinco índices parciais (migração 0068): uma
+  devolução principal `sem_reserva` por pagamento; uma por (cancelamento, pagamento); uma por (alteração,
+  pagamento); um restante por devolução de origem; e **uma `pedida` por pagamento**. `devolucaoDoPagamento` saiu;
+  as regras de quanto cada devolução compromete moram em `travas.ts`: `comprometido` (confirmada = o valor
+  confirmado; por fora = o valor por fora; pedida ou recusada = o valor; substituída = 0; origem desconhecida conta,
+  por defesa), `devolvidoProprio`, `saldoDevolvivel`, `saldoPrincipal`, `integralIntocada`, `valorPagoAprovado`.
+- **Pago congelado** (D28): `valorPagoAprovado = valor_pago ?? valor`, congelado na aprovação (uma leitura
+  depois nunca o muda). **Teto sob a trava** em todo caminho que cria, pede de novo, registra por fora, pede o
+  restante ou confirma um valor: comprometido + valor ≤ pago − devolvido fora reconhecido. O adaptador não tem mais
+  teto local no valor explícito (o `refund_amount_exceeds` do Mercado Pago é a última defesa).
+- **Valor explícito** em toda devolução que não é a integral de um pagamento intocado (corpo `null` só nela, e em
+  todo reenvio de uma chave gravada com corpo vazio: `corpo_integral`, D29); o valor nunca muda com a chave em
+  dúvida ou aceita.
+- **Confirmação por devolução** (D14): pelo id (`refunds[].id` = o da devolução); senão pelo valor que entrou desde
+  então (o devolvido lido menos as outras confirmadas e o reconhecido, nada em andamento, com a chave aceita ou em
+  dúvida); senão por completar o pagamento (situação `devolvido` e esta devolução fecha o pago). `devolvido_parcial`
+  é o esperado depois de uma parcial, nunca aviso por si.
+- **"Possivelmente nossa"** (D21): o pedido enviado com a chave em dúvida ou aceita conta em `devolvidoProprio`,
+  então a nossa parcial cuja resposta se perdeu nunca parece devolução de fora; com a chave em dúvida e o excesso até
+  o valor dela, o sistema reenvia com a mesma chave (`repetida`, mesmo corpo) e o adaptador acha a nossa pelos ids
+  conhecidos. `devolucaoInexplicada` (TS) e `devolvidaNoProvedorSql` (SQL, `portal/posse.ts`) são a mesma regra,
+  testada numa matriz; `devolvido_por_fora` é recalculado a cada leitura (nunca entrada da regra).
+- **Situação `processed/refunded` explicada** (D27): quando as nossas devoluções enviadas e o reconhecido explicam
+  o devolvido, a situação vira `devolvido` (chegou ao pago) ou `devolvido_parcial`, sem `situacao_desconhecida`.
+- **Avisos por devolução:** `devolucao_falhou`, `devolucao_parada`, `devolucao_sem_confirmacao`,
+  `devolucao_fora_do_prazo`, `devolucao_a_menor`, `taxa_perdida_desconhecida`, `devolucao_data_a_conferir` e
+  `devolucao_aguardando_liberacao_atrasada` vivem em `devolucoes_pagamento.avisos`; o pagamento leva a união. A regra
+  do cartão por fora (`porForaPermitidoNoCartao`) lê os avisos da própria devolução.
+- **Respostas novas do Mercado Pago** (adaptador): a nossa devolução é a que nem a leitura de antes nem o banco
+  conhecem (`conhecidas`); `confirmada` só com a nossa processada; 409 `order_already_refunded` = confirmada no
+  pedido integral, incerta no parcial com a mesma chave, `ja_devolvido` (recusada, a leitura seguinte decide) no
+  parcial com chave nova; `unsupported_partially_refunds`, `payment_not_refundable` e `max_refunds_exceeded` =
+  `nao_permitido`; `amount_not_refundable` = `valor_excede`. Pedido de parte do valor sem o id da
+  transação na leitura: nada se envia e a devolução para (`devolucao_parada`, motivo "o Mercado Pago não informou a
+  transação do pagamento"), para a equipe conferir no painel dele. Na terceira falha,
+  só desiste sem uma devolução **nova** desde o pedido.
+
+### Devolução de parte do valor só depois da liberação (D13)
+
+Uma devolução de um pagamento da reserva que não é a integral de um pagamento intocado (a da alteração, o restante de
+um cancelamento, um restante) só é pedida ao Mercado Pago com o pagamento **liberado** (`liberacaoConfirmadaEm`) e a
+**taxa conhecida**, conferido antes de qualquer leitura e de novo sob a trava, quando a chave é gravada. Até lá fica
+`pedida`, sem chave, com `ultimo_codigo = 'aguardando_liberacao'` e a próxima volta na data prevista; passada a data
+prevista (ou 35 dias da aprovação, sem previsão), aviso `devolucao_aguardando_liberacao_atrasada` ("A liberação deste
+pagamento passou da data prevista e a devolução de R$ X continua esperando: confira no painel do Mercado Pago e
+registre a liberação à mão quando ela aparecer."). As razões: a devolução de parte de um cartão antes da liberação
+redistribui as parcelas a liberar (o líquido liberado deixaria de ser o que o caixa espera) e a identidade do caixa
+(abaixo); a falta de saldo continua tratada como hoje (saldo disponível na conta é outra condição). A devolução
+integral de um pagamento intocado e a do pagamento sem reserva saem na hora, como antes. Quem espera a liberação
+nunca é tratada como pedida ao Mercado Pago: o hóspede vê "será pedida quando o Mercado Pago liberar o pagamento
+(previsto para dd/mm)", o quadro mostra "aguardando a liberação do pagamento (prevista para dd/mm)", "Confirmar
+devolução vista no painel" não vale para ela, e uma nova alteração espera ("depois disso a reserva pode ser
+alterada de novo"). **No teste, o sinal de liberação nunca chega:** a equipe registra a liberação à mão no quadro
+do pagamento, e a devolução sai na volta seguinte (GUIA, seção 6, item 44). A liberação à mão é aceita também numa
+reserva cancelada com devolução integral quando uma devolução de parte espera por ela (marca só o pagamento, nada
+no livro). Estornar uma liberação à mão é recusado com uma devolução de parte já pedida ao Mercado Pago ou realizada
+esperando o caixa. Conflito com o texto publicado ("Pedimos a devolução ao Mercado Pago logo depois de confirmar"; no
+arrependimento, "imediatamente"): ★ decisão 11 de Diego; a frase da v2 está no GUIA, item 42; o item 55 confere se a
+regra pode afrouxar.
+
+### O que o M8.2a e o M8.2c deixaram
+
+- **Restante do pagamento sem reserva** (chegou `devolvido_parcial` — situação inesperada — ou a devolução parou):
+  **"Devolver o restante ao hóspede (R$ X)"**, X = pago − comprometido − reconhecido. Na criação, sob a trava, o
+  devolvido fora do sistema que a leitura mostra (devolvido lido − devolvido nosso) é gravado em
+  `pagamentos.devolvido_fora_reconhecido` (auditado); quando o Mercado Pago mostra devolução sem dizer quanto, a
+  ação pede o valor que o painel dele mostra ("O Mercado Pago não informou quanto já foi devolvido: informe o valor
+  que aparece no painel dele"). Uma devolução parada é pedida de novo, ou registrada por fora, pelo restante. O
+  desfecho do pagamento sem reserva só é gravado quando ele fica completo (`por_fora` se alguma parte foi por fora,
+  senão `devolucao`).
+- **Reserva confirmada com parte devolvida no painel do Mercado Pago:** o cancelamento pela política passa a ser
+  aceito, com o mesmo reconhecimento (da leitura, ou o valor digitado — sem ele, "informe o valor que aparece no
+  painel do Mercado Pago antes de cancelar"); o integral devolve só o restante; uma decisão "nada" com dinheiro já
+  devolvido fora do sistema é recusada para a equipe decidir (exceção ou ajuste). A alteração recusa enquanto essa
+  devolução não é reconhecida.
+- **Por fora de parte** (D16): pelo valor exato que a devolução ainda deve ("A devolução por fora registra o valor
+  desta devolução: R$ X."), só numa devolução nunca enviada ou recusada sem chave em dúvida nem aceita ("O pedido
+  desta devolução já foi enviado ao Mercado Pago e ainda pode sair por lá…"); a releitura antes recusa devolução que
+  o sistema não pediu, em andamento, contestação ou outra situação. Taxa que não voltou da parte por fora: a taxa
+  atribuída a ela.
+- **Devolução que o Mercado Pago fez a menos** (D15): com o id, confirmada pelo que voltou (o caixa pelo que voltou,
+  a taxa atribuída recalculada uma vez), aviso `devolucao_a_menor` ("O Mercado Pago devolveu R$ X de R$ Y pedidos
+  nesta devolução: o que voltou já está no financeiro. Peça o restante ao Mercado Pago ou registre o restante
+  devolvido por fora."), e a espera para; a equipe escolhe **"Pedir o restante ao Mercado Pago"** (devolução nova,
+  chave nova, `origem_devolucao_id` = a de origem; confirmação "Confira antes no painel do Mercado Pago que ele não
+  saiu") ou **"Registrar o restante devolvido por fora"** (no cartão, só quando a regra do cartão permite: o botão
+  só aparece quando funcionaria). Restante recusado com `valor_excede` ou `nao_permitido`: aviso de a menos e
+  "confira no painel do Mercado Pago", com a confirmação pelo valor visto, a recusa do painel ou um ajuste. Sem o id,
+  só o aviso: nada é acertado e a equipe confirma o valor que o painel mostra ("Confirmar devolução vista no painel
+  do Mercado Pago", com o valor, até o devido e sob o teto; menos que o devido = confirmada por esse valor, com o
+  aviso). A confirmação da equipe vale também para uma devolução parada.
+
+### Lançamentos
+
+**Registro de decisão (10/10/2026).** Regra anterior (ROADMAP, M8.2, e o desenho de 8/10): ao confirmar a alteração,
+"lançamentos de diferença por componente (valor bruto, taxa do pagamento, comissão e parte do proprietário — cada
+um só com a diferença entre o novo e o anterior, no tipo certo), idempotentes (uma chave por alteração)". Regra
+nova, para a alteração antes da entrada (a única que o sistema faz): **a diferença é o recálculo do motor**. A
+alteração grava os fatos novos pela porta de sempre e o motor estorna as linhas antigas no próprio mês (aberto: o
+mês corrente ou depois) e lança as novas; o estorno leva o motivo "Alteração <id> da reserva SCL-…: recalculado"
+(`aplicarMotor` com `motivoEstorno`), então cada linha se liga à alteração. Por componente e mês, estorno + linha
+nova = exatamente novo − anterior; antes e depois por mês ficam em `alteracoes_reserva.resultado` e aparecem na ficha
+(tabela "Antes / Depois / Diferença"), e um teste confere Σ novas − Σ estornadas = o guardado. Motivo: antes da
+entrada nada movimentou dinheiro, então o líquido é o mesmo, e linhas de diferença explícitas congelariam o motor de
+toda reserva alterada (duas versões da mesma regra). Idempotência: a alteração passa de `segurada` a `aplicada` uma
+vez, sob a trava, e o motor tem chave e assinatura (rodar de novo não muda nada). O que depende de dinheiro no
+provedor continua pendente: o recebimento do pagamento da diferença só na liberação; a saída e a taxa perdida da
+devolução só quando ela se realiza; as linhas do motor ficam `previsto`. Objetivo final: linhas de diferença
+explícitas no mês corrente (e a parte negativa do proprietário, `lancarDescontoDoProprietario`, com origem
+`alteracao`) quando existir uma alteração depois da entrada, item futuro. É a decisão 17 de Diego (GUIA, seção 7)
+e está no "Entregue em" do ROADMAP.
+
+- **Taxa da parte devolvida** (D19): `taxaAtribuida(p, v) = arredondamento de p.taxa × v / p.valor` (meio centavo
+  para cima), sobre o **principal** acumulado das devoluções do pagamento (nunca mais que `p.taxa`); a taxa de uma
+  devolução é a diferença entre o acumulado depois e antes dela (várias parciais nunca derivam um centavo), gravada
+  em `devolucoes_pagamento.taxa_atribuida` na primeira vez que dá para calcular. Os juros do cartão ficam só com a
+  devolução que cruza o principal.
+- **Taxa da reserva** (`taxaDaReserva`, uma regra, um lugar): Σ das taxas **conhecidas** dos pagamentos que contam
+  menos a atribuída às devoluções de alteração decididas (uma devolvida a menos conta pelo valor decidido até o
+  restante existir). Taxa desconhecida de um pagamento mantém as conhecidas e avisa ("a divisão usa as taxas
+  conhecidas até ele informar"); um pagamento só, sem devolução de alteração = a taxa dele (igual ao de antes).
+  `gravarTaxaNaReserva` grava `taxaCanal` e `valorLiquido`.
+- **Caixa por devolução** (`acertarCaixaDaDevolucao`, idempotente por `devolucoes_pagamento.caixa_lancado_em`):
+  sai `devolvido − taxa atribuída` (a que completa o pagamento leva tudo o que ainda está dentro); sem o recebimento
+  do pagamento lançado, espera (`acertarCaixasPendentes` lança logo depois do recebimento, na liberação do
+  provedor **e** na registrada à mão), ou nada é lançado quando nada vai entrar (pagamento completado pelas
+  devoluções, reserva cancelada com devolução integral, ou a integral de corpo vazio que saiu antes da liberação).
+  A confirmada pela equipe sem nunca ter sido pedida não conta como integral: a parte espera o recebimento como as
+  outras (ajuste de 11/10, revisão do Codex: antes, a que não se sabia parcial era tratada como integral e o caixa
+  ficava acertado sem saída, sobrando dinheiro no caixa depois da liberação). A taxa que não voltou é despesa da empresa com a reserva
+  (`reservaId`), informada pela equipe ou calculada no por fora; tetos por devolução e por pagamento (a soma das
+  taxas perdidas ≤ taxa + juros), com os dois valores na recusa.
+- **Liberação:** lança `mercadopago:<pagamento>:recebimento` para qualquer pagamento da reserva (desfecho
+  `reserva` ou `alteracao`) aprovado ou devolvido em parte explicado; `liberacoesDoSite` dá a última liberação
+  prevista dos pagamentos ainda não liberados; `temRecebimentoManual` ignora as chaves `mercadopago:`.
+- **Identidade do caixa** (`recebido = devido` no fim, em todos os caminhos): devolução de parte depois da liberação
+  (+L1, −(R − F_r), −taxa perdida); por fora depois ou antes da liberação (a saída adiada até o recebimento);
+  devolução integral de um pagamento intocado não liberado (nada entra nem sai do caixa; a taxa perdida informada);
+  aumento (+L1 e +L2 nas duas liberações).
+- **Exemplos (Pix 0,99%, comissão 15%):**
+  - **Aumento:** 10/11–14/11 por R$ 1.500,00 (taxa R$ 14,85) passa a 10/11–15/11 pela cotação de R$ 1.900,00;
+    diferença R$ 400,00 (taxa R$ 3,96). Novembro: bruto +R$ 400,00, taxa −R$ 3,96, comissão +R$ 59,41, parte
+    +R$ 336,63. A parte espera também a liberação do pagamento da diferença.
+  - **Redução devolvida, mudando de mês:** 28/11–03/12 (R$ 1.500,00) passa em 01/11 a 05/12–09/12 pela cotação
+    de R$ 1.200,00; prazo contado de 28/11 (integral até 14/11) → devolve R$ 300,00; taxa atribuída R$ 2,97
+    (taxa da reserva R$ 11,88). Novembro estornado; dezembro passa a {R$ 1.200,00, −R$ 11,88, R$ 178,22,
+    R$ 1.009,90}. Confirmada a devolução, saem do caixa R$ 297,03; a taxa que não voltar (até R$ 2,97) é despesa
+    da empresa.
+  - **Redução retida:** o mesmo pedido em 20/11 (fora do prazo e sem arrependimento) → nada; o valor continua
+    R$ 1.500,00 nas datas de dezembro, dividido como uma reserva normal, e as noites liberadas voltam à venda.
+  - **Devolução a menos:** o Mercado Pago devolve R$ 290,00 dos R$ 300,00 → confirmada por R$ 290,00 (taxa
+    atribuída R$ 2,87, saída R$ 287,13); "Pedir o restante" cria R$ 10,00 (taxa R$ 0,10, saída R$ 9,90).
+
+### Cancelar depois de alterar
+
+- O prazo conta de `entradaQueConta` (adiantar fecha a janela: entrada original 15/01, adiantada para 28/11 e
+  pedido em 01/12 → nada, a estadia começou); "a estadia começou" conta da entrada atual; a política e o
+  arrependimento são os do primeiro pagamento.
+- Base = Σ (pago − comprometido − reconhecido) dos pagamentos que contam; **uma devolução de cancelamento por
+  pagamento** com saldo (depois de um aumento, a do pagamento da reserva e a do pagamento da diferença, cada uma
+  integral e com corpo vazio quando intocada; depois de uma redução, o restante com valor explícito, esperando a
+  liberação se preciso); `valorRetido` = o que ficou (o valor de cada pagamento menos o principal das devoluções de
+  alteração decididas).
+- **Absorção** (D23): no cancelamento integral, a devolução de alteração que nunca chegou ao Mercado Pago (pedida
+  sem envio, esperando a liberação, ou recusada sem chave em dúvida nem aceita) vira `substituida` (auditada, nunca
+  apagada, comprometendo 0) e o valor dela entra na devolução do cancelamento daquele pagamento; se o pagamento
+  fica intocado, a devolução é integral e sai na hora (cartão esperando a liberação, depois cancelado no prazo: a
+  redução fica substituída e o cancelamento devolve o valor inteiro na hora). Com "nada", a devolução da alteração
+  continua (e uma recusada pode ser pedida de novo depois).
+- **Recusas novas:** uma devolução da reserva com a chave em voo ("…espere ela ser confirmada (use Conferir agora)
+  antes de cancelar."); uma devolvida a menos sem o restante ("…peça o restante ao Mercado Pago ou registre o
+  restante por fora antes de cancelar."); devolução fora do sistema sem o valor; alteração segurada com o pagamento da
+  diferença em andamento (`ha_alteracao`: "…espere o pagamento terminar ou desista da alteração antes de
+  cancelar."). Sem pagamento em andamento, todo cancelamento (também sem devolução) desiste da alteração segurada
+  (motivo "cancelamento da reserva"). `devolvido_parcial` e `devolvido_lido > 0` deixam de recusar por si.
+- Pedido do hóspede em Minha reserva: o botão continua depois de uma devolução de parte confirmada (todo pagamento
+  que conta aprovado, ou devolvido em parte sem devolução inexplicada; o pagamento da diferença devolvido por inteiro
+  pelas nossas devoluções também não bloqueia); registrar o pedido deixa a alteração segurada como está (a equipe
+  decide; a aprovação da diferença depois recusa a alteração).
+- O estado do cancelamento na página e no quadro é o da devolução menos adiantada (esperando a liberação > pedida >
+  com a equipe > em conferência > feita), com o valor somado; a mensagem "Devolução feita" sai uma vez, quando todas
+  se realizam.
+- Parte devolvida pelo painel do Mercado Pago sem a leitura dizer quanto (D17), em mais de um pagamento da reserva: a
+  equipe informa o valor de cada pagamento (um campo por pagamento, com a forma, o dia e o valor dele); faltando
+  algum, a recusa diz quais. Um valor nunca vale para dois pagamentos.
+- Reserva cancelada depois de uma redução aplicada: a devolução da diferença que o cancelamento não absorveu (a já
+  feita antes, ou a que continua no cancelamento sem devolução) mantém a mensagem "Devolução feita" dela, ainda não
+  avisada, no prazo de sempre (7 dias da devolução), pelo motor e para copiar; a proposta e a confirmação da alteração
+  não saem mais.
+
+### O que o hóspede vê (alteração)
+
+`/reservar/<código>`, acima do quadro do pagamento, o bloco de `AlteracaoNaReserva` com o texto de
+`textoDaAlteracao` (o mesmo das mensagens e do "Copiar a proposta"): fatos escritos pelo sistema (código, datas,
+noites, pessoas, valores, diferença, prazo "até HH:MM", ou "dd/mm às HH:MM" quando é outro dia, horário de Brasília,
+versão da política e a data de que os prazos contam) e frases editáveis em Textos do site (`alteracaoEmAndamento`,
+`alteracaoAguardaConfirmacao`, `alteracaoPolitica`, `alteracaoConfirmada`, `devolucaoAguardaLiberacao`,
+`alteracaoSemDevolucao`, `alteracaoNaoAplicada`, `alteracaoNaoVale`; as cinco primeiras obrigatórias). Nunca
+"Beds24", nunca dado pessoal. O fim do arrependimento é escrito com a mesma regra da decisão (`fimDoArrependimento`):
+"até dd/mm, 7 dias depois do pagamento" ou, quando a política aceita para o arrependimento na entrada e ela vem antes,
+"até a entrada, em dd/mm" (também no texto do cancelamento, desde 11/10). Na alteração, a entrada desse texto é a
+da estadia alterada, a que vale dali em diante (ajuste de 11/10, revisão do Codex: antes era a entrada de antes da
+alteração, e uma alteração que adiantava a entrada para antes dos 7 dias ainda dizia "7 dias depois do pagamento").
+A decisão não muda: ela continua contando da estadia de quando o pedido chegou.
+- **Segurada** (em qualquer rumo): "Alteração da sua reserva"; no aumento, com o Pix e o cartão da diferença
+  (aceite D11 quando preciso); na redução ou no mesmo valor, "Para confirmar, responda à nossa mensagem…" e a linha
+  da política com a decisão ("…é devolvida | não é devolvida…").
+- **Aplicada** (a última, enquanto a devolução está aberta e por 30 dias): "Alteração confirmada", com a devolução:
+  esperando a liberação ("Devolução da diferença: R$ X (previsto para dd/mm). Ela será pedida ao Mercado Pago
+  quando ele liberar o seu pagamento…", nunca "já pedimos"), pedida, feita, com a equipe, em conferência, ou sem
+  devolução.
+- **Não aplicada** (pagamento da diferença sem reserva): "A alteração não pôde ser feita" e a frase de que o valor
+  volta.
+- **Que não vale mais** (vencida ou desistida, sem pagamento, por 7 dias): "Alteração que não vale mais".
+- Depois de uma alteração aplicada, o resumo da cotação diz que é o da cotação original e mostra as datas, as
+  pessoas e o valor de agora.
+- **Minha reserva:** "Há uma alteração da sua reserva esperando {o pagamento da diferença | a sua confirmação} até
+  dd/mm às HH:MM (horário de Brasília): " com o link da página da reserva, sem valores (com o pagamento da diferença em
+  andamento depois do prazo, "…com o pagamento da diferença em andamento").
+
+### Mensagens
+
+Dois tipos novos em Configurações → Modelos de mensagem (M9.2): "Alteração: proposta (e pagamento da diferença, se
+houver)" (`alteracao_proposta`, qualquer rumo, enquanto segurada) e "Alteração: confirmada" (`alteracao_confirmada`);
+"Cancelamento: devolução feita" passou a se chamar "Devolução feita (cancelamento ou alteração)" e serve também à
+devolução da diferença ({recebido} = o momento do pedido da alteração). Variável nova `{alteracao}` (as frases
+prontas do caso, com o prazo das datas seguradas), só nas mensagens da alteração; a proposta precisa de `{alteracao}`
+e `{link}`, a confirmada de `{alteracao}`; nenhuma aceita `{endereco}`. Textos-base: "Olá, {hospede}! Preparamos a
+alteração da sua reserva {codigo}: {alteracao} Veja os detalhes em {link}. Até a confirmação, a reserva continua
+como está." e "Olá, {hospede}! A alteração da sua reserva {codigo} está confirmada: {alteracao} Acompanhe em {link}.
+Qualquer dúvida, é só responder esta mensagem." O aviso do envio automático diz em que mensagens a variável vale,
+pelos nomes (`ondeVale`).
+- **Agora:** a ficha mostra "Copiar a proposta", "Copiar mensagem: alteração confirmada" e "Copiar mensagem: devolução
+  feita" (com valores: só com `financeiro:ler`), cada uma com "Mensagem enviada ao hóspede" (com confirmação; grava
+  quem e quando na alteração); a prévia também copia a proposta.
+- **Sozinhas:** só com as mensagens ao hóspede ligadas e um modelo escolhido: a proposta enquanto a alteração está
+  segurada, a confirmada até 7 dias depois de aplicada, a devolução feita até 7 dias depois dela; uma vez cada,
+  marcando "avisado" pelo sistema; nunca a que a equipe já marcou. A confirmação da reserva não sai de novo depois
+  de uma alteração aplicada.
+
+### OTAs e o gancho do M8.3
+
+Nada é escrito no Beds24. O Início (para quem edita reservas), com ou sem o envio ao Beds24 ligado, avisa
+"N reserva(s) do site alterada(s) (SCL-…): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as
+antigas)." para a alteração aplicada que mudou as datas, ainda sem a marca e com alguma noite por vir; a ficha tem
+**"Datas atualizadas nas OTAs"** (com confirmação, auditado). Mudar só pessoas ou valor não mexe no bloqueio. O M8.3
+vai consumir `alteracoes_reserva` com `situacao = 'aplicada'` e `ota_atualizada_em` vazio, e gravar a marca
+sozinho; a reserva-pedido nunca vai ao Beds24. O plano do envio (M3.7) também não conta as noites dela (elas podem
+vencer), e o envio confere as reservas do imóvel de novo logo antes e logo depois de escrever: se uma alteração for
+aplicada (ou qualquer reserva mudar) entre o plano e a escrita, nada é escrito pelo plano velho; se mudar durante a
+escrita, o que foi escrito fica velho. Nos dois casos, o envio do imóvel é refeito em seguida, numa execução nova com as
+reservas de agora (uma vez; se mudar de novo, fica para o próximo envio). O que muda depois da conferência já é
+posterior à escrita, como qualquer reserva feita depois de um envio.
+
+**Decisão de 10/10/2026 (revisão do M8.2d), vale para os três avisos das OTAs** (reserva do site paga, do M8.2a;
+cancelada, do M8.2c; alterada, do M8.2d):
+- *Antes:* cada aviso sumia quando o envio automático ao Beds24 (M3.7) estava ligado no ambiente
+  (`BEDS24_ESCRITA=ligada` com credencial) e no painel, supondo que o envio cuidava das datas.
+- *Agora:* o aviso aparece sempre, até a marca da equipe (ou do M8.3).
+- *Motivo:* o envio do M3.7 manda só os bloqueios do SCL (`bloqueios` com fonte diferente de `beds24`) e o
+  calendário de preços e mínimos; ele nunca fecha, reabre nem muda as datas de uma reserva. Com o aviso escondido,
+  uma reserva paga, cancelada ou alterada no site ficaria vendável (ou fechada) nas OTAs sem ninguém saber, também nos
+  imóveis fora da lista de envio.
+- *Objetivo final:* o M8.3 fecha, reabre e muda as datas das reservas do site no Beds24 e grava as marcas sozinho;
+  aí os avisos deixam de aparecer porque não sobra nada a fazer à mão.
+
+### Início
+
+- Operação (quem edita reservas, sem valores, da empresa toda): "Alteração da reserva SCL-…: datas seguradas até
+  HH:MM, esperando {o pagamento da diferença | a confirmação do hóspede}." (com o link da ficha); o bloqueio a mudar
+  nas OTAs (acima); "N alteração(ões) com mensagem ao hóspede pendente…" (só para quem lê o financeiro, atenção
+  depois de 24 horas).
+- Financeiro: devoluções feitas a menos ("peça o restante…"), devoluções de parte esperando a liberação (informativo)
+  e com a liberação atrasada (atenção), pagamentos da diferença aprovados sem a alteração (atenção). "Pede atenção"
+  inclui a alteração segurada. Financeiro → Pagamentos do site: "Diferença da alteração de dd/mm".
+
+### Limites do M8.2d
+
+- Só antes da entrada; depois dela, mais noites são uma reserva nova e a saída antecipada não tem devolução (as
+  noites seguem ocupadas e a limpeza de saída fica na data original) até um item futuro. As linhas de diferença
+  explícitas, a parte negativa do proprietário de uma parte já paga e o congelamento do motor ficam para essa
+  alteração depois da entrada.
+- Noites dos dois lados ao mesmo tempo: em duas alterações. Trocar de apartamento: cancelar e reservar de novo. O
+  hóspede não pede alteração em Minha reserva; a equipe prepara.
+- Uma segunda alteração espera enquanto a devolução de uma redução espera a liberação.
+- Devolução de parte só depois da liberação e com a taxa conhecida; no teste, liberação registrada à mão. Com mais
+  de 78 dias, pelo painel do Mercado Pago (cartão) ou por fora (Pix). A devolvida a menos não é pedida de novo
+  sozinha. Se a taxa e os juros voltam numa parcial é desconhecido (itens 48 e 49): a equipe informa a taxa que não
+  voltou. Uma parcial só se confirma por valor com uma leitura que traga `refunds[]`, o valor somado desde o pedido ou
+  a confirmação da equipe (item 44).
+- Um cancelamento retido não vira devolução por exceção depois: por fora mais um ajuste.
+- Depois de um aumento, toda a parte do proprietário espera a liberação do pagamento da diferença (uma regra de
+  dinheiro por reserva), e a data do pagamento (M4.12) passa a ser o dia dessa liberação.
+- Hoje só o admin tem o financeiro: só Diego prepara alterações e mexe nas devoluções. As mensagens só saem sozinhas
+  quando Diego ligar as mensagens ao hóspede.
+- Testar só na prévia mais nova: as prévias antigas usam o mesmo banco e não conhecem o desfecho `alteracao`, a
+  origem `alteracao`, a situação `substituida`, várias devoluções por pagamento nem as reservas-pedido das
+  alterações (uma prévia antiga poderia oferecer "Confirmar" numa delas). Nas prévias a rotina não roda: as datas
+  seguradas vencem na próxima ação da reserva, no "Conferir agora", num novo pedido do site ou num bloqueio do mesmo
+  imóvel.
+- Ganchos do M8.2e: pagamento contestado recusa a alteração; as devoluções são por pagamento com
+  `devolucaoInexplicada`; `lancarDescontoDoProprietario`, `id_pagamento_provedor` e `tres_ds_status` não mudaram.
 
 ## O que o hóspede vê (`/reservar/<código>`)
 
@@ -1111,11 +1706,16 @@ consulta".
 | Cartão em análise (M8.2b) | "Pagamento em análise": o texto editável da análise e a linha fixa do prazo das datas (antes e depois do fim); continua assim mesmo depois do prazo das datas, porque a análise ainda pode aprovar |
 | Cartão recusado, datas ainda seguradas (M8.2b) | "Datas seguradas" com a mensagem genérica (recusa ou verificação não concluída) e as opções que restam: outro cartão, Pix, WhatsApp; com as datas já vencidas, igual ao Pix (sem pagamento) |
 | Confirmada com pedido de cancelamento esperando a equipe (M8.2c) | a reserva continua confirmada, com a linha "Pedido de cancelamento recebido em dd/mm às HH:MM (horário de Brasília)." e a frase editável de que a equipe confirma por escrito o valor (sem política aceita, a frase fixa sem citar política); "Acompanhe ou peça pelo seu acesso: Minha reserva" |
-| Reserva cancelada, devolução pedida (M8.2c) | "Reserva cancelada": quem cancelou e quando o pedido chegou, "devolvemos o valor integral pago, R$ …, sem desconto de taxas", "Já pedimos a devolução ao Mercado Pago…" e como o dinheiro volta (Pix ou cartão). Também na devolução aceita ainda sem confirmação, no cartão com mais de 78 dias ("Estamos pedindo o estorno no seu cartão…", enquanto a devolução por fora do cartão não abre) e no cartão recusado com a devolução por fora ainda fechada |
+| Reserva cancelada, devolução pedida (M8.2c) | "Reserva cancelada": quem cancelou e quando o pedido chegou, "devolvemos o valor integral pago, R$ …, sem desconto de taxas", "Já pedimos a devolução ao Mercado Pago…" e como o dinheiro volta (Pix ou cartão; com partes por caminhos diferentes — reserva no Pix e diferença no cartão, ou uma parte devolvida por fora —, a frase de cada caminho usado, na mesma regra da devolução da diferença de uma alteração; com alguma parte por fora, o total nunca é dito "pelo Mercado Pago"). Também na devolução aceita ainda sem confirmação, no cartão com mais de 78 dias ("Estamos pedindo o estorno no seu cartão…", enquanto a devolução por fora do cartão não abre) e no cartão recusado com a devolução por fora ainda fechada |
 | Reserva cancelada, devolvida (M8.2c) | "Devolução de R$ … confirmada pelo Mercado Pago em dd/mm" (o valor lido, quando a leitura o traz), "feita pelo Mercado Pago em dd/mm" (confirmada pela equipe) ou "feita em dd/mm" (por fora, com a frase da transferência e sem linha da forma de pagamento) |
 | Reserva cancelada, com a equipe (M8.2c) | "A devolução de R$ … pelo Mercado Pago não foi possível." e a frase editável de que a equipe combina outra forma, sem custo (Pix recusado, ou cartão com a devolução por fora já aberta) |
 | Reserva cancelada, em conferência (M8.2c) | devolução a menos, pagamento contestado ou devolvido em parte, devolução parada por um problema: "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você." Nunca oferece outro jeito de pagar |
 | Reserva cancelada sem devolução (M8.2c) | os prazos da política aceita ("Prazo de reembolso integral: pedidos até dd/mm, às 23h59." e o arrependimento, quando vai além) e a frase do caso (fora do prazo, não comparecimento, ou decisão da equipe sem política) |
+| Reserva cancelada, devolução esperando a liberação (M8.2d) | o restante de um pagamento já devolvido em parte, que só é pedido depois da liberação: "…previsto para dd/mm" e a frase editável `devolucaoAguardaLiberacao` ("Ela será pedida ao Mercado Pago quando ele liberar o seu pagamento…"), nunca "Já pedimos" |
+| Alteração segurada (M8.2d) | "Alteração da sua reserva": de/para (datas, noites, pessoas, valor, diferença), "Datas seguradas até HH:MM (horário de Brasília)" (ou "dd/mm às HH:MM"), a frase do rumo e a linha da política; no aumento, o Pix e o cartão da diferença (com o aceite D11 quando preciso); a reserva continua como está até a confirmação |
+| Alteração confirmada (M8.2d) | "Alteração confirmada": as datas, as pessoas e o valor novos e, na redução, a devolução da diferença (esperando a liberação, pedida, feita, com a equipe, em conferência) ou "não é devolvida"; a última aplicada, enquanto a devolução está aberta e por 30 dias |
+| Alteração não aplicada (M8.2d) | "A alteração não pôde ser feita": "Recebemos o pagamento da diferença (R$ D) em dd/mm." e a frase de que a reserva continua como estava e o valor volta |
+| Alteração que não vale mais (M8.2d) | "Alteração que não vale mais": a preparada em dd/mm, vencida ou desistida sem pagamento, por 7 dias |
 
 Desde o M8.2b, com as duas formas oferecidas, o quadro se chama "Pagamento" e começa pela escolha
 **Pix (recomendado)**, marcado e em destaque, ou **Cartão de crédito**, com a nota dos juros embaixo do
@@ -1133,7 +1733,7 @@ cancelamento, a data-limite do reembolso integral desta reserva e "Li e aceito�
 versão. Já aceitas, só a linha "Você aceitou…"; na reserva confirmada, as versões aceitas e o prazo.
 
 Os textos principais (convite para pagar, Pix aguardando, aprovado sem as datas e, desde o M8.2b, o
-cartão em análise; desde o M8.2c, as frases do cancelamento) são editáveis em Textos do site, com
+cartão em análise; desde o M8.2c, as frases do cancelamento; desde o M8.2d, as da alteração) são editáveis em Textos do site, com
 texto-base. Nas cinco situações da reserva cancelada, o título é "Reserva cancelada", o botão de contato
 leva a mensagem "Quero falar sobre o cancelamento da minha reserva SCL-…", o formulário do cartão nunca fica
 aberto e a página não fica relendo o Mercado Pago. O convite tem texto-base neutro desde
@@ -1184,11 +1784,13 @@ navegador também barra um desafio em outro endereço.
 - **Financeiro → Pagamentos do site:** lista por período com filtro "pede atenção".
 - **Início** (para a empresa toda, sem depender do filtro de imóveis): aprovado sem desfecho (a
   devolver), dinheiro que chegou já devolvido em parte ou contestado antes da decisão (alerta
-  próprio: resolver no painel do Mercado Pago; o sistema passa a cuidar disso no M8.2d), devolução pedida ou recusada,
+  próprio: resolver no painel do Mercado Pago; o sistema passa a cuidar disso no M8.2d — desde 10/10, "devolva o
+  restante pelo quadro do pagamento"), devolução pedida ou recusada,
   liberação prevista vencida sem sinal, criação do pagamento sem resposta do Mercado Pago há mais que a
   carência, conta das chaves que não é de teste, configuração inválida,
   aviso com `live_mode`, dinheiro sem cálculo, e o informativo "N reserva(s) do site paga(s): feche as
-  datas nas OTAs enquanto o envio ao Beds24 estiver desligado".
+  datas nas OTAs (no Beds24, como bloqueio)." (desde 10/10, com ou sem o envio ao Beds24 ligado; antes, só com ele
+  desligado: ver a decisão em "OTAs e o gancho do M8.3" do M8.2d).
 - Até o M8.3, a equipe fecha as datas no Beds24 como **bloqueio**, nunca como reserva (a importação
   criaria uma segunda reserva).
 - **Cancelamento no painel (M8.2c):**
@@ -1215,11 +1817,39 @@ navegador também barra um desafio em outro endereço.
   - Lista de reservas: filtro "Pedido de cancelamento → Só com pedido esperando a equipe", de qualquer
     período. Financeiro → Pagamentos do site e o quadro dizem "Reserva cancelada: devolução pedida /
     devolvida / com a equipe / em conferência / sem devolução (valor retido)".
-  - Início: para quem edita reservas (sem valores), os pedidos esperando, as datas a reabrir nas OTAs (só com o
-    envio ao Beds24 desligado); para quem lê o financeiro, as mensagens ao hóspede pendentes, as devoluções
+  - Início: para quem edita reservas (sem valores), os pedidos esperando, as datas a reabrir nas OTAs (desde 10/10,
+    com ou sem o envio ao Beds24 ligado); para quem lê o financeiro, as mensagens ao hóspede pendentes, as devoluções
     pedidas e paradas (de qualquer origem), as de pagamento com mais de 78 dias, as feitas a menos, as reservas
     devolvidas no Mercado Pago fora da política e o desconto de proprietário esperando há mais de 7 dias.
     "Pede atenção" inclui o pagamento com pedido de cancelamento esperando.
+- **Alteração no painel (M8.2d):**
+  - Configurações → Calendário e preços, "Site público": "Minutos que as novas datas de uma alteração de reserva
+    paga pelo site ficam seguradas" (padrão 60, de 5 a 2880), com a nota "o Pix da diferença estende o prazo. Não muda
+    o tempo do site." Configurações → Textos do site: as frases da alteração. Configurações → Modelos de mensagem:
+    as duas mensagens da alteração e "Devolução feita (cancelamento ou alteração)".
+  - Ficha da reserva paga pelo site, no quadro "Pagamento no site", o bloco **Alteração da reserva**: o formulário em
+    dois passos (só com a reserva confirmada, sem pedido de cancelamento, sem outra alteração segurada e antes da
+    entrada; depois dela, a frase do D1), a alteração segurada (o que espera, as tentativas da diferença, "Copiar a
+    proposta", "Conferir para aplicar (o hóspede aceitou)" sem aumento, "Desistir da alteração"), a última aplicada
+    e as que ainda esperam o bloqueio nas OTAs (antes e depois, a devolução da diferença, o financeiro por mês
+    "Antes / Depois / Diferença", "Datas atualizadas nas OTAs" quando as datas mudaram, as mensagens e "Hóspede
+    avisado") e o histórico (aplicadas, vencidas e desistidas: data, de → para, quem, resultado; valores só com
+    `financeiro:ler`). O resultado de cada ação volta por uma chave fixa (`?alteracao=`).
+  - A ficha da reserva-pedido mostra só "Datas seguradas para a alteração da reserva SCL-… até HH:MM", sem e-mail,
+    Confirmar, Cancelar e Horários. Sem `financeiro:ler`, nenhum R$ na ficha, nas observações e no histórico
+    (`diferenca` entrou em `CAMPOS_FINANCEIROS`).
+  - Quadro "Pagamento no site": **uma linha por devolução** ("Devolução da alteração de dd/mm | do cancelamento | do
+    pagamento sem reserva | Restante de uma devolução", com a situação: aguardando a liberação do pagamento (prevista
+    para dd/mm), pedida, confirmada (com o valor que o Mercado Pago devolveu, quando outro), por fora, recusada,
+    "substituída pela devolução do cancelamento") e as ações que o domínio permite para ela, cada uma com o id da
+    devolução: pedir de novo (escondido com outra devolução do pagamento pedida), "Pedir o restante ao Mercado
+    Pago", "Registrar o restante devolvido por fora" (no cartão só quando a regra permite), "Confirmar devolução
+    vista no painel do Mercado Pago" (com o valor), recusa do painel, parar, por fora, taxa que não voltou;
+    "Devolver o restante ao hóspede" no pagamento sem reserva já devolvido em parte (sem o valor do Mercado Pago, o
+    formulário pede o valor do painel dele e não mostra número); o pagamento da diferença aparece como "Diferença de
+    uma alteração da reserva". No quadro do cancelamento, a linha "Devolução" mostra a de cada pagamento (o da
+    diferença também, e o restante). A devolução que manda no pagamento é a mais nova pela criação.
+  - Início: seção "Alteração de reserva paga (M8.2d)", "Início".
 
 ## Dados pessoais
 
@@ -1256,6 +1886,17 @@ e-mail, telefone, chave Pix, cartão)." A auditoria nunca copia notas; o e-mail 
 leva nome nem e-mail; as mensagens prontas são montadas na hora e nunca gravadas. `semDadosPessoais` percorre
 também `devolucoes_pagamento`, `cancelamentos_reserva` e `lancamentos`, depois de cada fluxo (com o nome do
 hóspede de teste).
+
+**Alteração (M8.2d).** Pode ser guardado: em `alteracoes_reserva`, datas, números de pessoas, valores, códigos de
+listas fechadas, o retrato da política, ids de usuário e notas validadas (até 300 caracteres: a nota do pedido, o
+motivo da decisão, a nota do motivo do valor, o motivo da desistência); na reserva-pedido, o nome "Alteração
+SCL-…", sem e-mail nem telefone, e observações sem valores; em `pagamentos.devolvido_fora_reconhecido` e nas
+colunas novas de `devolucoes_pagamento`, ids, códigos, valores, um horário e um booleano. **Nunca:** nome, e-mail,
+telefone, CPF, chave Pix, dados bancários ou de cartão do hóspede, a mensagem do pedido, ids de devolução além de
+`id_provedor` (`refunds[]` e os ids conhecidos vivem só na memória). Toda nota passa por `textoSemDadosPessoais`;
+a auditoria nunca copia notas; os valores ficam na auditoria das entidades `alteracao` e `pagamento`, e a
+auditoria `reserva.alterar` só leva `valorBruto` (escondido sem `financeiro:ler`). As observações da reserva levam
+datas e pessoas, nunca valores. `semDadosPessoais` percorre também `alteracoes_reserva` e as reservas-pedido.
 
 O texto-base da Política de privacidade (`paginas-legais-rascunho.ts`) diz agora, na linha do
 pagamento: "no cartão, também a bandeira, o número de parcelas, o valor pago com os juros e o resultado
@@ -1376,6 +2017,41 @@ Cancelamento e devolução (M8.2c):
 43. **As situações de devolução que aparecem de fato (além de `processed`)**, para a lista branca da leitura
     (`processed`/`approved` = confirmada; `failed`/`rejected`/`canceled`/`cancelled` = falhou; o resto = em
     andamento).
+
+Alteração e devolução de parte do valor (M8.2d):
+
+44. **(Condição para o teste do GUIA, item 44.)** Devolução parcial de uma order Pix de teste aprovada: o código
+    HTTP; se a 201 lista só a devolução nova ou todas; `refunds[].status` logo depois; a situação da order e da
+    transação (`processed/partially_refunded` ou `processed/refunded`, como no exemplo da referência); se o GET traz
+    `transactions.refunds[]` com os valores; se o `total_paid_amount` cai depois da devolução.
+45. Uma segunda devolução parcial na mesma order (Pix e cartão): depois de a primeira estar processada, e com ela
+    ainda em andamento. Aceita, ou `refund_in_progress` / `order_refund_already_in_process` (400 ou 409)?
+46. **(Condição.)** O restante depois das parciais, enviado com valor explícito: a order fica `refunded/refunded` ou
+    `processed/refunded`?
+47. O teto exato do `refund_amount_exceeds` num cartão parcelado com juros: o `amount` da transação, o
+    `total_amount` ou o `total_paid_amount`?
+48. Devolução parcial de um cartão com juros pagos pelo hóspede: ele recebe juros proporcionais? O que mostram
+    `refunds[].amount` e os campos da Payments (`transaction_amount_refunded`, `amount_refunded_to_payer`,
+    `adjustment_amount`, `fee_details`)? Sai do saldo da SCL?
+49. A taxa do Mercado Pago volta proporcional numa devolução parcial (Pix e cartão)? Em que campo ou linha do
+    relatório?
+50. Alguma forma de pagamento online recusa a devolução parcial (`unsupported_partially_refunds`, Payments 3024)?
+51. A mesma chave de idempotência reenviada com outro valor (`idempotency_key_already_used`?); a mesma chave e o
+    mesmo corpo (a 201 de antes repetida, com o mesmo id REF…?).
+52. Um pedido parcial com a order já devolvida por inteiro no painel do Mercado Pago: `order_already_refunded` ou
+    `cannot_refund_order`? E com a chave repetida?
+53. Devolução de Pix em contingência no endpoint de Orders: 400 ou 201 `in_process`? O `X-Render-In-Process-Refunds`
+    é aceito?
+54. As orders online devolvem os códigos 422 (`amount_not_refundable`, `payment_not_refundable`,
+    `max_refunds_exceeded`)? Há um máximo de devoluções parciais por order?
+55. Devolução parcial de um cartão **antes** da liberação: 428 `insufficient_money_for_refund`, a redistribuição das
+    parcelas a liberar, e a chave é gasta? (O D13 impede o sistema de pedir; isto confere se a regra pode afrouxar.
+    Fazer com uma chamada à mão no sandbox, não pelo sistema.)
+56. Duas orders seguidas para o mesmo pagador de teste e a mesma reserva (a original e a diferença, Pix e cartão):
+    aparece `high_risk` ou recusa por duplicidade? A busca por `external_reference` acha a order certa?
+57. Os nomes de `action` do aviso (webhook) na devolução parcial e na total de uma order (só registro).
+58. O `GET /v1/orders/{id}` ainda funciona depois de 90 dias? A referência do Checkout Pro diz 1 ano; completa o
+    item 37 e pode mudar a regra dos 78/85 dias.
 
 
 ## Conferência dos prazos de cartão — 10/10/2026

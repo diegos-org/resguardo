@@ -6,7 +6,10 @@
  * - O momento que vale é o do servidor ao receber o pedido (decreto 7.962, art. 5º §4): capturado antes de qualquer
  *   trava, gravado com o canal "site" e nunca mais mudado. Pedir de novo devolve o mesmo horário.
  * - Só reservas pagas pelo site (pagamento que confirmou a reserva, aprovado), antes do horário de entrada, com o
- *   botão ligado em Configurações → Pagamento no site.
+ *   botão ligado em Configurações → Pagamento no site. M8.2d: todo pagamento da reserva (também a diferença de uma
+ *   alteração) aprovado, ou devolvido (em parte ou por inteiro) pelas devoluções do sistema (a mesma regra do painel);
+ *   depois de uma alteração, o prazo conta da entrada que conta (`entradaQueConta`) e o horário de entrada é o da entrada
+ *   atual.
  * - A equipe recebe um e-mail (sem nome nem e-mail do hóspede) e o pedido aparece no Início e na ficha.
  * - Nunca valores: as datas da política e uma palavra (devolução integral ou sem devolução), como no resto do portal.
  */
@@ -15,15 +18,16 @@ import { normalizarEmail } from "@/acesso/entrada";
 import { emailValido } from "@/acesso/codigo-email";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
-import { decidirPelaPolitica, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
+import { decidirPelaPolitica, entradaQueConta, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
-import { cancelamentosReserva, cotacoes, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
+import { cancelamentosReserva, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
 import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
-import { travarCotacao } from "@/pagamentos/travas";
+import { entradasDaReserva } from "@/pagamentos/entradas";
+import { devolucaoInexplicada, devolucoesDoPagamento, devolvidoPeloSistema, type Pagamento, pagamentosDaReserva, travarCotacao } from "@/pagamentos/travas";
 import { politicaDoPagamento } from "@/site/aceites";
 import { doEmail, vigentes } from "./portal";
 
@@ -76,15 +80,41 @@ async function reservaDoHospede(db: Db, organizacaoId: string, email: string, re
     .where(and(doEmail(organizacaoId, e), vigentes(hojeISO(undefined, agora)), eq(reservas.codigo, reservaCodigo.toUpperCase())));
   if (!r) return null;
   const [p] = await db
-    .select({ id: pagamentos.id, situacao: pagamentos.situacao, aprovadoEm: pagamentos.aprovadoEm, criadoEm: pagamentos.criadoEm, valorPago: pagamentos.valorPago, valor: pagamentos.valor, cotacaoId: pagamentos.cotacaoId, cotacaoCodigo: cotacoes.codigo })
+    .select({
+      id: pagamentos.id,
+      situacao: pagamentos.situacao,
+      aprovadoEm: pagamentos.aprovadoEm,
+      criadoEm: pagamentos.criadoEm,
+      valorPago: pagamentos.valorPago,
+      valor: pagamentos.valor,
+      cotacaoId: pagamentos.cotacaoId,
+      cotacaoCodigo: cotacoes.codigo,
+      cotacaoCheckin: cotacoes.checkin,
+    })
     .from(pagamentos)
     .innerJoin(cotacoes, eq(cotacoes.id, pagamentos.cotacaoId))
     .where(and(eq(pagamentos.reservaId, r.id), eq(pagamentos.organizacaoId, organizacaoId), eq(pagamentos.desfecho, "reserva")));
   if (!p) return null;
+  // Todos os pagamentos com o dinheiro da reserva (M8.2d: também a diferença de uma alteração) e as devoluções deles.
+  const daReserva = await db.select().from(pagamentos).where(and(eq(pagamentos.reservaId, r.id), eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.desfecho, ["reserva", "alteracao"])));
+  const devolucoes = daReserva.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, daReserva.map((x) => x.id))) : [];
   const fuso = r.fuso || "America/Sao_Paulo";
   const horaEntrada = horaDeEntrada(r.hora);
-  return { email: e, r, p, fuso, horaEntrada, entradaEm: instanteLocal(r.checkin, horaEntrada, fuso) };
+  return { email: e, r, p, fuso, horaEntrada, entradaEm: instanteLocal(r.checkin, horaEntrada, fuso), aprovados: todosAprovados(daReserva, devolucoes) };
 }
+
+/**
+ * Todo pagamento com o dinheiro da reserva está aprovado, ou devolvido em parte pelas devoluções do sistema (uma alteração
+ * com devolução, M8.2d), ou devolvido por inteiro por elas (a diferença de um aumento devolvida numa redução: quitado) — a
+ * mesma regra do painel —, e algum ainda tem o dinheiro. Uma devolução que o sistema não explica (painel do Mercado Pago)
+ * esconde o botão: a equipe resolve.
+ */
+const todosAprovados = (ps: readonly Pagamento[], devolucoes: Parameters<typeof devolucoesDoPagamento>[0]["devolucoes"]) =>
+  ps.some((x) => x.situacao !== "devolvido") &&
+  ps.every((x) => {
+    const devs = devolucoesDoPagamento({ devolucoes }, x.id);
+    return x.situacao === "aprovado" || (x.situacao === "devolvido_parcial" && !devolucaoInexplicada(x, devs)) || devolvidoPeloSistema(x, devs);
+  });
 
 /**
  * O quadro "Cancelar a reserva" de Minha reserva. null = não é uma reserva paga pelo site deste e-mail (ou não está mais
@@ -103,7 +133,10 @@ export async function cancelamentoNoPortal(db: Db, organizacaoId: string, email:
   const decisao = politica
     ? decidirPelaPolitica({
         regras: politica.regras,
-        checkin: x.r.checkin,
+        // Depois de uma alteração, os prazos contam da entrada que conta (a menor entre a original, a atual e as das alterações aplicadas); a estadia
+        // começa na atual. A mesma data do painel e da página da reserva.
+        checkin: entradaQueConta(x.p.cotacaoCheckin, x.r.checkin, await entradasDaReserva(db, organizacaoId, x.r.id)),
+        entradaAtual: x.r.checkin,
         horaEntrada: x.horaEntrada,
         fuso: x.fuso,
         aprovadoEm: x.p.aprovadoEm ?? x.p.criadoEm,
@@ -114,7 +147,7 @@ export async function cancelamentoNoPortal(db: Db, organizacaoId: string, email:
     : null;
   const pedidoEm = ativo?.situacao === "pedido" ? ativo.pedidoRecebidoEm : null;
   return {
-    podePedir: ligado && !pedidoEm && x.p.situacao === "aprovado" && agora.getTime() < x.entradaEm.getTime(),
+    podePedir: ligado && !pedidoEm && x.aprovados && agora.getTime() < x.entradaEm.getTime(),
     pedidoEm,
     integralAte: decisao?.integralAte ?? null,
     arrependimentoAte: decisao?.arrependimentoAte ?? null,
@@ -141,16 +174,17 @@ export async function pedirCancelamentoPeloHospede(
   const recebidoEm = agora;
   if (!(await lerConfigPagamentoSite(db, organizacaoId)).pedidoCancelamentoNoPortal) return { ok: false, erro: PEDIDO_DESLIGADO };
   const x = await reservaDoHospede(db, organizacaoId, email, reservaCodigo, agora);
-  if (!x || x.p.situacao !== "aprovado") return { ok: false, erro: NAO_DA };
+  if (!x || !x.aprovados) return { ok: false, erro: NAO_DA };
   if (recebidoEm.getTime() >= x.entradaEm.getTime()) return { ok: false, erro: ESTADIA_COMECOU };
   const tentar = () =>
     db.transaction(async (tx) => {
       const t = await travarCotacao(tx, organizacaoId, x.p.cotacaoId);
       const p = t?.tentativas.find((y) => y.desfecho === "reserva");
-      // Sob a trava: a reserva ainda é deste e-mail e está confirmada.
+      // Sob a trava: a reserva ainda é deste e-mail e está confirmada, com todo pagamento dela aprovado (ou em parte pelo
+      // sistema). A cancelada antes (a devolução já pode ter mudado o pagamento) responde "já cancelada".
       if (!t || !p || p.id !== x.p.id || t.reserva.hospedeEmail.trim().toLowerCase() !== x.email) return { ok: false as const, erro: NAO_DA };
       if (t.cancelamento?.situacao === "cancelada" || t.reserva.estado === "cancelada") return { ok: false as const, erro: JA_CANCELADA };
-      if (t.reserva.estado !== "confirmada") return { ok: false as const, erro: NAO_DA };
+      if (t.reserva.estado !== "confirmada" || !todosAprovados(pagamentosDaReserva(t), t.devolucoes)) return { ok: false as const, erro: NAO_DA };
       if (t.cancelamento?.situacao === "pedido") return { ok: true as const, recebidoEm: t.cancelamento.pedidoRecebidoEm, cancelamentoId: t.cancelamento.id, novo: false };
       const [linha] = await tx
         .insert(cancelamentosReserva)

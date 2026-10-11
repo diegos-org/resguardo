@@ -136,6 +136,25 @@ describe("calcular o cancelamento", () => {
     expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");
   });
 
+  it("M8.2d (D17): o valor que o painel do Mercado Pago mostra devolvido fora do sistema vai ao domínio em centavos, um por pagamento; inválido não chega lá", async () => {
+    const P1 = "33333333-3333-4333-8333-333333333333";
+    const P2 = "44444444-4444-4444-8444-444444444444";
+    m.previa.mockResolvedValue({ ok: true, previa });
+    await calcularCancelamentoAcao({}, form({ ...doHospede, [`valorFora:${P1}`]: "300,00", [`valorFora:${P2}`]: "5,00", "valorFora:nao-e-id": "1,00" }));
+    expect(m.previa.mock.calls[0][3]).toMatchObject({ valoresForaInformados: { [P1]: 30000, [P2]: 500 } });
+    expect(Object.keys(m.previa.mock.calls[0][3].valoresForaInformados)).toEqual([P1, P2]);
+    m.previa.mockClear();
+    await calcularCancelamentoAcao({}, form(doHospede));
+    expect(m.previa.mock.calls[0][3]).not.toHaveProperty("valoresForaInformados");
+    m.previa.mockClear();
+    expect((await calcularCancelamentoAcao({}, form({ ...doHospede, [`valorFora:${P1}`]: "trezentos" }))).mensagem).toBe("Informe o valor que o painel do Mercado Pago mostra devolvido, em reais (ex.: 300,00).");
+    expect(m.previa).not.toHaveBeenCalled();
+    // A recusa traz os pagamentos que faltam (a tela mostra um campo para cada).
+    const faltam = [{ pagamentoId: P2, rotulo: "Pix de 02/10 (R$ 400,00)" }];
+    m.previa.mockResolvedValue({ ok: false, codigo: "devolvido_fora_sem_valor", erro: "falta", foraSemValor: faltam });
+    expect(await calcularCancelamentoAcao({}, form(doHospede))).toMatchObject({ codigo: "devolvido_fora_sem_valor", foraSemValor: faltam });
+  });
+
   it("sem provedor (oferta ou conta fora): calcula sem a releitura (o domínio decide o que exige a leitura)", async () => {
     m.gate.mockResolvedValue({ ok: false, motivo: "desligado", texto: "desligado" });
     m.previa.mockResolvedValue({ ok: false, codigo: "sem_leitura", erro: "Não deu para conferir o pagamento no Mercado Pago agora: tente de novo em instantes." });

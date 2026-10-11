@@ -4,6 +4,7 @@ import { startTransition, useActionState, useRef, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import type { EstadoCancelamentoPainel } from "@/pagamentos/acoes-cancelamento";
+import { CAMPO_ROTULO_FORA, CAMPO_VALOR_FORA } from "@/pagamentos/campos-cancelamento";
 
 type Acao = (estado: EstadoCancelamentoPainel, form: FormData) => Promise<EstadoCancelamentoPainel>;
 export type OpcaoCancelamento = { valor: string; texto: string };
@@ -89,6 +90,15 @@ export function FormCancelamentoSite({
   // A SCL cancela: sempre integral, com ou sem política aceita (a escolha sem política é só do pedido do hóspede).
   const escolheSemPolitica = quem !== "empresa" && (semPolitica || estado.escolha === "sem_politica");
   const ofereceExcecao = !escolheSemPolitica && estado.escolha === "excecao";
+  // M8.2d (D17): o Mercado Pago mostra parte de um pagamento devolvida pelo painel dele sem dizer quanto — a equipe informa
+  // o valor visto lá, de cada pagamento (depois de um aumento, a reserva tem mais de um). Pedidos pelo servidor (a recusa
+  // traz os pagamentos), os campos ficam na tela enquanto vierem no formulário (com o rótulo de cada um).
+  const foraPedidos = [
+    ...(estado.foraSemValor ?? []),
+    ...Object.entries(estado.valores ?? {})
+      .filter(([k]) => k.startsWith(CAMPO_ROTULO_FORA))
+      .map(([k, rotulo]) => ({ pagamentoId: k.slice(CAMPO_ROTULO_FORA.length), rotulo })),
+  ].filter((f, i, todos) => todos.findIndex((g) => g.pagamentoId === f.pagamentoId) === i);
   return (
     <form
       aria-label="Cancelar a reserva paga pelo site"
@@ -176,6 +186,13 @@ export function FormCancelamentoSite({
         Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14h10&rdquo;)
         <input name="nota" maxLength={300} />
       </label>
+      {foraPedidos.map((f) => (
+        <label key={f.pagamentoId} style={{ maxWidth: 440 }}>
+          Valor que o painel do Mercado Pago mostra devolvido fora do sistema, {f.rotulo} (R$)
+          <input name={`${CAMPO_VALOR_FORA}${f.pagamentoId}`} inputMode="decimal" required defaultValue={estado.valores?.[`${CAMPO_VALOR_FORA}${f.pagamentoId}`] ?? ""} />
+          <input type="hidden" name={`${CAMPO_ROTULO_FORA}${f.pagamentoId}`} value={f.rotulo} />
+        </label>
+      ))}
       {escolheSemPolitica && (
         <fieldset style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
           <legend style={{ fontSize: "0.875rem" }}>Pagamento sem a política aceita: o sistema não calcula. O que fazer?</legend>
