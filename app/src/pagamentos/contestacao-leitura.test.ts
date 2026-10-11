@@ -342,6 +342,42 @@ describe("retido (item 13: abertura e MED)", () => {
     expect(await daDisputa(x.pagamentoId)).toHaveLength(1);
   });
 
+  it("a devolução lida que cresce depois do MED: o retido acompanha no dia em que a leitura viu a diferença, sem mudar o dia anterior (Codex, 11/10)", async () => {
+    const x = await pagarEConfirmar(c);
+    // O Mercado Pago devolve parte ao pagador; a equipe registra o MED do valor todo: o retido realizado é o devolvido lido.
+    c.provedor.devolverNoProvedor(x.idProvedor, 30_000);
+    await conferir(x.pagamentoId, minutos(10));
+    const med = { tipo: "med", abertaEm: "2026-10-01", valor: TOTAL, prazo: "2026-10-10", idCaso: null, nota: "MED aceito pelo Mercado Pago" };
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, med, equipe, c.provedor, minutos(30))).toMatchObject({ ok: true });
+    const [l] = await linhas(x.pagamentoId);
+    const chaves = chavesDaContestacao(x.pagamentoId, l.id);
+    const [r1] = await daDisputa(x.pagamentoId);
+    expect(r1).toMatchObject({ estado: "realizado", montante: 30_000, dataCaixa: "2026-10-01", chaveOrigem: chaves.retido() });
+    // Dois dias depois, a leitura mostra o resto devolvido: o realizado é estornado no caixa de hoje e nasce o #2 com o valor todo.
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL - 30_000);
+    await conferir(x.pagamentoId, minutos(2 * 24 * 60));
+    const todos = await daDisputa(x.pagamentoId);
+    expect(todos.find((y) => y.id === r1.id)).toMatchObject({ estado: "realizado", montante: 30_000, dataCaixa: "2026-10-01", competencia: "2026-10-01" });
+    const estorno = (await db.select().from(lancamentos).where(eq(lancamentos.estornoDe, r1.id)))[0];
+    expect(estorno).toMatchObject({ estado: "realizado", montante: -30_000, dataCaixa: "2026-10-03" });
+    const r2 = todos.find((y) => y.chaveOrigem === chaves.retido(2))!;
+    expect(r2).toMatchObject({ tipo: "devolucao", estado: "realizado", montante: TOTAL, dataCaixa: "2026-10-03", valor: 0, efeitoSaldo: 0 });
+    expect((await linhas(x.pagamentoId))[0]).toMatchObject({ retidoLancamentoId: r2.id });
+    // O caixa de cada dia: o de 01/10 continua com o que saiu ali; o de 03/10 leva só a diferença.
+    const doDia = async (dia: string) =>
+      (await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, x.reservaId), eq(lancamentos.dataCaixa, dia))))
+        .filter((y) => y.chaveOrigem?.includes(":contestacao:") || y.estornoDe === r1.id)
+        .reduce((s, y) => s + (y.montante ?? 0), 0);
+    expect(await doDia("2026-10-01")).toBe(30_000);
+    expect(await doDia("2026-10-03")).toBe(TOTAL - 30_000);
+    const caixa = (await eventos(l.id)).filter((e) => e.tipo === "caixa");
+    expect(caixa.at(-1)).toMatchObject({ antes: { retidoRealizado: 30_000, retidoPrevisto: null }, depois: { retidoRealizado: TOTAL, dia: "2026-10-03" } });
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
+    // A leitura seguinte, com o mesmo devolvido, não lança de novo.
+    await conferir(x.pagamentoId, minutos(3 * 24 * 60));
+    expect(await daDisputa(x.pagamentoId)).toHaveLength(2);
+  });
+
   it("a saída do devolvido_por_fora pelo MED é gravada mesmo quando o resto dos avisos não muda", async () => {
     const x = await pagarEConfirmar(c);
     c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);

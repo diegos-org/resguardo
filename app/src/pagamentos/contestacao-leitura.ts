@@ -294,7 +294,11 @@ export function devolvidoExplicadoPelaDisputa(
  * que a leitura viu a devolução (`devolvido_visto_em`; sem ele, hoje), pelo que o Mercado Pago mostra devolvido e esta
  * disputa explica (`devolvidoExplicadoPelaDisputa`, até o valor em risco): um registro acima do devolvido lido não vira
  * saída de caixa que não existiu (o resto entra no caixa final, se o Mercado Pago debitar). O retido previsto (registrado
- * antes de a leitura ver a devolução) é estornado. Só no dinheiro da reserva e uma vez (a disputa sem retido realizado).
+ * antes de a leitura ver a devolução) é estornado. Só no dinheiro da reserva e sem o débito confirmado pela equipe.
+ * A devolução lida que cresce depois (o retido realizado pela leitura é menor que o que ela explica agora): o caixa
+ * acompanha no dia em que a leitura viu a diferença, sem mudar o dia anterior. O realizado é estornado com a data de caixa
+ * de hoje e nasce o `#N` com o valor todo, também hoje: o caixa de hoje leva só a diferença, e o retido continua um
+ * lançamento só. O conciliado não muda; a devolução lida que diminui também não (o resultado acerta).
  * Devolve o montante lançado (null = nada lançado).
  */
 export async function lancarRetidoRealizado(
@@ -307,12 +311,16 @@ export async function lancarRetidoRealizado(
 ): Promise<number | null> {
   if (!dinheiroDaReserva(p) || l.retidoConfirmadoEm || l.valorEmRisco <= 0) return null;
   const atual = await lancamentoDoRetido(tx, organizacaoId, l);
-  if (atual && atual.estado !== "previsto") return null;
+  if (atual && atual.estado !== "previsto" && atual.estado !== "realizado") return null;
   const montante = devolvidoExplicadoPelaDisputa(t, p, l);
   if (montante <= 0) return null;
-  const dia = hojeISO(FUSO, p.devolvidoVistoEm ?? agora);
+  // O realizado pela leitura de antes: só a devolução que cresceu muda o caixa, a partir de hoje.
+  const jaRealizado = atual?.estado === "realizado" ? (atual.montante ?? 0) : null;
+  if (jaRealizado !== null && montante <= jaRealizado) return null;
+  const dia = hojeISO(FUSO, jaRealizado !== null ? agora : (p.devolvidoVistoEm ?? agora));
   await travarMotorDaReserva(tx, organizacaoId, t.reserva.id);
-  if (atual) await estornar(tx, organizacaoId, atual.id, `a leitura do Mercado Pago mostrou a devolução em ${dataBr(dia)}`, null);
+  if (atual && jaRealizado !== null) await estornar(tx, organizacaoId, atual.id, `a leitura do Mercado Pago mostrou mais devolvido em ${dataBr(dia)} (${formatBRL(montante)})`, null, dia);
+  else if (atual) await estornar(tx, organizacaoId, atual.id, `a leitura do Mercado Pago mostrou a devolução em ${dataBr(dia)}`, null);
   const [novo] = await lancar(
     tx,
     organizacaoId,
@@ -336,7 +344,12 @@ export async function lancarRetidoRealizado(
   );
   await tx.update(contestacoesPagamento).set({ retidoLancamentoId: novo.id, atualizadoEm: agora }).where(eq(contestacoesPagamento.id, l.id));
   l.retidoLancamentoId = novo.id;
-  await registrarEventoDaContestacao(tx, l.id, { fonte: "sistema", tipo: "caixa", antes: { retidoRealizado: null, retidoPrevisto: atual?.montante ?? null }, depois: { retidoRealizado: montante, dia } }, agora);
+  await registrarEventoDaContestacao(
+    tx,
+    l.id,
+    { fonte: "sistema", tipo: "caixa", antes: { retidoRealizado: jaRealizado, retidoPrevisto: jaRealizado === null ? (atual?.montante ?? null) : null }, depois: { retidoRealizado: montante, dia } },
+    agora,
+  );
   return montante;
 }
 

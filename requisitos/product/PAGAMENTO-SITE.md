@@ -3471,6 +3471,24 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   na releitura e na busca tardia. A volta nunca passa dos 60 s, e o que não coube fica na vez para a próxima.
   `TEMPO_LIMITE_PADRAO_MS` (`provedor.ts`) é o tempo-limite padrão do cliente, num lugar só. *Motivo:* a volta tem de caber
   no tempo da função.
+- **A devolução lida que cresce depois do MED ou da reclamação** *(segue o desenho, "Devolvido no painel do Mercado
+  Pago (fora da política)": o valor vira o retido realizado da disputa, no dia em que a leitura viu a devolução)*.
+  *Antes:* o retido realizado pela
+  leitura era lançado uma vez só, pelo devolvido lido naquele dia. Se o Mercado Pago devolvia mais ao pagador depois (a
+  devolução em partes), a leitura seguinte não mexia no retido, e o aviso `devolvido_por_fora` saía, porque o valor da
+  disputa explicava o devolvido maior. O caixa ficava sem a saída que o Mercado Pago já mostrava. *Agora:* quando o que a
+  disputa explica passa do retido realizado pela leitura, `lancarRetidoRealizado` estorna o realizado com a data de caixa
+  de hoje e lança o `retido#N` com o valor todo, também hoje. O caixa do dia anterior não muda, o de hoje leva só a
+  diferença, e o retido continua um lançamento só. Não mexe no retido conciliado nem no confirmado pela equipe (o débito
+  confirmado). A devolução lida que diminui não muda o caixa: o resultado da disputa acerta. *Motivo:* o caixa acompanha a
+  saída de dinheiro que o Mercado Pago mostra, sem mudar o passado.
+- **As disputas que passam dos 240 dias juntas** *(segue o desenho, "Rotina": até 240 dias, depois
+  `contestacao_fora_do_prazo` uma vez; até 50 por volta e o orçamento de 60 s)*. *Antes:* a consulta das disputas com mais
+  de 240 dias não tinha limite nem ordem, e a marcação de cada uma (uma transação sob a trava) não conferia o orçamento.
+  Um acúmulo (a rotina parada por um tempo) podia gastar a volta inteira antes da releitura e da busca tardia. *Agora:*
+  as mais antigas primeiro (`aberta_em`, depois `id`), no máximo `LEITURAS_DE_CONTESTACAO_POR_VOLTA` (50) por volta. O
+  orçamento é conferido antes de cada uma, e a marcação para quando ele acaba. As que ficaram são marcadas na volta
+  seguinte. *Motivo:* a volta tem de caber no tempo da função, e a marcação não pode tomar o lugar das leituras.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

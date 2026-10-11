@@ -257,6 +257,33 @@ describe("rotina das disputas (item 20)", () => {
     expect(chamadas("consultarContestacao")).toEqual([]);
   });
 
+  it("240 dias com muitas de uma vez: até 50 por volta, das mais antigas, e só dentro do orçamento; o resto fica para a próxima (Codex, 11/10)", async () => {
+    const x = await contestado();
+    const [l0] = await linhas(x.pagamentoId);
+    const base: Partial<typeof l0> = { ...l0 };
+    delete base.id;
+    await db.update(contestacoesPagamento).set({ abertaEm: dias(-300) }).where(eq(contestacoesPagamento.id, l0.id));
+    // Mais 52 disputas que passaram dos 240 dias juntas (a rotina parada, um acúmulo): 53 no total.
+    await db.insert(contestacoesPagamento).values(
+      Array.from({ length: 52 }, (_, i) => ({ ...(base as Omit<typeof l0, "id">), idCaso: String(8_300_000_000 + i), idContestacao: null, duplicataPossivel: true, retidoLancamentoId: null, abertaEm: dias(-299 + i), avisos: [] })),
+    );
+    const marcadas = async () => (await linhas(x.pagamentoId)).filter((l) => l.avisos.includes("contestacao_fora_do_prazo"));
+    // O orçamento da volta já acabou: nenhuma é marcada, nem a primeira.
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(2), { relogio: () => 61_000, inicio: 0 })).toMatchObject({ foraDoPrazo: 0, lidas: 0 });
+    expect(await marcadas()).toEqual([]);
+    // Dentro do orçamento: as 50 mais antigas nesta volta; as 3 mais novas, na seguinte.
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(2))).toMatchObject({ foraDoPrazo: LEITURAS_DE_CONTESTACAO_POR_VOLTA });
+    const primeiras = await marcadas();
+    expect(primeiras).toHaveLength(LEITURAS_DE_CONTESTACAO_POR_VOLTA);
+    const maisNovaMarcada = Math.max(...primeiras.map((l) => l.abertaEm.getTime()));
+    const restantes = (await linhas(x.pagamentoId)).filter((l) => !l.avisos.includes("contestacao_fora_do_prazo"));
+    expect(restantes).toHaveLength(3);
+    expect(restantes.every((l) => l.abertaEm.getTime() > maisNovaMarcada)).toBe(true);
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(3))).toMatchObject({ foraDoPrazo: 3 });
+    expect(await marcadas()).toHaveLength(53);
+    expect(chamadas("consultarContestacao")).toEqual([]);
+  });
+
   it("no máximo 50 por volta, em ordem de proxima_leitura_em; o orçamento de tempo para a volta", async () => {
     const x = await contestado();
     const [l0] = await linhas(x.pagamentoId);

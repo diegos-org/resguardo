@@ -412,8 +412,12 @@ export async function conferirContestacoes(
     .select({ id: contestacoesPagamento.id, pagamentoId: contestacoesPagamento.pagamentoId, cotacaoId: pagamentos.cotacaoId, organizacaoId: contestacoesPagamento.organizacaoId })
     .from(contestacoesPagamento)
     .innerJoin(pagamentos, eq(pagamentos.id, contestacoesPagamento.pagamentoId))
-    .where(and(filtros, lt(contestacoesPagamento.abertaEm, corte), sql`not (${contestacoesPagamento.avisos} @> '["contestacao_fora_do_prazo"]'::jsonb)`));
+    .where(and(filtros, lt(contestacoesPagamento.abertaEm, corte), sql`not (${contestacoesPagamento.avisos} @> '["contestacao_fora_do_prazo"]'::jsonb)`))
+    .orderBy(asc(contestacoesPagamento.abertaEm), asc(contestacoesPagamento.id))
+    .limit(LEITURAS_DE_CONTESTACAO_POR_VOLTA);
+  // Muitas de uma vez (a rotina parada, um acúmulo): até 50 por volta e dentro do orçamento; o resto fica para a próxima.
   for (const v of velhas) {
+    if (semTempo(0)) break;
     try {
       const marcou = await db.transaction(async (tx) => {
         const t = await travarCotacao(tx, v.organizacaoId, v.cotacaoId);
