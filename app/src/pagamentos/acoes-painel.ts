@@ -20,13 +20,14 @@
 import { revalidatePath } from "next/cache";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
-import { type ErrosPagamentoSite, salvarConfigPagamentoSite, validarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import { type ErrosPagamentoSite, lerConfigPagamentoSite, salvarConfigPagamentoSite, validarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
 import { conferirTentativa } from "./conferencia";
+import { conferirContestacoesDoPagamento } from "./contestacao";
 import {
   type AlvoDaDevolucao,
   confirmarDevolucaoVistaNoProvedor,
@@ -126,9 +127,12 @@ export async function conferirAgoraAcao(_e: EstadoAcaoPagamento, form: FormData)
     if (pagamentoId) {
       const r = await conferirTentativa(db, sessao.organizacaoId, pagamentoId, gate.provedor, new Date(), { forcar: true, origem: "painel" });
       if (!r.ok) return { mensagem: r.erro };
+      // M8.2e: o "Conferir agora" de um pagamento relê também as disputas dele (e a busca das tardias), só daquele pagamento.
+      const disputas = await conferirContestacoesDoPagamento(db, sessao.organizacaoId, pagamentoId, gate.provedor, new Date());
       revalidar();
       const situacao = NOMES_SITUACAO_PAGAMENTO[r.situacao].toLowerCase();
-      return { ok: true, mensagem: r.mudou ? `Conferido com o Mercado Pago: atualizado (${situacao}).` : `Conferido com o Mercado Pago: nada mudou (${situacao}).` };
+      const daDisputa = disputas.novas ? ` ${disputas.novas} disputa(s) nova(s) no quadro.` : disputas.mudaram ? " As disputas do pagamento foram atualizadas." : "";
+      return { ok: true, mensagem: `${r.mudou ? `Conferido com o Mercado Pago: atualizado (${situacao}).` : `Conferido com o Mercado Pago: nada mudou (${situacao}).`}${daDisputa}` };
     }
     // Do painel, lê agora (sem os intervalos da rotina): o botão promete conferir tudo o que está pendente.
     const resumo = await conferirPendentes(db, sessao.organizacaoId, gate.provedor, new Date(), { forcar: true });
@@ -351,7 +355,8 @@ export async function estornarLiberacaoAcao(_e: EstadoAcaoPagamento, form: FormD
 export async function salvarConfigPagamentoSiteAcao(_e: EstadoConfigPagamento, form: FormData): Promise<EstadoConfigPagamento> {
   const sessao = await sessaoFinanceira();
   const valores = campos(form);
-  const v = validarConfigPagamentoSite(valores);
+  // M8.2e: um formulário sem os campos da disputa (aba antiga aberta) mantém os valores salvos deles.
+  const v = validarConfigPagamentoSite(valores, await lerConfigPagamentoSite(getDb(), sessao.organizacaoId));
   if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores };
   const r = await salvarConfigPagamentoSite(getDb(), sessao.organizacaoId, v.config, sessao.usuarioId);
   if (!r.ok) return { erros: r.erros, mensagem: "Confira os campos destacados.", valores };

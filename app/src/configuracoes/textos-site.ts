@@ -58,6 +58,9 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "alteracaoSemDevolucao", rotulo: "Alteração em que a política não devolve a diferença", limite: 240, linhas: 2 },
   { chave: "alteracaoNaoAplicada", rotulo: "Alteração não aplicada: a diferença foi paga, mas as novas datas não puderam ser seguradas", limite: 400, linhas: 3 },
   { chave: "alteracaoNaoVale", rotulo: "Alteração preparada que não vale mais (o prazo passou ou a equipe desistiu)", limite: 240, linhas: 2 },
+  // Disputa do pagamento (M8.2e): a linha da reserva confirmada com o pagamento em disputa, só para quem pagou (o cookie do
+  // pagamento) e em Minha reserva. Nunca a palavra "contestação", nunca uma acusação. Vazia = a linha não aparece.
+  { chave: "pagamentoEmConferencia", rotulo: "Pagamento em conferência: reserva confirmada com o pagamento em disputa (só quem pagou vê; vazio = a linha não aparece)", limite: 240, linhas: 2 },
 ] as const;
 export type ChaveTextoSite = (typeof CAMPOS_TEXTOS_SITE)[number]["chave"];
 export type TextosSite = Record<ChaveTextoSite, string>;
@@ -148,6 +151,8 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   alteracaoSemDevolucao: "O valor da reserva continua o mesmo.",
   alteracaoNaoAplicada: "As novas datas não puderam ser seguradas: a sua reserva continua como estava e vamos devolver esse valor. A nossa equipe fala com você.",
   alteracaoNaoVale: "A sua reserva continua como está. Fale com a equipe se ainda quiser mudar.",
+  // Disputa do pagamento (M8.2e): texto-base do desenho. Pode ficar vazio (a linha some).
+  pagamentoEmConferencia: "O pagamento desta reserva está em conferência com o Mercado Pago. Se tiver qualquer dúvida sobre a cobrança, fale com a nossa equipe.",
 };
 
 /**

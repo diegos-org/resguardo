@@ -30,6 +30,7 @@ import { itensDoRepasse, listarRepasses } from "@/repasses/repasses";
 import { bloqueiosDoProprietario, permissoesDeBloqueio } from "@/portal/bloqueios";
 import { imoveisMarketplaceDaSessao, limpezasDoProprietario, manutencoesDoProprietario, precosDoMarketplace } from "@/portal/marketplace";
 import { janela, lerPeriodoPortal, nome, situacaoDoPeriodo, vizinhos } from "@/portal/periodo";
+import { contestacoesDoProprietario } from "@/pagamentos/contestacao-portal";
 import { bloqueiosDoPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { hojeMaisCedo } from "@/site/site";
 import { proprietariosDoUsuario, resumoDoProprietario } from "@/portal/resumo";
@@ -258,6 +259,9 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
     periodo,
   });
   const lista = await reservasDoPortal(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds, periodo });
+  // M8.2e: as disputas do pagamento que atingem estes donos (lista branca: a reserva em conferência, o valor segurado, o
+  // desconto definitivo ou devolvido, a causa e a explicação; nunca a nota, o número do caso ou dado do hóspede).
+  const disputas = await contestacoesDoProprietario(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds });
   // Calendário só no mês (no ano inteiro, a tabela basta).
   // Bloqueios só do tempo em que o imóvel é dele (os do dono anterior não aparecem).
   const bloqueios = filtros.mes !== null && escolhidosIds.length ? await bloqueiosDoPortal(db, sessao.organizacaoId, { proprietarioIds: donosIds, imovelIds: escolhidosIds, periodo }) : [];
@@ -534,6 +538,23 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
               hóspede informou.
             </p>
           </section>
+
+          {disputas.length > 0 && (
+            <section aria-label="Disputas do pagamento" className={styles.secao}>
+              <h2>Disputas do pagamento</h2>
+              <p className={styles.miudo}>
+                Quando um hóspede pede ao banco para desfazer a cobrança de uma reserva paga pelo site, o Mercado Pago segura o valor até a decisão. Cada passo
+                aparece também no seu extrato.
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
+                {disputas.map((d) => (
+                  <li key={d.id}>
+                    <strong>{d.imovelCodigo}</strong> · {d.texto}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <ExtratoRepasses
             donos={donos}

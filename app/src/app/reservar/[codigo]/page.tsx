@@ -190,6 +190,8 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
                           semDatas: textos.pagamentoSemDatas || TEXTOS_SITE_INICIAIS.pagamentoSemDatas,
                           cartaoAnalise: textos.pagamentoCartaoAnalise || TEXTOS_SITE_INICIAIS.pagamentoCartaoAnalise,
                           cancelamento: textosDoCancelamento(textos),
+                          // M8.2e: "pagamento em conferência" (vazia = a linha não aparece; a vista só a marca com o cookie de quem pagou).
+                          emConferencia: textos.pagamentoEmConferencia,
                         }}
                         contato={
                           conteudo.whatsapp || conteudo.email ? (

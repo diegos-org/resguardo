@@ -658,3 +658,29 @@ describe("reserva cancelada pela política e pedido de cancelamento (M8.2c)", ()
     expect(ver({ estado: "confirmada" }).container.textContent).not.toContain("Pedido de cancelamento");
   });
 });
+
+describe("o pagamento em conferência na página da reserva (M8.2e)", () => {
+  const confirmada = { estado: "confirmada" as const, holdAte: null, reservaCodigo: "SCL-TESTE1" };
+  const comFrase = { ...textos, emConferencia: "EM CONFERENCIA EDITAVEL" };
+  const ver = (over: Partial<PagamentoDoHospede>, t: typeof comFrase | typeof textos) =>
+    render(<PagamentoPix codigo="COT-ABCDEFGH" pagamento={{ ...base, ...over }} autorizado fuso="America/Sao_Paulo" total={182400} textos={t} contato={null} gerarPix={acoes.gerarPix} continuar={acoes.continuar} />);
+
+  it("a reserva confirmada com o pagamento em disputa: a frase de Textos do site, sem a palavra disputa", () => {
+    const { container } = ver({ ...confirmada, pagamentoEmConferencia: true }, comFrase);
+    expect(screen.getByText("Pagamento aprovado: reserva SCL-TESTE1 confirmada.")).toBeTruthy();
+    expect(screen.getByRole("note").textContent).toBe("EM CONFERENCIA EDITAVEL");
+    expect(container.textContent).not.toMatch(/contesta|chargeback|disputa|Beds24/i);
+  });
+
+  it("sem disputa, ou com a frase vazia em Textos do site: a linha não aparece", () => {
+    let r = ver({ ...confirmada, pagamentoEmConferencia: false }, comFrase);
+    expect(r.container.textContent).not.toContain("EM CONFERENCIA EDITAVEL");
+    cleanup();
+    r = ver({ ...confirmada, pagamentoEmConferencia: true }, { ...textos, emConferencia: "" });
+    expect(r.container.textContent).not.toContain("EM CONFERENCIA EDITAVEL");
+    expect(screen.getByText("Pagamento aprovado: reserva SCL-TESTE1 confirmada.")).toBeTruthy();
+    cleanup();
+    r = ver({ ...confirmada, pagamentoEmConferencia: true }, textos);
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+});

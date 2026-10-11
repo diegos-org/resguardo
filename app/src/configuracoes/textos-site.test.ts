@@ -154,3 +154,22 @@ describe("textos da alteração de reserva paga (M8.2d): editáveis, com texto-b
     expect(TEXTOS_SITE_INICIAIS.devolucaoAguardaLiberacao).toContain("quando ele liberar o seu pagamento");
   });
 });
+
+describe("texto do pagamento em conferência (M8.2e): editável, com texto-base, pode ficar vazio", () => {
+  it("a chave existe com o texto-base do desenho dentro de 240 caracteres; vazia vale (a linha some)", () => {
+    const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === "pagamentoEmConferencia");
+    expect(campo).toBeTruthy();
+    expect(campo!.limite).toBe(240);
+    expect(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia).toBe(
+      "O pagamento desta reserva está em conferência com o Mercado Pago. Se tiver qualquer dúvida sobre a cobrança, fale com a nossa equipe.",
+    );
+    expect(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia.length).toBeLessThanOrEqual(240);
+    expect(TEXTOS_SITE_OBRIGATORIOS.includes("pagamentoEmConferencia")).toBe(false);
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, pagamentoEmConferencia: "" })).toMatchObject({ ok: true });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, pagamentoEmConferencia: "x".repeat(241) })).toMatchObject({ ok: false, erros: { pagamentoEmConferencia: "Máximo de 240 caracteres." } });
+  });
+
+  it("o texto-base nunca diz contestação nem acusa, nem cita o Beds24, valores ou dados pessoais", () => {
+    expect(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia).not.toMatch(/contesta|chargeback|fraude|disputa|beds24|R\$|\d|@/i);
+  });
+});

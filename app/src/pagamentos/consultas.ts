@@ -65,7 +65,7 @@ import {
   textoRestanteRecusado,
 } from "./situacoes";
 import { situacaoEfetiva, valorNovo } from "./alteracao-regras";
-import { MOTIVO_CANCELAMENTO_CONTESTACAO } from "./contestacao-regras";
+import { MOTIVO_CANCELAMENTO_CONTESTACAO, NOMES_SITUACAO_CONTESTACAO, NOMES_TIPO_CONTESTACAO } from "./contestacao-regras";
 import {
   type Alteracao,
   carenciaNoTravado,
@@ -266,6 +266,11 @@ export type VistaPagamentoHospede = {
    * reserva): o resumo da página é o da cotação original e a alteração aplicada só aparece por um tempo. null sem alteração aplicada.
    */
   reservaAtual?: { checkin: string; checkout: string; hospedes: number | null; valor: number | null } | null;
+  /**
+   * M8.2e: a reserva confirmada tem um pagamento com disputa em curso ("pagamento em conferência"): só com a autorização do
+   * pedido (o cookie de quem pagou; quem só tem o código não vê nada a mais). Some com o resultado.
+   */
+  pagamentoEmConferencia?: boolean;
 };
 
 /**
@@ -372,6 +377,9 @@ export async function vistaDaCotacaoParaHospede(
       ...(pedido ? { pedidoCancelamentoSemPolitica: !(await politicaDoPagamento(db, organizacaoId, comReserva.id)) } : {}),
       ...(alteracao ? { alteracao } : {}),
       ...(aplicada && c.reservaCheckin && c.reservaCheckout ? { reservaAtual: { checkin: c.reservaCheckin, checkout: c.reservaCheckout, hospedes: c.reservaHospedes, valor: c.reservaValor } } : {}),
+      // M8.2e: só para quem pagou (o cookie do checkout): uma disputa em curso (aberta ou a confirmar) num pagamento com o
+      // dinheiro da reserva; com o resultado, a linha some.
+      ...(o.comAutorizacao && (await disputaEmCursoNaCotacao(db, organizacaoId, tentativas.filter(dinheiroDaReserva).map((t) => t.id))) ? { pagamentoEmConferencia: true } : {}),
     };
   }
   // Dinheiro sem a reserva: confirmando, aprovado sem as datas, devolução pedida ou feita. Com mais de um pagamento,
@@ -393,6 +401,17 @@ export async function vistaDaCotacaoParaHospede(
     return { ...base, estado: "aprovado_sem_datas" };
   }
   return estadoPelasTentativas(base, tentativas, segurada, c.holdAte, agora, o);
+}
+
+/** M8.2e: algum dos pagamentos tem disputa em curso (aberta ou a confirmar), de qualquer origem (leitura ou equipe). */
+async function disputaEmCursoNaCotacao(db: Db, organizacaoId: string, pagamentoIds: readonly string[]): Promise<boolean> {
+  if (!pagamentoIds.length) return false;
+  const [c] = await db
+    .select({ id: contestacoesPagamento.id })
+    .from(contestacoesPagamento)
+    .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, [...pagamentoIds]), inArray(contestacoesPagamento.situacao, ["aberta", "a_confirmar"])))
+    .limit(1);
+  return !!c;
 }
 
 /**
@@ -1011,6 +1030,8 @@ type ContextoDoPainel = {
   reserva: { estado: EstadoReserva; valorRetido: number | null } | null;
   cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null;
   alteracoes?: readonly (Pick<Alteracao, "id" | "situacao"> & Partial<Pick<Alteracao, "holdAte">>)[];
+  /** M8.2e: as disputas do pagamento (as ações das devoluções e a liberação à mão as leem; a perdida sem decisão pede atenção). */
+  contestacoes?: readonly Pick<Contestacao, "pagamentoId" | "situacao" | "avisos" | "estadoLido" | "decisaoVersao" | "definitivoEm">[];
 };
 
 /** O aviso de devolução recusada, no quadro do pagamento, quando a recusa veio do painel do Mercado Pago (registrada) ou da leitura. */
@@ -1064,7 +1085,12 @@ function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined, devs: reado
 function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManual: boolean, agora: Date, ctx: ContextoDoPainel): Omit<PagamentoDoPainel, "aceite"> {
   // A devolução que manda no quadro (M8.2d: a aberta, senão a mais nova); as outras vão em `devolucoes`.
   const dev = devolucaoPrincipal(devs);
-  const contexto: ContextoDaDevolucao = { cancelamento: ctx.cancelamento, alteracoes: ctx.alteracoes ?? [] };
+  const contexto: ContextoDaDevolucao = { cancelamento: ctx.cancelamento, alteracoes: ctx.alteracoes ?? [], contestacoes: ctx.contestacoes ?? [] };
+  // M8.2e: o pagamento contestado com a disputa registrada (ela explica a situação) aceita a liberação à mão; a perdida sem
+  // decisão de quem arca pede atenção (a reserva continua em conferência).
+  const disputasP = (ctx.contestacoes ?? []).filter((c) => c.pagamentoId === p.id);
+  const contestadoExplicado = p.situacao === "contestado" && disputasP.some((c) => c.situacao !== "sem_efeito");
+  const perdidaSemDecisao = disputasP.some((c) => c.situacao === "perdida" && c.decisaoVersao === 0 && c.definitivoEm === null);
   const semDecisao = p.situacao === "aprovado" && p.desfecho === null;
   // Dinheiro que chegou já devolvido em parte ou contestado, sem decisão do sistema (situação inesperada).
   const inesperada = (p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.desfecho === null;
@@ -1169,7 +1195,10 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
       (calculada && liberacaoVencida(p, agora)) ||
       (p.desfecho === "reserva" && ctx.cancelamento?.situacao === "pedido") ||
       // M8.2d: uma alteração com as novas datas seguradas (esperando o pagamento da diferença ou a confirmação do hóspede).
-      (p.desfecho === "reserva" && !!ctx.alteracoes?.some((a) => a.situacao === "segurada" && !!a.holdAte && a.holdAte.getTime() > agora.getTime())),
+      (p.desfecho === "reserva" && !!ctx.alteracoes?.some((a) => a.situacao === "segurada" && !!a.holdAte && a.holdAte.getTime() > agora.getTime())) ||
+      // M8.2e: disputa em curso (o aviso `contestado` já conta) ou perdida sem a decisão de quem arca.
+      disputasP.some((c) => c.situacao === "aberta" || c.situacao === "a_confirmar") ||
+      perdidaSemDecisao,
     acoes: {
       conferir: p.idProvedor !== null || emAndamento(p.situacao) || !!dev,
       // Cancelamento: pedir de novo só a devolução recusada de um pagamento com até 78 dias (depois, nada se pede).
@@ -1181,7 +1210,7 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
       // ela (nada entra no livro; a devolução sai depois dela).
       registrarLiberacao:
         dinheiroDaReserva(p) &&
-        (p.situacao === "aprovado" || (p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devs))) &&
+        (p.situacao === "aprovado" || (p.situacao === "devolvido_parcial" && !devolucaoInexplicada(p, devs)) || contestadoExplicado) &&
         ((!p.liberacaoConfirmadaEm && calculada) || (ctx.cancelamento?.situacao === "cancelada" && ctx.cancelamento.direito === "integral" && devs.some(esperandoLiberacao))),
       // Cancelada com devolução integral, a liberação não se registraria de novo: o estorno não é oferecido (o domínio recusa).
       estornarLiberacao:
@@ -1262,6 +1291,18 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
     .select({ id: alteracoesReserva.id, reservaId: alteracoesReserva.reservaId, situacao: alteracoesReserva.situacao, holdAte: alteracoesReserva.holdAte })
     .from(alteracoesReserva)
     .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), inArray(alteracoesReserva.reservaId, reservaIds)));
+  // M8.2e: as disputas dos pagamentos (as ações das devoluções, a liberação à mão e o "pede atenção").
+  const cts = await db
+    .select({
+      pagamentoId: contestacoesPagamento.pagamentoId,
+      situacao: contestacoesPagamento.situacao,
+      avisos: contestacoesPagamento.avisos,
+      estadoLido: contestacoesPagamento.estadoLido,
+      decisaoVersao: contestacoesPagamento.decisaoVersao,
+      definitivoEm: contestacoesPagamento.definitivoEm,
+    })
+    .from(contestacoesPagamento)
+    .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, ids)));
   // M7.4: o aceite com que cada tentativa foi criada e o prazo da Política de cancelamento dessa versão.
   const aceiteIds = [...new Set(lista.map((p) => p.aceiteId).filter((x): x is string => x !== null))];
   const aceites = aceiteIds.length ? await db.select().from(aceitesSite).where(and(eq(aceitesSite.organizacaoId, organizacaoId), inArray(aceitesSite.id, aceiteIds))) : [];
@@ -1277,6 +1318,7 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
       reserva: rs.find((r) => r.id === p.reservaId) ?? null,
       cancelamento: cs.find((c) => c.reservaId === p.reservaId) ?? null,
       alteracoes: as.filter((a) => a.reservaId === p.reservaId),
+      contestacoes: cts.filter((c) => c.pagamentoId === p.id),
     }),
     aceite: aceiteDe(p),
   }));
@@ -1333,17 +1375,38 @@ function podePedirAtencao(agora: Date) {
       eq(pagamentos.desfecho, "reserva"),
       sql`exists (select 1 from ${alteracoesReserva} where ${alteracoesReserva.reservaId} = ${pagamentos.reservaId} and ${alteracoesReserva.situacao} = 'segurada' and ${alteracoesReserva.holdAte} > ${agora})`,
     ),
+    // M8.2e: disputa em curso, ou perdida sem a decisão de quem arca.
+    comDisputaSql(),
   );
 }
 
+/**
+ * M8.2e: o pagamento tem disputa que pede a equipe — aberta, a confirmar ou perdida sem decisão de quem arca (o filtro "Com
+ * disputa" de Pagamentos do site e o "pede atenção").
+ */
+const comDisputaSql = () =>
+  sql`exists (select 1 from ${contestacoesPagamento} c where c.pagamento_id = ${pagamentos.id} and (c.situacao in ('aberta', 'a_confirmar') or (c.situacao = 'perdida' and c.decisao_versao = 0 and c.definitivo_em is null)))`;
+
 /** `alteracaoEm` (M8.2d): quando foi preparada a alteração cuja diferença este pagamento cobra; null nos outros. */
-export type LinhaPagamento = PagamentoDoPainel & { reservaCodigo: string; reservaEstado: string; imovelCodigo: string; checkin: string; checkout: string; cotacaoCodigo: string; alteracaoEm: Date | null };
+export type LinhaPagamento = PagamentoDoPainel & {
+  reservaCodigo: string;
+  reservaEstado: string;
+  imovelCodigo: string;
+  checkin: string;
+  checkout: string;
+  cotacaoCodigo: string;
+  alteracaoEm: Date | null;
+  /** M8.2e: a coluna "Disputa" — a do pagamento em palavras (tipo e situação, a mais nova), ou null sem disputa. */
+  disputa: string | null;
+  /** M8.2e: alguma disputa em curso (aberta ou a confirmar): o desfecho diz "Reserva (pagamento em disputa)". */
+  emDisputa: boolean;
+};
 
 /**
  * Financeiro → Pagamentos do site: por período (dia de criação, em São Paulo, `de` e `ate` inclusive), com o
  * filtro "pede atenção" (que ignora o período: o que pede atenção aparece sempre).
  */
-export async function listarPagamentos(db: Db, organizacaoId: string, f: { de?: string; ate?: string; atencao?: boolean } = {}, agora: Date = new Date()): Promise<LinhaPagamento[]> {
+export async function listarPagamentos(db: Db, organizacaoId: string, f: { de?: string; ate?: string; atencao?: boolean; disputa?: boolean } = {}, agora: Date = new Date()): Promise<LinhaPagamento[]> {
   const dia = sql`(${pagamentos.criadoEm} at time zone 'America/Sao_Paulo')::date`;
   const linhas = await db
     .select({
@@ -1361,11 +1424,45 @@ export async function listarPagamentos(db: Db, organizacaoId: string, f: { de?: 
     .innerJoin(imoveis, eq(imoveis.id, pagamentos.imovelId))
     .innerJoin(cotacoes, eq(cotacoes.id, pagamentos.cotacaoId))
     .leftJoin(alteracoesReserva, and(eq(alteracoesReserva.id, pagamentos.alteracaoId), eq(alteracoesReserva.organizacaoId, pagamentos.organizacaoId)))
-    .where(and(eq(pagamentos.organizacaoId, organizacaoId), !f.atencao && f.de ? gte(dia, f.de) : undefined, !f.atencao && f.ate ? sql`${dia} <= ${f.ate}` : undefined, f.atencao ? podePedirAtencao(agora) : undefined))
+    .where(
+      and(
+        eq(pagamentos.organizacaoId, organizacaoId),
+        // "Pede atenção" e "Com disputa" ignoram o período: o que pede a equipe aparece sempre.
+        !f.atencao && !f.disputa && f.de ? gte(dia, f.de) : undefined,
+        !f.atencao && !f.disputa && f.ate ? sql`${dia} <= ${f.ate}` : undefined,
+        f.atencao ? podePedirAtencao(agora) : undefined,
+        f.disputa ? comDisputaSql() : undefined,
+      ),
+    )
     .orderBy(desc(pagamentos.criadoEm), desc(pagamentos.id))
     .limit(500);
   const painel = await montarPainel(db, organizacaoId, linhas.map((l) => l.p), agora);
-  const r = painel.map((p, i) => ({ ...p, reservaCodigo: linhas[i].reservaCodigo, reservaEstado: linhas[i].reservaEstado, imovelCodigo: linhas[i].imovelCodigo, checkin: linhas[i].checkin, checkout: linhas[i].checkout, cotacaoCodigo: linhas[i].cotacaoCodigo, alteracaoEm: linhas[i].alteracaoEm ?? null }));
+  // M8.2e: a coluna "Disputa" — a mais nova de cada pagamento, por tipo e situação.
+  const disputas = painel.length
+    ? await db
+        .select({ pagamentoId: contestacoesPagamento.pagamentoId, tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao, decisaoVersao: contestacoesPagamento.decisaoVersao, definitivoEm: contestacoesPagamento.definitivoEm })
+        .from(contestacoesPagamento)
+        .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, painel.map((p) => p.id))))
+        .orderBy(desc(contestacoesPagamento.abertaEm), desc(contestacoesPagamento.rodada))
+    : [];
+  const disputaDe = (id: string) => {
+    const ds = disputas.filter((d) => d.pagamentoId === id);
+    if (!ds.length) return { disputa: null, emDisputa: false };
+    const d = ds[0];
+    const semDecisao = d.situacao === "perdida" && d.decisaoVersao === 0 && d.definitivoEm === null ? " (sem decisão de quem arca)" : "";
+    return { disputa: `${NOMES_TIPO_CONTESTACAO[d.tipo]}: ${NOMES_SITUACAO_CONTESTACAO[d.situacao]}${semDecisao}${ds.length > 1 ? ` (+${ds.length - 1})` : ""}`, emDisputa: ds.some((x) => x.situacao === "aberta" || x.situacao === "a_confirmar") };
+  };
+  const r = painel.map((p, i) => ({
+    ...p,
+    reservaCodigo: linhas[i].reservaCodigo,
+    reservaEstado: linhas[i].reservaEstado,
+    imovelCodigo: linhas[i].imovelCodigo,
+    checkin: linhas[i].checkin,
+    checkout: linhas[i].checkout,
+    cotacaoCodigo: linhas[i].cotacaoCodigo,
+    alteracaoEm: linhas[i].alteracaoEm ?? null,
+    ...disputaDe(p.id),
+  }));
   return f.atencao ? r.filter((x) => x.pedeAtencao) : r;
 }
 
@@ -1373,7 +1470,7 @@ export type AvisoPagamento = { nivel: "atencao" | "info"; texto: string; link?: 
 export type ContagensPagamento = {
   /** Aprovado sem reserva, a devolver ao hóspede (pelo Mercado Pago ou por fora). */
   aprovadoSemDesfecho: number;
-  /** Chegou já devolvido em parte ou contestado, antes de o sistema decidir: resolve-se no painel do Mercado Pago. */
+  /** Chegou já devolvido em parte ou contestado, antes de o sistema decidir: a disputa se acompanha pelo quadro do pagamento (M8.2e). */
   situacaoInesperada: number;
   devolucaoPedida: number;
   /** Devoluções paradas porque o Mercado Pago recusou, não respondeu ou mostrou a devolução pedida como falha. */
@@ -1593,7 +1690,7 @@ export async function avisosDePagamento(
   if (contagens.situacaoInesperada)
     alertas.push({
       nivel: "atencao",
-      texto: `${contagens.situacaoInesperada} pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: devolva o restante pelo quadro do pagamento (ou resolva a contestação pelo painel do Mercado Pago).`,
+      texto: `${contagens.situacaoInesperada} pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: devolva o restante pelo quadro do pagamento (acompanhe a disputa pelo quadro do pagamento).`,
       link: `${LINK_PAGAMENTOS}?atencao=1`,
     });
   if (contagens.devolucaoPedida) alertas.push({ nivel: "info", texto: `${contagens.devolucaoPedida} devolução(ões) pedida(s) ao Mercado Pago aguardando confirmação.`, link: `${LINK_PAGAMENTOS}?atencao=1` });

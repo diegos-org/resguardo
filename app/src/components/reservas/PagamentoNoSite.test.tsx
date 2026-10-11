@@ -272,7 +272,7 @@ describe("reserva cancelada pela política no quadro (M8.2c)", () => {
     expect(situacaoEmPalavras(cancelado({ cancelada: { estado: "cancelada_sem_devolucao", estornoPelaEquipe: false }, devolucao: null }))).toBe("Reserva cancelada: sem devolução (valor retido)");
     const parcial: PagamentoDoPainel = { ...base, situacao: "devolvido_parcial", desfecho: null, motivoSemReservaTexto: "Chegou já devolvido em parte." };
     expect(situacaoEmPalavras(parcial)).toBe("Devolvido em parte sem reserva: Chegou já devolvido em parte. Devolva o restante pelo quadro do pagamento.");
-    expect(situacaoEmPalavras({ ...parcial, situacao: "contestado" })).toContain("A contestação se resolve pelo painel do Mercado Pago.");
+    expect(situacaoEmPalavras({ ...parcial, situacao: "contestado" })).toContain("Acompanhe a disputa no bloco dela, abaixo.");
     expect(situacaoEmPalavras(parcial)).not.toMatch(/M8\.2/);
   });
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CONFIG_PAGAMENTO_SITE_PADRAO } from "@/configuracoes/pagamento-site";
 import { ErroProvedor } from "./provedor";
 
 const m = vi.hoisted(() => ({
@@ -19,12 +20,16 @@ const m = vi.hoisted(() => ({
   parar: vi.fn(),
   corrigirTaxa: vi.fn(),
   restante: vi.fn(),
+  disputas: vi.fn(),
+  lerConfig: vi.fn(),
 }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({ banco: true }) }));
 vi.mock("next/cache", () => ({ revalidatePath: m.revalidar }));
 vi.mock("./oferta", () => ({ provedorDeConferencia: m.gate }));
 vi.mock("./conferencia", () => ({ conferirTentativa: m.conferir }));
+// M8.2e: o "Conferir agora" de um pagamento relê também as disputas dele.
+vi.mock("./contestacao", () => ({ conferirContestacoesDoPagamento: m.disputas }));
 vi.mock("./rotina", () => ({ conferirPendentes: m.pendentes }));
 vi.mock("./devolucao", () => ({
   devolverPeloProvedor: m.devolver,
@@ -38,7 +43,7 @@ vi.mock("./devolucao", () => ({
 }));
 vi.mock("./liberacao", () => ({ registrarLiberacaoManual: m.liberar, estornarLiberacaoManual: m.estornar }));
 vi.mock("./disjuntor", () => ({ religarCartao: m.religar }));
-vi.mock("@/configuracoes/pagamento-site", async (original) => ({ ...(await original<typeof import("@/configuracoes/pagamento-site")>()), salvarConfigPagamentoSite: m.salvar }));
+vi.mock("@/configuracoes/pagamento-site", async (original) => ({ ...(await original<typeof import("@/configuracoes/pagamento-site")>()), salvarConfigPagamentoSite: m.salvar, lerConfigPagamentoSite: m.lerConfig }));
 import {
   confirmarDevolucaoVistaAcao,
   conferirAgoraAcao,
@@ -71,6 +76,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   m.gate.mockResolvedValue({ ok: true, provedor, ambiente: "teste" });
+  m.disputas.mockResolvedValue({ lidas: 0, mudaram: 0, falhas: 0, foraDoPrazo: 0, buscados: 0, novas: 0 });
+  m.lerConfig.mockResolvedValue(CONFIG_PAGAMENTO_SITE_PADRAO);
 });
 
 describe("permissão (deny-by-default)", () => {

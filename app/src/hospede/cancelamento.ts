@@ -20,7 +20,7 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { decidirPelaPolitica, entradaQueConta, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
-import { cancelamentosReserva, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
+import { cancelamentosReserva, contestacoesPagamento, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
@@ -50,6 +50,11 @@ export type CancelamentoNoPortal = {
   semPolitica: boolean;
   /** Onde acompanhar: a página da reserva no site. */
   linkCotacao: string;
+  /**
+   * M8.2e: algum pagamento da reserva está em disputa em curso ("pagamento em conferência"): o botão some e a página diz
+   * "Para cancelar, fale com a equipe.", com a frase editável de Textos do site.
+   */
+  emConferencia: boolean;
 };
 
 /** A mesma resposta para qualquer recusa que diga respeito a quem é o hóspede (nunca revela se a reserva existe). */
@@ -100,7 +105,15 @@ async function reservaDoHospede(db: Db, organizacaoId: string, email: string, re
   const devolucoes = daReserva.length ? await db.select().from(devolucoesPagamento).where(inArray(devolucoesPagamento.pagamentoId, daReserva.map((x) => x.id))) : [];
   const fuso = r.fuso || "America/Sao_Paulo";
   const horaEntrada = horaDeEntrada(r.hora);
-  return { email: e, r, p, fuso, horaEntrada, entradaEm: instanteLocal(r.checkin, horaEntrada, fuso), aprovados: todosAprovados(daReserva, devolucoes) };
+  // M8.2e: uma disputa em curso (aberta ou a confirmar) num pagamento com o dinheiro da reserva.
+  const [disputa] = daReserva.length
+    ? await db
+        .select({ id: contestacoesPagamento.id })
+        .from(contestacoesPagamento)
+        .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.pagamentoId, daReserva.map((x) => x.id)), inArray(contestacoesPagamento.situacao, ["aberta", "a_confirmar"])))
+        .limit(1)
+    : [];
+  return { email: e, r, p, fuso, horaEntrada, entradaEm: instanteLocal(r.checkin, horaEntrada, fuso), aprovados: todosAprovados(daReserva, devolucoes), emConferencia: !!disputa };
 }
 
 /**
@@ -156,6 +169,7 @@ export async function cancelamentoNoPortal(db: Db, organizacaoId: string, email:
     direitoAgora: decisao && decisao.calculado !== "sem_politica" ? decisao.calculado : null,
     semPolitica: !politica,
     linkCotacao: `/reservar/${x.p.cotacaoCodigo}`,
+    emConferencia: x.emConferencia,
   };
 }
 

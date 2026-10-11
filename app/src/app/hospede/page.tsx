@@ -9,6 +9,7 @@ import { type CancelamentoNoPortal, cancelamentoNoPortal, ESTADIA_COMECOU, JA_CA
 import { INSTRUCOES_HORA, type ReservaDoHospede, reservasDoHospede } from "@/hospede/portal";
 import { emailDoHospede } from "@/hospede/sessao-atual";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
+import { TEXTO_PARA_CANCELAR_FALE_COM_A_EQUIPE } from "@/pagamentos/contestacao-regras";
 import { linkWhatsapp } from "@/site/site";
 
 export const generateMetadata = () => metadadosDoSite("Minha reserva");
@@ -59,7 +60,17 @@ const diaHoraBrasilia = (d: Date) => {
  * "Cancelar a reserva" em Minha reserva (M8.2c): só para reservas pagas pelo site deste e-mail. O hóspede só PEDE (a data
  * e a hora ficam registradas na hora); a equipe confirma por escrito e cancela no painel. Nunca valores.
  */
-function CancelarReserva({ codigo, c, textos, agora }: { codigo: string; c: CancelamentoNoPortal | null; textos: Pick<TextosSite, "cancelamentoMinhaReservaIntro" | "cancelamentoPedidoRecebido">; agora: Date }) {
+function CancelarReserva({
+  codigo,
+  c,
+  textos,
+  agora,
+}: {
+  codigo: string;
+  c: CancelamentoNoPortal | null;
+  textos: Pick<TextosSite, "cancelamentoMinhaReservaIntro" | "cancelamentoPedidoRecebido" | "pagamentoEmConferencia">;
+  agora: Date;
+}) {
   if (!c) return null;
   if (c.pedidoEm)
     return (
@@ -73,6 +84,14 @@ function CancelarReserva({ codigo, c, textos, agora }: { codigo: string; c: Canc
       </div>
     );
   if (agora.getTime() >= c.entradaEm.getTime()) return <p className={styles.miudo}>A estadia já começou: para cancelar, fale com a equipe.</p>;
+  // M8.2e: o pagamento está em conferência (disputa): a frase editável (pode ficar vazia) e o contato no lugar do botão.
+  if (c.emConferencia)
+    return (
+      <div className={styles.aviso} role="note">
+        {textos.pagamentoEmConferencia && <p style={{ margin: 0 }}>{textos.pagamentoEmConferencia}</p>}
+        <p style={{ margin: 0 }}>{TEXTO_PARA_CANCELAR_FALE_COM_A_EQUIPE}</p>
+      </div>
+    );
   if (!c.podePedir) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -110,7 +129,17 @@ function LinhaDaAlteracao({ a }: { a: NonNullable<ReservaDoHospede["alteracao"]>
   );
 }
 
-function Reserva({ r, cancelamento, textos, agora }: { r: ReservaDoHospede; cancelamento: CancelamentoNoPortal | null; textos: Pick<TextosSite, "cancelamentoMinhaReservaIntro" | "cancelamentoPedidoRecebido">; agora: Date }) {
+function Reserva({
+  r,
+  cancelamento,
+  textos,
+  agora,
+}: {
+  r: ReservaDoHospede;
+  cancelamento: CancelamentoNoPortal | null;
+  textos: Pick<TextosSite, "cancelamentoMinhaReservaIntro" | "cancelamentoPedidoRecebido" | "pagamentoEmConferencia">;
+  agora: Date;
+}) {
   return (
     <article className={styles.cartao}>
       <div className={styles.cartaoCorpo}>
@@ -181,6 +210,8 @@ export default async function PortalHospede({ searchParams }: PageProps<"/hosped
   const textos = {
     cancelamentoMinhaReservaIntro: conteudo?.textos.cancelamentoMinhaReservaIntro ?? TEXTOS_SITE_INICIAIS.cancelamentoMinhaReservaIntro,
     cancelamentoPedidoRecebido: conteudo?.textos.cancelamentoPedidoRecebido || TEXTOS_SITE_INICIAIS.cancelamentoPedidoRecebido,
+    // M8.2e: "pagamento em conferência" (vazia = a frase não aparece; o "fale com a equipe" sempre aparece).
+    pagamentoEmConferencia: conteudo?.textos.pagamentoEmConferencia ?? TEXTOS_SITE_INICIAIS.pagamentoEmConferencia,
   };
   const erroDoPedido = typeof erro === "string" && Object.hasOwn(ERROS_DO_PEDIDO, erro) ? ERROS_DO_PEDIDO[erro] : null;
 

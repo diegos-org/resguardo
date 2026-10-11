@@ -186,7 +186,7 @@ describe("leituras que faltam dado e situações inesperadas (M8.2a)", () => {
     expect(textos).not.toContain("devolva ao hóspede");
     expect(alertas).toContainEqual({
       nivel: "atencao",
-      texto: "1 pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: devolva o restante pelo quadro do pagamento (ou resolva a contestação pelo painel do Mercado Pago).",
+      texto: "1 pagamento(s) do site que o Mercado Pago mostrou já devolvido(s) em parte ou contestado(s) antes de o sistema decidir a reserva: devolva o restante pelo quadro do pagamento (acompanhe a disputa pelo quadro do pagamento).",
       link: "/painel/financeiro/pagamentos-site?atencao=1",
     });
   });

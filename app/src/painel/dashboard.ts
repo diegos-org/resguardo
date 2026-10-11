@@ -5,7 +5,8 @@
 import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, sum } from "drizzle-orm";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
 import { listarAjustes } from "@/ajustes/ajustes";
-import { alteracoesReserva, lancamentos, pagamentos as pagamentosTabela, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
+import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import { alteracoesReserva, contestacoesPagamento, lancamentos, pagamentos as pagamentosTabela, reservas as reservasTabela, type TipoLancamento } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
 import { totaisPorTipo } from "@/financeiro/ledger";
@@ -21,7 +22,17 @@ import { ATENCAO_AVISAR_HOSPEDE_HORAS, avisosDeCancelamento, avisosDePagamento }
 import { carenciaNoTravado } from "@/pagamentos/travas";
 import type { ProvedorPagamento } from "@/pagamentos/provedor";
 import { contarPedidosNovos } from "@/proprietarios/pedidos-contato";
+import {
+  type AvisoDeContestacao,
+  DIAS_ESCALADA_CONTESTACAO,
+  linhaSemDecisao,
+  textoDisputaComEstadiaPorVir,
+  textoEscaladaDaDisputa,
+} from "@/pagamentos/contestacao-regras";
+import { prazoDosDocumentos } from "@/pagamentos/contestacao-tela";
+import { avisosDeContestacaoNosRepasses } from "@/repasses/avisos-contestacao";
 import { avisosDeDescontos } from "@/repasses/descontos";
+import { partesDoProprietario } from "@/repasses/extrato";
 import { hojeISO } from "@/lib/datas";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
@@ -131,6 +142,10 @@ export async function carregarDashboard(
     alertas.push(...pagamentos.alertas);
     // M8.2c: desconto de cancelamento (parte já repassada que voltou ao hóspede) que as partes disponíveis não cobriram.
     alertas.push(...(await avisosDeDescontos(db, organizacaoId, o.agora ?? new Date())));
+    // M8.2e: a disputa do pagamento (decisão, documentos, resultado, escalada, estadia por vir, os avisos de cada linha) e,
+    // nos repasses, o repasse a pagar com parte em disputa e o valor segurado ainda não descontado.
+    alertas.push(...(await avisosDeContestacao(db, organizacaoId, o.agora ?? new Date())));
+    alertas.push(...(await avisosDeContestacaoNosRepasses(db, organizacaoId, o.agora ?? new Date())));
   }
 
   let financeiro: Financeiro | null = null;
@@ -389,4 +404,124 @@ export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Da
     });
   }
   return alertas;
+}
+
+// ---------------------------------------------------------------- disputa do pagamento (M8.2e)
+
+const LINK_DISPUTAS = "/painel/financeiro/pagamentos-site?disputa=1";
+const DIA_MS = 86_400_000;
+
+/** Os avisos de cada linha que pedem a equipe no Início (atenção), com o texto curto da contagem. */
+const AVISOS_DA_LINHA_NO_INICIO: Partial<Record<AvisoDeContestacao, (n: number) => string>> = {
+  contestacao_possivel_duplicata: (n) => `${n} disputa(s) do pagamento possivelmente duplicada(s): confirme no quadro se é outra disputa (ou encerre sem efeito).`,
+  contestacao_ambigua: (n) => `${n} disputa(s) do pagamento que o sistema não conseguiu casar com as do quadro: confira no painel do Mercado Pago e registre pelo quadro.`,
+  contestacao_caso_de_outro_pagamento: (n) => `${n} disputa(s) com o número do caso de outro pagamento no Mercado Pago: confira no quadro.`,
+  contestacao_resultado_mudou: (n) => `${n} disputa(s) encerrada(s) que o Mercado Pago voltou a mostrar de outro jeito: use "Conferir o aviso" no quadro.`,
+  contestacao_leitura_conflitante: (n) => `${n} disputa(s) com leituras do Mercado Pago em conflito: confira no painel dele e confirme o resultado.`,
+  contestacao_ganha_sem_recebimento: (n) => `${n} disputa(s) ganha(s) sem o recebimento do pagamento no financeiro: registre a liberação à mão quando o dinheiro cair.`,
+  contestacao_sem_fonte: (n) => `${n} disputa(s) depois dos 85 dias sem de onde o sistema ler: confira o resultado no painel do Mercado Pago e confirme no quadro.`,
+  contestacao_fora_do_prazo: (n) => `${n} disputa(s) aberta(s) há mais de 240 dias: confira o resultado no painel do Mercado Pago e confirme no quadro.`,
+  contestacao_sem_leitura: (n) => `${n} disputa(s) que esta conta não consegue ler no Mercado Pago: acompanhe pelo painel dele.`,
+};
+
+/**
+ * Os avisos da disputa do pagamento no Início (M8.2e; desenho "Painel", "Início"; quem lê o financeiro, da empresa toda):
+ * - as disputas sem decisão de quem arca (a parte do proprietário espera) e a escalada depois de 15 dias (quanto da parte
+ *   está preso e por quanto tempo);
+ * - o prazo dos documentos de cada disputa ainda não final sem a marca (atenção dentro dos dias do aviso, antes informativo;
+ *   o prazo que passou e o prazo desconhecido, atenção);
+ * - as encerradas no Mercado Pago com resultado a conferir, as perdidas sem decisão de quem arca;
+ * - a estadia por vir com disputa em curso ("não libere a entrada…");
+ * - os avisos de cada linha (possível duplicata, ambígua, caso de outro pagamento, resultado que mudou, leituras em
+ *   conflito, ganha sem recebimento, dia 85 sem fonte, mais de 240 dias, sem leitura).
+ * Nada daqui é lançamento `pendente`: o contador de pendentes do Início não conta a disputa (C3).
+ */
+export async function avisosDeContestacao(db: Db, organizacaoId: string, agora: Date = new Date()): Promise<Alerta[]> {
+  const linhas = await db
+    .select({
+      l: contestacoesPagamento,
+      desfecho: pagamentosTabela.desfecho,
+      pagamentoReservaId: pagamentosTabela.reservaId,
+      codigo: reservasTabela.codigo,
+      estado: reservasTabela.estado,
+      checkin: reservasTabela.checkin,
+    })
+    .from(contestacoesPagamento)
+    .innerJoin(pagamentosTabela, eq(pagamentosTabela.id, contestacoesPagamento.pagamentoId))
+    .leftJoin(reservasTabela, eq(reservasTabela.id, contestacoesPagamento.reservaId))
+    .where(eq(contestacoesPagamento.organizacaoId, organizacaoId));
+  if (!linhas.length) return [];
+  const { diasAvisoDocumentacao } = await lerConfigPagamentoSite(db, organizacaoId);
+  const hoje = hojeISO("America/Sao_Paulo", agora);
+  const alertas: Alerta[] = [];
+  const naoFinal = (x: (typeof linhas)[number]) => x.l.situacao === "aberta" || x.l.situacao === "a_confirmar";
+  const linkDe = (xs: readonly (typeof linhas)[number][]) => (xs.length === 1 ? `/painel/reservas/${xs[0].pagamentoReservaId}` : LINK_DISPUTAS);
+  const qual = (x: (typeof linhas)[number]) => (x.l.reservaId && x.codigo ? `da reserva ${x.codigo}` : "do pagamento do site sem reserva");
+  // A perdida sem decisão com perda a dividir (com nada a dividir, o domínio já marcou os definitivos: `definitivo_em`).
+  const perdidas = linhas.filter((x) => x.l.situacao === "perdida" && x.l.decisaoVersao === 0 && x.l.definitivoEm === null);
+  // A aberta ou a confirmar sem decisão que segura a reserva (a regra única de `linhaSemDecisao`).
+  const abertasSemDecisao = linhas.filter((x) => naoFinal(x) && linhaSemDecisao({ ...x.l, desfecho: x.desfecho, perdaADividir: null }));
+  if (abertasSemDecisao.length)
+    alertas.push({
+      nivel: "atencao",
+      texto: `${abertasSemDecisao.length} disputa(s) do pagamento sem decisão de quem arca: a parte do proprietário dessas reservas espera.`,
+      link: linkDe(abertasSemDecisao),
+    });
+  // A escalada: a parte presa há mais de 15 dias (a que ainda não foi repassada e espera a decisão).
+  for (const x of abertasSemDecisao) {
+    const dias = Math.floor((agora.getTime() - x.l.abertaEm.getTime()) / DIA_MS);
+    if (dias < DIAS_ESCALADA_CONTESTACAO || !x.l.reservaId || !x.codigo) continue;
+    const presos = await presosPelaDisputa(db, organizacaoId, x.l.reservaId, agora);
+    if (presos > 0)
+      alertas.push({ nivel: "atencao", texto: textoEscaladaDaDisputa({ presos, dias, valorDaDisputa: x.l.valor ?? x.l.valorEmRisco, codigoReserva: x.codigo }), link: `/painel/reservas/${x.pagamentoReservaId}` });
+  }
+  if (perdidas.length)
+    alertas.push({
+      nivel: "atencao",
+      texto: `${perdidas.length} disputa(s) perdida(s) sem decisão de quem arca: registre quem arca no quadro (a reserva continua em conferência).`,
+      link: linkDe(perdidas),
+    });
+  const aConfirmar = linhas.filter((x) => x.l.situacao === "a_confirmar");
+  if (aConfirmar.length) alertas.push({ nivel: "atencao", texto: `${aConfirmar.length} disputa(s) encerrada(s) no Mercado Pago com resultado a conferir.`, link: linkDe(aConfirmar) });
+  // Os documentos da defesa: o prazo de cada disputa ainda não final, sem a marca "Documentos enviados".
+  for (const x of linhas.filter((y) => naoFinal(y) && !y.l.documentosEnviadosEm && !y.l.duplicataPossivel)) {
+    const prazo = prazoDosDocumentos(x.l, agora, diasAvisoDocumentacao);
+    if (!prazo) continue;
+    const link = `/painel/reservas/${x.pagamentoReservaId}`;
+    if (!x.l.documentacaoPrazo) alertas.push({ nivel: "atencao", texto: `Disputa ${qual(x)}: prazo dos documentos desconhecido — confira no painel do Mercado Pago e informe no quadro.`, link });
+    else {
+      const p = hojeISO("America/Sao_Paulo", x.l.documentacaoPrazo);
+      const faltam = Math.round((Date.parse(`${p}T00:00:00Z`) - Date.parse(`${hoje}T00:00:00Z`)) / DIA_MS);
+      const dataBr = `${p.slice(8, 10)}/${p.slice(5, 7)}`;
+      alertas.push({
+        nivel: prazo.nivel,
+        texto: faltam < 0 ? `Disputa ${qual(x)}: o prazo dos documentos passou (${dataBr}) sem a marca "Documentos enviados".` : `Disputa ${qual(x)}: documentos até ${dataBr} (${faltam === 0 ? "hoje" : `faltam ${faltam} dia${faltam === 1 ? "" : "s"}`}).`,
+        link,
+      });
+    }
+  }
+  // A estadia por vir com a disputa em curso: o titular não reconheceu o pagamento antes da entrada (pode ser fraude).
+  for (const x of linhas.filter((y) => naoFinal(y) && !y.l.duplicataPossivel && y.estado === "confirmada" && !!y.checkin && y.checkin >= hoje && !!y.codigo))
+    alertas.push({ nivel: "atencao", texto: textoDisputaComEstadiaPorVir(x.codigo!, x.checkin!), link: `/painel/reservas/${x.pagamentoReservaId}` });
+  // Os avisos de cada linha (uma contagem por aviso).
+  for (const [codigo, texto] of Object.entries(AVISOS_DA_LINHA_NO_INICIO) as [AvisoDeContestacao, (n: number) => string][]) {
+    const com = linhas.filter((x) => x.l.avisos.includes(codigo));
+    if (com.length) alertas.push({ nivel: "atencao", texto: texto(com.length), link: linkDe(com) });
+  }
+  return alertas;
+}
+
+/** Quanto da parte do proprietário desta reserva está preso pela disputa sem decisão (a liberar, ainda não repassado). */
+async function presosPelaDisputa(db: Db, organizacaoId: string, reservaId: string, agora: Date): Promise<number> {
+  const donos = await db
+    .selectDistinct({ id: lancamentos.proprietarioId })
+    .from(lancamentos)
+    .where(and(eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.reservaId, reservaId), eq(lancamentos.tipo, "direito_proprietario"), eq(lancamentos.origem, "motor"), isNotNull(lancamentos.proprietarioId)));
+  let total = 0;
+  for (const d of donos) {
+    if (!d.id) continue;
+    const partes = await partesDoProprietario(db, organizacaoId, d.id, agora, { reservaIds: [reservaId] });
+    total += partes.filter((x) => x.situacao === "a_liberar" && x.contestacaoSemDecisao && !x.disputa).reduce((s, x) => s + x.valor, 0);
+  }
+  return total;
 }

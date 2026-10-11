@@ -86,6 +86,8 @@ export type PagamentoDoHospede = {
   alteracao?: AlteracaoDoHospede | null;
   /** M8.2d: a reserva já alterada, como está agora (o resumo da página é o da cotação original). */
   reservaAtual?: { checkin: string; checkout: string; hospedes: number | null; valor: number | null } | null;
+  /** M8.2e: a reserva confirmada tem o pagamento em disputa em curso; só vem com o cookie de quem pagou ("pagamento em conferência"). */
+  pagamentoEmConferencia?: boolean;
 };
 
 /**
@@ -209,6 +211,7 @@ export function paraOHospede(v: VistaPagamentoHospede): PagamentoDoHospede {
     ...(v.pedidoCancelamentoSemPolitica ? { pedidoCancelamentoSemPolitica: true } : {}),
     ...(v.alteracao ? { alteracao: alteracaoParaOHospede(v.alteracao) } : {}),
     ...(v.reservaAtual ? { reservaAtual: v.reservaAtual } : {}),
+    ...(v.pagamentoEmConferencia ? { pagamentoEmConferencia: true } : {}),
   };
 }
 
