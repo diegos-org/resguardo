@@ -51,7 +51,25 @@ const NOMES_SITUACAO: Record<SituacaoEnvio, string> = {
 };
 export const nomeSituacaoEnvio = (s: string) => NOMES_SITUACAO[s as SituacaoEnvio] ?? s;
 
-type Plano = { imovelId: string; codigo: string; propertyId: string; roomId: string; fontePrecos: FontePrecos; linhas: LinhaPlano[] };
+type Plano = { imovelId: string; codigo: string; propertyId: string; roomId: string; fontePrecos: FontePrecos; linhas: LinhaPlano[]; ocupacao: OcupacaoDoPlano };
+
+/** As reservas que o plano usou (a janela e a assinatura delas), para a conferência final antes da escrita. */
+type OcupacaoDoPlano = { inicio: string; fim: string; assinatura: string };
+
+/**
+ * As reservas que ocupam o imóvel numa janela (`desde` < saída e entrada ≤ `ate`), a regra única do plano e da conferência
+ * final do envio. `ignorar` e `paraOBeds24`: ver `planejarImovel`.
+ */
+async function ocupantesDoImovel(db: Db, org: string, imovelId: string, desde: string, ate: string, o: { ignorar?: ReservaIgnorada; paraOBeds24?: boolean }) {
+  return db
+    .select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado })
+    .from(reservas)
+    .where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovelId), lt(reservas.checkin, somarDias(ate, 1)), gt(reservas.checkout, desde), o.ignorar ? ne(reservas.id, o.ignorar.reservaId) : undefined, o.paraOBeds24 ? ne(reservas.fonte, "alteracao") : undefined));
+}
+
+/** A assinatura de uma ocupação: as reservas (entrada, saída e estado) em ordem, para saber se mudaram. */
+const assinaturaDaOcupacao = (xs: readonly { checkin: string; checkout: string; estado: string }[]) =>
+  xs.map((x) => `${x.checkin}|${x.checkout}|${x.estado}`).sort().join(";");
 
 /**
  * Quarto Beds24 vinculado ao imóvel: exatamente um vínculo ativo com propriedade e quarto numéricos, e esse
@@ -116,7 +134,7 @@ export async function planejarImovel(
   const ateReservas = daRegra.fim > fimDados ? daRegra.fim : fimDados;
   const ignorar = o.ignorar;
   const [ocupantes, impedimentos, observacoes, enviados] = await Promise.all([
-    db.select({ checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.imovelId, imovel.id), lt(reservas.checkin, somarDias(ateReservas, 1)), gt(reservas.checkout, daRegra.inicio), ignorar ? ne(reservas.id, ignorar.reservaId) : undefined, o.paraOBeds24 ? ne(reservas.fonte, "alteracao") : undefined)),
+    ocupantesDoImovel(db, org, imovel.id, daRegra.inicio, ateReservas, o),
     db.select({ inicio: bloqueios.inicio, fim: bloqueios.fim, fonte: bloqueios.fonte }).from(bloqueios).where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, imovel.id), lt(bloqueios.inicio, somarDias(fimDados, 1)), gt(bloqueios.fim, inicio))).then((l) => bloqueiosSemAReserva(l, ignorar)),
     roomId === null ? [] : db.select().from(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), eq(beds24Calendario.imovelId, imovel.id), eq(beds24Calendario.roomId, roomId), gte(beds24Calendario.data, inicio), lte(beds24Calendario.data, fim))).orderBy(asc(beds24Calendario.data)),
     roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
@@ -125,7 +143,8 @@ export async function planejarImovel(
     imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2], fontePrecos: detalhes.fontePrecos },
     regras, hoje, inicio, fim, fimDados, reservas: ocupantes, bloqueios: impedimentos, observacoes, enviados,
   });
-  return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const, fontePrecos: detalhes.fontePrecos };
+  const ocupacao: OcupacaoDoPlano = { inicio: daRegra.inicio, fim: ateReservas, assinatura: assinaturaDaOcupacao(ocupantes) };
+  return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const, fontePrecos: detalhes.fontePrecos, ocupacao };
 }
 
 /** Grava a leitura do calendário como observação local das noites (a mais nova vale), presa ao quarto lido. */
@@ -329,7 +348,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
           if (c.divergentes) aviso(`Imóvel ${m.codigo}: ${c.divergentes} noite(s) de envio anterior sem releitura diferem da leitura de agora; o plano decide se reenvia.`);
         }
         const p = await planejarImovel(tx, org, regras, { id: m.imovelId, fuso: fusos.get(m.imovelId) ?? "America/Sao_Paulo", roomId: m.roomId }, agora, undefined, { paraOBeds24: true });
-        planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, fontePrecos: p.fontePrecos, linhas: p.linhas });
+        planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, fontePrecos: p.fontePrecos, linhas: p.linhas, ocupacao: p.ocupacao });
         if (p.inicio < inicioLeitura) inicioLeitura = p.inicio;
         if (p.fim > fimLeitura) fimLeitura = p.fim;
         const semPreco = p.linhas.filter(l => l.precoReferencia === null).length;
@@ -409,6 +428,15 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             aviso(`Imóvel ${p.codigo}: ${res.falha}`);
             continue;
           }
+        }
+        // Conferência final das reservas: uma reserva confirmada, cancelada ou alterada (M8.2d: a alteração aplicada muda as
+        // datas da reserva, e a reserva-pedido dela fica fora do plano) entre o plano e a escrita mudaria o mínimo e as
+        // sobras; nada é escrito para o imóvel nesta execução.
+        const ocupacaoAgora = assinaturaDaOcupacao(await ocupantesDoImovel(db, org, p.imovelId, p.ocupacao.inicio, p.ocupacao.fim, { paraOBeds24: true }));
+        if (ocupacaoAgora !== p.ocupacao.assinatura) {
+          res.falha = "Reservas do imóvel alteradas durante o envio: nada foi escrito para este imóvel nesta execução; o próximo envio replaneja.";
+          aviso(`Imóvel ${p.codigo}: ${res.falha}`);
+          continue;
         }
         try {
           const [resposta] = await escritor!.escreverCalendario([{ roomId: p.roomId, faixas: faixasDeEnvio(p.linhas) }]);

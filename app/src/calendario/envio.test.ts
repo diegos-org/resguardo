@@ -789,6 +789,33 @@ describe("reserva-pedido de uma alteração (M8.2d) no plano do Beds24", () => {
     const site = await planejarImovel(db, org, rg, { id: im, fuso: "America/Sao_Paulo" }, agora);
     expect(site.linhas.find((l) => l.data === "2026-10-03")?.livresSeguidas).toBe(0);
   });
+
+  it("a alteração aplicada entre o plano e a escrita (as datas da reserva mudam): nada é escrito para o imóvel; o próximo envio replaneja com a reserva", async () => {
+    const [x] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ALTP2", origem: "direta", estado: "confirmada", checkin: "2026-10-20", checkout: "2026-10-22", hospedeNome: "Hóspede Fictício", fonte: "site", idFonte: "c-altp2" }).returning({ id: reservas.id });
+    // Depois da primeira transação (plano e intenção), a alteração é aplicada: a reserva passa para o sábado 3/10.
+    let transacoes = 0;
+    const dbCorrida = new Proxy(db, {
+      get(alvo, prop, receptor) {
+        if (prop === "transaction") {
+          const original = alvo.transaction.bind(alvo) as (...a: unknown[]) => Promise<unknown>;
+          return async (...a: unknown[]) => {
+            const r = await original(...a);
+            if (++transacoes === 1) await alvo.update(reservas).set({ checkin: "2026-10-03", checkout: "2026-10-04" }).where(eq(reservas.id, x.id));
+            return r;
+          };
+        }
+        const v = Reflect.get(alvo, prop, receptor);
+        return typeof v === "function" ? v.bind(alvo) : v;
+      },
+    }) as Db;
+    const r = await enviarCalendarioBeds24(dbCorrida, org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, confirmadas: 0, falha: expect.stringContaining("Reservas do imóvel alteradas durante o envio") }] });
+    expect(beds.escritas).toHaveLength(0);
+    // Replanejado com a reserva no sábado: a sexta 2/10 cabe só 1 noite antes dela.
+    const r2 = await enviar();
+    expect(r2.situacao).toBe("ok");
+    expect(diaFalso("2026-10-02")).toMatchObject({ minStay: 1 });
+  });
 });
 
 describe("planejarImovel ignorando uma reserva (M8.2d, cotação da alteração)", () => {
