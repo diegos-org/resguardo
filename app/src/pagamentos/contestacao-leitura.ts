@@ -382,6 +382,16 @@ export function perdidoNoPagamento(t: Pick<Travado, "contestacoes">, p: Pagament
     .reduce((s, c) => s + Math.max(0, dinheiroDaReserva(p) && c.reservaId ? (c.valorPerdido ?? 0) : (c.valor ?? pago)), 0);
 }
 
+/**
+ * A taxa que as outras disputas perdidas de um pagamento sem reserva já levaram (no pagamento sem reserva o valor perdido é
+ * a taxa): a soma das perdas dele nunca passa da taxa do pagamento, que só é cobrada uma vez.
+ */
+export function taxaJaPerdidaNoPagamento(t: Pick<Travado, "contestacoes">, p: Pick<Pagamento, "id">, exceto?: string): number {
+  return t.contestacoes
+    .filter((c) => c.pagamentoId === p.id && c.id !== exceto && c.situacao === "perdida" && !c.duplicataPossivel)
+    .reduce((s, c) => s + Math.max(0, c.valorPerdido ?? 0), 0);
+}
+
 /** O que as devoluções substituídas por esta disputa tiram do valor em risco (o cancelamento ou a alteração já o tirou do resultado). */
 export const substituidoPelaDisputa = (t: Pick<Travado, "devolucoes">, contestacaoId: string) =>
   t.devolucoes.filter((d) => d.contestacaoId === contestacaoId && d.situacao !== "substituida").reduce((s, d) => s + d.valor, 0);

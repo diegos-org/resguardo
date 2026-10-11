@@ -8,7 +8,7 @@
  */
 import { and, asc, eq, like } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { auditoria, cancelamentosReserva, contestacoesPagamento, cotacoes, devolucoesPagamento, eventosContestacao, lancamentos } from "@/db/schema";
+import { auditoria, cancelamentosReserva, contestacoesPagamento, cotacoes, devolucoesPagamento, eventosContestacao, lancamentos, pagamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
@@ -31,6 +31,7 @@ import {
   registrarDecisao,
   TEXTO_NOTA_DO_RESULTADO,
   textoPerdaAcimaDoQueSobra,
+  textoPerdaSemReservaAcimaDaTaxa,
 } from "./contestacao";
 import { partesEfetivasDaReserva, TEXTO_INFORME_A_VOLTA } from "./contestacao-acerto";
 import {
@@ -582,6 +583,31 @@ describe("pagamento sem reserva (item 24)", () => {
     // As ações de devolução desse pagamento param.
     expect(await devolverPeloProvedor(db, c.org, pix.pagamentoId, equipe, c.provedor, sp("2026-12-11 10:00"))).toMatchObject({ ok: false });
     expect(await devolverPeloProvedor(db, c.org, { devolucaoId: dev.id }, equipe, c.provedor, sp("2026-12-11 10:00"))).toMatchObject({ ok: false });
+  });
+
+  it("duas disputas perdidas no mesmo pagamento sem reserva: a taxa é perdida uma vez só; o custo do parcelamento já está dentro dela (Codex, 11/10)", async () => {
+    const s = await c.segurar({ entrada: "2026-11-20", saida: "2026-11-23" });
+    const pix = await c.pix(s.cotacaoId);
+    await db.update(cotacoes).set({ total: TOTAL + 1 }).where(eq(cotacoes.id, s.cotacaoId));
+    c.provedor.aprovar(pix.idProvedor, { taxa: TAXA });
+    await conferir(pix.pagamentoId, minutos(3));
+    expect((await c.tentativa(pix.pagamentoId)).motivoSemReserva).toBe("valor_divergente");
+    // O custo do parcelamento cobrado da SCL já está dentro da taxa (`financeiroDoPagamento`): não soma ao teto.
+    await db.update(pagamentos).set({ custoParcelasVendedor: 500 }).where(eq(pagamentos.id, pix.pagamentoId));
+    const med = await registrarContestacaoDaEquipe(db, c.org, pix.pagamentoId, { tipo: "med", abertaEm: "2026-10-20", valor: TOTAL, prazo: null, idCaso: null, nota: "MED visto no painel." }, equipe, null, sp("2026-10-20 10:00"));
+    if (!med.ok) throw new Error(med.erro);
+    const rec = await registrarContestacaoDaEquipe(db, c.org, pix.pagamentoId, { tipo: "reclamacao", abertaEm: "2026-10-20", valor: TOTAL, prazo: null, idCaso: "8100000002", nota: "Reclamação vista no painel." }, equipe, null, sp("2026-10-20 11:00"));
+    if (!rec.ok) throw new Error(rec.erro);
+    expect(await confirmarOutraDisputa(db, c.org, rec.contestacaoId, equipe, sp("2026-10-20 12:00"))).toMatchObject({ ok: true });
+    expect(await confirmar({ id: med.contestacaoId }, "perdida", sp("2026-12-10 10:00"), { valorPerdido: TAXA + 500, debitoEm: "2026-12-09" })).toMatchObject({ ok: false, erro: textoPerdaSemReservaAcimaDaTaxa(TAXA + 500, TAXA) });
+    expect(await confirmar({ id: med.contestacaoId }, "perdida", sp("2026-12-10 10:00"), { valorPerdido: TAXA, debitoEm: "2026-12-09" })).toMatchObject({ ok: true });
+    // A segunda: a taxa já foi perdida pela primeira; a proposta é zero e um valor acima é recusado.
+    const pv = await previaDoResultado(db, c.org, rec.contestacaoId);
+    expect(pv.ok && pv.fatos.proposta.valorPerdido).toBe(0);
+    expect(await confirmar({ id: rec.contestacaoId }, "perdida", sp("2026-12-11 10:00"), { valorPerdido: TAXA, debitoEm: "2026-12-10" })).toMatchObject({ ok: false, erro: textoPerdaSemReservaAcimaDaTaxa(TAXA, 0, TAXA) });
+    expect(await confirmar({ id: rec.contestacaoId }, "perdida", sp("2026-12-11 10:00"), { valorPerdido: 0, debitoEm: "2026-12-10" })).toMatchObject({ ok: true });
+    const taxas = (await db.select().from(lancamentos).where(like(lancamentos.chaveOrigem, `%:taxa`))).filter((x) => x.tipo === "despesa_empresa" && x.reservaId === null);
+    expect(taxas.map((x) => x.montante)).toEqual([TAXA]);
   });
 
   it("ganha: a devolução sem reserva substituída volta a ser devida; registro da equipe e duplicata confirmada como outra disputa também valem", async () => {

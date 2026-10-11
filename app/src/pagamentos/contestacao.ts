@@ -55,6 +55,7 @@ import {
   registrarEventoDaContestacao,
   sincronizarAvisosDaDisputa,
   substituirDevolucoes,
+  taxaJaPerdidaNoPagamento,
   trocarAvisosDaContestacao,
 } from "./contestacao-leitura";
 import {
@@ -868,8 +869,8 @@ export const TEXTO_LIBERACAO_ANTES_DA_PERDA =
 export const TEXTO_LIBERACAO_ANTES_DA_PERDA_PARCIAL =
   "A disputa é de parte do valor e a liberação deste pagamento ainda não está registrada: registre a liberação à mão (o líquido que caiu na conta) antes de confirmar a perdida.";
 /** Pagamento sem reserva: o valor perdido acima da taxa do pagamento. */
-export const textoPerdaSemReservaAcimaDaTaxa = (v: number, teto: number) =>
-  `Pagamento sem reserva: o dinheiro dele nunca entrou no livro e o que a SCL perde é a taxa do pagamento (até ${formatBRL(teto)}). ${formatBRL(v)} passa disso: confira o valor (quase sempre é digitação).`;
+export const textoPerdaSemReservaAcimaDaTaxa = (v: number, teto: number, jaPerdida = 0) =>
+  `Pagamento sem reserva: o dinheiro dele nunca entrou no livro e o que a SCL perde é a taxa do pagamento (até ${formatBRL(teto)}${jaPerdida > 0 ? `; as outras disputas perdidas deste pagamento já levaram ${formatBRL(jaPerdida)} da taxa` : ""}). ${formatBRL(v)} passa disso: confira o valor (quase sempre é digitação).`;
 export const TEXTO_NOTA_DA_TAXA_SEM_RESERVA =
   "Pagamento sem reserva com a taxa do pagamento desconhecida: escreva na nota a taxa que o painel do Mercado Pago mostra (é o que a SCL perde).";
 /** "Conferir o aviso → reaberta" com outra disputa sem número aberta no pagamento. */
@@ -1441,7 +1442,7 @@ async function fatosDoResultado(tx: Db, organizacaoId: string, t: Travado, p: Pa
   const recebidos = semReserva ? [] : (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.filter((x) => x.estado === "realizado" || x.estado === "conciliado");
   const comRecebimento = recebidos.length > 0;
   // O que sobra do pago depois das outras perdidas deste pagamento (`perdidoNoPagamento`): a proposta nunca passa disso.
-  const valorPerdido = semReserva ? p.taxa : Math.min(l.valor ?? valorPagoAprovado(p), Math.max(0, valorPagoAprovado(p) - perdidoNoPagamento(t, p, l.id)));
+  const valorPerdido = semReserva ? (p.taxa === null ? null : Math.max(0, p.taxa - taxaJaPerdidaNoPagamento(t, p, l.id))) : Math.min(l.valor ?? valorPagoAprovado(p), Math.max(0, valorPagoAprovado(p) - perdidoNoPagamento(t, p, l.id)));
   // Sem recebimento em vigor, o "nunca entrou" só se propõe quando o Mercado Pago não mostrou a liberação e a disputa é do
   // valor inteiro: com o sinal de liberação, ou numa disputa de parte do valor (o resto entra pela liberação), a liberação
   // se registra antes (o caixa final fica pelo que de fato entrou, e a taxa da reserva fica a do pagamento).
@@ -1579,11 +1580,13 @@ export async function confirmarResultado(
       // As outras disputas perdidas deste pagamento já levaram parte do pago: esta perde no máximo o resto.
       const jaPerdido = daReserva ? perdidoNoPagamento(t, p, l.id) : 0;
       if (daReserva && v > pago - jaPerdido) return recusada(textoPerdaAcimaDoQueSobra(jaPerdido, Math.max(0, pago - jaPerdido)));
-      // Pagamento sem reserva: o dinheiro dele nunca entrou no livro; o que a SCL perde é a taxa (com o custo do parcelamento
-      // que ela pagou). Um valor acima é quase sempre digitação; sem a taxa conhecida, a nota diz a que o painel mostra.
+      // Pagamento sem reserva: o dinheiro dele nunca entrou no livro; o que a SCL perde é a taxa (o custo do parcelamento
+      // cobrado da SCL já está dentro dela), uma vez só: as outras perdidas do pagamento tiram dela o que já levaram. Um valor
+      // acima é quase sempre digitação; sem a taxa conhecida, a nota diz a que o painel mostra.
       if (!daReserva) {
-        const teto = p.taxa === null ? null : p.taxa + Math.max(0, p.custoParcelasVendedor ?? 0);
-        if (teto !== null && v > teto) return recusada(textoPerdaSemReservaAcimaDaTaxa(v, teto));
+        const jaTaxa = taxaJaPerdidaNoPagamento(t, p, l.id);
+        const teto = p.taxa === null ? null : Math.max(0, p.taxa - jaTaxa);
+        if (teto !== null && v > teto) return recusada(textoPerdaSemReservaAcimaDaTaxa(v, teto, jaTaxa));
         if (teto === null && !(e.nota ?? "").trim()) return recusada(TEXTO_NOTA_DA_TAXA_SEM_RESERVA);
       }
       if (n === null || !centavosValidos(n, pago)) return recusada(`Informe quanto deste pagamento nunca entrou na conta (zero se entrou tudo; até ${formatBRL(pago)}).`);

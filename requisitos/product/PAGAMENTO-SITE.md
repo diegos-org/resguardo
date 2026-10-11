@@ -3381,6 +3381,13 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   *Agora:* `confirmarOutraDisputa` faz a mesma sequência do registro (`recalcularDisputas` sem caixa e
   `lancarRetidoRealizado`, no dia em que a leitura viu a devolução, pelo que esta disputa explica). *Motivo:* o caixa
   registra a saída que já aconteceu.
+- **O teto da perda no pagamento sem reserva** *(segue o desenho, "Pagamento sem reserva": o que a SCL perde é a taxa)*.
+  *Antes:* "Confirmar o resultado" aceitava até a taxa mais o custo do parcelamento cobrado da SCL
+  (`custo_parcelas_vendedor`), que já está dentro da taxa (`financeiroDoPagamento`); e cada disputa perdida do mesmo
+  pagamento podia perder a taxa inteira, lançando a mesma taxa como despesa mais de uma vez. *Agora:* o teto é a taxa do
+  pagamento menos o que as outras perdidas dele já levaram (`taxaJaPerdidaNoPagamento`, `contestacao-leitura.ts`); a
+  proposta do valor perdido segue o mesmo teto (zero quando outra disputa já levou a taxa), e a recusa diz quanto as outras
+  já levaram. *Motivo:* a taxa de um pagamento é cobrada uma vez só.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 
