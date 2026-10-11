@@ -3303,6 +3303,16 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   ficava aberta para sempre. *Agora:* vale também quando o quadro tem uma contestação no cartão não final; a disputa vai
   para `a_confirmar` e a equipe confirma o resultado (como sempre). *Motivo:* o fato que a Payments API dá é o mesmo; o que
   muda é só por onde o sistema soube da disputa.
+- **A falha de um caso não para os outros** *(segue o desenho, "Rotina", "a fila anda também na falha")*. *Antes:* com
+  várias disputas no mesmo pagamento, a falha na leitura do primeiro caso (transporte, resposta ilegível) encerrava as
+  leituras dos outros casos e a busca, e todas as disputas do pagamento contavam a falha. *Agora:* cada caso é lido numa
+  chamada isolada; a falha conta só para a disputa daquele caso (ou para todas, quando falha uma fonte do pagamento inteiro
+  — a order, a busca ou a Payments API — e nada as leu na volta), e os outros casos e a busca seguem. *Motivo:* um caso
+  com problema não pode deixar as outras disputas sem leitura.
+- **O "Conferir agora" da empresa conta as disputas** *(segue o desenho, "Painel")*. *Antes:* a mensagem só olhava os
+  pagamentos, as devoluções e os Pix cancelados; uma volta que só achava ou mudava uma disputa respondia "Nada pendente
+  para conferir com o Mercado Pago". *Agora:* a mensagem diz as disputas novas, as relidas e os pagamentos com disputa
+  atualizada (como o "Conferir agora" de um pagamento já fazia).
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

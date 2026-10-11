@@ -156,6 +156,10 @@ type LidoDasFontes = {
   semAcesso: boolean;
   /** Alguma chamada falhou (transporte, limite, resposta ilegível). */
   falhou: boolean;
+  /** Os casos cuja leitura pelo número falhou nesta volta (a falha de um não impede os outros nem a busca). */
+  casosFalharam: string[];
+  /** Falhou uma fonte do pagamento inteiro (a order, a busca pelo número ou a Payments API). */
+  fonteDoPagamentoFalhou: boolean;
   /** A Chargebacks API ou a Payments API deram uma resposta útil (um caso deste pagamento, ou a situação dele). */
   util: boolean;
   /** Os casos que a Chargebacks API mostra de outro pagamento (nada deles é usado). */
@@ -193,7 +197,23 @@ async function lerFontes(
   agora: Date,
   o: { order: boolean; buscar: boolean; semTempo?: () => boolean },
 ): Promise<LidoDasFontes> {
-  const lido: LidoDasFontes = { leituras: [], semAcesso: false, falhou: false, util: false, casosDeOutro: [], orderLida: false, chargebacksRespondeu: false, casosRespondidos: [], interrompido: false };
+  const lido: LidoDasFontes = {
+    leituras: [],
+    semAcesso: false,
+    falhou: false,
+    casosFalharam: [],
+    fonteDoPagamentoFalhou: false,
+    util: false,
+    casosDeOutro: [],
+    orderLida: false,
+    chargebacksRespondeu: false,
+    casosRespondidos: [],
+    interrompido: false,
+  };
+  const falhaDoPagamento = () => {
+    lido.falhou = true;
+    lido.fonteDoPagamentoFalhou = true;
+  };
   const semTempo = () => {
     if (o.semTempo?.()) lido.interrompido = true;
     return lido.interrompido;
@@ -203,17 +223,19 @@ async function lerFontes(
     // Melhor esforço: a trava da cotação ocupada (outra leitura, uma ação na outra aba) é uma leitura que não deu agora.
     try {
       const r = await conferirTentativa(db, p.organizacaoId, p.id, provedor, agora, { forcar: true, origem: "rotina" });
-      if (!r.ok) lido.falhou = true;
+      if (!r.ok) falhaDoPagamento();
       else lido.orderLida = true;
     } catch (e) {
       if (!travaOcupada(e)) throw e;
-      lido.falhou = true;
+      falhaDoPagamento();
     }
   }
   const casos = [...new Set(linhas.map((l) => l.idCaso).filter(casoLegivel))];
-  try {
-    for (const idCaso of casos) {
-      if (semTempo()) break;
+  // Cada caso numa chamada isolada: a falha de um (transporte, resposta ilegível) conta só para a disputa dele, e os outros
+  // casos e a busca seguem.
+  for (const idCaso of casos) {
+    if (semTempo()) break;
+    try {
       const caso = await provedor.consultarContestacao(idCaso);
       lido.casosRespondidos.push(idCaso);
       if (semAcessoContestacao(caso)) lido.semAcesso = true;
@@ -225,10 +247,16 @@ async function lerFontes(
           lido.util = true;
         } else if (deste === "outro") lido.casosDeOutro.push(caso.idCaso);
       }
+    } catch (e) {
+      if (!(e instanceof ErroProvedor)) throw e;
+      lido.falhou = true;
+      lido.casosFalharam.push(idCaso);
     }
-    // A busca pelo número do pagamento sempre que alguma disputa a reler não tem um caso legível (o MED ou a reclamação
-    // registrados sem o número, ao lado de uma contestação no cartão com caso): sem ela, essa disputa ficaria sem fonte.
-    if (o.buscar && p.idPagamentoProvedor && linhas.some((l) => !casoLegivel(l.idCaso)) && !semTempo()) {
+  }
+  // A busca pelo número do pagamento sempre que alguma disputa a reler não tem um caso legível (o MED ou a reclamação
+  // registrados sem o número, ao lado de uma contestação no cartão com caso): sem ela, essa disputa ficaria sem fonte.
+  if (o.buscar && p.idPagamentoProvedor && linhas.some((l) => !casoLegivel(l.idCaso)) && !semTempo()) {
+    try {
       const lista = await provedor.buscarContestacoes(p.idPagamentoProvedor);
       if (semAcessoContestacao(lista)) lido.semAcesso = true;
       else {
@@ -238,10 +266,10 @@ async function lerFontes(
         for (const caso of lista) if (!casos.includes(caso.idCaso) && casoDestePagamento(caso, p.idPagamentoProvedor) === "sim") lido.leituras.push(leituraDoCaso(caso, agora));
         lido.util ||= lido.leituras.length > 0;
       }
+    } catch (e) {
+      if (!(e instanceof ErroProvedor)) throw e;
+      falhaDoPagamento();
     }
-  } catch (e) {
-    if (!(e instanceof ErroProvedor)) throw e;
-    lido.falhou = true;
   }
   // A terceira fonte: depois dos 85 dias (a order não é mais lida), a situação do pagamento pelo número, sempre que há uma
   // disputa no cartão a reler. A leitura vale só para as do cartão (`soDoTipo`): o "voltou a aprovado" de um MED registrado
@@ -260,7 +288,7 @@ async function lerFontes(
       }
     } catch (e) {
       if (!(e instanceof ErroProvedor)) throw e;
-      lido.falhou = true;
+      falhaDoPagamento();
     }
   }
   return lido;
@@ -283,7 +311,9 @@ async function aplicarFontes(db: Db, p: PagamentoLido, lidas: readonly string[],
     let mudou = ef.mudou;
     for (const l of contestacoesDoPagamento(t, pt.id)) {
       if (!lidas.includes(l.id) || !contestacaoNaoFinal(l.situacao)) continue;
-      const falhas = lido.falhou ? l.falhasLeitura + 1 : 0;
+      // A falha desta disputa: a leitura do caso dela falhou, ou falhou uma fonte do pagamento inteiro e nada a leu nesta volta.
+      const falhou = (!!l.idCaso && lido.casosFalharam.includes(l.idCaso)) || (lido.fonteDoPagamentoFalhou && !ef.comLeitura.includes(l.id));
+      const falhas = falhou ? l.falhasLeitura + 1 : 0;
       const mudanca = { consultadaEm: agora, falhasLeitura: falhas, proximaLeituraEm: new Date(agora.getTime() + esperaDaLeituraDaContestacao(falhas)), atualizadoEm: agora };
       await tx.update(contestacoesPagamento).set(mudanca).where(eq(contestacoesPagamento.id, l.id));
       Object.assign(l, mudanca);
@@ -301,7 +331,7 @@ async function aplicarFontes(db: Db, p: PagamentoLido, lidas: readonly string[],
       // tipo); a resposta útil de outra disputa do mesmo pagamento não diz nada desta.
       const util = ef.comLeitura.includes(l.id);
       if (util) desligar.push("contestacao_sem_fonte");
-      else if (foraDaOrder && !lido.interrompido && (!lido.falhou || falhas >= FALHAS_PARA_SEM_FONTE)) ligar.push("contestacao_sem_fonte");
+      else if (foraDaOrder && !lido.interrompido && (!falhou || falhas >= FALHAS_PARA_SEM_FONTE)) ligar.push("contestacao_sem_fonte");
       if (await trocarAvisosDaContestacao(tx, l, { ligar, desligar }, agora)) mudou = true;
     }
     // A Chargebacks API e a Payments API só ligam a ambígua; quem a desliga é a releitura da order (`aplicarLeitura`) ou o
@@ -405,9 +435,10 @@ export async function conferirContestacoes(
     try {
       const lido = await lerFontes(db, provedor, p, doPagamento, agora, { order: !orderRecente, buscar: true, semTempo });
       interrompido = lido.interrompido;
-      // Interrompida pelo orçamento: andam na fila só as disputas cujo caso respondeu; as que dependiam da busca ou da Payments
-      // API (não chamadas) continuam na vez e são as primeiras da próxima volta.
-      const lidas = interrompido ? doPagamento.filter((l) => casoLegivel(l.idCaso) && lido.casosRespondidos.includes(l.idCaso)) : doPagamento;
+      // Interrompida pelo orçamento: andam na fila só as disputas cujo caso foi chamado (respondeu ou falhou); as que dependiam
+      // da busca ou da Payments API (não chamadas) continuam na vez e são as primeiras da próxima volta.
+      const tentados = [...lido.casosRespondidos, ...lido.casosFalharam];
+      const lidas = interrompido ? doPagamento.filter((l) => casoLegivel(l.idCaso) && tentados.includes(l.idCaso)) : doPagamento;
       const r = await aplicarFontes(db, p, lidas.map((l) => l.id), lido, agora);
       resumo.lidas += lidas.length;
       if (r.mudou) resumo.mudaram++;

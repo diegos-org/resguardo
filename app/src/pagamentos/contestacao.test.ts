@@ -83,6 +83,34 @@ describe("rotina das disputas (item 20)", () => {
     expect((await linhas(x.pagamentoId))[0]).toMatchObject({ falhasLeitura: 0, proximaLeituraEm: dias(10) });
   });
 
+  it("a falha na leitura de um caso não impede os outros casos do pagamento; só a disputa dele conta a falha", async () => {
+    const x = await contestado();
+    await envelhecer(c, x.pagamentoId, 100);
+    const numero = (await c.tentativa(x.pagamentoId)).idPagamentoProvedor!;
+    // Uma segunda contestação no mesmo pagamento, achada pela busca tardia (possível duplicata, com o seu caso).
+    const outro = c.provedor.contestarTarde(numero, { valor: 20_000 });
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, minutos(30))).toMatchObject({ novas: 1 });
+    // A do primeiro caso vem antes na fila.
+    await db.update(contestacoesPagamento).set({ proximaLeituraEm: minutos(40) }).where(eq(contestacoesPagamento.idCaso, x.idCaso));
+    await db.update(contestacoesPagamento).set({ proximaLeituraEm: minutos(41) }).where(eq(contestacoesPagamento.idCaso, outro.idCaso));
+    c.provedor.resolverContestacao(outro.idCaso, { estado: "settled", cobertura: true });
+    const lidos: string[] = [];
+    const original = c.provedor.consultarContestacao.bind(c.provedor);
+    c.provedor.consultarContestacao = async (id: string) => {
+      lidos.push(id);
+      if (id === x.idCaso) throw new ErroProvedor("incerto", "Resposta ilegível.");
+      return original(id);
+    };
+    const r = await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    c.provedor.consultarContestacao = original;
+    expect(lidos).toEqual([x.idCaso, outro.idCaso]);
+    expect(r).toMatchObject({ lidas: 2, falhas: 1 });
+    const daFalha = (await linhas(x.pagamentoId)).find((l) => l.idCaso === x.idCaso)!;
+    const lida = (await linhas(x.pagamentoId)).find((l) => l.idCaso === outro.idCaso)!;
+    expect(daFalha).toMatchObject({ situacao: "aberta", falhasLeitura: 1 });
+    expect(lida).toMatchObject({ situacao: "a_confirmar", coberturaAplicada: true, falhasLeitura: 0 });
+  });
+
   it("403 da Chargebacks API: aviso contestacao_sem_leitura, uma vez", async () => {
     const x = await contestado();
     c.provedor.respostaChargebacks.consultarContestacao = "403";

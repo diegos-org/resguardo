@@ -136,6 +136,17 @@ describe("conferir agora", () => {
     expect((await conferirAgoraAcao({}, form({}))).mensagem).toBe("Nada pendente para conferir com o Mercado Pago.");
   });
 
+  it("as disputas da volta entram na mensagem (uma disputa achada nunca vira \"nada pendente\")", async () => {
+    const disputas = { lidas: 0, mudaram: 0, falhas: 0, foraDoPrazo: 0, buscados: 3, novas: 0 };
+    m.pendentes.mockResolvedValue({ conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0, contestacoes: { ...disputas, novas: 1, mudaram: 1 } });
+    expect(await conferirAgoraAcao({}, form({}))).toEqual({ ok: true, mensagem: "1 disputa(s) nova(s) no quadro, disputas atualizadas em 1 pagamento(s)." });
+    m.pendentes.mockResolvedValue({ conferidas: 2, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0, contestacoes: { ...disputas, lidas: 3 } });
+    expect((await conferirAgoraAcao({}, form({}))).mensagem).toBe("2 pagamento(s) conferido(s) com o Mercado Pago, 0 com mudança, 3 disputa(s) relida(s).");
+    // Só procuradas pela busca tardia, sem nada achado nem relido: nada a dizer das disputas.
+    m.pendentes.mockResolvedValue({ conferidas: 0, mudaram: 0, devolucoes: 0, canceladas: 0, falhas: 0, contestacoes: disputas });
+    expect((await conferirAgoraAcao({}, form({}))).mensagem).toBe("Nada pendente para conferir com o Mercado Pago.");
+  });
+
   it("falha de transporte do provedor vira mensagem; outros erros sobem", async () => {
     m.conferir.mockRejectedValue(new ErroProvedor("incerto", "O Mercado Pago não respondeu a tempo."));
     expect(await conferirAgoraAcao({}, form({ pagamentoId: ID }))).toEqual({ mensagem: "O Mercado Pago não respondeu a tempo." });

@@ -104,12 +104,22 @@ function falhaDoProvedor(e: unknown): EstadoAcaoPagamento {
 }
 
 function textoDoResumo(r: ResumoConferencia): string {
-  const partes = [`${r.conferidas} pagamento(s) conferido(s) com o Mercado Pago, ${r.mudaram} com mudança`];
+  const d = r.contestacoes;
+  const partes: string[] = [];
+  // Só as disputas mexeram: a frase começa por elas (sem o "0 pagamento(s) conferido(s)").
+  if (r.conferidas || !disputasMexeram(r)) partes.push(`${r.conferidas} pagamento(s) conferido(s) com o Mercado Pago, ${r.mudaram} com mudança`);
   if (r.devolucoes) partes.push(`${r.devolucoes} devolução(ões) confirmada(s)`);
   if (r.canceladas) partes.push(`${r.canceladas} Pix que sobrou cancelado(s)`);
+  // M8.2e: as disputas da volta (a releitura das abertas e a busca tardia).
+  if (d?.novas) partes.push(`${d.novas} disputa(s) nova(s) no quadro`);
+  if (d?.lidas) partes.push(`${d.lidas} disputa(s) relida(s)`);
+  if (d?.mudaram) partes.push(`disputas atualizadas em ${d.mudaram} pagamento(s)`);
   const texto = `${partes.join(", ")}.`;
   return r.falhas ? `${texto} ${r.falhas} não deu para conferir agora: tente de novo em instantes.` : texto;
 }
+
+/** O "Conferir agora" da empresa leu, achou ou mudou alguma disputa (M8.2e). */
+const disputasMexeram = (r: ResumoConferencia) => !!r.contestacoes && (r.contestacoes.lidas > 0 || r.contestacoes.novas > 0 || r.contestacoes.mudaram > 0);
 
 /**
  * "Conferir agora": com `pagamentoId`, lê aquela tentativa no Mercado Pago (sem esperar o intervalo); sem ele,
@@ -137,7 +147,8 @@ export async function conferirAgoraAcao(_e: EstadoAcaoPagamento, form: FormData)
     // Do painel, lê agora (sem os intervalos da rotina): o botão promete conferir tudo o que está pendente.
     const resumo = await conferirPendentes(db, sessao.organizacaoId, gate.provedor, new Date(), { forcar: true });
     revalidar();
-    return { ok: true, mensagem: resumo.conferidas || resumo.falhas || resumo.devolucoes || resumo.canceladas ? textoDoResumo(resumo) : "Nada pendente para conferir com o Mercado Pago." };
+    const algo = resumo.conferidas || resumo.falhas || resumo.devolucoes || resumo.canceladas || disputasMexeram(resumo);
+    return { ok: true, mensagem: algo ? textoDoResumo(resumo) : "Nada pendente para conferir com o Mercado Pago." };
   } catch (e) {
     return falhaDoProvedor(e);
   }
