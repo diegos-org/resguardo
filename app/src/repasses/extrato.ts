@@ -20,16 +20,31 @@
  *   o espelho dela no mês do cancelamento a anula. A parte e o espelho (o "estorno") ficam disponíveis juntos, sem
  *   esperar nada, e entram juntos no próximo repasse, somando zero: nem desconto do que ele não recebeu, nem pagamento
  *   do que voltou ao hóspede.
+ * - **em conferência por disputa do pagamento** (M8.2e): a parte ainda não repassada de uma reserva com disputa sem
+ *   decisão de quem arca (`contestacaoSemDecisaoSql`) fica a liberar, com o motivo próprio; a já repassada não muda.
+ * - **linhas da disputa** (M8.2e, C4, `ehLinhaDeContestacao`): o valor segurado do proprietário (parte negativa, origem
+ *   "contestacao_pagamento"), a reversão e o ajuste seguem a parte dele na mesma reserva — esperam junto enquanto alguma
+ *   parte não repassada está a liberar; disponíveis quando as partes já foram repassadas ou estão disponíveis. Só o
+ *   código da reserva (nunca o nome do hóspede).
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import { lerVersoesRegras } from "@/configuracoes/regras-financeiras";
-import { type EstadoLancamento, imoveis, lancamentos, type OrigemReserva, repasseItens, repasses, reservas, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
+import { contestacoesPagamento, type EstadoLancamento, imoveis, lancamentos, type OrigemReserva, repasseItens, repasses, reservas, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { liberacoesDoSiteComAlvo } from "@/pagamentos/andamento";
-import { lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
+import {
+  MOTIVO_PARTE_EM_CONFERENCIA,
+  MOTIVO_SEGURADO_JUNTO,
+  ORIGEM_LANCAMENTO_CONTESTACAO,
+  type QuemArcaContestacao,
+  ROTULO_DISPUTA_PROPRIETARIO,
+  type SituacaoContestacao,
+} from "@/pagamentos/contestacao-regras";
+import { contestacaoSemDecisaoSql, lancamentoEmConferencia, lancamentoEmVigor } from "@/portal/posse";
 import { espelhoAnulaAParte, parteAnuladaPeloEspelho } from "./descontos";
 import { dataBr, ladoDoInicio, type PagamentoDaReserva, pagamentoDe, quemRecebeDe } from "./inicio";
 import { dinheiroComAEmpresa, type RecebidoDaReserva, recebidoPorReserva } from "./recebimentos";
@@ -89,7 +104,45 @@ export type ParteBruta = {
    * esse caso (o espelho de uma parte já paga é o desconto).
    */
   anulacao?: "anulada" | "estorno";
+  /**
+   * M8.2e: a reserva está em conferência por disputa do pagamento (alguma disputa sem decisão de quem arca,
+   * `contestacaoSemDecisaoSql`): a parte ainda não repassada fica a liberar. Ausente = não.
+   */
+  contestacaoSemDecisao?: boolean;
+  /** M8.2e: os fatos da disputa de uma linha da disputa (`ehLinhaDeContestacao`); ausente nas outras partes. */
+  disputa?: DisputaDaLinha;
+  /**
+   * M8.2e: numa linha da disputa, alguma outra parte do proprietário na mesma reserva, ainda não repassada, está a liberar:
+   * a linha espera junto (`partesDoProprietario` calcula; nunca a parte presa e o valor descontado ao mesmo tempo).
+   */
+  seguradoJunto?: boolean;
 };
+
+/** Variante da linha da disputa para o proprietário (extrato, PDF, e-mail, relatório): segurado até o resultado, definitivo (perdida) ou devolvido. */
+export type VarianteDaDisputa = "segurado" | "definitivo" | "devolvido";
+export const varianteDaDisputa = (situacao: SituacaoContestacao | null | undefined): VarianteDaDisputa =>
+  situacao === "perdida" ? "definitivo" : situacao === "ganha" || situacao === "sem_efeito" ? "devolvido" : "segurado";
+
+/**
+ * O que o proprietário pode ver da disputa de uma linha (lista branca: nunca a nota interna, o número do caso, o motivo do
+ * Mercado Pago ou dado do hóspede). `causa` é o nome da causa registrada (Configurações → Pagamento no site);
+ * `explicacao`, a explicação ao proprietário escrita pela equipe (pode ser vazia).
+ */
+export type DisputaDaLinha = {
+  contestacaoId: string;
+  situacao: SituacaoContestacao;
+  /** Dia do resultado confirmado (AAAA-MM-DD); null antes dele (e no "sem efeito"). */
+  resultadoEm: string | null;
+  quemArca: QuemArcaContestacao | null;
+  causa: string | null;
+  /** O valor em disputa da versão em vigor da decisão e a parte do proprietário nela (centavos). */
+  exposicao: number | null;
+  parteProprietario: number | null;
+  explicacao: string;
+};
+
+/** A parte é uma linha da disputa do pagamento (M8.2e): o valor segurado, a reversão ou o ajuste, origem "contestacao_pagamento". */
+export const ehLinhaDeContestacao = (p: Pick<ParteBruta, "origemLancamento">) => p.origemLancamento === ORIGEM_LANCAMENTO_CONTESTACAO;
 
 /**
  * O desconto da parte já repassada de uma reserva cancelada com devolução integral (M8.2c): parte negativa, origem
@@ -126,6 +179,9 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
     if (r.tipo === "por_fora") return com("repassado", `Acertada por fora, antes do início do sistema (até ${dataBr(r.data)}).${recalculo}`, diferenca);
     if (p.anulacao === "estorno") return com("repassado", `${estornoDe(p)}: anulou a parte ${r.tipo === "fechamento" ? "no fechamento" : "no repasse"} de ${dataBr(r.data)}${pago}.`, diferenca);
     if (ehDescontoDeCancelamento(p)) return com("repassado", `${descontoDe(p)}: descontado ${r.tipo === "fechamento" ? "no fechamento" : "no repasse"} de ${dataBr(r.data)}${pago}.`, diferenca);
+    // M8.2e: a linha da disputa saiu (o débito descontado, a reversão devolvida) num repasse.
+    if (ehLinhaDeContestacao(p))
+      return com("repassado", `${textoDaLinhaDaDisputa(p)} ${p.valor < 0 ? "Descontado" : "Devolvido"} ${r.tipo === "fechamento" ? "no fechamento" : "no repasse"} de ${dataBr(r.data)}${pago}.`, diferenca);
     return com("repassado", `${r.tipo === "fechamento" ? "No fechamento" : "Repasse"} de ${dataBr(r.data)}${pago}.${recalculo}`, diferenca);
   }
   // M8.2c: a parte nunca paga e o espelho que a anula não esperam nada (somam zero; nenhum dinheiro sai): disponíveis
@@ -136,6 +192,12 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
   // M8.2c: o desconto da parte já repassada nunca espera nada (o dinheiro já saiu para o proprietário e já voltou ao
   // hóspede): disponível na hora, para o próximo repasse de qualquer tipo descontá-lo.
   if (ehDescontoDeCancelamento(p)) return com("disponivel", `${descontoDe(p)}: sai do próximo repasse.`);
+  // M8.2e (C4): a linha da disputa segue a parte do proprietário na mesma reserva — espera junto enquanto alguma parte
+  // não repassada está a liberar (nada sai de outros repasses); senão, disponível: o próximo repasse de qualquer tipo a leva.
+  if (ehLinhaDeContestacao(p)) {
+    if (p.seguradoJunto) return com("a_liberar", `${textoDaLinhaDaDisputa(p)} ${maiuscula(MOTIVO_SEGURADO_JUNTO)}.`);
+    return com("disponivel", `${textoDaLinhaDaDisputa(p)} ${p.valor < 0 ? "Sai do próximo repasse." : "Volta no próximo repasse."}`);
+  }
   if (quemRecebe === "a_confirmar") return com("a_liberar", "Quem recebe o dinheiro desta reserva ainda está a confirmar pela empresa: fica fora de qualquer repasse até definir.");
   if (quemRecebe === "split") {
     const quando = p.pagamento ? ` (${p.pagamento.data <= p.hoje ? "pago" : "previsto"} em ${dataBr(p.pagamento.data)}, ${p.pagamento.prazo === 0 ? "no check-in" : `${p.pagamento.prazo} dia(s) depois do check-in`})` : "";
@@ -145,6 +207,8 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
   if (lado === "antes") return com("a_liberar", `Reserva paga antes do início do sistema (${dataBr(inicioDoSistema!)})${p.pagamento ? `, em ${dataBr(p.pagamento.data)}` : ""}: já acertada por fora; aguarda a marcação em Financeiro → Repasses.`);
   if (lado === "indefinido") return com("a_liberar", `Reserva que atravessa o início do sistema (${dataBr(inicioDoSistema!)}) sem data de pagamento: registre o recebimento completo com a data em que o canal pagou — antes do início, a reserva inteira é acertada por fora; a partir dele, entra inteira no sistema.`);
   if (p.emConferencia) return com("a_liberar", "Reserva em conferência: a empresa precisa esclarecer os valores antes do repasse.");
+  // M8.2e: disputa do pagamento sem decisão de quem arca — a parte espera a decisão (C2: fora do fechamento, nunca o trava).
+  if (p.contestacaoSemDecisao) return com("a_liberar", MOTIVO_PARTE_EM_CONFERENCIA);
   if (p.checkin >= p.hoje && p.canceladaComRetencao)
     return com("a_liberar", `Reserva cancelada sem devolução ao hóspede (política de cancelamento): o valor retido é dividido como uma reserva normal. Libera depois da data de entrada original (${dataBr(p.checkin)}), com o dinheiro já com a empresa.`);
   // Reserva paga pelo site com dinheiro ainda no Mercado Pago (M8.2d, §7): depois de um aumento, toda a parte espera o
@@ -176,6 +240,40 @@ export function classificarParte(p: ParteBruta, inicioDoSistema: string | null =
     );
   }
   return com("disponivel", "Disponível para o próximo repasse.");
+}
+
+const maiuscula = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+const porcento = (parte: number, total: number) => `${((parte * 100) / total).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+
+/**
+ * O texto de uma linha da disputa para o proprietário (extrato, portal, PDF): só o código da reserva, o valor, a variante
+ * (segurado, definitivo ou devolvido), a causa registrada e a explicação ao proprietário — nunca a nota interna, o número
+ * do caso nem o nome do hóspede. Uma regra, um lugar: `classificarParte` e o relatório leem daqui.
+ */
+export function textoDaLinhaDaDisputa(p: Pick<ParteBruta, "codigoReserva" | "valor" | "disputa">): string {
+  const d = p.disputa;
+  const inicio = `${ROTULO_DISPUTA_PROPRIETARIO} da reserva ${p.codigoReserva}`;
+  const variante = varianteDaDisputa(d?.situacao);
+  const quando = d?.resultadoEm ? ` em ${ddmm(d.resultadoEm)}` : "";
+  const segurado = d?.parteProprietario && d.parteProprietario > 0 ? d.parteProprietario : Math.abs(p.valor);
+  const causa = d?.causa ? ` Causa registrada: ${d.causa}.` : "";
+  const explicacao = d?.explicacao.trim() ? ` ${d.explicacao.trim().replace(/([^.!?])$/, "$1.")}` : "";
+  if (variante === "definitivo")
+    return p.valor < 0
+      ? `${inicio}: desconto definitivo (a SCL perdeu a disputa${quando}).${causa}${explicacao}`
+      : `${inicio}: ajuste do desconto definitivo (a SCL perdeu a disputa${quando}; o valor perdido ficou menor que o segurado).${causa}${explicacao}`;
+  if (variante === "devolvido") {
+    const porque = d?.situacao === "sem_efeito" ? "a disputa foi encerrada sem efeito" : `a SCL ganhou a disputa${quando}`;
+    return p.valor > 0 ? `${inicio}: valor segurado devolvido (${porque}).` : `${inicio}: ${formatBRL(segurado)} segurados, devolvidos depois (${porque}).`;
+  }
+  const proporcao =
+    d?.quemArca === "proprietario"
+      ? " — o valor em disputa inteiro, que inclui a comissão e a taxa do pagamento"
+      : d?.quemArca === "proporcional" && d.exposicao && d.exposicao > 0 && d.parteProprietario !== null
+        ? ` — ${porcento(d.parteProprietario, d.exposicao)} do valor em disputa (${formatBRL(d.exposicao)}), a proporção da sua parte`
+        : "";
+  return `${inicio}: ${formatBRL(segurado)} segurados dos seus próximos repasses até o resultado${proporcao}. Se a SCL ganhar a disputa, o valor volta no repasse seguinte.${causa}${explicacao}`;
 }
 
 const descontoDe = (p: Pick<ParteBruta, "codigoReserva">) => `Desconto da sua parte já repassada da reserva ${p.codigoReserva} (cancelada com devolução integral ao hóspede)`;
@@ -224,6 +322,9 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
       estado: lancamentos.estado,
       emConferencia: sql<boolean>`coalesce(${lancamentoEmConferencia()}, false)`,
       origemLancamento: lancamentos.origem,
+      chaveOrigem: lancamentos.chaveOrigem,
+      // M8.2e: a reserva em conferência por disputa do pagamento (a regra única, gêmea de `contestacaoSemDecisao`).
+      contestacaoSemDecisao: sql<boolean>`coalesce(${contestacaoSemDecisaoSql()}, false)`,
       canceladaComRetencao: sql<boolean>`(${reservas.estado} = 'cancelada' and coalesce(${reservas.valorRetido}, 0) > 0)`,
       // M8.2c: a parte nunca paga e o espelho que a anula (a mesma regra da lista de descontos e do aviso do Início).
       estorno: sql<boolean>`(${lancamentos.origem} = 'cancelamento' and ${lancamentos.valor} < 0 and ${espelhoAnulaAParte()})`,
@@ -260,9 +361,9 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
   const doSite = await liberacoesDoSiteComAlvo(db, organizacaoId, [...new Set(linhas.map((l) => l.reservaId!))]);
   const inicioDoSistema = await lerInicioDoSistema(db, organizacaoId);
   const versoes = await lerVersoesRegras(db, organizacaoId);
-  return linhas.map((l) =>
-    classificarParte(
-      {
+  const disputas = await disputasDasLinhas(db, organizacaoId, linhas.filter((l) => l.origemLancamento === ORIGEM_LANCAMENTO_CONTESTACAO).map((l) => l.chaveOrigem));
+  const brutas = linhas.map(
+    (l): ParteBruta => ({
         lancamentoId: l.lancamentoId,
         proprietarioId,
         reservaId: l.reservaId!,
@@ -275,7 +376,8 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
         estado: l.estado,
         checkin: l.checkin,
         checkout: l.checkout,
-        hospede: l.hospede,
+        // M8.2e: nas linhas da disputa, só o código da reserva (nunca o nome do hóspede).
+        hospede: l.origemLancamento === ORIGEM_LANCAMENTO_CONTESTACAO ? "" : l.hospede,
         origem: l.origem,
         hoje: hojeISO(l.fuso, agora),
         recebido: recebidos.get(l.reservaId!) ?? { recebido: 0, devido: 0 },
@@ -286,10 +388,56 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
         origemLancamento: l.origemLancamento,
         canceladaComRetencao: l.canceladaComRetencao === true,
         ...(l.estorno === true ? { anulacao: "estorno" as const } : l.anulada === true ? { anulacao: "anulada" as const } : {}),
-      },
-      inicioDoSistema,
-    ),
+        ...(l.contestacaoSemDecisao === true ? { contestacaoSemDecisao: true } : {}),
+        ...(disputas.has(l.chaveOrigem) ? { disputa: disputas.get(l.chaveOrigem)! } : {}),
+      }),
   );
+  // Primeiro as partes da reserva; depois as linhas da disputa, que seguem a parte do proprietário na mesma reserva (C4):
+  // esperam junto enquanto alguma parte não repassada dela está a liberar.
+  const partes = new Map(brutas.filter((p) => !ehLinhaDeContestacao(p)).map((p) => [p.lancamentoId, classificarParte(p, inicioDoSistema)]));
+  const aLiberar = new Set([...partes.values()].filter((p) => p.situacao === "a_liberar").map((p) => p.reservaId));
+  return brutas.map((p) => partes.get(p.lancamentoId) ?? classificarParte({ ...p, seguradoJunto: aLiberar.has(p.reservaId) }, inicioDoSistema));
+}
+
+/**
+ * Os fatos da disputa de cada linha da disputa, pela chave (`mercadopago:<pagamento>:contestacao:<contestação>:…`), só o
+ * que o proprietário pode ver (`DisputaDaLinha`), com o nome da causa pela configuração em vigor.
+ */
+async function disputasDasLinhas(db: Db, organizacaoId: string, chaves: readonly string[]): Promise<Map<string, DisputaDaLinha>> {
+  const idDe = (chave: string) => chave.split(":")[3] ?? "";
+  const ids = [...new Set(chaves.map(idDe).filter(uuidValido))];
+  if (!ids.length) return new Map();
+  const linhas = await db
+    .select({
+      id: contestacoesPagamento.id,
+      situacao: contestacoesPagamento.situacao,
+      resultadoEm: contestacoesPagamento.resultadoEm,
+      quemArca: contestacoesPagamento.quemArca,
+      causa: contestacoesPagamento.causa,
+      exposicao: contestacoesPagamento.exposicao,
+      parteProprietario: contestacoesPagamento.parteProprietario,
+      explicacao: contestacoesPagamento.explicacaoProprietario,
+    })
+    .from(contestacoesPagamento)
+    .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.id, ids)));
+  if (!linhas.length) return new Map();
+  const causas = (await lerConfigPagamentoSite(db, organizacaoId)).causasContestacao;
+  const porId = new Map(
+    linhas.map((c) => [
+      c.id,
+      {
+        contestacaoId: c.id,
+        situacao: c.situacao,
+        resultadoEm: c.situacao === "sem_efeito" ? null : c.resultadoEm,
+        quemArca: c.quemArca,
+        causa: c.causa ? (causas[c.causa]?.nome ?? null) : null,
+        exposicao: c.exposicao,
+        parteProprietario: c.parteProprietario,
+        explicacao: c.explicacao,
+      } satisfies DisputaDaLinha,
+    ]),
+  );
+  return new Map(chaves.filter((k) => porId.has(idDe(k))).map((k) => [k, porId.get(idDe(k))!]));
 }
 
 /** A liberação prevista do site como a parte a leva (o dia em São Paulo; "da diferença" quando só ela falta). */

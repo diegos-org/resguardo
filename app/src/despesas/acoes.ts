@@ -33,7 +33,10 @@ export async function marcarPaga(form: FormData): Promise<void> {
   const sessao = await sessaoEditora();
   const id = String(form.get("id") ?? "");
   const data = String(form.get("dataPagamento") ?? "") || hojeISO();
-  if (!(await marcarDespesaPaga(getDb(), sessao.organizacaoId, id, data, sessao.usuarioId))) redirect(`/painel/despesas/${id}?erro=pagamento`);
+  const r = await marcarDespesaPaga(getDb(), sessao.organizacaoId, id, data, sessao.usuarioId);
+  // M8.2e: a despesa da disputa do pagamento não se marca como paga por aqui.
+  if (r === "da_contestacao") redirect(`/painel/despesas/${id}?erro=da_contestacao`);
+  if (!r) redirect(`/painel/despesas/${id}?erro=pagamento`);
   revalidatePath(`/painel/despesas/${id}`);
   revalidatePath("/painel/despesas");
 }
@@ -43,7 +46,7 @@ export async function estornarDespesa(form: FormData): Promise<void> {
   const id = String(form.get("id") ?? "");
   const motivo = String(form.get("motivo") ?? "").trim().slice(0, 200);
   const r = await estornarNoLivro(getDb(), sessao.organizacaoId, id, motivo, sessao.usuarioId);
-  if (r === "quitado" || r === "compensacao" || r === "do_site") redirect(`/painel/despesas/${id}?erro=${r}`);
+  if (r === "quitado" || r === "compensacao" || r === "do_site" || r === "da_contestacao") redirect(`/painel/despesas/${id}?erro=${r}`);
   if (!r) redirect(`/painel/despesas/${id}?erro=estorno`);
   revalidatePath(`/painel/despesas/${id}`);
   revalidatePath("/painel/despesas");

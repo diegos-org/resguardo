@@ -194,12 +194,12 @@ describe("desconto da parte já repassada (M8.2c)", () => {
     const [p] = await preverRepasses(db, org, "2026-10", "2026-11-02", [dono]);
     const novembro = (await partes("2026-11-02")).find((x) => x.reservaId === outra.id && x.competencia === "2026-11-01")!;
     expect(p.antecipado).toBe(novembro.valor - 72250);
-    expect(p.antecipadoSeparado).toEqual({ noites: novembro.valor, desconto: -72250, estorno: 0 });
+    expect(p.antecipadoSeparado).toEqual({ noites: novembro.valor, desconto: -72250, estorno: 0, disputa: 0 });
     const rep = id(await fecharMes(db, org, dono, "2026-10", "2026-11-02", null));
     const gravado = (await obterRepasse(db, org, rep))!;
     expect(gravado.antecipado).toBe(novembro.valor - 72250);
     const itens = await itensDoRepasse(db, org, rep);
-    expect(separarAntecipado(gravado.antecipado, itens, gravado.mes)).toEqual({ noites: novembro.valor, desconto: -72250, estorno: 0 });
+    expect(separarAntecipado(gravado.antecipado, itens, gravado.mes)).toEqual({ noites: novembro.valor, desconto: -72250, estorno: 0, disputa: 0 });
     const { texto } = textoDoEmailDoRepasse(gravado, itens, "Sua Casa Exemplo");
     expect(texto).toContain(`Noites de meses seguintes já pagas: ${formatBRL(novembro.valor)}`);
     expect(texto).toContain("Desconto de reserva cancelada com devolução ao hóspede: − R$ 722,50");
@@ -334,7 +334,7 @@ describe("mês que movimentou dinheiro sem a parte ter sido paga ao proprietári
     const [outubro] = await preverRepasses(db, org, "2026-10", "2026-11-06", [dono], true);
     expect(outubro).toMatchObject({ valor: 0, deve: 0, antecipado: -72250, bloqueios: [] });
     // O antecipado negativo é o estorno (que anula a parte do saldo): nem noites de meses seguintes, nem desconto.
-    expect(outubro.antecipadoSeparado).toEqual({ noites: 0, desconto: 0, estorno: -72250 });
+    expect(outubro.antecipadoSeparado).toEqual({ noites: 0, desconto: 0, estorno: -72250, disputa: 0 });
     expect(outubro.avisos.join(" ")).toContain(`A parte de R$ 722,50 (reservas ${r.codigo}, canceladas com devolução integral ao hóspede antes de a parte ser repassada) e o estorno dela entram juntos neste repasse e se anulam.`);
     expect(outubro.avisos.join(" ")).not.toContain("desconto de cancelamento");
   });

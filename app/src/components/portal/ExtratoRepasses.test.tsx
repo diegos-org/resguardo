@@ -103,6 +103,22 @@ describe("extrato e repasses no portal (M4.10)", () => {
     expect(h.match(/Pedir repasse agora/g)).toHaveLength(1);
   });
 
+  it("M8.2e: a linha da disputa do pagamento aparece como 'Disputa do pagamento' (segurado, junto com a parte ou descontado), só com o código da reserva, com a explicação", () => {
+    const disputa = { contestacaoId: "c1", situacao: "aberta" as const, resultadoEm: null, quemArca: "proporcional" as const, causa: "Problema do imóvel", exposicao: 100000, parteProprietario: 85000, explicacao: "" };
+    const linha = parte({ lancamentoId: "d1", reservaId: "r9", codigoReserva: "SCL-DISP", valor: -85000, efeitoSaldo: -85000, hospede: "", origemLancamento: "contestacao_pagamento", disputa });
+    const h = render({ partes: [classificarParte(linha)] });
+    expect(h).toContain("<strong>Disputa do pagamento</strong> · segurado · a descontar");
+    expect(h).toContain("Disputa do pagamento da reserva SCL-DISP: R$ 850,00 segurados dos seus próximos repasses até o resultado — 85% do valor em disputa (R$ 1.000,00), a proporção da sua parte.");
+    expect(h).toContain("SCL-DISP");
+    expect(h).toContain("“Disputa do pagamento” é o valor que fica segurado dos seus repasses");
+    expect(render({ partes: [classificarParte({ ...linha, seguradoJunto: true })] })).toContain("segurado · junto com a sua parte desta reserva");
+    const descontada = classificarParte({ ...linha, repasse: { id: "rep2", tipo: "antecipado", data: "2026-10-20", situacao: "pago", dataPagamento: "2026-10-20", valor: -85000 } });
+    expect(render({ partes: [descontada] })).toContain("segurado · descontado");
+    const perdida = classificarParte({ ...linha, disputa: { ...disputa, situacao: "perdida", resultadoEm: "2027-03-10" } });
+    expect(render({ partes: [perdida] })).toContain("definitivo · a descontar");
+    expect(render()).not.toContain("“Disputa do pagamento” é");
+  });
+
   it("M8.2c: o desconto da parte já repassada de uma reserva cancelada com devolução aparece como 'Desconto', a descontar ou descontado, com a explicação", () => {
     const desconto = parte({ lancamentoId: "d1", reservaId: "r9", codigoReserva: "SCL-CANC", valor: -63119, efeitoSaldo: -63119, origemLancamento: "cancelamento" });
     const h = render({ partes: [classificarParte(desconto)] });

@@ -5,7 +5,7 @@ import styles from "@/components/formularios.module.css";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import { getDb } from "@/db/client";
 import { listarAdiantamentos, totalACobrar } from "@/adiantamentos/adiantamentos";
-import { listarDespesas, totaisDespesas } from "@/despesas/despesas";
+import { listarDespesas, textoDaDespesaDaDisputa, totaisDespesas } from "@/despesas/despesas";
 import { listarImoveis } from "@/imoveis/repositorio";
 import { descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
@@ -96,7 +96,8 @@ export default async function ListaDespesas({ searchParams }: PageProps<"/painel
                   <td>{d.imovelId ? (porId.get(d.imovelId)?.codigo ?? "—") : "Geral"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{formatBRL(d.montante ?? -d.valor)}</td>
                   <td>
-                    <span className={styles.etiqueta}>{d.estornada ? "Estornada" : d.estado === "previsto" ? "A pagar" : "Paga"}</span>
+                    {/* M8.2e: a despesa da disputa do pagamento diz em que pé a disputa está (nunca "A pagar"). */}
+                    <span className={styles.etiqueta}>{d.estornada ? "Estornada" : d.disputa ? textoDaDespesaDaDisputa(d.disputa) : d.estado === "previsto" ? "A pagar" : "Paga"}</span>
                   </td>
                 </tr>
               ))}

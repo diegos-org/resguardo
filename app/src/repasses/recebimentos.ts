@@ -8,15 +8,16 @@
  * site (M8.2a) não recebe recebimento à mão: o dela vem da liberação do Mercado Pago (chave `mercadopago:`), que só
  * se corrige pelo quadro do pagamento.
  */
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { lancamentos, repasseItens, repasses, reservas, type TipoRepasse } from "@/db/schema";
+import { contestacoesPagamento, lancamentos, repasseItens, repasses, reservas, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento } from "@/financeiro/ledger";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { pagamentoEmAndamentoOuAprovado } from "@/pagamentos/andamento";
+import { ehChaveDeContestacao } from "@/pagamentos/contestacao-regras";
 import { dataValida } from "@/reservas/regras";
 import { ORIGEM_CANCELAMENTO } from "./descontos";
 
@@ -76,6 +77,9 @@ export async function registrarRecebimento(
   });
 }
 
+/** M8.2e: o dinheiro que voltou de uma disputa do pagamento (chave da disputa) não se estorna pela reserva. */
+export const ERRO_RECEBIMENTO_DA_CONTESTACAO = "Recebimento da disputa do pagamento: corrija pelo quadro da disputa, no quadro \"Pagamento no site\" da reserva.";
+
 /** Estorna um recebimento registrado por engano (o lançamento fica no histórico, anulado). */
 export async function estornarRecebimento(db: Db, organizacaoId: string, lancamentoId: string, motivo: string, autorId: string | null): Promise<Resultado> {
   const m = motivo.trim();
@@ -92,6 +96,8 @@ export async function estornarRecebimento(db: Db, organizacaoId: string, lancame
       .where(and(eq(lancamentos.id, lancamentoId), eq(lancamentos.organizacaoId, organizacaoId), eq(lancamentos.tipo, "recebimento"), emVigor()))
       .for("update");
     if (!l) return { ok: false as const, erro: "Recebimento não encontrado ou já estornado." };
+    // M8.2e: a volta (ou a entrada do caixa final) de uma disputa do pagamento só se corrige pelo quadro da disputa.
+    if (ehChaveDeContestacao(l.chaveOrigem)) return { ok: false as const, erro: ERRO_RECEBIMENTO_DA_CONTESTACAO };
     // Liberação do pagamento pelo site (M8.2a): corrige-se pelo quadro do pagamento, que versiona a chave.
     if (l.chaveOrigem.startsWith("mercadopago:")) return { ok: false as const, erro: "Recebimento do pagamento pelo site: corrija pelo quadro \"Pagamento no site\" da reserva." };
     // Mesma trava do motor e do repasse: enquanto esta transação confere o repasse, nenhum antecipado ou
@@ -145,6 +151,12 @@ export type RecebidoDaReserva = {
    */
   devido: number;
   /**
+   * M8.2e: o valor perdido das disputas do pagamento da reserva já perdidas com os lançamentos definitivos (o dinheiro que
+   * voltou ao hóspede pela disputa e que o resultado já divide). A condição passa a ser `recebido + perdaCoberta ≥ devido`.
+   * Ausente ou 0 = nenhuma.
+   */
+  perdaCoberta?: number;
+  /**
    * Data (caixa) do recebimento que completou o líquido do canal — a data em que o canal pagou (M4.12); null se ainda
    * falta. Pelos recebimentos brutos: uma devolução ao hóspede depois (M8.2c) não apaga a data em que ele pagou.
    */
@@ -156,13 +168,20 @@ export type RecebidoDaReserva = {
  * condição "o dinheiro está com a empresa": recebido ≥ devido (e devido > 0). O dinheiro que voltou ao
  * hóspede (lançamento "devolucao" realizado/conciliado, M8.2c) sai do recebido; a data em que o canal pagou
  * continua vindo só dos recebimentos, e o devido, só dos lançamentos do motor (sem os espelhos do cancelamento).
+ *
+ * M8.2e (a regra única do dinheiro com a empresa numa disputa do pagamento): enquanto a disputa não está `perdida` com os
+ * lançamentos definitivos, as linhas de caixa dela (retido, volta, caixa final; chave `mercadopago:…:contestacao:…`) não
+ * contam — quem segura a reserva nesse tempo é a conferência por disputa (`contestacaoSemDecisaoSql`) e, depois da decisão,
+ * a parte segue as regras de sempre: sem isso, ela ficaria presa duas vezes. Perdida com os definitivos: contam o retido
+ * realizado e o caixa final, e `perdaCoberta` = o valor perdido. A identidade fecha nos três caminhos: liberado (95.020 −
+ * 100.000 + 100.000), não liberado (0 − 3.980 + 100.000 = 96.020) e disputa de parte do valor (96.020 − 30.000 + 30.000).
  */
 export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaIds: readonly string[]): Promise<Map<string, RecebidoDaReserva>> {
   const ids = [...new Set(reservaIds.filter(uuidValido))];
   const mapa = new Map<string, RecebidoDaReserva>(ids.map((id) => [id, { recebido: 0, devido: 0, dataCompleto: null }]));
   if (!ids.length) return mapa;
   const linhas = await db
-    .select({ reservaId: lancamentos.reservaId, tipo: lancamentos.tipo, estado: lancamentos.estado, origem: lancamentos.origem, valor: lancamentos.valor, montante: lancamentos.montante, dataCaixa: lancamentos.dataCaixa, criadoEm: lancamentos.criadoEm })
+    .select({ reservaId: lancamentos.reservaId, tipo: lancamentos.tipo, estado: lancamentos.estado, origem: lancamentos.origem, valor: lancamentos.valor, montante: lancamentos.montante, dataCaixa: lancamentos.dataCaixa, criadoEm: lancamentos.criadoEm, chave: lancamentos.chaveOrigem })
     .from(lancamentos)
     .where(
       and(
@@ -172,9 +191,27 @@ export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaI
         emVigor(),
       ),
     );
+  // M8.2e: as disputas da reserva perdidas com os lançamentos definitivos — só as linhas de caixa delas contam.
+  const perdidas = await db
+    .select({ id: contestacoesPagamento.id, reservaId: contestacoesPagamento.reservaId, valorPerdido: contestacoesPagamento.valorPerdido })
+    .from(contestacoesPagamento)
+    .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.reservaId, ids), eq(contestacoesPagamento.situacao, "perdida"), isNotNull(contestacoesPagamento.definitivoEm)));
+  const definitivas = new Set(perdidas.map((c) => c.id));
+  for (const c of perdidas) {
+    const r = mapa.get(c.reservaId!)!;
+    r.perdaCoberta = (r.perdaCoberta ?? 0) + Math.max(0, c.valorPerdido ?? 0);
+  }
   const recebimentos = new Map<string, { data: string; montante: number; ordem: number }[]>();
   for (const l of linhas) {
     const r = mapa.get(l.reservaId!)!;
+    if (ehChaveDeContestacao(l.chave)) {
+      // Caixa da disputa: retido e caixa final (saída, `devolucao`) ou entrada (`recebimento`), só da perdida definitiva.
+      // Nunca a data em que o canal pagou.
+      if (!definitivas.has(l.chave.split(":")[3] ?? "") || (l.estado !== "realizado" && l.estado !== "conciliado")) continue;
+      if (l.tipo === "recebimento") r.recebido += l.montante ?? 0;
+      else if (l.tipo === "devolucao") r.recebido -= l.montante ?? 0;
+      continue;
+    }
     if (l.tipo === "recebimento") {
       if (l.estado === "realizado" || l.estado === "conciliado") {
         r.recebido += l.montante ?? 0;
@@ -202,4 +239,5 @@ export async function recebidoPorReserva(db: Db, organizacaoId: string, reservaI
   return mapa;
 }
 
-export const dinheiroComAEmpresa = (r: RecebidoDaReserva) => r.devido > 0 && r.recebido >= r.devido;
+/** O dinheiro da reserva está com a empresa: `recebido + perdaCoberta ≥ devido` (e devido > 0; `perdaCoberta`, M8.2e). */
+export const dinheiroComAEmpresa = (r: RecebidoDaReserva) => r.devido > 0 && r.recebido + (r.perdaCoberta ?? 0) >= r.devido;

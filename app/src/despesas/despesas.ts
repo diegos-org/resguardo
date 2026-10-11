@@ -9,13 +9,19 @@
  *   (M4.4). Conta ainda a pagar não vira dívida. Se o próprio proprietário pagou, fica só o
  *   registro.
  * Situação: "a pagar" = previsto; "paga" = realizado, com data de pagamento (caixa).
+ *
+ * Disputa do pagamento (M8.2e): as linhas `despesa_empresa` com a chave da disputa (`mercadopago:…:contestacao:…`, a perda
+ * prevista e definitiva da SCL, os espelhos, a tarifa) são do quadro da disputa: ficam fora do "a pagar" (o retido já tirou
+ * o dinheiro do caixa; "marcar paga" o tiraria de novo) e não se marcam como pagas nem se estornam por aqui (um estorno
+ * consumiria a chave e a perda nunca ficaria definitiva): `ERRO_DESPESA_DA_CONTESTACAO`.
  */
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import { categoriasDespesa, imoveis, lancamentos, proprietarioImoveis } from "@/db/schema";
+import { categoriasDespesa, contestacoesPagamento, imoveis, lancamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, lancar, type Lancamento, mudarEstado } from "@/financeiro/ledger";
 import { encerrarContestacaoAberta, quitacaoAtiva } from "@/adiantamentos/adiantamentos";
 import { uuidValido } from "@/lib/ids";
+import { ehChaveDeContestacao, erroDespesaDaContestacao, type SituacaoContestacao } from "@/pagamentos/contestacao-regras";
 import { dataValida } from "@/reservas/regras";
 
 export const RESPONSAVEIS = ["empresa", "proprietario"] as const;
@@ -169,12 +175,16 @@ async function adiantamentoAtivo(tx: Db, organizacaoId: string, despesaId: strin
   return a ?? null;
 }
 
-/** Marca a despesa como paga; se era do proprietário e a empresa pagou, nasce a dívida dele. */
-export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: string, dataPagamento: string, autorId: string | null): Promise<boolean> {
+/**
+ * Marca a despesa como paga; se era do proprietário e a empresa pagou, nasce a dívida dele. "da_contestacao" (M8.2e): a
+ * despesa é da disputa do pagamento (`ERRO_DESPESA_DA_CONTESTACAO`): recusada.
+ */
+export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: string, dataPagamento: string, autorId: string | null): Promise<boolean | "da_contestacao"> {
   if (!dataValida(dataPagamento)) return false;
   return db.transaction(async (tx) => {
     const d = await obterDespesa(tx, organizacaoId, id);
     if (!d || d.estornada) return false;
+    if (ehDespesaDaContestacao(d)) return "da_contestacao" as const;
     const pago = await mudarEstado(tx, organizacaoId, id, "realizado", autorId, dataPagamento);
     if (!pago) return false;
     await lancarAdiantamento(tx, organizacaoId, pago, dataPagamento, autorId);
@@ -189,14 +199,20 @@ export async function marcarDespesaPaga(db: Db, organizacaoId: string, id: strin
 export const ERRO_DESPESA_DO_SITE =
   'Esta despesa é a taxa de um pagamento do site que não voltou: corrija pelo quadro "Pagamento no site" da reserva (Corrigir taxa que não voltou).';
 
+/** M8.2e: a despesa é da disputa do pagamento (a chave dela). Uma regra, um lugar: a lista, o "a pagar", marcar paga e estornar. */
+export const ehDespesaDaContestacao = (d: Pick<Lancamento, "chaveOrigem">) => ehChaveDeContestacao(d.chaveOrigem);
+/** `ERRO_DESPESA_DA_CONTESTACAO`: a recusa de "marcar paga" e "estornar" numa despesa da disputa (com o código da reserva, quando há). */
+export const ERRO_DESPESA_DA_CONTESTACAO = (d: Pick<LinhaDespesa, "disputa">) => erroDespesaDaContestacao(d.disputa?.codigoReserva ?? null);
+
 /**
  * Estorna a despesa e, junto, o adiantamento que ela gerou (se houver). Se o adiantamento já
  * teve quitação (reembolso, compensação…), recusa: desfazer primeiro, senão o proprietário
  * ficaria com crédito indevido. Retorna "quitado" (desfazer em Adiantamentos) ou "compensacao"
- * (descontado num repasse: só estornando o repasse) nesse caso, e "do_site" para a taxa de um
- * pagamento do site (`ERRO_DESPESA_DO_SITE`).
+ * (descontado num repasse: só estornando o repasse) nesse caso, "do_site" para a taxa de um
+ * pagamento do site (`ERRO_DESPESA_DO_SITE`) e "da_contestacao" para a despesa da disputa do pagamento
+ * (`ERRO_DESPESA_DA_CONTESTACAO`, M8.2e).
  */
-export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado" | "compensacao" | "do_site"> {
+export async function estornarDespesa(db: Db, organizacaoId: string, id: string, motivo: string, autorId: string | null): Promise<boolean | "quitado" | "compensacao" | "do_site" | "da_contestacao"> {
   if (!uuidValido(id)) return false;
   return db.transaction(async (tx) => {
     // Trava a despesa primeiro: um "marcar como paga" ao mesmo tempo (que também trava esta
@@ -204,6 +220,7 @@ export async function estornarDespesa(db: Db, organizacaoId: string, id: string,
     await tx.select({ id: lancamentos.id }).from(lancamentos).where(and(eq(lancamentos.id, id), eq(lancamentos.organizacaoId, organizacaoId))).for("update");
     const d = await obterDespesa(tx, organizacaoId, id);
     if (!d || d.estornada || !motivo.trim()) return false;
+    if (ehDespesaDaContestacao(d)) return "da_contestacao";
     if (d.chaveOrigem.startsWith("mercadopago:")) return "do_site";
     const a = await adiantamentoAtivo(tx, organizacaoId, id);
     if (a) {
@@ -220,7 +237,50 @@ export async function estornarDespesa(db: Db, organizacaoId: string, id: string,
   });
 }
 
-export type LinhaDespesa = Lancamento & { categoria: string | null; estornada: boolean };
+/**
+ * M8.2e: a disputa de uma despesa da disputa do pagamento: a situação dela, o dia do resultado e o código da reserva
+ * (nunca o nome do hóspede).
+ */
+export type DisputaDaDespesa = { situacao: SituacaoContestacao | null; resultadoEm: string | null; codigoReserva: string | null; tarifa: boolean };
+export type LinhaDespesa = Lancamento & { categoria: string | null; estornada: boolean; disputa?: DisputaDaDespesa };
+
+const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+/**
+ * M8.2e: o texto da despesa da disputa na lista: "Perda por disputa do pagamento (prevista até o resultado): acompanhe no
+ * quadro da disputa", depois "definitiva (disputa perdida em dd/mm)" ou "revertida (disputa ganha em dd/mm)".
+ */
+export function textoDaDespesaDaDisputa(d: DisputaDaDespesa): string {
+  if (d.tarifa) return "Tarifa do Mercado Pago pela disputa do pagamento: acompanhe no quadro da disputa";
+  const quando = d.resultadoEm ? ` em ${ddmm(d.resultadoEm)}` : "";
+  if (d.situacao === "perdida") return `Perda por disputa do pagamento definitiva (disputa perdida${quando})`;
+  if (d.situacao === "ganha") return `Perda por disputa do pagamento revertida (disputa ganha${quando})`;
+  if (d.situacao === "sem_efeito") return "Perda por disputa do pagamento revertida (disputa encerrada sem efeito)";
+  return "Perda por disputa do pagamento (prevista até o resultado): acompanhe no quadro da disputa";
+}
+
+/** As disputas das despesas da disputa do pagamento (pela chave), com o código da reserva. */
+async function comDisputas(db: Db, organizacaoId: string, linhas: LinhaDespesa[]): Promise<LinhaDespesa[]> {
+  const idDe = (chave: string) => chave.split(":")[3] ?? "";
+  const daDisputa = linhas.filter(ehDespesaDaContestacao);
+  if (!daDisputa.length) return linhas;
+  const ids = [...new Set(daDisputa.map((l) => idDe(l.chaveOrigem)).filter(uuidValido))];
+  const disputas = new Map(
+    ids.length
+      ? (
+          await db
+            .select({ id: contestacoesPagamento.id, situacao: contestacoesPagamento.situacao, resultadoEm: contestacoesPagamento.resultadoEm, codigo: reservas.codigo })
+            .from(contestacoesPagamento)
+            .leftJoin(reservas, eq(reservas.id, contestacoesPagamento.reservaId))
+            .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.id, ids)))
+        ).map((c) => [c.id, c] as const)
+      : [],
+  );
+  return linhas.map((l) => {
+    if (!ehDespesaDaContestacao(l)) return l;
+    const c = disputas.get(idDe(l.chaveOrigem));
+    return { ...l, disputa: { situacao: c?.situacao ?? null, resultadoEm: c?.situacao === "sem_efeito" ? null : (c?.resultadoEm ?? null), codigoReserva: c?.codigo ?? null, tarifa: /:(tarifa|taxa)$/.test(l.chaveOrigem) } };
+  });
+}
 
 /** Despesas (originais, não os espelhos de estorno), mais recentes primeiro. */
 export async function listarDespesas(
@@ -246,7 +306,11 @@ export async function listarDespesas(
     .leftJoin(categoriasDespesa, eq(categoriasDespesa.id, lancamentos.categoriaId))
     .where(and(...c))
     .orderBy(desc(lancamentos.competencia), desc(lancamentos.criadoEm));
-  return linhas.map((x) => ({ ...x.l, categoria: x.categoria, estornada: Boolean(x.estornada) })).filter((x) => f.incluirEstornadas || !x.estornada);
+  return comDisputas(
+    db,
+    organizacaoId,
+    linhas.map((x) => ({ ...x.l, categoria: x.categoria, estornada: Boolean(x.estornada) })).filter((x) => f.incluirEstornadas || !x.estornada),
+  );
 }
 
 export async function obterDespesa(db: Db, organizacaoId: string, id: string): Promise<LinhaDespesa | null> {
@@ -267,12 +331,13 @@ export async function obterDespesa(db: Db, organizacaoId: string, id: string): P
         sql`${lancamentos.estornoDe} is null`,
       ),
     );
-  return x ? { ...x.l, categoria: x.categoria, estornada: Boolean(x.estornada) } : null;
+  return x ? (await comDisputas(db, organizacaoId, [{ ...x.l, categoria: x.categoria, estornada: Boolean(x.estornada) }]))[0] : null;
 }
 
 /**
  * Totais das despesas ativas: da empresa, dos proprietários e o que ainda falta pagar. O que os
- * proprietários devem sai dos adiantamentos em aberto (M4.4: `totalACobrar`), não daqui.
+ * proprietários devem sai dos adiantamentos em aberto (M4.4: `totalACobrar`), não daqui. A perda prevista da disputa do
+ * pagamento (M8.2e) não é conta a pagar: fica fora do "a pagar".
  */
 export function totaisDespesas(linhas: readonly LinhaDespesa[]) {
   const ativas = linhas.filter((l) => !l.estornada);
@@ -280,6 +345,6 @@ export function totaisDespesas(linhas: readonly LinhaDespesa[]) {
   return {
     empresa: soma(ativas.filter((l) => l.tipo === "despesa_empresa").map((l) => l.montante ?? -l.valor)),
     proprietarios: soma(ativas.filter((l) => l.tipo === "despesa_proprietario").map((l) => l.montante ?? 0)),
-    aPagar: soma(ativas.filter((l) => l.estado === "previsto").map((l) => l.montante ?? 0)),
+    aPagar: soma(ativas.filter((l) => l.estado === "previsto" && !ehDespesaDaContestacao(l)).map((l) => l.montante ?? 0)),
   };
 }

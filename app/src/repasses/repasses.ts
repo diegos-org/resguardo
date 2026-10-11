@@ -13,12 +13,12 @@
  * deixa cada imóvel com saldo −Cᵢ) e registra a compensação de cada adiantamento descontado.
  * Estornar desfaz tudo isso de uma vez.
  */
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or, sql, sum } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql, sum } from "drizzle-orm";
 import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/adiantamentos/adiantamentos";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { travarConfig } from "@/configuracoes/armazem";
 import { violouUnicidade } from "@/db/erros";
-import { ajustes, arquivos, contestacoesAdiantamento, imoveis, lancamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
+import { ajustes, arquivos, contestacoesAdiantamento, contestacoesPagamento, imoveis, lancamentos, pagamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dataDoFechamento, ehDiaDeFechamento } from "./periodicidade";
 import { formatBRL } from "@/lib/money";
@@ -26,10 +26,11 @@ import { estornar, lancar, mudarEstado } from "@/financeiro/ledger";
 import { lerComReservasTravadas } from "@/financeiro/trava";
 import { dataValida } from "@/reservas/regras";
 import { uuidValido } from "@/lib/ids";
+import { ehChaveDeContestacao, MOTIVO_FECHAMENTO_DISPUTA, MOTIVO_PARTE_EM_CONFERENCIA, ORIGEM_LANCAMENTO_CONTESTACAO, type SituacaoContestacao, textoRepasseComDisputa } from "@/pagamentos/contestacao-regras";
 import { lancamentoEmConferencia } from "@/portal/posse";
 import { reservas as reservasRef } from "@/db/schema";
 import { PREFIXO_ESPELHO_LIKE } from "./descontos";
-import { ehDescontoDeCancelamento, type Parte, partesDisponiveis, partesDoProprietario } from "./extrato";
+import { ehDescontoDeCancelamento, ehLinhaDeContestacao, type Parte, partesDisponiveis, partesDoProprietario, type VarianteDaDisputa, varianteDaDisputa } from "./extrato";
 import { avisoIndefinidas, ladoDoInicio, type LadoDoInicio, livroDeAntes } from "./inicio";
 import { lerRegrasRepasses, lerInicioDoSistema } from "./regras-config";
 
@@ -134,6 +135,12 @@ export type PrevisaoRepasse = ReturnType<typeof calcularRepasse> & {
   itens: Parte[];
   /** M4.10: partes da competência que ficam fora (dinheiro ainda não com a empresa, conferência): vão para o repasse seguinte. */
   foraDoFechamento: Parte[];
+  /**
+   * M8.2e: do que fica fora (`fora`), o que é de reserva em conferência por disputa do pagamento (a parte presa e as
+   * linhas da disputa que esperam junto): o motivo é "reserva em conferência: disputa do pagamento", nunca "dinheiro
+   * ainda não recebido pela empresa".
+   */
+  foraPorDisputa: number;
   /**
    * M4.10 (6ª rodada do Codex): toda reserva de que este cálculo depende — as das partes (pagas, fora,
    * só informação) e as de qualquer lançamento do proprietário até o mês. O fechamento trava todas antes
@@ -301,20 +308,34 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     if (indefinidas) avisos.push(indefinidas);
   }
   if (previstos[0]?.n) avisos.push(`${previstos[0].n} lançamento(s) ainda previsto(s), isto é, dinheiro que pode não ter entrado: confira antes de pagar.`);
-  if (!atual && calc.fora > 0) {
+  // M8.2e (C2): a parte presa por disputa do pagamento (e as linhas da disputa que esperam junto) fica fora com o motivo
+  // próprio — nunca "dinheiro ainda não recebido pela empresa", que é falso aqui.
+  const presasPorDisputa = new Set(foraDoFechamento.filter((x) => x.motivo === MOTIVO_PARTE_EM_CONFERENCIA).map((x) => x.reservaId));
+  const daDisputa = (x: Parte) => ehLinhaDeContestacao(x) || presasPorDisputa.has(x.reservaId);
+  const foraDisputa = foraDoFechamento.filter(daDisputa);
+  const foraOutras = foraDoFechamento.filter((x) => !daDisputa(x));
+  const somaFora = (xs: readonly Parte[]) => xs.reduce((t, x) => t + x.efeitoSaldo, 0);
+  const foraPorDisputa = somaFora(foraDisputa);
+  if (!atual && somaFora(foraOutras) > 0) {
     // Reserva paga pelo site (M8.2a): o recebimento vem da liberação do Mercado Pago, não se registra à mão.
-    const doSite = foraDoFechamento.filter((x) => x.liberacaoSite);
-    const outras = foraDoFechamento.filter((x) => !x.liberacaoSite);
+    const doSite = foraOutras.filter((x) => x.liberacaoSite);
+    const outras = foraOutras.filter((x) => !x.liberacaoSite);
     const porReserva = [...new Map(doSite.map((x) => [x.reservaId, x])).values()];
     const site = porReserva.length
       ? ` Pagas pelo site, o dinheiro vem do Mercado Pago: ${porReserva.map((x) => `${x.codigoReserva}, ${x.liberacaoSite!.prevista ? `o Mercado Pago libera ${x.liberacaoSite!.daDiferenca ? "o pagamento da diferença " : ""}em ${dataBr(x.liberacaoSite!.prevista)}` : "liberação a confirmar"}`).join("; ")}.`
       : "";
-    avisos.push(`${brl(calc.fora)} da competência ficam fora deste repasse e passam para o seguinte: dinheiro ainda não registrado com a empresa (reservas ${codigosDe(foraDoFechamento)}).${outras.length ? " Registre o recebimento na reserva quando o canal pagar." : ""}${site}`);
+    avisos.push(`${brl(somaFora(foraOutras))} da competência ficam fora deste repasse e passam para o seguinte: dinheiro ainda não registrado com a empresa (reservas ${codigosDe(foraOutras)}).${outras.length ? " Registre o recebimento na reserva quando o canal pagar." : ""}${site}`);
   }
+  if (!atual && foraDisputa.length && foraPorDisputa !== 0)
+    avisos.push(
+      foraPorDisputa > 0
+        ? `${brl(foraPorDisputa)} da competência ficam fora deste repasse e passam para o seguinte: ${MOTIVO_FECHAMENTO_DISPUTA} (reservas ${codigosDe(foraDisputa)}).`
+        : `O valor segurado de ${brl(-foraPorDisputa)} pela disputa do pagamento (reservas ${codigosDe(foraDisputa)}) espera junto com a parte da reserva: fica fora deste repasse.`,
+    );
   // M8.2c: o desconto de cancelamento (parte negativa) entra como as outras partes disponíveis — da competência, ou
   // "antecipada" quando é de mês seguinte — e se desconta sozinho do valor (S já o inclui, ou o adiantamento o subtrai).
   // A parte nunca paga e o espelho que a anula entram juntos e somam zero: nem adiantamento nem desconto.
-  const adiantadas = antecipadas.filter((x) => !ehDescontoDeCancelamento(x) && !x.anulacao);
+  const adiantadas = antecipadas.filter((x) => !ehDescontoDeCancelamento(x) && !x.anulacao && !ehLinhaDeContestacao(x));
   const adiantado = adiantadas.reduce((t, x) => t + x.valor, 0);
   if (!atual && adiantado > 0) avisos.push(`${brl(adiantado)} de noites de ${mesesDe(adiantadas)} entram neste repasse como adiantamento (reservas ${codigosDe(adiantadas)}): já disponíveis, a reserva é paga inteira.`);
   const anuladas = itens.filter((x) => x.anulacao === "anulada");
@@ -328,6 +349,19 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
         ? `${brl(d)} de desconto de cancelamento (reservas ${codigosDe(descontos)}, canceladas com devolução integral ao hóspede depois do repasse) saem deste repasse.`
         : `As partes disponíveis não cobrem o desconto de cancelamento de ${brl(d)} (reservas ${codigosDe(descontos)}): nada a repassar; o proprietário fica devendo e o desconto passa para o próximo repasse.`,
     );
+  }
+  // M8.2e (C4): as linhas da disputa disponíveis (o valor segurado do proprietário, a reversão, o ajuste) entram como as
+  // outras partes e se descontam (ou voltam) sozinhas do valor.
+  const disputas = itens.filter(ehLinhaDeContestacao);
+  if (!atual && disputas.length) {
+    const d = disputas.reduce((t, x) => t + x.valor, 0);
+    if (d > 0) avisos.push(`${brl(d)} de valor segurado pela disputa do pagamento voltam neste repasse (reservas ${codigosDe(disputas)}).`);
+    else if (d < 0)
+      avisos.push(
+        calc.valor > 0
+          ? `${brl(-d)} de valor segurado pela disputa do pagamento (reservas ${codigosDe(disputas)}) saem deste repasse.`
+          : `As partes disponíveis não cobrem o valor segurado de ${brl(-d)} pela disputa do pagamento (reservas ${codigosDe(disputas)}): nada a repassar; o proprietário fica devendo e o valor passa para o próximo repasse.`,
+      );
   }
   if (calc.valor > 0 && !dono.chavePix.trim()) avisos.push("Sem chave Pix no cadastro do proprietário.");
   if (calc.contestado > 0) avisos.push(`Adiantamentos contestados (${(calc.contestado / 100).toFixed(2).replace(".", ",")}) ficam fora do desconto até a contestação ser resolvida.`);
@@ -397,7 +431,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   }
   const separado = separarAntecipado(
     calc.antecipado,
-    antecipadas.map((x) => ({ competencia: x.competencia, valor: x.valor, anula: x.anulacao === "estorno", anulada: x.anulacao === "anulada" })),
+    antecipadas.map((x) => ({ competencia: x.competencia, valor: x.valor, anula: x.anulacao === "estorno", anulada: x.anulacao === "anulada", ...(ehLinhaDeContestacao(x) ? { disputa: disputaDoItem(x.disputa?.situacao ?? null) } : {}) })),
     lim.inicio,
   );
   return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null,
@@ -407,6 +441,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     diferencaPosFechamento: diferenca,
     itens,
     foraDoFechamento,
+    foraPorDisputa,
     reservasDoCalculo,
   };
 }
@@ -611,31 +646,92 @@ export type ItemDoRepasse = RepasseItem & {
   anula?: boolean;
   /** M8.2c: a parte (positiva) que o estorno de outro item deste mesmo repasse anula. */
   anulada?: boolean;
+  /** M8.2e: o item é uma linha da disputa do pagamento (o valor segurado, a reversão ou o ajuste), com a variante para o proprietário. */
+  disputa?: DisputaDoItem;
+  /**
+   * M8.2e: a reserva desta parte tem uma disputa do pagamento em curso (com valor em risco), aberta neste instante: o
+   * repasse a pagar ganha o aviso (`avisosDeDisputaNoRepasse`). Ausente = não.
+   */
+  disputaAbertaEm?: Date;
 };
+
+/** A linha da disputa num item de repasse: a variante para o proprietário e a situação da disputa (o "sem efeito" tem texto próprio). */
+export type DisputaDoItem = { variante: VarianteDaDisputa; situacao: SituacaoContestacao | null };
+const disputaDoItem = (situacao: SituacaoContestacao | null): DisputaDoItem => ({ variante: varianteDaDisputa(situacao), situacao });
 
 /**
  * M8.2c: o "antecipado" de um fechamento (as partes de meses seguintes que ele levou, um número só no repasse) separado no
  * que ele é: `noites` = noites de meses seguintes já pagas; `desconto` (≤ 0) = desconto de reserva cancelada com
  * devolução, de parte já repassada; `estorno` (≤ 0) = o estorno da parte nunca paga cujo par está no saldo do mês (o par
- * inteiro de meses seguintes soma zero). Pelos itens (o que o repasse vinculou), com `noites` pelo resto: o total é o gravado.
+ * inteiro de meses seguintes soma zero); `disputa` (M8.2e, com sinal) = as linhas da disputa do pagamento (o valor
+ * segurado e a reversão), numa linha própria "Disputa do pagamento". Pelos itens (o que o repasse vinculou), com `noites`
+ * pelo resto: o total é o gravado.
  */
-export type AntecipadoSeparado = { noites: number; desconto: number; estorno: number };
-export function separarAntecipado(antecipado: number, itens: readonly Pick<ItemDoRepasse, "competencia" | "valor" | "anula" | "anulada">[], mes: string): AntecipadoSeparado {
+export type AntecipadoSeparado = { noites: number; desconto: number; estorno: number; disputa: number };
+export function separarAntecipado(antecipado: number, itens: readonly Pick<ItemDoRepasse, "competencia" | "valor" | "anula" | "anulada" | "disputa">[], mes: string): AntecipadoSeparado {
   const seguinte = `${somarMes(mes.slice(0, 7), 1)}-01`;
   const deMesSeguinte = itens.filter((i) => i.competencia >= seguinte);
-  const desconto = deMesSeguinte.filter((i) => i.valor < 0 && !i.anula).reduce((t, i) => t + i.valor, 0);
-  const estorno = deMesSeguinte.filter((i) => (i.valor < 0 && i.anula) || (i.valor > 0 && i.anulada)).reduce((t, i) => t + i.valor, 0);
-  return { noites: antecipado - desconto - estorno, desconto, estorno };
+  const disputa = deMesSeguinte.filter((i) => i.disputa).reduce((t, i) => t + i.valor, 0);
+  const desconto = deMesSeguinte.filter((i) => i.valor < 0 && !i.anula && !i.disputa).reduce((t, i) => t + i.valor, 0);
+  const estorno = deMesSeguinte.filter((i) => !i.disputa && ((i.valor < 0 && i.anula) || (i.valor > 0 && i.anulada))).reduce((t, i) => t + i.valor, 0);
+  return { noites: antecipado - desconto - estorno - disputa, desconto, estorno, disputa };
 }
 
 /** Como descrever o item (integral, parte de um mês, ou recalculado — com a direção certa): a mesma frase no painel, no portal e no e-mail. */
-export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" | "competencia" | "valor" | "anula">): string {
+export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" | "competencia" | "valor" | "anula" | "disputa">): string {
+  // M8.2e: a linha da disputa do pagamento (só o valor dela; nunca "parcial").
+  if (i.disputa) return descricaoDaDisputaNoItem(i.disputa, i.valor);
   // M8.2c: o item negativo do cancelamento nunca é "parcial": o desconto da parte já paga, ou o estorno da parte que não foi.
   if (i.valor < 0 && i.anula) return "estorno da parte desta reserva neste repasse (cancelada com devolução ao hóspede antes de a parte ser repassada): as duas se anulam";
   if (i.valor < 0) return "desconto da parte já repassada (reserva cancelada com devolução ao hóspede)";
   if (i.diferenca > 0) return `parte recalculada depois: ${formatBRL(i.diferenca)} a mais, acertados pelo fechamento mensal`;
   if (i.diferenca < 0) return `parte recalculada depois: ${formatBRL(-i.diferenca)} a menos, descontados pelo fechamento mensal`;
   return i.parcial ? `parte de ${nomeMes(i.competencia.slice(0, 7))}; o restante vem em outro repasse` : "integral";
+}
+
+/** M8.2e: a descrição de uma linha da disputa num repasse (painel, portal e e-mail), pela variante e pelo sinal. */
+function descricaoDaDisputaNoItem(d: DisputaDoItem, valor: number): string {
+  if (d.variante === "definitivo") return valor < 0 ? "desconto definitivo da disputa do pagamento" : "ajuste do desconto definitivo da disputa do pagamento (volta a você)";
+  if (d.variante === "devolvido") {
+    const porque = d.situacao === "sem_efeito" ? "a disputa foi encerrada sem efeito" : "a SCL ganhou a disputa";
+    return valor > 0 ? `valor segurado devolvido (${porque})` : `valor segurado pela disputa do pagamento (devolvido depois: ${porque})`;
+  }
+  return valor < 0 ? "valor segurado pela disputa do pagamento (até o resultado)" : "ajuste do valor segurado pela disputa do pagamento (até o resultado)";
+}
+
+/**
+ * M8.2e: os avisos de um repasse a pagar que leva parte de reserva com disputa do pagamento em curso — um por reserva, com o
+ * texto do desenho (o mesmo no cartão do repasse, no "Marcar como pago" e no Início). Nada é bloqueado: é decisão da equipe.
+ */
+export function avisosDeDisputaNoRepasse(itens: readonly Pick<ItemDoRepasse, "reservaId" | "codigoReserva" | "disputaAbertaEm">[]): string[] {
+  const porReserva = new Map<string, { codigo: string; em: Date }>();
+  for (const i of itens) if (i.disputaAbertaEm && !porReserva.has(i.reservaId)) porReserva.set(i.reservaId, { codigo: i.codigoReserva, em: i.disputaAbertaEm });
+  return [...porReserva.values()].map((x) => textoRepasseComDisputa(x.codigo, x.em));
+}
+
+/**
+ * M8.2e: a disputa do pagamento em curso mais antiga de cada reserva (aberta ou a confirmar, não duplicada, com valor em
+ * risco, num pagamento com o dinheiro da reserva): quando ela abriu.
+ */
+export async function disputasEmCursoDasReservas(db: Db, org: string, reservaIds: readonly string[]): Promise<Map<string, Date>> {
+  const ids = [...new Set(reservaIds.filter(uuidValido))];
+  if (!ids.length) return new Map();
+  const linhas = await db
+    .select({ reservaId: pagamentos.reservaId, abertaEm: sql<Date>`min(${contestacoesPagamento.abertaEm})`.mapWith(contestacoesPagamento.abertaEm) })
+    .from(contestacoesPagamento)
+    .innerJoin(pagamentos, eq(pagamentos.id, contestacoesPagamento.pagamentoId))
+    .where(
+      and(
+        eq(contestacoesPagamento.organizacaoId, org),
+        inArray(pagamentos.reservaId, ids),
+        inArray(pagamentos.desfecho, ["reserva", "alteracao"]),
+        inArray(contestacoesPagamento.situacao, ["aberta", "a_confirmar"]),
+        eq(contestacoesPagamento.duplicataPossivel, false),
+        gt(contestacoesPagamento.valorEmRisco, 0),
+      ),
+    )
+    .groupBy(pagamentos.reservaId);
+  return new Map(linhas.map((l) => [l.reservaId!, l.abertaEm]));
 }
 
 export async function itensDoRepasse(db: Db, org: string, repasseId: string): Promise<ItemDoRepasse[]> {
@@ -651,15 +747,25 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
   if (!linhas.length) return [];
   // Parcial: a reserva tem outra parte (outro mês) em vigor que não está neste repasse, ou o item não cobre o valor
   // atual da parte (recalculada depois de um fechamento antigo, migrações 0049–0052: a diferença passa pelo fechamento mensal).
-  // O desconto de cancelamento (M8.2c) não é "outra parte" da reserva: nem conta aqui nem é ele mesmo parcial.
+  // O desconto de cancelamento (M8.2c) e as linhas da disputa do pagamento (M8.2e) não são "outra parte" da reserva: nem
+  // contam aqui nem são elas mesmas parciais, e a parte verdadeira não vira "parcial" por causa delas.
   const outras = await db
     .select({ reservaId: lancamentos.reservaId, n: sql<number>`count(*)::int` })
     .from(lancamentos)
-    .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.tipo, "direito_proprietario"), ne(lancamentos.origem, "cancelamento"), inArray(lancamentos.reservaId, [...new Set(linhas.map((l) => l.item.reservaId))]), isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`))
+    .where(and(eq(lancamentos.organizacaoId, org), eq(lancamentos.tipo, "direito_proprietario"), notInArray(lancamentos.origem, ["cancelamento", ORIGEM_LANCAMENTO_CONTESTACAO]), inArray(lancamentos.reservaId, [...new Set(linhas.map((l) => l.item.reservaId))]), isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`))
     .groupBy(lancamentos.reservaId);
   const totalPartes = new Map(outras.map((o) => [o.reservaId!, o.n]));
+  const daDisputa = (l: (typeof linhas)[number]) => ehChaveDeContestacao(l.chaveOrigem);
   const nesteRepasse = new Map<string, number>();
-  for (const l of linhas) if (l.item.valor >= 0) nesteRepasse.set(l.item.reservaId, (nesteRepasse.get(l.item.reservaId) ?? 0) + 1);
+  for (const l of linhas) if (l.item.valor >= 0 && !daDisputa(l)) nesteRepasse.set(l.item.reservaId, (nesteRepasse.get(l.item.reservaId) ?? 0) + 1);
+  // M8.2e: a situação de cada disputa das linhas dela (pela chave) e a disputa em curso de cada reserva (o aviso do repasse a pagar).
+  const idsDisputa = [...new Set(linhas.filter(daDisputa).map((l) => l.chaveOrigem.split(":")[3]).filter(uuidValido))];
+  const situacoes = new Map(
+    idsDisputa.length
+      ? (await db.select({ id: contestacoesPagamento.id, situacao: contestacoesPagamento.situacao }).from(contestacoesPagamento).where(and(eq(contestacoesPagamento.organizacaoId, org), inArray(contestacoesPagamento.id, idsDisputa)))).map((c) => [c.id, c.situacao] as const)
+      : [],
+  );
+  const emCurso = await disputasEmCursoDasReservas(db, org, linhas.filter((l) => !daDisputa(l)).map((l) => l.item.reservaId));
   // O espelho (chave `cancelamento:<id>:espelho:<parte>`) cuja parte original está neste mesmo repasse a anula.
   const lancamentosDoItem = new Set(linhas.map((l) => l.item.lancamentoId));
   const anula = (l: (typeof linhas)[number]) => l.item.valor < 0 && /^cancelamento:[^:]+:espelho:/.test(l.chaveOrigem) && lancamentosDoItem.has(l.chaveOrigem.split(":")[3] ?? "");
@@ -668,12 +774,15 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
     ...l.item,
     ...(anula(l) ? { anula: true } : {}),
     ...(l.item.valor > 0 && anuladas.has(l.item.lancamentoId) ? { anulada: true } : {}),
+    ...(daDisputa(l) ? { disputa: disputaDoItem(situacoes.get(l.chaveOrigem.split(":")[3]) ?? null) } : {}),
+    ...(!daDisputa(l) && emCurso.has(l.item.reservaId) ? { disputaAbertaEm: emCurso.get(l.item.reservaId)! } : {}),
     codigoReserva: l.codigoReserva,
     codigoImovel: l.codigoImovel,
     checkin: l.checkin,
     checkout: l.checkout,
-    hospede: l.hospede,
-    parcial: l.item.valor >= 0 && ((totalPartes.get(l.item.reservaId) ?? 1) > (nesteRepasse.get(l.item.reservaId) ?? 0) || l.item.valor !== l.valorAtual),
+    // M8.2e: nas linhas da disputa, só o código da reserva (nunca o nome do hóspede).
+    hospede: daDisputa(l) ? "" : l.hospede,
+    parcial: !daDisputa(l) && l.item.valor >= 0 && ((totalPartes.get(l.item.reservaId) ?? 1) > (nesteRepasse.get(l.item.reservaId) ?? 0) || l.item.valor !== l.valorAtual),
     diferenca: l.valorAtual - l.item.valor,
   }));
 }
@@ -706,17 +815,23 @@ export async function gerarAntecipado(db: Db, org: string, proprietarioId: strin
       const partes = await lerComReservasTravadas(tx, org, () => partesDisponiveis(tx, org, dono.id, agora), (ps) => ps.map((x) => x.reservaId));
       if (!partes) return { ok: false as const, erro: RESERVAS_EM_RECALCULO };
       if (!partes.length) return { ok: false as const, erro: "Nada disponível para repassar agora." };
-      // M8.2c: o desconto de cancelamento (parte negativa) entra como item negativo e sai do valor. Se as partes
-      // disponíveis não o cobrem, nada é repassado: o desconto espera o próximo repasse (a rotina segue em silêncio).
+      // M8.2c: o desconto de cancelamento (parte negativa) entra como item negativo e sai do valor; M8.2e: o valor
+      // segurado pela disputa do pagamento também. Se as partes disponíveis não os cobrem, nada é repassado: o desconto
+      // espera o próximo repasse (a rotina segue em silêncio).
       const valor = partes.reduce((t, x) => t + x.valor, 0);
       if (valor <= 0) {
         const descontos = partes.filter(ehDescontoDeCancelamento);
-        if (!descontos.length) return { ok: false as const, erro: "Nada disponível para repassar agora." };
-        const d = -descontos.reduce((t, x) => t + x.valor, 0);
-        const varias = new Set(descontos.map((x) => x.reservaId)).size > 1;
+        // As linhas da disputa pelo líquido: o valor segurado e a reversão de uma disputa ganha que entram juntos somam zero.
+        const daDisputaLiquida = partes.filter(ehLinhaDeContestacao).reduce((t, x) => t + x.valor, 0);
+        const segurados = daDisputaLiquida < 0 ? partes.filter((x) => ehLinhaDeContestacao(x) && x.valor < 0) : [];
+        if (!descontos.length && !segurados.length) return { ok: false as const, erro: "Nada disponível para repassar agora." };
+        const d = -descontos.reduce((t, x) => t + x.valor, 0) - Math.min(0, daDisputaLiquida);
+        const varias = (xs: readonly Parte[]) => new Set(xs.map((x) => x.reservaId)).size > 1;
+        const doCancelamento = descontos.length ? `${varias(descontos) ? "reservas" : "reserva"} ${codigosDe(descontos)} ${varias(descontos) ? "canceladas" : "cancelada"} com devolução` : "";
+        const daDisputa = segurados.length ? `disputa do pagamento da${varias(segurados) ? "s reservas" : " reserva"} ${codigosDe(segurados)}` : "";
         return {
           ok: false as const,
-          erro: `${ERRO_DESCONTO_NAO_COBERTO} (${formatBRL(valor + d)}) não cobrem o desconto de ${formatBRL(d)} (${varias ? "reservas" : "reserva"} ${codigosDe(descontos)} ${varias ? "canceladas" : "cancelada"} com devolução): ficam para o próximo repasse.`,
+          erro: `${ERRO_DESCONTO_NAO_COBERTO} (${formatBRL(valor + d)}) não cobrem o desconto de ${formatBRL(d)} (${[doCancelamento, daDisputa].filter(Boolean).join("; ")}): ficam para o próximo repasse.`,
         };
       }
       const [r] = await tx
@@ -930,6 +1045,31 @@ export async function estornarRepasse(db: Db, org: string, id: string, motivo: s
         ok: false as const,
         erro: `A parte da reserva ${espelhada.codigo} deste repasse já foi descontada pelo cancelamento da reserva (devolução integral ao hóspede): estornar o repasse deixaria o desconto sem o pagamento. Corrija com um ajuste.`,
       };
+    // M8.2e, a mesma regra: a parte de uma reserva deste repasse já tem, lançada depois dele e fora dele, a linha da disputa
+    // do pagamento do mesmo proprietário (o valor segurado decidido com a parte já paga). Estornar o repasse deixaria o
+    // desconto sem o pagamento. O repasse que só leva a linha da disputa pode ser estornado: ela volta a ficar a descontar.
+    const [comDisputa] = await tx
+      .select({ codigo: reservasRef.codigo })
+      .from(repasseItens)
+      .innerJoin(reservasRef, eq(reservasRef.id, repasseItens.reservaId))
+      .innerJoin(lancamentos, eq(lancamentos.id, repasseItens.lancamentoId))
+      .where(
+        and(
+          eq(repasseItens.repasseId, id),
+          isNull(repasseItens.liberadoEm),
+          ne(lancamentos.origem, ORIGEM_LANCAMENTO_CONTESTACAO),
+          sql`exists (select 1 from ${lancamentos} e where e.organizacao_id = ${org} and e.reserva_id = ${repasseItens.reservaId} and e.proprietario_id = ${r.proprietarioId}
+            and e.tipo = 'direito_proprietario' and e.origem = ${ORIGEM_LANCAMENTO_CONTESTACAO} and e.criado_em > ${r.criadoEm.toISOString()}::timestamptz
+            and e.estorno_de is null and not exists (select 1 from ${lancamentos} x where x.estorno_de = e.id)
+            and not exists (select 1 from ${repasseItens} j where j.repasse_id = ${id} and j.lancamento_id = e.id and j.liberado_em is null))`,
+        ),
+      )
+      .limit(1);
+    if (comDisputa)
+      return {
+        ok: false as const,
+        erro: `A parte da reserva ${comDisputa.codigo} deste repasse já tem desconto pela disputa do pagamento: estornar o repasse deixaria o desconto sem o pagamento. Corrija com um ajuste.`,
+      };
     for (const l of await lancamentosDoRepasse(tx, org, id)) {
       const [ja] = await tx.select({ id: lancamentos.id }).from(lancamentos).where(eq(lancamentos.estornoDe, l.id));
       if (!ja) await estornar(tx, org, l.id, `Repasse estornado: ${m}`, autorId, r.situacao === "pago" ? hoje : undefined);
@@ -945,6 +1085,40 @@ export async function estornarRepasse(db: Db, org: string, id: string, motivo: s
     await registrarAuditoria(tx, { organizacaoId: org, usuarioId: autorId, acao: "repasse.estornar", entidade: "repasse", entidadeId: id, mudancas: { situacao: [r.situacao, `estornado: ${m}`] } });
     return { ok: true as const, id };
   });
+}
+
+/**
+ * M8.2e: do que ficou fora de um fechamento já gravado (`foraDoFechamento`), quanto era parte de reserva em conferência por
+ * disputa do pagamento naquele instante — para o e-mail do repasse dar o motivo certo ("reserva em conferência: disputa do
+ * pagamento", nunca "dinheiro ainda não recebido pela empresa"). O repasse guarda só o total: a conta é refeita pelo
+ * livro como estava no fechamento (partes do mês ou antes, já lançadas, sem estorno e fora de repasse até ali) e pelas
+ * disputas da reserva abertas antes dele e ainda sem decisão nele. Limitado ao total gravado.
+ */
+export async function foraPorDisputaDoFechamento(db: Db, org: string, r: Pick<Repasse, "tipo" | "proprietarioId" | "mes" | "criadoEm" | "foraDoFechamento">): Promise<number> {
+  const lim = limitesDoMes(r.mes.slice(0, 7));
+  if (r.tipo !== "fechamento" || r.foraDoFechamento <= 0 || !lim) return 0;
+  const corte = sql`${r.criadoEm.toISOString()}::timestamptz`;
+  const [x] = await db
+    .select({ total: sql<string | null>`coalesce(sum(${lancamentos.efeitoSaldo}), 0)` })
+    .from(lancamentos)
+    .where(
+      and(
+        eq(lancamentos.organizacaoId, org),
+        eq(lancamentos.proprietarioId, r.proprietarioId),
+        eq(lancamentos.tipo, "direito_proprietario"),
+        lt(lancamentos.competencia, lim.fim),
+        ne(lancamentos.estado, "pendente"),
+        ne(lancamentos.efeitoSaldo, 0),
+        isNull(lancamentos.estornoDe),
+        sql`${lancamentos.criadoEm} <= ${corte}`,
+        sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id} and e.criado_em <= ${corte})`,
+        sql`not exists (select 1 from ${repasseItens} i join ${repasses} rr on rr.id = i.repasse_id where i.lancamento_id = ${lancamentos.id} and rr.criado_em <= ${corte} and (i.liberado_em is null or i.liberado_em > ${corte}))`,
+        sql`exists (select 1 from ${contestacoesPagamento} cp join ${pagamentos} cpp on cpp.id = cp.pagamento_id
+          where cpp.reserva_id = ${lancamentos.reservaId} and cpp.desfecho in ('reserva', 'alteracao') and not cp.duplicata_possivel and cp.valor_em_risco > 0
+            and cp.aberta_em <= ${corte} and (cp.decisao_em is null or cp.decisao_em > ${corte}))`,
+      ),
+    );
+  return Math.min(r.foraDoFechamento, Math.max(0, Number(x?.total ?? 0)));
 }
 
 /** Repasses (inclusive estornados) de um proprietário, do mais recente para o mais antigo. */

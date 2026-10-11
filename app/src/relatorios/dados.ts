@@ -11,7 +11,7 @@ import { ratear } from "@/lib/rateio";
 import { lancamentoEmVigor } from "@/portal/posse";
 import { reservasDoPortal } from "@/portal/reservas";
 import { resumoDoProprietario } from "@/portal/resumo";
-import { ehDescontoDeCancelamento, partesDoProprietario } from "@/repasses/extrato";
+import { ehDescontoDeCancelamento, ehLinhaDeContestacao, partesDoProprietario, varianteDaDisputa } from "@/repasses/extrato";
 import { somarDias } from "@/repasses/inicio";
 import { lerInicioDoSistema } from "@/repasses/regras-config";
 import { itensDoRepasse, listarRepasses, type Repasse } from "@/repasses/repasses";
@@ -32,6 +32,10 @@ const comissaoTexto = (bp: number | null): string | null => (bp === null ? null 
  * motor — mesmo quando o cancelamento cai no mês da estadia, ou quando dois meses da estadia são espelhados no mesmo
  * mês, cada linha fecha bruto − taxa − comissão = parte; e o espelho não tem data de pagamento do canal (nenhum canal
  * pagou o espelho: é o dinheiro que voltou ao hóspede).
+ *
+ * M8.2e: a linha da disputa do pagamento (origem "contestacao_pagamento") é tratada como o espelho do cancelamento — sem
+ * componentes (bruto, taxa, comissão), sem noites, sem código do canal e sem data de pagamento, fora das métricas — na
+ * variante `contestacao` ("segurado" | "definitivo" | "devolvido"), só com o código da reserva (nunca o hóspede).
  */
 export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { donos: readonly Dono[]; imovelIds: readonly string[]; mes: MesISO; agora: Date }): Promise<ParteDoRelatorio[]> {
   const imoveis = new Set(o.imovelIds.filter(uuidValido));
@@ -91,6 +95,31 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
       const { inicio, fim } = limitesDe(mes);
       const espelho = p.origemLancamento === "cancelamento";
       const original = espelho ? (mesesOriginais.get(p.lancamentoId) ?? null) : null;
+      // M8.2e: a linha da disputa não tem componentes nem noites: só o valor dela (nunca o bruto da reserva de novo).
+      const disputa = ehLinhaDeContestacao(p);
+      if (disputa)
+        return {
+          reservaId: p.reservaId,
+          codigo: p.codigoReserva,
+          codigoCanal: "",
+          hospede: "",
+          canal: p.origem,
+          checkin: p.checkin,
+          checkout: p.checkout,
+          mes,
+          noitesNoMes: 0,
+          noitesTotal: 0,
+          bruto: 0,
+          taxa: 0,
+          comissao: 0,
+          suaParte: p.valor,
+          quemRecebe: p.quemRecebe,
+          situacao: p.situacao,
+          motivo: p.motivo,
+          pagamento: null,
+          repasse: p.repasse,
+          contestacao: varianteDaDisputa(p.disputa?.situacao),
+        };
       return {
         reservaId: p.reservaId,
         codigo: p.codigoReserva,

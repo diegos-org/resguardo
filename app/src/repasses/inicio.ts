@@ -17,6 +17,7 @@ import { lerVersoesRegras, prazoDoCanalNaData, type VersaoRegras } from "@/confi
 import { lancamentos, type OrigemReserva, repasses, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { ORIGEM_LANCAMENTO_CONTESTACAO } from "@/pagamentos/contestacao-regras";
 import { lancamentoEmVigor } from "@/portal/posse";
 import { type RecebidoDaReserva, recebidoPorReserva } from "./recebimentos";
 
@@ -76,6 +77,8 @@ export async function reservasDoInicio(db: Db, organizacaoId: string, inicio: st
         eq(lancamentos.organizacaoId, organizacaoId),
         eq(lancamentos.tipo, "direito_proprietario"),
         isNotNull(lancamentos.proprietarioId),
+        // M8.2e: a linha da disputa do pagamento não diz quem recebe o dinheiro da reserva (é o acerto da disputa).
+        ne(lancamentos.origem, ORIGEM_LANCAMENTO_CONTESTACAO),
         o.proprietarioId ? eq(lancamentos.proprietarioId, o.proprietarioId) : undefined,
         ids ? inArray(lancamentos.reservaId, ids) : undefined,
         lancamentoEmVigor(db),

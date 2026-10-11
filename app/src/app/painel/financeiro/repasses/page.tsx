@@ -42,10 +42,13 @@ function Numeros({ p, itensDoFechamento }: { p: PrevisaoRepasse; itensDoFechamen
     ["Crédito do proprietário até o fim do mês (antes dos descontos)", formatBRL(saldo + descontado + contestado)],
     ["− Adiantamentos descontados", formatBRL(descontado)],
     ["Contestados (não descontados)", formatBRL(contestado)],
-    ...(fora ? ([["− Fora do fechamento (dinheiro ainda não com a empresa)", formatBRL(fora)]] as [string, string][]) : []),
+    // M8.2e: na previsão, a parte presa por disputa do pagamento fica fora com o motivo próprio.
+    ...(fora - (p.repasse ? 0 : p.foraPorDisputa) ? ([["− Fora do fechamento (dinheiro ainda não com a empresa)", formatBRL(fora - (p.repasse ? 0 : p.foraPorDisputa))]] as [string, string][]) : []),
+    ...(!p.repasse && p.foraPorDisputa ? ([["− Fora do fechamento (reserva em conferência: disputa do pagamento)", formatBRL(p.foraPorDisputa)]] as [string, string][]) : []),
     ...(a.noites ? ([["+ Noites de meses seguintes já disponíveis (adiantamento)", formatBRL(a.noites)]] as [string, string][]) : []),
     ...(a.desconto ? ([["− Desconto de reserva cancelada com devolução ao hóspede (parte já repassada)", formatBRL(-a.desconto)]] as [string, string][]) : []),
     ...(a.estorno ? ([["− Estorno de parte de reserva cancelada antes de ser repassada (anula a parte no crédito)", formatBRL(-a.estorno)]] as [string, string][]) : []),
+    ...(a.disputa ? ([[`${a.disputa < 0 ? "−" : "+"} Disputa do pagamento (valor segurado ou devolvido)`, formatBRL(Math.abs(a.disputa))]] as [string, string][]) : []),
   ];
   return (
     <dl style={{ display: "flex", gap: "8px 24px", flexWrap: "wrap", margin: 0 }}>
