@@ -404,6 +404,38 @@ describe("revisão das telas (11/10/2026)", () => {
     expect(t.linhas.join(" ")).not.toMatch(/não há devolução|contesta/i);
   });
 
+  it("'Cancelar a reserva contestada' com a disputa de parte do valor, perdida: o resto continua retido, a página fica em conferência (nunca 'voltou') (Codex, 11/10)", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao", liberar: true });
+    c.provedor.contestar(x.idProvedor, "order", { valor: 50_000 });
+    await conferirTentativa(db, c.org, x.pagamentoId, c.provedor, sp("2026-10-05 10:00"), { origem: "rotina", forcar: true });
+    const [l] = await db.select().from(contestacoesPagamento).where(eq(contestacoesPagamento.pagamentoId, x.pagamentoId));
+    expect(l).toMatchObject({ situacao: "aberta", valorEmRisco: 50_000 });
+    const pv = await previaDoCancelamentoContestado(db, c.org, x.reservaId, sp("2026-10-06 10:00"));
+    if (!pv.ok) throw new Error(pv.erro);
+    expect(pv.previa.valorRetido).toBe(TOTAL);
+    const r = await cancelarReservaContestada(db, c.org, x.reservaId, { nota: "Titular contesta parte da compra.", assinatura: pv.previa.assinatura }, equipe, null, sp("2026-10-06 10:00"));
+    if (!r.ok) throw new Error(r.erro);
+    const pm = await previaDoResultado(db, c.org, l.id);
+    if (!pm.ok) throw new Error(pm.erro);
+    expect(pm.fatos.proposta.valorPerdido).toBe(50_000);
+    const rm = await confirmarResultado(
+      db,
+      c.org,
+      l.id,
+      { resultado: "perdida", data: "2026-10-08", nota: "Painel do Mercado Pago mostra a disputa perdida.", notaReforcada: true, versao: pm.fatos.versao, assinatura: pm.fatos.assinatura, tarifa: null, valorPerdido: 50_000, liquidoNaoEntrou: pm.fatos.proposta.liquidoNaoEntrou!, debitoEm: "2026-10-07" },
+      equipe,
+      null,
+      sp("2026-10-08 10:00"),
+    );
+    if (!rm.ok) throw new Error(rm.erro);
+    // Só R$ 500,00 voltaram ao hóspede pela disputa; o resto do pago continua retido.
+    const v = await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, sp("2026-10-09 10:00"), { comAutorizacao: false });
+    expect(v?.estado).toBe("cancelada_em_conferencia");
+    const t = textoDoCancelamento(paraOHospede(v!), TEXTOS_SITE_INICIAIS);
+    expect(t.linhas.join(" ")).not.toContain(TEXTOS_SITE_INICIAIS.cancelamentoDevolvidoPelaDisputa);
+    expect(t.linhas.join(" ")).not.toMatch(/contesta/i);
+  });
+
   it("'Documentos para a defesa': o valor pago só para quem lê o financeiro; o resumo da reserva segue o desenho (sem o titular)", async () => {
     const x = await disputada();
     const semValores = await documentosParaDefesa(db, c.org, x.reservaId, { verValores: false });

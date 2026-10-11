@@ -1098,8 +1098,8 @@ export async function informarPrazoDocumentos(db: Db, organizacaoId: string, con
 
 /**
  * "Confirmar que é outra disputa" (`financeiro:editar`), numa possível duplicata: ela passa a valer (valor em risco, retido
- * previsto, as devoluções que ainda caibam substituídas), sem nunca passar do pago com as outras. Auditado
- * (`contestacao.outra_disputa`).
+ * previsto, as devoluções que ainda caibam substituídas), sem nunca passar do pago com as outras. O MED ou a reclamação que
+ * a leitura já mostra como devolução nasce com o retido realizado, como no registro. Auditado (`contestacao.outra_disputa`).
  */
 export async function confirmarOutraDisputa(db: Db, organizacaoId: string, contestacaoId: string, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
   const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
@@ -1108,9 +1108,16 @@ export async function confirmarOutraDisputa(db: Db, organizacaoId: string, conte
     const tr = transicaoDaContestacao(l, { tipo: "outra_disputa", em: agora });
     if (!tr.ok) return recusada(tr.erro, tr.codigo);
     if (tr.descartada) return recusada(TEXTO_NAO_E_DUPLICATA, "nao_permitida");
+    // O MED e a reclamação que a leitura já mostra como devolução (o D21 sem a disputa), como no registro: o dinheiro já
+    // saiu, e o retido nasce realizado (a order de um pagamento depois dos 85 dias nunca mais o corrigiria).
+    const devolucaoLida = (l.tipo === "med" || l.tipo === "reclamacao") && devolucaoInexplicada(p, devolucoesDoPagamento(t, p.id));
     await gravarLinha(tx, l, { duplicataPossivel: tr.duplicataPossivel, avisos: tr.avisos, confirmadaOutraEm: agora, confirmadaOutraPor: autorId }, agora);
     for (const ev of tr.eventos) await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: ev.tipo, antes: ev.antes, depois: ev.depois, usuarioId: autorId }, agora);
     await substituirDevolucoes(tx, organizacaoId, t, p, l, agora, autorId);
+    if (devolucaoLida) {
+      await recalcularDisputas(tx, organizacaoId, t, p, agora, { semCaixa: true });
+      await lancarRetidoRealizado(tx, organizacaoId, t, p, l, agora);
+    }
     await recalcularDisputas(tx, organizacaoId, t, p, agora);
     // Confirmada como outra disputa, o MED ou a reclamação passa a explicar a devolução lida (D21).
     await sincronizarAvisosDaDisputa(tx, t, p, agora, { desligar: devolvidoPorForaExplicado(t, p) });

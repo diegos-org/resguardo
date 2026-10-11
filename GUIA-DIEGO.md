@@ -123,8 +123,9 @@ você registra uma à mão num pagamento de teste (item 46 da seção 6).
   cancelar dá lugar a "Para cancelar, fale com a equipe". A palavra "contestação" nunca aparece para ele, e nenhuma
   mensagem automática sai: a equipe fala com ele caso a caso. Numa reserva cancelada por "Cancelar a reserva contestada",
   a página diz "estamos conferindo a devolução" enquanto a disputa não termina; perdida, diz que o dinheiro voltou a ele
-  pelo banco ou pelo Mercado Pago (frase nova em Textos do site, "Cancelamento da reserva contestada"); ganha, a reserva
-  fica como cancelada sem devolução.
+  pelo banco ou pelo Mercado Pago (frase nova em Textos do site, "Cancelamento da reserva contestada"), mas só quando a
+  disputa perdida cobre todo o valor que ficou retido; se ela era de parte do valor, a página continua em "estamos
+  conferindo a devolução" e a equipe fala com ele sobre o resto. Ganha, a reserva fica como cancelada sem devolução.
 - **No Início e por e-mail:** a disputa sem decisão (e a escalada depois de 15 dias), o prazo dos documentos, a disputa
   encerrada no Mercado Pago com o resultado a conferir, a perdida sem decisão, a estadia por vir, o repasse a pagar com a
   parte de uma reserva em disputa ("estorne o repasse antes de pagar, se quiser segurar a parte dela") e o valor segurado

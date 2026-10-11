@@ -373,6 +373,11 @@ describe("retido (item 13: abertura e MED)", () => {
     expect(await confirmarOutraDisputa(db, c.org, r.id, equipe, minutos(40))).toMatchObject({ ok: true });
     expect(await devolvidaPeloD21(x.reservaId)).toBe(false);
     expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
+    // O dinheiro dela já saiu (a leitura mostrou a devolução em 01/10): o retido nasce realizado, como no registro (Codex,
+    // 11/10), sem esperar uma leitura da order que, depois dos 85 dias, nunca viria.
+    const retidos = (await daDisputa(x.pagamentoId)).filter((y) => y.chaveOrigem === chavesDaContestacao(x.pagamentoId, r.id).retido());
+    expect(retidos).toHaveLength(1);
+    expect(retidos[0]).toMatchObject({ estado: "realizado", montante: TOTAL - 50_000, dataCaixa: "2026-10-01" });
   });
 });
 
