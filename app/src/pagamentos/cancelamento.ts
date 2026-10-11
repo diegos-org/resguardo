@@ -74,6 +74,7 @@ import { inicioDoPrazoDePedirDevolucao, inicioDoPrazoDeReleitura } from "./andam
 import { sincronizarAvisosDoPagamento, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
 import { ERRO_FORA_SEM_VALOR, PRAZO_DEVOLUCAO_CARTAO_DIAS, tentarDevolucao } from "./devolucao";
+import { entradasDasAlteracoes } from "./entradas";
 import { FUSO_PAGAMENTO, taxaCanalDaReserva } from "./liberacao";
 import type { ProvedorPagamento } from "./provedor";
 import { type CodigoAviso, emAndamento, NOMES_SITUACAO_PAGAMENTO } from "./situacoes";
@@ -502,7 +503,7 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   // A política conta da entrada que conta (a menor entre a da cotação original e a atual); "a estadia começou", da atual.
   const entradaPolitica = {
     regras: politica?.regras ?? null,
-    checkin: entradaQueConta(t.cotacao.checkin, r.checkin),
+    checkin: entradaQueConta(t.cotacao.checkin, r.checkin, entradasDasAlteracoes(t.alteracoes)),
     entradaAtual: r.checkin,
     horaEntrada,
     fuso,

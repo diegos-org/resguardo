@@ -89,7 +89,9 @@ nas prévias da Vercel e com a conta de teste do Mercado Pago (item 44 da seçã
   cancelamento daquela parte naquele momento: pedido dentro do prazo do reembolso integral (ou nos 7 dias do
   arrependimento) → a diferença volta; fora do prazo → a diferença fica, o valor da reserva continua o mesmo e é
   dividido como uma reserva normal, e as noites liberadas voltam à venda. Os prazos contam da **entrada original ou
-  da nova, a que vier primeiro** (decisão sua, seção 7). Você pode devolver por exceção (com o motivo e uma nota); e,
+  da nova, a que vier primeiro** (decisão sua, seção 7); com mais de uma alteração, vale a entrada mais cedo que a
+  reserva já teve, então adiar depois de adiantar não devolve o prazo perdido. Você pode devolver por exceção (com o
+  motivo e uma nota); e,
   quando a SCL propõe, a diferença sempre volta.
 - **A ordem é sempre a mesma:** primeiro a alteração vale (as novas datas e o valor novo na reserva), depois a
   devolução é pedida. Nunca há devolução sem alteração.

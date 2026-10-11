@@ -1342,7 +1342,10 @@ devolvida e nada muda; para dar o desconto, use a exceção."); saldo dos pagame
   devolução integral no meio da estadia (entrada original 15/01, adiantada para 28/11, pedido em 01/12: pela
   original ainda daria integral). Adiar nunca reabre o prazo e adiantar o fecha. Objetivo: a alteração nunca virar
   um cancelamento sem perda. Padrão em uso, ★ decisão 1 de Diego (GUIA, seção 7); a frase da v2 da política está no
-  GUIA (seção 6, item 42).
+  GUIA (seção 6, item 42). **Ajuste de 11/10/2026 (revisão do M8.2d):** com mais de uma alteração, conta a menor de
+  **todas** as entradas que a reserva teve (a da cotação, a atual e as de cada alteração aplicada,
+  `entradasDasAlteracoes`/`entradasDaReserva`); antes, só a original e a atual, e uma reserva de 15/01 adiantada para
+  28/11 e depois adiada para 01/02 voltava a contar de 15/01, reabrindo o prazo que o adiantamento fechou.
 - Integral → a diferença é devolvida **depois** de a alteração ser aplicada; nada → retida: a reserva fica com o
   valor de antes nas datas novas, dividido como uma reserva normal, e as noites liberadas voltam à venda (a prévia
   avisa). Pela mesma regra do M8.2c: a SCL propõe → integral; política `nenhum` + exceção (motivo da lista e nota) →

@@ -67,6 +67,7 @@ import { expirarSeVencida } from "./alteracao-prazo";
 import { dividirDevolucao, noitesNovas, type Rumo, rumoDa, situacaoEfetiva, valorNovo } from "./alteracao-regras";
 import { inicioDoPrazoDePedirDevolucao, inicioDoPrazoDeReleitura } from "./andamento";
 import { sincronizarAvisosDoPagamento } from "./avisos-devolucao";
+import { entradasDasAlteracoes } from "./entradas";
 import { diaBr, diaHoraBr, type EscolhaDaEquipe, escolhaDaEquipe, momentosDaEntrada, NOMES_BASE_CANCELAMENTO, NOMES_MOTIVO_EMPRESA, releituraDosPagamentos, TEXTO_OCUPADO } from "./cancelamento";
 import { cancelarNoProvedor } from "./conferencia";
 import type { Decisao } from "./confirmacao";
@@ -417,7 +418,7 @@ async function decidirReducao(
   const regras = politica ? regrasComPadrao(politica.regras) : null;
   const entradaPolitica = {
     regras: politica?.regras ?? null,
-    checkin: entradaQueConta(c.t.cotacao.checkin, c.r.checkin),
+    checkin: entradaQueConta(c.t.cotacao.checkin, c.r.checkin, entradasDasAlteracoes(c.t.alteracoes)),
     entradaAtual: c.r.checkin,
     horaEntrada: c.horaEntrada,
     fuso: c.fuso,
@@ -739,7 +740,7 @@ async function completarPrevia(
   const taxaDevolvida = direito === "integral" && agoraTaxa.conhecida && !agoraTaxa.desconhecida ? agoraTaxa.taxa - depoisTaxa.taxa : null;
   const financeiro: PreviaAlteracao["financeiro"] = { antes: somar(antesMotor.linhas.values()), depois: somar(depoisMotor.linhas.values()), porMes: meses, taxaDevolvida, taxaDesconhecida: depoisTaxa.desconhecida || rumo === "aumento" };
   const leitura = c.daReserva.map((p) => ({ pagamentoId: p.id, em: p.consultadoEm, situacao: p.situacao, devolvidoLido: p.devolvidoLido }));
-  const entradaDaPolitica = entradaQueConta(t.cotacao.checkin, r.checkin);
+  const entradaDaPolitica = entradaQueConta(t.cotacao.checkin, r.checkin, entradasDasAlteracoes(t.alteracoes));
   const politica = x.decidida?.politica ?? (await politicaDaReserva(db, organizacaoId, c.p0.id));
   const antes = { checkin: r.checkin, checkout: r.checkout, hospedes: r.hospedes, valor: r.valorBruto ?? 0 };
 

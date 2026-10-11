@@ -19,6 +19,7 @@ import { aceitesSite, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { entradasDaReserva } from "@/pagamentos/entradas";
 import { travarCotacao } from "@/pagamentos/travas";
 
 export type OrigemAceite = "pix" | "cartao";
@@ -218,7 +219,7 @@ export async function aceiteParaPagina(
     resumo: blocosDoDocumento(preencherCampos(emVigor.secoes.resumo ?? "", emVigor.valores)),
     // M8.2d: depois de uma alteração, o prazo conta da entrada que conta (a menor entre a da cotação e a atual da reserva),
     // a mesma data do painel e de Minha reserva.
-    prazo: prazoDoReembolso(c.reservaId ? entradaQueConta(c.checkin, (await checkinDaReserva(db, organizacaoId, c.reservaId)) ?? c.checkin) : c.checkin, daRegra.regras.diasReembolsoIntegral, hojeISO(c.fuso, agora)),
+    prazo: prazoDoReembolso(c.reservaId ? await entradaQueContaDaReserva(db, organizacaoId, c.reservaId, c.checkin) : c.checkin, daRegra.regras.diasReembolsoIntegral, hojeISO(c.fuso, agora)),
   };
 }
 
@@ -259,15 +260,16 @@ export async function aceiteDaDiferencaParaPagina(
     versoes,
     aceito: aceito ? { em: aceito.aceitoEm.toISOString(), versoes: aceito.versoes } : null,
     resumo: blocosDoDocumento(preencherCampos(daRegra.secoes.resumo ?? "", daRegra.valores)),
-    prazo: prazoDoReembolso(entradaQueConta(c.checkin, (await checkinDaReserva(db, organizacaoId, c.reservaId)) ?? c.checkin), daRegra.regras.diasReembolsoIntegral, hojeISO(c.fuso, agora)),
+    prazo: prazoDoReembolso(await entradaQueContaDaReserva(db, organizacaoId, c.reservaId, c.checkin), daRegra.regras.diasReembolsoIntegral, hojeISO(c.fuso, agora)),
     ...(p0 ? { daReserva: { versao: p0.versao, em: p0.em.toISOString() } } : {}),
   };
 }
 
 /** A entrada atual da reserva (depois de uma alteração, pode diferir da cotação); null = não achada. */
-async function checkinDaReserva(db: Db, organizacaoId: string, reservaId: string): Promise<string | null> {
+/** A entrada que conta para os prazos da reserva (`entradaQueConta`): a da cotação, a atual e as das alterações aplicadas. */
+async function entradaQueContaDaReserva(db: Db, organizacaoId: string, reservaId: string, original: string): Promise<string> {
   const [r] = await db.select({ checkin: reservas.checkin }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
-  return r?.checkin ?? null;
+  return entradaQueConta(original, r?.checkin ?? original, await entradasDaReserva(db, organizacaoId, reservaId));
 }
 
 /** Prova no painel: todos os aceites de uma reserva, do mais novo para o mais antigo. */

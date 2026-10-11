@@ -14,6 +14,7 @@ import { cancelarReservaPaga, previaDoCancelamento, TEXTO_ALTERACAO_EM_ANDAMENTO
 import { conferirTentativa } from "./conferencia";
 import { pagamentosDaReserva, vistaDaCotacaoParaHospede } from "./consultas";
 import { confirmarDevolucaoVistaNoProvedor, devolverPeloProvedor, pedirRestanteDaDevolucao, registrarDevolucaoPorFora, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
+import { entradasDaReserva } from "./entradas";
 import { pessimista } from "./falso";
 import { registrarLiberacaoManual } from "./liberacao";
 import { TEXTO_CAIXA_COM_DEVOLVIDO_FORA } from "./situacoes";
@@ -184,6 +185,28 @@ describe("o prazo do cancelamento depois de uma alteração (M8.2d)", () => {
     const z = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23", email: "z@example.com" });
     const semMudar = await previaDoCancelamento(db, c.org, z.reservaId, pedidoEm(pedido), c.provedor, decidido);
     expect(semMudar.ok && semMudar.previa).toMatchObject({ direito: "integral", decisao: { integralAte: "2026-11-06" } });
+  });
+
+  it("várias alterações: adiantar uma vez encurta o prazo para sempre — adiar depois não o reabre (a menor de todas as entradas que a reserva teve)", async () => {
+    const pedido = "2026-11-01T12:00:00-03:00";
+    const decidido = new Date("2026-11-01T13:00:00-03:00");
+    // Original 20/11 (integral até 06/11); adiantada para 14/11 (integral até 31/10); depois adiada para 26/11.
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23" });
+    const aplicar = async (valor: number, de: string, para: string, quando: Date) => {
+      const { alteracaoId } = await reduzirDeTeste(c, x, valor, { quando, devolucoes: [] });
+      await db.update(alteracoesReserva).set({ checkinAntes: de, checkinDepois: para }).where(eq(alteracoesReserva.id, alteracaoId));
+      await mudarDatas(x.reservaId, para, new Date(Date.parse(`${para}T00:00:00Z`) + 3 * 86_400_000).toISOString().slice(0, 10));
+    };
+    await aplicar(TOTAL - 100, "2026-11-20", "2026-11-14", minutos(15));
+    await aplicar(TOTAL - 200, "2026-11-14", "2026-11-26", minutos(20));
+    // Pela original e a atual (20/11 e 26/11), o pedido de 01/11 receberia tudo; pela de 14/11, que a reserva já teve, não.
+    const r = await previaDoCancelamento(db, c.org, x.reservaId, pedidoEm(pedido), c.provedor, decidido);
+    if (!r.ok) throw new Error(r.erro);
+    expect(r.previa).toMatchObject({ direito: "nenhum", base: "fora_do_prazo", decisao: { integralAte: "2026-10-31" } });
+    // A mesma entrada na página da reserva (a linha da política da alteração) e nas entradas lidas do banco.
+    expect(await entradasDaReserva(db, c.org, x.reservaId)).toEqual(expect.arrayContaining(["2026-11-20", "2026-11-14", "2026-11-26"]));
+    const v = await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, minutos(25), { comAutorizacao: true, oferecido: true });
+    expect(v?.alteracao?.entradaDosPrazos).toBe("2026-11-14");
   });
 });
 

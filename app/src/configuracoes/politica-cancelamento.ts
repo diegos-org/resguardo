@@ -27,7 +27,7 @@ export type QuemCancela = QuemCancelaReserva;
 export type EntradaPolitica = {
   /** Da versão aceita no pagamento; null = sem política (pagamento sem aceite das páginas legais). */
   regras: RegrasCancelamento | null;
-  /** AAAA-MM-DD: a data de que a política conta: `entradaQueConta(entrada da cotação, entrada atual)`. */
+  /** AAAA-MM-DD: a data de que a política conta: `entradaQueConta(entrada da cotação, entrada atual, as das alterações aplicadas)`. */
   checkin: string;
   /**
    * AAAA-MM-DD: a entrada de agora (depois de uma alteração, a nova). Só para o instante da entrada, o "a estadia já
@@ -100,12 +100,15 @@ function fusoValido(fuso: string): boolean {
 const dataDeEntradaValida = (d: string) => DATA.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
 
 /**
- * A data de entrada de que a política conta depois de uma alteração (M8.2d): a menor entre a da cotação original e a
- * atual. Uma regra só para o painel (alteração e cancelamento), a página da reserva e Minha reserva.
+ * A data de entrada de que a política conta depois de uma alteração (M8.2d): a menor entre a da cotação original, a
+ * atual e as que a reserva teve em cada alteração aplicada (`anteriores`, de `entradasDasAlteracoes`): adiantar a
+ * entrada uma vez encurta os prazos para sempre, e adiar depois não os reabre. Uma regra só para o painel (alteração e
+ * cancelamento), a página da reserva e Minha reserva.
  */
-export function entradaQueConta(original: string, atual: string): string {
-  if (!dataDeEntradaValida(original) || !dataDeEntradaValida(atual)) throw new Error("Data de entrada inválida.");
-  return atual < original ? atual : original;
+export function entradaQueConta(original: string, atual: string, anteriores: readonly string[] = []): string {
+  const todas = [original, atual, ...anteriores];
+  if (!todas.every(dataDeEntradaValida)) throw new Error("Data de entrada inválida.");
+  return todas.reduce((menor, d) => (d < menor ? d : menor));
 }
 
 export function decidirPelaPolitica(e: EntradaPolitica): DecisaoPolitica {

@@ -26,6 +26,7 @@ import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe"
 import type { Correio } from "@/email/correio";
 import { hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { entradasDaReserva } from "@/pagamentos/entradas";
 import { devolucaoInexplicada, devolucoesDoPagamento, devolvidoPeloSistema, type Pagamento, pagamentosDaReserva, travarCotacao } from "@/pagamentos/travas";
 import { politicaDoPagamento } from "@/site/aceites";
 import { doEmail, vigentes } from "./portal";
@@ -132,9 +133,9 @@ export async function cancelamentoNoPortal(db: Db, organizacaoId: string, email:
   const decisao = politica
     ? decidirPelaPolitica({
         regras: politica.regras,
-        // Depois de uma alteração, os prazos contam da entrada que conta (a menor entre a original e a atual); a estadia
+        // Depois de uma alteração, os prazos contam da entrada que conta (a menor entre a original, a atual e as das alterações aplicadas); a estadia
         // começa na atual. A mesma data do painel e da página da reserva.
-        checkin: entradaQueConta(x.p.cotacaoCheckin, x.r.checkin),
+        checkin: entradaQueConta(x.p.cotacaoCheckin, x.r.checkin, await entradasDaReserva(db, organizacaoId, x.r.id)),
         entradaAtual: x.r.checkin,
         horaEntrada: x.horaEntrada,
         fuso: x.fuso,

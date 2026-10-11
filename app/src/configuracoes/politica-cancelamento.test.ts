@@ -128,6 +128,10 @@ describe("depois de uma alteração (M8.2d): a entrada que conta e a entrada atu
     expect(entradaQueConta("2026-11-28", "2026-11-28")).toBe("2026-11-28");
     expect(() => entradaQueConta("2026-13-01", "2026-11-28")).toThrow();
     expect(() => entradaQueConta("2026-11-28", "28/11/2026")).toThrow();
+    // Várias alterações (M8.2d): 15/01 adiantada para 28/11 e depois adiada para 01/02 — conta 28/11 (adiar não reabre).
+    expect(entradaQueConta("2027-01-15", "2027-02-01", ["2027-01-15", "2026-11-28", "2026-11-28", "2027-02-01"])).toBe("2026-11-28");
+    expect(entradaQueConta("2027-01-15", "2027-02-01", [])).toBe("2027-01-15");
+    expect(() => entradaQueConta("2027-01-15", "2027-02-01", ["2026-02-30"])).toThrow();
   });
 
   it("entrada atual depois da que conta: o prazo conta da que conta; o começo da estadia e o arrependimento, da atual", () => {
