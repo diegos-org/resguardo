@@ -194,19 +194,27 @@ export const contestacoesDoPagamento = <T extends Pick<Contestacao, "pagamentoId
   t.contestacoes.filter((c) => c.pagamentoId === pagamentoId);
 
 /**
- * D21 com a disputa (M8.2e): o MED do Pix e a reclamação no Mercado Pago, registrados pela equipe, explicam a devolução que a
- * leitura mostra, até o valor de cada um (a disputa encerrada sem efeito não explica nada). O valor do MED vira o retido da
- * disputa, nunca o "devolvido fora" reconhecido. Gêmeo SQL dentro de `devolvidaNoProvedorSql`.
+ * A disputa que explica a devolução lida (D21, M8.2e; uma regra, um lugar): o MED do Pix e a reclamação no Mercado Pago. A
+ * encerrada sem efeito e a possível duplicata ainda não confirmada ("Confirmar que é outra disputa": até lá ela não segura
+ * nada) não explicam nada. Gêmeo SQL em `devolvidoPelaDisputaSql`.
  */
-export const devolvidoPelaDisputa = (t: { contestacoes: readonly Pick<Contestacao, "pagamentoId" | "tipo" | "situacao" | "valor">[] }, pagamentoId: string): number =>
-  t.contestacoes.filter((c) => c.pagamentoId === pagamentoId && (c.tipo === "med" || c.tipo === "reclamacao") && c.situacao !== "sem_efeito").reduce((s, c) => s + Math.max(0, c.valor ?? 0), 0);
+export const explicaDevolucaoLida = (c: Pick<Contestacao, "tipo" | "situacao" | "duplicataPossivel">): boolean =>
+  (c.tipo === "med" || c.tipo === "reclamacao") && c.situacao !== "sem_efeito" && !c.duplicataPossivel;
+
+/**
+ * D21 com a disputa (M8.2e): as disputas que explicam a devolução lida (`explicaDevolucaoLida`) a explicam até o valor de
+ * cada uma. O valor do MED vira o retido da disputa, nunca o "devolvido fora" reconhecido. Gêmeo SQL dentro de
+ * `devolvidaNoProvedorSql`.
+ */
+export const devolvidoPelaDisputa = (t: { contestacoes: readonly Pick<Contestacao, "pagamentoId" | "tipo" | "situacao" | "valor" | "duplicataPossivel">[] }, pagamentoId: string): number =>
+  t.contestacoes.filter((c) => c.pagamentoId === pagamentoId && explicaDevolucaoLida(c)).reduce((s, c) => s + Math.max(0, c.valor ?? 0), 0);
 
 /**
  * Gêmeo SQL de `devolvidoPelaDisputa`, sobre o id do pagamento de quem chama (a coluna, ou `sql.raw("p.id")` dentro de
  * uma subconsulta com apelido): a soma que entra na conta do D21 de `devolvidaNoProvedorSql`.
  */
 export const devolvidoPelaDisputaSql = (pagamentoId: AnyColumn | SQL) =>
-  sql`(select coalesce(sum(greatest(coalesce(cp.valor, 0), 0)), 0) from ${contestacoesPagamento} cp where cp.pagamento_id = ${pagamentoId} and cp.tipo in ('med', 'reclamacao') and cp.situacao <> 'sem_efeito')`;
+  sql`(select coalesce(sum(greatest(coalesce(cp.valor, 0), 0)), 0) from ${contestacoesPagamento} cp where cp.pagamento_id = ${pagamentoId} and cp.tipo in ('med', 'reclamacao') and cp.situacao <> 'sem_efeito' and not cp.duplicata_possivel)`;
 
 /**
  * A situação que a leitura vale para o pagamento (M8.2e; uma regra, um lugar): a de `situacaoExplicada`, salvo a leitura

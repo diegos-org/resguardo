@@ -3313,6 +3313,18 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   pagamentos, as devoluções e os Pix cancelados; uma volta que só achava ou mudava uma disputa respondia "Nada pendente
   para conferir com o Mercado Pago". *Agora:* a mensagem diz as disputas novas, as relidas e os pagamentos com disputa
   atualizada (como o "Conferir agora" de um pagamento já fazia).
+- **A possível duplicata não explica a devolução lida** *(segue o desenho, "D21 com a disputa" e "possível duplicata")*.
+  *Antes:* o MED ou a reclamação registrados como possível duplicata (há outra disputa não final) já contavam, pelo valor
+  inteiro, na explicação da devolução que a leitura mostra (D21, no TS e no gêmeo SQL), embora não segurem nada até a
+  equipe confirmar que é outra disputa. *Agora:* uma regra só, `explicaDevolucaoLida` (`travas.ts`): explicam a devolução
+  o MED e a reclamação que não estão encerrados sem efeito nem são possível duplicata ainda não confirmada; o gêmeo SQL
+  (`devolvidoPelaDisputaSql`) e a conta do retido (`devolvidoExplicadoPelaDisputa`) seguem a mesma regra. Ao "Confirmar
+  que é outra disputa", ela passa a explicar, e o aviso `devolvido_por_fora` sai se nada mais ficar sem explicação.
+  *Motivo:* uma duplicata não confirmada não pode liberar a parte do proprietário.
+- **A saída do `devolvido_por_fora` é sempre gravada** *(segue o desenho)*. *Antes:* o registro de um MED ou de uma
+  reclamação que explicava a devolução tirava o aviso só da lista em memória antes da gravação única dos avisos; quando o
+  resto da lista não mudava, a gravação era pulada e o aviso continuava no pagamento. *Agora:* a saída vai pelo `desligar`
+  de `sincronizarAvisosDaDisputa`, como os outros avisos do pagamento.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

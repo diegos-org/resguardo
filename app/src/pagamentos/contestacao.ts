@@ -718,8 +718,7 @@ export async function registrarContestacaoDaEquipe(
       }
       await recalcularDisputas(tx, organizacaoId, t, p, agora);
       // D21: o MED e a reclamação explicam a devolução lida; o aviso `devolvido_por_fora` sai quando nada mais fica sem explicação.
-      if (p.avisos.includes("devolvido_por_fora") && !devolucaoInexplicada(p, devs, devolvidoPelaDisputa(t, p.id))) p.avisos = p.avisos.filter((a) => a !== "devolvido_por_fora");
-      await sincronizarAvisosDaDisputa(tx, t, p, agora, { ambigua: false });
+      await sincronizarAvisosDaDisputa(tx, t, p, agora, { ambigua: false, desligar: devolvidoPorForaExplicado(t, p) });
       await registrarAuditoria(tx, {
         organizacaoId,
         usuarioId: autorId,
@@ -943,6 +942,14 @@ async function naDisputa(
   }
 }
 
+/**
+ * O aviso `devolvido_por_fora` a desligar (D21): o pagamento o tem e as disputas que explicam a devolução lida
+ * (`devolvidoPelaDisputa`) já explicam tudo. Vai pela gravação única de `sincronizarAvisosDaDisputa`.
+ */
+function devolvidoPorForaExplicado(t: Travado, p: Pagamento): string[] {
+  return p.avisos.includes("devolvido_por_fora") && !devolucaoInexplicada(p, devolucoesDoPagamento(t, p.id), devolvidoPelaDisputa(t, p.id)) ? ["devolvido_por_fora"] : [];
+}
+
 /** Grava campos da linha (sob a trava) e o retrato junto. */
 async function gravarLinha(tx: Db, l: Contestacao, mudanca: Partial<typeof contestacoesPagamento.$inferInsert>, agora: Date): Promise<void> {
   const m = { ...mudanca, atualizadoEm: agora };
@@ -1086,6 +1093,8 @@ export async function confirmarOutraDisputa(db: Db, organizacaoId: string, conte
     for (const ev of tr.eventos) await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: ev.tipo, antes: ev.antes, depois: ev.depois, usuarioId: autorId }, agora);
     await substituirDevolucoes(tx, organizacaoId, t, p, l, agora, autorId);
     await recalcularDisputas(tx, organizacaoId, t, p, agora);
+    // Confirmada como outra disputa, o MED ou a reclamação passa a explicar a devolução lida (D21).
+    await sincronizarAvisosDaDisputa(tx, t, p, agora, { desligar: devolvidoPorForaExplicado(t, p) });
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "contestacao.outra_disputa", entidade: "pagamento", entidadeId: p.id, mudancas: { contestacao: [null, l.id], duplicataPossivel: [true, false], valorEmRisco: [0, l.valorEmRisco] } });
     return { ok: true, contestacaoId: l.id };
   });

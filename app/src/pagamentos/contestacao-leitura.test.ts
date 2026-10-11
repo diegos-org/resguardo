@@ -15,7 +15,7 @@ import { registrarRecebimento } from "@/repasses/recebimentos";
 import { previaDaAlteracao } from "./alteracao";
 import { previaDoCancelamento, TEXTO_CONTESTADO, TEXTO_CONTESTADO_PERDIDA } from "./cancelamento";
 import { conferirTentativa, processarAvisoDeOrder } from "./conferencia";
-import { aplicarLeiturasDaDisputa, registrarContestacaoDaEquipe } from "./contestacao";
+import { aplicarLeiturasDaDisputa, confirmarOutraDisputa, registrarContestacaoDaEquipe } from "./contestacao";
 import { chavesDaContestacao, DESCRICAO_RETIDO_PREVISTO, type LeituraDeContestacao, TEXTO_DISPUTA_EM_CURSO_ALTERACAO, TEXTO_ESTORNO_LIBERACAO_COM_RETIDO, textoContestacaoPerdida } from "./contestacao-regras";
 import { avisosDePagamento } from "./consultas";
 import { devolverPeloProvedor, ERRO_DEVOLUCAO_COM_DISPUTA } from "./devolucao";
@@ -340,6 +340,39 @@ describe("retido (item 13: abertura e MED)", () => {
     await conferir(x.pagamentoId, minutos(40));
     expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
     expect(await daDisputa(x.pagamentoId)).toHaveLength(1);
+  });
+
+  it("a saída do devolvido_por_fora pelo MED é gravada mesmo quando o resto dos avisos não muda", async () => {
+    const x = await pagarEConfirmar(c);
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);
+    await conferir(x.pagamentoId, minutos(10));
+    // O pagamento já com os avisos que o registro vai dar, na mesma ordem: a lista recalculada é igual à da memória sem o
+    // `devolvido_por_fora`, e mudar só a memória pularia a escrita.
+    await db.update(pagamentos).set({ avisos: ["contestado", "contestacao_com_devolucao", "devolvido_por_fora"] }).where(eq(pagamentos.id, x.pagamentoId));
+    const r = await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, { tipo: "med", abertaEm: "2026-10-01", valor: TOTAL, prazo: "2026-10-10", idCaso: null, nota: "MED aceito pelo Mercado Pago" }, equipe, null, minutos(30));
+    expect(r).toMatchObject({ ok: true });
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
+  });
+
+  it("a possível duplicata não explica a devolução lida até a equipe confirmar que é outra disputa", async () => {
+    const x = await pagarEConfirmar(c);
+    c.provedor.devolverNoProvedor(x.idProvedor, TOTAL);
+    await conferir(x.pagamentoId, minutos(10));
+    expect(await devolvidaPeloD21(x.reservaId)).toBe(true);
+    // Um MED com o número do caso, de parte do valor: a devolução ainda não fica toda explicada.
+    const med = { tipo: "med", abertaEm: "2026-10-01", valor: 50_000, prazo: "2026-10-10", idCaso: "8100000001", nota: "MED visto no painel" };
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, med, equipe, null, minutos(20))).toMatchObject({ ok: true });
+    // A reclamação do restante, sem número: possível duplicata (há outra disputa não final), ainda sem efeito nenhum.
+    const reclamacao = { tipo: "reclamacao", abertaEm: "2026-10-01", valor: TOTAL - 50_000, prazo: "2026-10-12", idCaso: null, nota: "Reclamação vista no painel" };
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, reclamacao, equipe, null, minutos(30))).toMatchObject({ ok: true });
+    const r = (await linhas(x.pagamentoId)).find((l) => l.tipo === "reclamacao")!;
+    expect(r).toMatchObject({ duplicataPossivel: true, valorEmRisco: 0 });
+    expect(await devolvidaPeloD21(x.reservaId)).toBe(true);
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolvido_por_fora");
+    // Confirmada como outra disputa, ela explica o restante: o D21 sai, e o aviso também.
+    expect(await confirmarOutraDisputa(db, c.org, r.id, equipe, minutos(40))).toMatchObject({ ok: true });
+    expect(await devolvidaPeloD21(x.reservaId)).toBe(false);
+    expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
   });
 });
 

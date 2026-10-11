@@ -1360,7 +1360,7 @@ export function devolvidaNoProvedor(
   pagamentosDaReserva: readonly Pick<Pagamento, "id" | "desfecho" | "situacao" | "devolvidoLido" | "devolvidoForaReconhecido">[],
   devolucoes: readonly Devolucao[],
   cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null | undefined,
-  contestacoes: readonly Pick<Contestacao, "pagamentoId" | "tipo" | "situacao" | "valor">[] = [],
+  contestacoes: readonly Pick<Contestacao, "pagamentoId" | "tipo" | "situacao" | "valor" | "duplicataPossivel">[] = [],
 ): boolean {
   if (cancelamento?.situacao === "cancelada" && cancelamento.direito === "integral") return false;
   return pagamentosDaReserva.some((p) => dinheiroDaReserva(p) && devolucaoInexplicada(p, devolucoesDoPagamento({ devolucoes }, p.id), devolvidoPelaDisputa({ contestacoes }, p.id)));
@@ -1568,7 +1568,7 @@ export async function avisosDePagamento(
   // M8.2e: as disputas (o MED e a reclamação registrados explicam a devolução lida, no D21).
   const disputas = lista.length
     ? await db
-        .select({ pagamentoId: contestacoesPagamento.pagamentoId, tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao, valor: contestacoesPagamento.valor })
+        .select({ pagamentoId: contestacoesPagamento.pagamentoId, tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao, valor: contestacoesPagamento.valor, duplicataPossivel: contestacoesPagamento.duplicataPossivel })
         .from(contestacoesPagamento)
         .where(inArray(contestacoesPagamento.pagamentoId, lista.map((p) => p.id)))
     : [];

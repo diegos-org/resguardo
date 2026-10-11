@@ -47,7 +47,18 @@ import {
 } from "./contestacao-regras";
 import { type CasoDeContestacao, type Cobranca, estadoLidoDaContestacao, type SituacaoDoPagamento, type StatusTresDS } from "./provedor";
 import { origemDeDevolucaoConhecida } from "./situacoes";
-import { type Contestacao, contestacoesDoPagamento, type Devolucao, devolucoesDoPagamento, devolvidoProprio, dinheiroDaReserva, type Pagamento, type Travado, valorPagoAprovado } from "./travas";
+import {
+  type Contestacao,
+  contestacoesDoPagamento,
+  type Devolucao,
+  devolucoesDoPagamento,
+  devolvidoProprio,
+  dinheiroDaReserva,
+  explicaDevolucaoLida,
+  type Pagamento,
+  type Travado,
+  valorPagoAprovado,
+} from "./travas";
 
 const FUSO = "America/Sao_Paulo";
 const dataBr = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
@@ -270,7 +281,7 @@ export function devolvidoExplicadoPelaDisputa(
   l: Pick<Contestacao, "id" | "valorEmRisco" | "abertaEm">,
 ): number {
   const outras = t.contestacoes
-    .filter((c) => c.pagamentoId === p.id && c.id !== l.id && (c.tipo === "med" || c.tipo === "reclamacao") && c.situacao !== "sem_efeito" && c.abertaEm.getTime() <= l.abertaEm.getTime())
+    .filter((c) => c.pagamentoId === p.id && c.id !== l.id && explicaDevolucaoLida(c) && c.abertaEm.getTime() <= l.abertaEm.getTime())
     .reduce((s, c) => s + Math.max(0, c.valor ?? 0), 0);
   const lido = p.devolvidoLido - p.devolvidoForaReconhecido - devolvidoProprio(devolucoesDoPagamento(t, p.id)) - outras;
   return Math.max(0, Math.min(l.valorEmRisco, lido));
