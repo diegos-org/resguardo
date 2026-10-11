@@ -10,6 +10,10 @@
  * reconhece (processed/refunded) e order que some da leitura (mais de 90 dias). Várias devoluções de parte do valor
  * (M8.2d): o que a documentação do Mercado Pago não garante vira chave (`idDaDevolucao`, `listaNaLeitura`, `detalheParcial`,
  * `pagoLiquidoDeDevolucoes`, `parcialRecusada`), para os testes rodarem com o caso otimista e com o pessimista.
+ * Contestações (M8.2e): cada uma é um caso da Chargebacks API (número 7000000001…, CBKTST…) e, enquanto a order é lida, um
+ * item de `transactions.chargebacks[]`; `contestar`, `resolverContestacao`, `documentacaoDoCaso`, `casoDeOutroPagamento`,
+ * `mostrarNaLista` e `contestarTarde` (só pela Chargebacks API, com a order apagada) mudam o lado de lá;
+ * `respostaChargebacks` (403, 404 ou falha, por método) e `situacaoAusente` simulam o que a documentação não garante.
  *
  * Falhas: `falhar` (todas as chamadas) e `falhas[metodo]` lançam antes de fazer qualquer coisa;
  * `falhasDepois[metodo]` faz a operação e lança em seguida (resposta perdida no caminho). Como
@@ -17,16 +21,51 @@
  * lançam: a falha vira "erro", "incerta"/"recusada", tudo null ou null.
  */
 import {
-  chaveIdempotenciaValida, emailPlausivel, ErroProvedor, idProvedorValido, PIX_VALIDADE_MINIMA_MINUTOS, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida,
-  validadePixMinutos,
+  chaveIdempotenciaValida, emailPlausivel, ErroProvedor, estadoLidoDaContestacao, idContestacaoValido, idNumericoValido, idProvedorValido, MAXIMO_CONTESTACOES_LIDAS,
+  PIX_VALIDADE_MINIMA_MINUTOS, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida, SITUACOES_DOCUMENTACAO, validadePixMinutos,
 } from "./provedor";
 import type {
-  Cobranca, CodigoDevolucao, DadosCartao, DetalheFinanceiro, EstadoDevolucaoLida, ModoTresDS, OpcoesDevolucao, PedidoCartao, PedidoPix, ProvedorPagamento, ResultadoCancelamento,
-  ResultadoCriacao, ResultadoDevolucao, SituacaoCobranca, StatusTresDS,
+  CasoDeContestacao, Cobranca, CodigoDevolucao, ContestacaoLida, DadosCartao, DetalheFinanceiro, EstadoDevolucaoLida, ModoTresDS, OpcoesDevolucao, PedidoCartao, PedidoPix,
+  ProvedorPagamento, ResultadoCancelamento, ResultadoCriacao, ResultadoDevolucao, SemAcessoContestacao, SituacaoCobranca, SituacaoDocumentacao, SituacaoDoPagamento, StatusTresDS,
 } from "./provedor";
 
 export type MetodoProvedor =
-  | "criarPix" | "criarCartao" | "consultar" | "buscarPorReferencia" | "existePagamentoPorReferencia" | "detalheFinanceiro" | "cancelar" | "devolver" | "conferirContaDeTeste";
+  | "criarPix" | "criarCartao" | "consultar" | "buscarPorReferencia" | "existePagamentoPorReferencia" | "detalheFinanceiro" | "cancelar" | "devolver" | "conferirContaDeTeste"
+  | "consultarContestacao" | "buscarContestacoes" | "situacaoDoPagamento";
+/** Os métodos da Chargebacks API (M8.2e), para `respostaChargebacks`. */
+export type MetodoChargebacks = "consultarContestacao" | "buscarContestacoes";
+/**
+ * Resposta forçada da Chargebacks API: "403" = sem acesso; "404" = a consulta não acha o caso (null) e a busca não acha
+ * a rota (lança, como o cliente real); "falha" = falha de transporte (lança `ErroProvedor` incerto).
+ */
+export type RespostaChargebacks = "403" | "404" | "falha";
+/**
+ * Como nasce uma contestação na versão falsa (M8.2e). Os ids seguem os formatos da documentação: o número do caso em
+ * texto (só algarismos) e o id da order em CBK…. `idComo` "numero": o `case_id` da order e o `id` do caso chegam como
+ * número; com mais de 15 algarismos ele já chega arredondado (como no exemplo oficial, de 18) e o cliente real não o lê:
+ * na order fica sem o caso, e a Chargebacks API responde ilegível. `naLista` false: a order contestada sem o item em
+ * `transactions.chargebacks[]` (a leitura vem sem identificação) até `mostrarNaLista`. `motivoCodigo` e `documentacao`
+ * passam pelo mesmo filtro do cliente real (uma frase vira null; uma situação fora da lista, "desconhecida").
+ */
+export type OpcoesContestacao = {
+  /** Centavos em disputa (padrão: o pago, ou o valor da order). */
+  valor?: number;
+  idCaso?: string;
+  idCbk?: string;
+  /** Status inicial (padrão in_process; um código estranho vira `desconhecido` na leitura). */
+  estado?: string;
+  documentacao?: string;
+  /** Prazo dos documentos (padrão: daqui a 10 dias; null = sem prazo). */
+  prazo?: Date | null;
+  /** `coverage_applied` (padrão null). */
+  cobertura?: boolean | null;
+  /** `coverage_elegible` (padrão true). */
+  elegivel?: boolean | null;
+  motivoId?: string | null;
+  motivoCodigo?: string | null;
+  idComo?: "texto" | "numero";
+  naLista?: boolean;
+};
 export type ChamadaFalsa = { metodo: MetodoProvedor; chave: string | null; id: string | null; referencia: string | null; valor: number | null; repetida?: boolean; conhecidas?: string[] };
 export type OpcoesAprovacao = { taxa?: number | null; liquido?: number | null; liberacaoPrevista?: Date | null; liberado?: boolean | null };
 /** O que chegou ao provedor no último cartão, sem o token (só se ele veio): para os testes conferirem o que passou por aqui. */
@@ -37,8 +76,46 @@ export type PedidoCartaoRecebido = Omit<PedidoCartao, "token"> & { comToken: boo
  * `completaCom`: quanto ela devolve ao concluir (`devolverAMenos`); `ocultaLeituras`: quantas leituras ainda não a mostram.
  */
 type DevolucaoFalsa = { id: string; estado: EstadoDevolucaoLida; valor: number; completaCom: number; ocultaLeituras: number };
-/** `tresDS` = a verificação do banco pedida na criação (null no Pix); `esquecida` = a leitura não acha mais a order. */
-type Registro = { cobranca: Cobranca; criadaEm: Date; financeiro: DetalheFinanceiro; devolucoes: DevolucaoFalsa[]; tresDS: ModoTresDS | null; esquecida: boolean };
+/**
+ * Uma contestação do lado do provedor (M8.2e): o caso da Chargebacks API e o item da order. `estado`: o status do item e o
+ * detalhe da transação (ou da order) contestada. `order`: null num caso sem order conhecida (`contestarTarde`).
+ */
+type ContestacaoFalsa = {
+  order: string | null;
+  idCaso: string;
+  idCbk: string;
+  /** O `transaction_id` do item: de propósito, nunca o id do pagamento da order (como no exemplo oficial). */
+  idTransacao: string;
+  idComo: "texto" | "numero";
+  estado: string;
+  valor: number;
+  documentacao: string;
+  prazo: Date | null;
+  cobertura: boolean | null;
+  elegivel: boolean | null;
+  motivoId: string | null;
+  motivoCodigo: string | null;
+  /** O `payments[]` do caso (`casoDeOutroPagamento` troca). */
+  pagamentos: string[];
+  naLista: boolean;
+  criadaEm: Date;
+  atualizadaEm: Date;
+  aoVivo: boolean | null;
+};
+/**
+ * `tresDS` = a verificação do banco pedida na criação (null no Pix); `esquecida` = a leitura não acha mais a order;
+ * `contestada` = como a order mostra a contestação (M8.2e): a order inteira, só a transação ou só a lista, e se a
+ * transação voltou a processed/accredited (`resolverContestacao`).
+ */
+type Registro = {
+  cobranca: Cobranca;
+  criadaEm: Date;
+  financeiro: DetalheFinanceiro;
+  devolucoes: DevolucaoFalsa[];
+  tresDS: ModoTresDS | null;
+  esquecida: boolean;
+  contestada: { como: "order" | "transacao" | "lista"; voltouAprovada: boolean } | null;
+};
 type Lembrado =
   | { metodo: "criarPix" | "criarCartao"; id: string | null; resultado: ResultadoCriacao }
   | { metodo: "cancelar"; resultado: ResultadoCancelamento }
@@ -48,15 +125,39 @@ const NADA: DetalheFinanceiro = { taxa: null, liquido: null, liberacaoPrevista: 
 const MARGEM_BUSCA_MS = 5 * 60_000;
 const INCERTO_CRIACAO = "Não deu para saber se o pagamento foi criado; conferir pela referência antes de tentar de novo.";
 
+/** A parte "status/detalhe" da transação no detalhe da order ("… ; pagamento x/y"); sem ela, a transação é a própria order. */
+const transacaoDoDetalhe = (detalhe: string): string => detalhe.split("; pagamento ")[1] ?? detalhe;
+/**
+ * O detalhe da contestação na transação (ou, sem ela, na order) `charged_back/<detalhe>`, como o cliente real; null se
+ * nenhuma das duas está contestada.
+ */
+function detalheContestado(detalhe: string): string | null {
+  const [order, transacao] = detalhe.split("; pagamento ");
+  for (const parte of [transacao, order]) {
+    const [status, d] = (parte ?? "").split("/");
+    if (status === "charged_back") return d ?? null;
+  }
+  return null;
+}
+/** `transacaoAprovada` sai sempre do detalhe (como o cliente real lê a transação), nunca de um campo guardado. */
 const copiar = (c: Cobranca): Cobranca => ({
   ...c,
   devolucoes: c.devolucoes.map((d) => ({ ...d })),
   pix: c.pix ? { ...c.pix, expiraEm: c.pix.expiraEm ? new Date(c.pix.expiraEm) : null } : null,
   cartao: c.cartao ? { ...c.cartao } : null,
+  contestacoes: c.contestacoes.map((x) => ({ ...x })),
+  transacaoAprovada: transacaoDoDetalhe(c.detalhe) === "processed/accredited",
 });
 const copiarFinanceiro = (f: DetalheFinanceiro): DetalheFinanceiro => ({ ...f, liberacaoPrevista: f.liberacaoPrevista ? new Date(f.liberacaoPrevista) : null });
 const copiarCriacao = (r: ResultadoCriacao): ResultadoCriacao => (r.ok ? { ok: true, cobranca: copiar(r.cobranca) } : { ...r, cobranca: r.cobranca ? copiar(r.cobranca) : null });
 const seq = (n: number) => String(n).padStart(4, "0");
+/** O número do pagamento na Payments API de uma order falsa (o mesmo do financeiro da aprovação). */
+const numeroDaOrder = (idOrder: string) => String(9_000_000_000 + Number(idOrder.replace(/\D/g, "") || 0));
+const CODIGO = /^[a-z0-9_]{1,60}$/;
+const MOTIVO_CODIGO = /^[a-z][a-z0-9_]{0,39}$/;
+const FORMATO = "Resposta do Mercado Pago em formato inesperado.";
+/** Como o cliente real lê um id que chegou como número: com mais de 15 algarismos já chega arredondado (null). */
+const lidoComoNumero = (id: string): string | null => (Number.isSafeInteger(Number(id)) ? String(Number(id)) : null);
 
 /**
  * O conjunto pessimista do que a documentação do Mercado Pago não garante nas devoluções de parte do valor (M8.2d): a
@@ -133,12 +234,19 @@ export class ProvedorFalso implements ProvedorPagamento {
   imagemPix: string | null = "RkFMU08=";
   /** `live_mode` das orders novas (true simula pagamento real na conta de teste). */
   aoVivo: boolean | null = false;
+  /** Resposta forçada da Chargebacks API, por método (M8.2e; ver `RespostaChargebacks`). */
+  respostaChargebacks: Partial<Record<MetodoChargebacks, RespostaChargebacks | null>> = {};
+  /** true: a Payments API pelo número não responde (404 → null), como pode acontecer com pagamentos antigos (item 72). */
+  situacaoAusente = false;
   /** Tudo o que foi chamado, na ordem, com as chaves de idempotência. */
   readonly chamadas: ChamadaFalsa[] = [];
 
   private readonly registros = new Map<string, Registro>();
   private readonly chaves = new Map<string, Lembrado>();
+  /** As contestações (M8.2e), na ordem em que nasceram. */
+  private readonly casos: ContestacaoFalsa[] = [];
   private orders = 0;
+  private contestacoes = 0;
   private devolucoes = 0;
   private devolucoesNoPainel = 0;
   private desafios = 0;
@@ -163,9 +271,34 @@ export class ProvedorFalso implements ProvedorPagamento {
     if (contar) for (const d of r.devolucoes) if (d.ocultaLeituras > 0) d.ocultaLeituras--;
     // `pagoLiquidoDeDevolucoes`: o total pago da leitura desconta o devolvido (o real continua guardado).
     const pago = this.pagoLiquidoDeDevolucoes && r.cobranca.pago !== null ? Math.max(0, r.cobranca.pago - r.cobranca.devolvido) : r.cobranca.pago;
+    const contestacoes = this.contestacoesLidas(r);
     // Sem a lista na leitura, como o cliente real: nada devolvido nem em andamento à vista (a situação continua a da order).
-    if (!this.listaNaLeitura) return copiar({ ...r.cobranca, pago, devolvido: 0, devolucoes: [], devolucaoEmAndamento: false });
-    return copiar({ ...r.cobranca, pago, devolucoes: visiveis.map((d) => ({ id: d.id, estado: d.estado, valor: d.valor })), devolucaoEmAndamento: visiveis.some((d) => d.estado === "andamento") });
+    if (!this.listaNaLeitura) return copiar({ ...r.cobranca, pago, devolvido: 0, devolucoes: [], devolucaoEmAndamento: false, contestacoes });
+    return copiar({ ...r.cobranca, pago, devolucoes: visiveis.map((d) => ({ id: d.id, estado: d.estado, valor: d.valor })), devolucaoEmAndamento: visiveis.some((d) => d.estado === "andamento"), contestacoes });
+  }
+
+  /**
+   * As contestações que a leitura da order mostra, como o cliente real (`contestacoesDaOrder`): os itens da lista (até 20)
+   * ou, sem item, uma sem identificação pela transação (ou order) `charged_back/<detalhe>`.
+   */
+  private contestacoesLidas(r: Registro): ContestacaoLida[] {
+    const lidas = this.casos
+      .filter((x) => x.order === r.cobranca.idProvedor && x.naLista)
+      .slice(0, MAXIMO_CONTESTACOES_LIDAS)
+      .map((x): ContestacaoLida => ({
+        idContestacao: x.idCbk,
+        idCaso: x.idComo === "numero" ? lidoComoNumero(x.idCaso) : x.idCaso,
+        idTransacao: x.idTransacao,
+        estadoLido: estadoLidoDaContestacao(x.estado),
+        codigo: x.estado,
+        valor: x.valor,
+        daTransacao: false,
+      }));
+    if (lidas.length) return lidas;
+    const detalhe = detalheContestado(r.cobranca.detalhe);
+    if (detalhe === null) return [];
+    const codigo = CODIGO.test(detalhe) ? detalhe : null;
+    return [{ idContestacao: null, idCaso: null, idTransacao: null, estadoLido: estadoLidoDaContestacao(codigo), codigo, valor: null, daTransacao: true }];
   }
 
   private registrar(metodo: MetodoProvedor, o: Partial<Omit<ChamadaFalsa, "metodo">> = {}) {
@@ -202,15 +335,23 @@ export class ProvedorFalso implements ProvedorPagamento {
     return r;
   }
 
-  private novaOrder(base: Omit<Cobranca, "idProvedor" | "idTransacao" | "devolvido" | "devolucaoEmAndamento" | "devolucoes" | "aoVivo" | "valorTransacao">, tresDS: ModoTresDS | null = null): Registro {
+  private novaOrder(
+    base: Omit<Cobranca, "idProvedor" | "idTransacao" | "devolvido" | "devolucaoEmAndamento" | "devolucoes" | "aoVivo" | "valorTransacao" | "contestacoes" | "transacaoAprovada">,
+    tresDS: ModoTresDS | null = null,
+  ): Registro {
     const n = ++this.orders;
     const registro: Registro = {
-      cobranca: { ...base, idProvedor: `ORDTST${seq(n)}`, idTransacao: `PAYTST${seq(n)}`, valorTransacao: base.valor, devolvido: 0, devolucaoEmAndamento: false, devolucoes: [], aoVivo: this.aoVivo },
+      cobranca: {
+        ...base, idProvedor: `ORDTST${seq(n)}`, idTransacao: `PAYTST${seq(n)}`, valorTransacao: base.valor, devolvido: 0, devolucaoEmAndamento: false, devolucoes: [], aoVivo: this.aoVivo,
+        // `transacaoAprovada` é recalculada do detalhe em toda cópia (`copiar`).
+        contestacoes: [], transacaoAprovada: false,
+      },
       criadaEm: this.agora(),
       financeiro: { ...NADA },
       devolucoes: [],
       tresDS,
       esquecida: false,
+      contestada: null,
     };
     this.registros.set(registro.cobranca.idProvedor, registro);
     return registro;
@@ -469,6 +610,104 @@ export class ProvedorFalso implements ProvedorPagamento {
     return this.contaDeTeste;
   }
 
+  /** O caso como a Chargebacks API mostra, pelo mesmo filtro do cliente real (`casoDaContestacao`). */
+  private casoVisto(x: ContestacaoFalsa): CasoDeContestacao {
+    return {
+      idCaso: x.idCaso,
+      pagamentos: [...x.pagamentos],
+      valor: x.valor,
+      motivoId: x.motivoId !== null && /^\d{1,6}$/.test(x.motivoId) ? x.motivoId : null,
+      motivoCodigo: x.motivoCodigo !== null && MOTIVO_CODIGO.test(x.motivoCodigo) ? x.motivoCodigo : null,
+      coberturaAplicada: x.cobertura,
+      coberturaElegivel: x.elegivel,
+      documentacao: (SITUACOES_DOCUMENTACAO as readonly string[]).includes(x.documentacao) ? (x.documentacao as SituacaoDocumentacao) : "desconhecida",
+      prazoDocumentacao: x.prazo ? new Date(x.prazo) : null,
+      criadoEm: new Date(x.criadaEm),
+      atualizadoEm: new Date(x.atualizadaEm),
+      aoVivo: x.aoVivo,
+    };
+  }
+
+  /** O id do caso chega como número arredondado (`idComo` "numero" com mais de 15 algarismos): o cliente real não lê a resposta. */
+  private casoLegivel(x: ContestacaoFalsa): boolean {
+    return x.idComo === "texto" || lidoComoNumero(x.idCaso) === x.idCaso;
+  }
+
+  /** Como o cliente real: id que não pode existir = null; 403 = sem acesso; 404 = null; "falha" lança; caso ilegível lança. */
+  async consultarContestacao(idCaso: string): Promise<CasoDeContestacao | null | SemAcessoContestacao> {
+    this.registrar("consultarContestacao", { id: idCaso });
+    const antes = this.falhaAntes("consultarContestacao");
+    if (antes) throw antes;
+    if (!idNumericoValido(idCaso)) return null;
+    const resposta = this.respostaChargebacks.consultarContestacao;
+    if (resposta === "falha") throw new ErroProvedor("incerto", "A conexão com o Mercado Pago caiu; o pedido pode ter sido recebido.");
+    if (resposta === "403") return { semAcesso: true };
+    if (resposta === "404") return null;
+    const x = this.casos.find((c) => c.idCaso === idCaso);
+    if (!x) return null;
+    if (!this.casoLegivel(x)) throw new ErroProvedor("incerto", FORMATO);
+    return this.casoVisto(x);
+  }
+
+  /**
+   * Como o cliente real: os casos cujo `payments[]` traz o número (até 20); número que não pode existir = lista vazia; 403
+   * = sem acesso; "404" (rota inexistente) e "falha" lançam; um caso ilegível lança (nunca "nenhuma" sem saber).
+   */
+  async buscarContestacoes(idPagamento: string): Promise<CasoDeContestacao[] | SemAcessoContestacao> {
+    this.registrar("buscarContestacoes", { id: idPagamento });
+    const antes = this.falhaAntes("buscarContestacoes");
+    if (antes) throw antes;
+    if (!idNumericoValido(idPagamento)) return [];
+    const resposta = this.respostaChargebacks.buscarContestacoes;
+    if (resposta === "403") return { semAcesso: true };
+    if (resposta === "404") throw new ErroProvedor("incerto", "Não deu para ler as contestações no Mercado Pago.");
+    if (resposta === "falha") throw new ErroProvedor("incerto", "A conexão com o Mercado Pago caiu; o pedido pode ter sido recebido.");
+    const casos = this.casos.filter((c) => c.pagamentos.includes(idPagamento)).slice(0, MAXIMO_CONTESTACOES_LIDAS);
+    if (!casos.every((c) => this.casoLegivel(c))) throw new ErroProvedor("incerto", FORMATO);
+    return casos.map((c) => this.casoVisto(c));
+  }
+
+  /**
+   * A Payments API pelo número, como a documentação descreve: com contestação, charged_back/<estado> (também com a order
+   * apagada), ou approved/accredited se a transação voltou a aprovada; sem contestação, pela situação da order.
+   * `money_release_status` pelo financeiro. Número desconhecido, que não pode existir, ou `situacaoAusente` = null.
+   */
+  async situacaoDoPagamento(idPagamento: string): Promise<SituacaoDoPagamento | null> {
+    this.registrar("situacaoDoPagamento", { id: idPagamento });
+    const antes = this.falhaAntes("situacaoDoPagamento");
+    if (antes) throw antes;
+    if (!idNumericoValido(idPagamento) || this.situacaoAusente) return null;
+    const r = [...this.registros.values()].find((x) => this.numeroDoPagamento(x) === idPagamento) ?? null;
+    const caso = this.casos.filter((c) => (r && c.order === r.cobranca.idProvedor) || c.pagamentos.includes(idPagamento)).at(-1);
+    if (!r && !caso) return null;
+    const liberado = r?.financeiro.liberado;
+    const moneyReleaseStatus = liberado === true ? "released" : liberado === false ? "pending" : null;
+    if (caso) {
+      return r?.contestada?.voltouAprovada
+        ? { status: "approved", statusDetail: "accredited", moneyReleaseStatus }
+        : { status: "charged_back", statusDetail: CODIGO.test(caso.estado) ? caso.estado : null, moneyReleaseStatus };
+    }
+    const pares: Record<SituacaoCobranca, [string, string] | null> = {
+      pendente: ["pending", "pending_waiting_payment"],
+      em_analise: ["in_process", "pending_review_manual"],
+      aprovado: ["approved", "accredited"],
+      recusado: ["rejected", "cc_rejected_other_reason"],
+      cancelado: ["cancelled", "by_collector"],
+      expirado: ["cancelled", "expired"],
+      devolvido: ["refunded", "refunded"],
+      devolvido_parcial: ["approved", "partially_refunded"],
+      contestado: ["charged_back", "in_process"],
+      desconhecido: null,
+    };
+    const par = pares[r!.cobranca.situacao];
+    return { status: par?.[0] ?? null, statusDetail: par?.[1] ?? null, moneyReleaseStatus };
+  }
+
+  /** O número do pagamento na Payments API (o do financeiro, ou o mesmo que a aprovação daria). */
+  private numeroDoPagamento(r: Registro): string {
+    return r.financeiro.idPagamento ?? numeroDaOrder(r.cobranca.idProvedor);
+  }
+
   /**
    * Dinheiro devolvido na order: inteira = devolvida (ou processed/refunded, que a leitura não reconhece); senão, em parte
    * (ou processed/refunded com `detalheParcial`, como o exemplo da documentação).
@@ -518,7 +757,7 @@ export class ProvedorFalso implements ProvedorPagamento {
       liquido,
       liberacaoPrevista: o.liberacaoPrevista ? new Date(o.liberacaoPrevista) : null,
       liberado: o.liberado ?? null,
-      idPagamento: String(9_000_000_000 + Number(r.cobranca.idProvedor.replace(/\D/g, "") || 0)),
+      idPagamento: numeroDaOrder(r.cobranca.idProvedor),
       liberacaoEmParcelas: false,
       custoParcelasVendedor: r.cobranca.forma === "cartao" ? custo : null,
     };
@@ -571,12 +810,133 @@ export class ProvedorFalso implements ProvedorPagamento {
   }
 
   /**
-   * Contestação: `order` = a order inteira em charged_back/in_process; `transacao` = só a transação charged_back/in_process
-   * numa order processada; `lista` = uma contestação in_process em transactions.chargebacks[], a order ainda processada.
+   * Contestação: `order` = a order inteira em charged_back/<estado>; `transacao` = só a transação charged_back/<estado>
+   * numa order processada; `lista` = só o item em transactions.chargebacks[], a order ainda processada. Em todas, o item
+   * aparece na lista (salvo `o.naLista` false, que não vale com `lista`) e o caso, na Chargebacks API, com o número deste
+   * pagamento em `payments[]`. Cada chamada é uma contestação nova (a segunda disputa no mesmo pagamento); a order mostra
+   * o estado da mais nova. Devolve os ids (o número do caso e o CBK…).
    */
-  contestar(id: string, como: "order" | "transacao" | "lista" = "order") {
-    const detalhe = { order: "charged_back/in_process", transacao: "processed/accredited; pagamento charged_back/in_process", lista: "processed/accredited" }[como];
-    this.mudar(id, "contestado", detalhe);
+  contestar(id: string, como: "order" | "transacao" | "lista" = "order", o: OpcoesContestacao = {}): { idCaso: string; idCbk: string } {
+    const r = this.registro(id);
+    if (como === "lista" && o.naLista === false) throw new Error("Contestação só na lista precisa aparecer na lista.");
+    const x = this.novaContestacao(id, [this.numeroDoPagamento(r)], r.cobranca.pago ?? r.cobranca.valor, o);
+    r.contestada = { como, voltouAprovada: false };
+    this.atualizarContestada(r);
+    return { idCaso: x.idCaso, idCbk: x.idCbk };
+  }
+
+  /**
+   * Contestação achada só pela Chargebacks API (M8.2e): a order deste número de pagamento (se houver) é apagada, como
+   * depois dos 90 dias, e o caso nasce sem item na order. Sem order conhecida, o caso fica só com o número (`o.valor`
+   * obrigatório).
+   */
+  contestarTarde(idPagamento: string, o: OpcoesContestacao = {}): { idCaso: string; idCbk: string } {
+    if (!idNumericoValido(idPagamento)) throw new Error("Número de pagamento falso inválido.");
+    const r = [...this.registros.values()].find((x) => this.numeroDoPagamento(x) === idPagamento) ?? null;
+    const valor = o.valor ?? (r ? r.cobranca.pago ?? r.cobranca.valor : null);
+    if (valor === null) throw new Error("Informe o valor da contestação tardia sem order.");
+    if (r) r.esquecida = true;
+    const x = this.novaContestacao(r?.cobranca.idProvedor ?? null, [idPagamento], valor, { ...o, naLista: false });
+    return { idCaso: x.idCaso, idCbk: x.idCbk };
+  }
+
+  private novaContestacao(order: string | null, pagamentos: string[], valorPadrao: number, o: OpcoesContestacao): ContestacaoFalsa {
+    const n = ++this.contestacoes;
+    const agora = this.agora();
+    const x: ContestacaoFalsa = {
+      order,
+      idCaso: o.idCaso ?? String(7_000_000_000 + n),
+      idCbk: o.idCbk ?? `CBKTST${seq(n)}`,
+      idTransacao: `PAYCBK${seq(n)}`,
+      idComo: o.idComo ?? "texto",
+      estado: o.estado ?? "in_process",
+      valor: o.valor ?? valorPadrao,
+      documentacao: o.documentacao ?? "pending",
+      prazo: o.prazo === undefined ? new Date(agora.getTime() + 10 * 86_400_000) : o.prazo ? new Date(o.prazo) : null,
+      cobertura: o.cobertura ?? null,
+      elegivel: o.elegivel === undefined ? true : o.elegivel,
+      motivoId: o.motivoId ?? null,
+      motivoCodigo: o.motivoCodigo ?? null,
+      pagamentos: [...pagamentos],
+      naLista: o.naLista ?? true,
+      criadaEm: agora,
+      atualizadaEm: agora,
+      aoVivo: this.aoVivo,
+    };
+    if (!idNumericoValido(x.idCaso) || !idContestacaoValido(x.idCbk) || !CODIGO.test(x.estado) || !Number.isSafeInteger(x.valor) || x.valor <= 0) {
+      throw new Error("Contestação falsa inválida.");
+    }
+    if (this.casos.some((c) => c.idCaso === x.idCaso || c.idCbk === x.idCbk)) throw new Error("Contestação falsa repetida.");
+    this.casos.push(x);
+    return x;
+  }
+
+  /**
+   * A contestação pelo id que o teste tiver: o CBK…, o número do caso, o id da order ou o número do pagamento (nos dois
+   * últimos, a mais nova).
+   */
+  private caso(id: string): ContestacaoFalsa {
+    const x =
+      this.casos.find((c) => c.idCbk === id || c.idCaso === id) ??
+      this.casos.filter((c) => c.order === id || c.pagamentos.includes(id) || (c.order !== null && numeroDaOrder(c.order) === id)).at(-1);
+    if (!x) throw new Error(`Contestação falsa inexistente: ${id}`);
+    return x;
+  }
+
+  /** A situação e o detalhe da order contestada, pelo modo e pelo estado da contestação mais nova dela. */
+  private atualizarContestada(r: Registro) {
+    const c = r.contestada;
+    if (!c) return;
+    const id = r.cobranca.idProvedor;
+    const daOrder = this.casos.filter((x) => x.order === id);
+    const estado = daOrder.at(-1)?.estado ?? "in_process";
+    // Como `normalizarSituacao`: um item in_process ou settled na lista contesta, seja qual for a order.
+    const pelaLista = daOrder.some((x) => x.naLista && (x.estado === "in_process" || x.estado === "settled"));
+    if (c.voltouAprovada || c.como === "lista") this.mudar(id, pelaLista ? "contestado" : "aprovado", "processed/accredited");
+    else if (c.como === "transacao") this.mudar(id, "contestado", `processed/accredited; pagamento charged_back/${estado}`);
+    else this.mudar(id, "contestado", `charged_back/${estado}`);
+  }
+
+  /**
+   * O Mercado Pago muda a contestação (M8.2e): `estado` (o status do item e o detalhe da transação: settled, reimbursed,
+   * in_process de novo ou um código estranho), `cobertura` (`coverage_applied`: null → true/false) e
+   * `transacaoAprovada` (a transação volta a processed/accredited, ou não). `id`: ver `caso`.
+   */
+  resolverContestacao(id: string, o: { estado?: string; cobertura?: boolean | null; transacaoAprovada?: boolean }) {
+    const x = this.caso(id);
+    if (o.estado !== undefined) {
+      if (!CODIGO.test(o.estado)) throw new Error("Estado de contestação falsa inválido.");
+      x.estado = o.estado;
+    }
+    if (o.cobertura !== undefined) x.cobertura = o.cobertura;
+    x.atualizadaEm = this.agora();
+    const r = x.order ? this.registros.get(x.order) : undefined;
+    if (r?.contestada) {
+      if (o.transacaoAprovada !== undefined) r.contestada.voltouAprovada = o.transacaoAprovada;
+      this.atualizarContestada(r);
+    }
+  }
+
+  /** A documentação do caso muda (`documentation_status` e, se vier, `date_documentation_deadline`; null = sem prazo). */
+  documentacaoDoCaso(id: string, documentacao: string, prazo?: Date | null) {
+    const x = this.caso(id);
+    x.documentacao = documentacao;
+    if (prazo !== undefined) x.prazo = prazo ? new Date(prazo) : null;
+    x.atualizadaEm = this.agora();
+  }
+
+  /** O caso passa a mostrar outro pagamento em `payments[]` (o caso não é deste pagamento). */
+  casoDeOutroPagamento(id: string, outroPagamento = "8999999999") {
+    if (!idNumericoValido(outroPagamento)) throw new Error("Número de pagamento falso inválido.");
+    this.caso(id).pagamentos = [outroPagamento];
+  }
+
+  /** A contestação nascida com `naLista` false passa a aparecer em `transactions.chargebacks[]` (a lista chega depois). */
+  mostrarNaLista(id: string) {
+    const x = this.caso(id);
+    x.naLista = true;
+    const r = x.order ? this.registros.get(x.order) : undefined;
+    if (r) this.atualizarContestada(r);
   }
 
   /** Devolução feita fora do sistema (painel do Mercado Pago): aparece na leitura com id REFPNL…, já confirmada. */
