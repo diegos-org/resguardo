@@ -1,0 +1,246 @@
+/**
+ * Contestação do pagamento no site (M8.2e) — a rotina das disputas (releitura diária, busca tardia semanal, fila que anda na
+ * falha, 403, dia 85 sem fonte, 240 dias, limite por volta e orçamento, depois dos holds, "Conferir agora" de um pagamento),
+ * o registro pela equipe e os e-mails à equipe, em PGlite com o Mercado Pago falso (sem rede).
+ * Itens 20 e 22 de "Testes a escrever" (PAGAMENTO-SITE.md, "Contestação (M8.2e)").
+ */
+import { asc, eq, ne } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { lerEmpresa, salvarEmpresa } from "@/configuracoes/empresa";
+import { contestacoesPagamento, cotacoes, eventosContestacao, pagamentos } from "@/db/schema";
+import { createTestDb } from "@/db/testing";
+import type { Db } from "@/db/types";
+import { CorreioMemoria } from "@/email/correio";
+import { conferirTentativa } from "./conferencia";
+import {
+  avisarEquipeDasContestacoes,
+  buscarContestacoesTardias,
+  conferirContestacoes,
+  conferirContestacoesDoPagamento,
+  type EntradaRegistroDisputa,
+  registrarContestacaoDaEquipe,
+  TEXTO_MED_SO_NO_PIX,
+} from "./contestacao";
+import { LEITURAS_DE_CONTESTACAO_POR_VOLTA, NOTA_SEM_LEITURA, TEXTO_CASO_DE_OUTRO_PAGAMENTO, TEXTO_DISPUTA_JA_NO_QUADRO } from "./contestacao-regras";
+import { ErroProvedor } from "./provedor";
+import { rotinaDoSite } from "./rotina";
+import { type Cenario, envelhecer, minutos, montarCenario, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
+
+let db: Db, close: () => Promise<void>, c: Cenario, equipe: string;
+beforeAll(async () => { ({ db, close } = await createTestDb()); });
+afterAll(() => close());
+beforeEach(async () => {
+  c = await montarCenario(db);
+  equipe = await usuarioDeTeste(c);
+});
+afterEach(async () => {
+  expect(await semDadosDoHospede(db)).toEqual([]);
+});
+
+const DIA = 86_400_000;
+const dias = (n: number, de = minutos(0)) => new Date(de.getTime() + n * DIA);
+const conferir = (id: string, quando: Date) => conferirTentativa(db, c.org, id, c.provedor, quando, { origem: "rotina", forcar: true });
+const linhas = (pagamentoId: string) => db.select().from(contestacoesPagamento).where(eq(contestacoesPagamento.pagamentoId, pagamentoId)).orderBy(asc(contestacoesPagamento.abertaEm), asc(contestacoesPagamento.id));
+const chamadas = (metodo: string) => c.provedor.chamadas.filter((x) => x.metodo === metodo);
+const entrada = (o: Partial<EntradaRegistroDisputa> = {}): EntradaRegistroDisputa => ({ tipo: "chargeback", abertaEm: "2026-10-01", valor: 50_000, prazo: "2026-10-20", idCaso: null, nota: "Vista no painel do Mercado Pago", ...o });
+/** Um cartão pago e contestado, lido pela order (a linha nasce com o número do caso). */
+async function contestado(over: Parameters<typeof pagarEConfirmar>[1] = {}) {
+  const x = await pagarEConfirmar(c, { forma: "cartao", ...over });
+  const ids = c.provedor.contestar(x.idProvedor);
+  await conferir(x.pagamentoId, minutos(10));
+  return { ...x, ...ids };
+}
+
+describe("rotina das disputas (item 20)", () => {
+  it("depois dos 85 dias: relida uma vez por dia pela Chargebacks API (pelo caso) e pela Payments API (pelo número)", async () => {
+    const x = await contestado();
+    await envelhecer(c, x.pagamentoId, 90);
+    c.provedor.resolverContestacao(x.idCaso, { estado: "settled", cobertura: true });
+    // Ainda não é a vez dela (relida há menos de um dia): nada é lido.
+    expect(await conferirContestacoes(db, c.org, c.provedor, minutos(60))).toMatchObject({ lidas: 0 });
+    const r = await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    expect(r).toMatchObject({ lidas: 1, mudaram: 1, falhas: 0 });
+    expect(chamadas("consultarContestacao").map((x) => x.id)).toEqual([x.idCaso]);
+    expect(chamadas("situacaoDoPagamento")).toHaveLength(1);
+    // A order não é mais lida depois dos 85 dias.
+    expect(chamadas("consultar").filter((ch) => ch.id === x.idProvedor && c.provedor.chamadas.indexOf(ch) > c.provedor.chamadas.indexOf(chamadas("consultarContestacao")[0]))).toEqual([]);
+    const [l] = await linhas(x.pagamentoId);
+    expect(l).toMatchObject({ situacao: "a_confirmar", coberturaAplicada: true, falhasLeitura: 0, consultadaEm: dias(2), proximaLeituraEm: dias(3) });
+  });
+
+  it("a fila anda também na falha: espera crescente (1, 2, 4 dias); a leitura boa zera", async () => {
+    const x = await contestado();
+    c.provedor.falhas.consultarContestacao = new ErroProvedor("incerto", "sem resposta");
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    expect((await linhas(x.pagamentoId))[0]).toMatchObject({ falhasLeitura: 1, proximaLeituraEm: dias(3) });
+    await conferirContestacoes(db, c.org, c.provedor, dias(3));
+    expect((await linhas(x.pagamentoId))[0]).toMatchObject({ falhasLeitura: 2, proximaLeituraEm: dias(5) });
+    await conferirContestacoes(db, c.org, c.provedor, dias(5));
+    expect((await linhas(x.pagamentoId))[0]).toMatchObject({ falhasLeitura: 3, proximaLeituraEm: dias(9) });
+    c.provedor.falhas.consultarContestacao = null;
+    await conferirContestacoes(db, c.org, c.provedor, dias(9));
+    expect((await linhas(x.pagamentoId))[0]).toMatchObject({ falhasLeitura: 0, proximaLeituraEm: dias(10) });
+  });
+
+  it("403 da Chargebacks API: aviso contestacao_sem_leitura, uma vez", async () => {
+    const x = await contestado();
+    c.provedor.respostaChargebacks.consultarContestacao = "403";
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    await conferirContestacoes(db, c.org, c.provedor, dias(4));
+    const [l] = await linhas(x.pagamentoId);
+    expect(l.avisos.filter((a) => a === "contestacao_sem_leitura")).toHaveLength(1);
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("contestacao_sem_leitura");
+  });
+
+  it("dia 85 sem fonte: sem caso nem número do pagamento, o aviso contestacao_sem_fonte (em vez de esperar os 240 dias)", async () => {
+    const x = await pagarEConfirmar(c);
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "med" }), equipe, null, minutos(20))).toMatchObject({ ok: true });
+    await db.update(pagamentos).set({ idPagamentoProvedor: null }).where(eq(pagamentos.id, x.pagamentoId));
+    await envelhecer(c, x.pagamentoId, 90);
+    await conferirContestacoes(db, c.org, c.provedor, dias(1));
+    expect((await linhas(x.pagamentoId))[0].avisos).toContain("contestacao_sem_fonte");
+    expect(chamadas("consultarContestacao")).toEqual([]);
+  });
+
+  it("240 dias da abertura: para de ler e avisa contestacao_fora_do_prazo, uma vez", async () => {
+    const x = await contestado();
+    await db.update(contestacoesPagamento).set({ abertaEm: dias(-241) }).where(eq(contestacoesPagamento.pagamentoId, x.pagamentoId));
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(2))).toMatchObject({ foraDoPrazo: 1, lidas: 0 });
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(3))).toMatchObject({ foraDoPrazo: 0, lidas: 0 });
+    const [l] = await linhas(x.pagamentoId);
+    expect(l).toMatchObject({ proximaLeituraEm: null });
+    expect(l.avisos.filter((a) => a === "contestacao_fora_do_prazo")).toHaveLength(1);
+    expect(chamadas("consultarContestacao")).toEqual([]);
+  });
+
+  it("no máximo 50 por volta, em ordem de proxima_leitura_em; o orçamento de tempo para a volta", async () => {
+    const x = await contestado();
+    const [l0] = await linhas(x.pagamentoId);
+    // Mais 52 disputas antigas no mesmo pagamento (ids de caso distintos), já na vez delas.
+    const base: Partial<typeof l0> = { ...l0 };
+    delete base.id;
+    await db.insert(contestacoesPagamento).values(
+      Array.from({ length: 52 }, (_, i) => ({ ...(base as Omit<typeof l0, "id">), idCaso: String(8_100_000_000 + i), idContestacao: null, duplicataPossivel: true, retidoLancamentoId: null, proximaLeituraEm: minutos(i), avisos: [] })),
+    );
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(2))).toMatchObject({ lidas: LEITURAS_DE_CONTESTACAO_POR_VOLTA });
+    // O orçamento: o relógio passa do minuto antes do segundo pagamento com disputa; ele fica para a próxima volta.
+    const y = await contestado({ entrada: "2026-11-02", saida: "2026-11-05", email: "outro@example.com" });
+    // O relógio: o início da volta, o primeiro pagamento (dentro do minuto) e, no segundo, 70 s depois.
+    const tempos = [0, 0, 70_000];
+    const r = await conferirContestacoes(db, c.org, c.provedor, dias(4), { relogio: () => tempos.shift() ?? 70_000 });
+    expect(r.lidas).toBeGreaterThan(0);
+    expect((await linhas(y.pagamentoId))[0].consultadaEm).toEqual(minutos(10));
+    // A volta seguinte (sem o relógio estourado) chega nele.
+    await conferirContestacoes(db, c.org, c.provedor, dias(4));
+    expect((await linhas(y.pagamentoId))[0].consultadaEm).toEqual(dias(4));
+  });
+
+  it("busca tardia semanal, de todo desfecho, na janela, reservada pela coluna", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    const numero = (await c.tentativa(x.pagamentoId)).idPagamentoProvedor!;
+    // Antes dos 80 dias: fora da janela.
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, minutos(30))).toMatchObject({ buscados: 0 });
+    await envelhecer(c, x.pagamentoId, 100);
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, minutos(30))).toMatchObject({ buscados: 1, novas: 0 });
+    expect((await c.tentativa(x.pagamentoId)).contestacoesBuscadasEm).toEqual(minutos(30));
+    // Na mesma semana, nada; a falha devolve a marca.
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, dias(3))).toMatchObject({ buscados: 0 });
+    c.provedor.respostaChargebacks.buscarContestacoes = "falha";
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, dias(8))).toMatchObject({ buscados: 1, falhas: 1 });
+    expect((await c.tentativa(x.pagamentoId)).contestacoesBuscadasEm).toEqual(minutos(30));
+    c.provedor.respostaChargebacks.buscarContestacoes = null;
+    c.provedor.contestarTarde(numero, { valor: 40_000 });
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, dias(8))).toMatchObject({ buscados: 1, novas: 1 });
+    expect((await linhas(x.pagamentoId))[0]).toMatchObject({ situacao: "aberta", origem: "leitura", valor: 40_000, valorEmRisco: 40_000 });
+    expect(chamadas("buscarContestacoes").every((ch) => ch.id === numero)).toBe(true);
+    // De qualquer desfecho com dinheiro: um pagamento já devolvido (desfecho devolução) também é procurado.
+    const z = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05", email: "z@example.com" });
+    await db.update(pagamentos).set({ situacao: "devolvido", desfecho: "devolucao" }).where(eq(pagamentos.id, z.pagamentoId));
+    await envelhecer(c, z.pagamentoId, 100);
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, dias(9))).toMatchObject({ buscados: 1 });
+    expect(chamadas("buscarContestacoes").at(-1)!.id).toBe((await c.tentativa(z.pagamentoId)).idPagamentoProvedor);
+  });
+
+  it("roda depois dos holds (o vencimento não espera o Mercado Pago); \"Conferir agora\" de um pagamento só lê aquele", async () => {
+    const a = await contestado();
+    const b = await contestado({ entrada: "2026-11-02", saida: "2026-11-05", email: "outro@example.com" });
+    // Um pedido segurado e vencido: na hora da leitura da disputa, a rotina já o venceu.
+    const s = await c.segurar({ entrada: "2026-11-10", saida: "2026-11-12", email: "terceiro@example.com" }, minutos(0));
+    const original = c.provedor.consultarContestacao.bind(c.provedor);
+    let situacaoNaLeitura: string | null = null;
+    c.provedor.consultarContestacao = async (id: string) => {
+      situacaoNaLeitura ??= (await db.select({ estado: cotacoes.estado }).from(cotacoes).where(eq(cotacoes.id, s.cotacaoId)))[0].estado;
+      return original(id);
+    };
+    // As disputas das outras empresas do banco de teste ficam fora da vez (a rotina lê todas as empresas).
+    await db.update(contestacoesPagamento).set({ proximaLeituraEm: dias(1000) }).where(ne(contestacoesPagamento.organizacaoId, c.org));
+    const r = await rotinaDoSite(db, c.provedor, dias(2), { correio: null });
+    expect(r.contestacoes).toMatchObject({ lidas: 2 });
+    expect(situacaoNaLeitura).toBe("expirada");
+    c.provedor.consultarContestacao = original;
+    const antes = chamadas("consultarContestacao").length;
+    await conferirContestacoesDoPagamento(db, c.org, a.pagamentoId, c.provedor, dias(2));
+    const depois = chamadas("consultarContestacao").slice(antes);
+    expect(depois.map((x) => x.id)).toEqual([a.idCaso]);
+    expect(depois.map((x) => x.id)).not.toContain(b.idCaso);
+  });
+});
+
+describe("registro pela equipe (item 22)", () => {
+  it("relê antes (order e Chargebacks API); não duplica a disputa que a leitura já trouxe", async () => {
+    const x = await contestado();
+    const antes = c.provedor.chamadas.length;
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ idCaso: x.idCaso }), equipe, c.provedor, minutos(20))).toEqual({ ok: false, erro: TEXTO_DISPUTA_JA_NO_QUADRO });
+    expect(c.provedor.chamadas.slice(antes).map((ch) => ch.metodo)).toEqual(expect.arrayContaining(["consultar", "consultarContestacao"]));
+    expect(await linhas(x.pagamentoId)).toHaveLength(1);
+  });
+
+  it("caso de outro pagamento: recusado com a frase, nada gravado", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    const { idCaso } = c.provedor.contestar(x.idProvedor, "lista");
+    c.provedor.casoDeOutroPagamento(idCaso);
+    // A disputa da order ainda não foi lida; o caso informado é de outro pagamento.
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ idCaso }), equipe, c.provedor, minutos(20))).toEqual({ ok: false, erro: TEXTO_CASO_DE_OUTRO_PAGAMENTO });
+  });
+
+  it("sem provedor, segue com a nota \"sem leitura do Mercado Pago\"; a linha nasce aberta, de origem equipe, com o prazo; o e-mail à equipe uma vez", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    await salvarEmpresa(db, c.org, { ...(await lerEmpresa(db, c.org)), email: "equipe@example.com" }, null);
+    const correio = new CorreioMemoria();
+    const r = await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada(), equipe, null, minutos(20), { correio });
+    expect(r).toMatchObject({ ok: true });
+    const [l] = await linhas(x.pagamentoId);
+    expect(l).toMatchObject({ origem: "equipe", tipo: "chargeback", situacao: "aberta", valor: 50_000, valorOrigem: "equipe", valorEmRisco: 50_000, notaRegistro: `Vista no painel do Mercado Pago (${NOTA_SEM_LEITURA})` });
+    expect(l.documentacaoPrazo).not.toBeNull();
+    expect(l.avisos).not.toContain("contestacao_prazo_desconhecido");
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("aprovado");
+    expect(correio.enviadas.map((m) => m.assunto)).toEqual([`Disputa do pagamento: reserva ${x.reservaCodigo}`]);
+    expect(correio.enviadas[0].texto).not.toContain("example.com");
+    // Uma vez: de novo, nada; no prazo dos documentos, o aviso dos dias e o do dia (cada um uma vez).
+    expect(await avisarEquipeDasContestacoes(db, c.org, correio, minutos(30))).toBe(0);
+    expect(await avisarEquipeDasContestacoes(db, c.org, correio, new Date("2026-10-17T12:00:00-03:00"))).toBe(1);
+    expect(await avisarEquipeDasContestacoes(db, c.org, correio, new Date("2026-10-18T12:00:00-03:00"))).toBe(0);
+    expect(await avisarEquipeDasContestacoes(db, c.org, correio, new Date("2026-10-20T12:00:00-03:00"))).toBe(1);
+    expect(correio.enviadas).toHaveLength(3);
+    const ev = await db.select().from(eventosContestacao).where(eq(eventosContestacao.contestacaoId, l.id));
+    expect(ev.filter((e) => e.tipo === "email_equipe").map((e) => e.depois?.momento).sort()).toEqual(["abertura", "prazo_aviso", "prazo_dia"]);
+    expect(ev.find((e) => e.tipo === "aberta")).toMatchObject({ fonte: "equipe", usuarioId: equipe });
+  });
+
+  it("MED só no Pix; sem prazo, o aviso de prazo desconhecido; nota com dado pessoal recusada; pagamento de outra empresa = não encontrado", async () => {
+    const cartao = await pagarEConfirmar(c, { forma: "cartao" });
+    expect(await registrarContestacaoDaEquipe(db, c.org, cartao.pagamentoId, entrada({ tipo: "med" }), equipe, null, minutos(20))).toEqual({ ok: false, erro: TEXTO_MED_SO_NO_PIX });
+    expect(await registrarContestacaoDaEquipe(db, c.org, cartao.pagamentoId, entrada({ nota: "CPF 123.456.789-09" }), equipe, null, minutos(20))).toMatchObject({ ok: false });
+    expect(await registrarContestacaoDaEquipe(db, c.org, cartao.pagamentoId, entrada({ valor: TOTAL + 1 }), equipe, null, minutos(20))).toMatchObject({ ok: false });
+    const outra = await montarCenario(db);
+    expect(await registrarContestacaoDaEquipe(db, outra.org, cartao.pagamentoId, entrada(), equipe, null, minutos(20))).toEqual({ ok: false, erro: "Pagamento não encontrado." });
+    const pix = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05", email: "pix@example.com" });
+    expect(await registrarContestacaoDaEquipe(db, c.org, pix.pagamentoId, entrada({ tipo: "med", prazo: null }), equipe, null, minutos(20))).toMatchObject({ ok: true });
+    const [l] = await linhas(pix.pagamentoId);
+    expect(l).toMatchObject({ tipo: "med", avisos: expect.arrayContaining(["contestacao_prazo_desconhecido"]) });
+    expect(l.avisos).not.toContain("contestacao_pix");
+    // Outra disputa no mesmo pagamento com a primeira ainda aberta: possível duplicata, valor em risco 0.
+    expect(await registrarContestacaoDaEquipe(db, c.org, pix.pagamentoId, entrada({ tipo: "reclamacao", idCaso: "7123456789" }), equipe, null, minutos(21))).toMatchObject({ ok: true, mensagem: expect.stringContaining("possível duplicata") });
+    expect((await linhas(pix.pagamentoId))[1]).toMatchObject({ duplicataPossivel: true, valorEmRisco: 0 });
+  });
+});

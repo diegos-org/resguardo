@@ -10,6 +10,7 @@ import {
   chaveTaxaPerdida,
   corrigirTaxaPerdida,
   devolverPeloProvedor,
+  ERRO_DEVOLUCAO_COM_DISPUTA,
   ERRO_POR_FORA_CARTAO,
   ESPERA_DEVOLUCAO_MS,
   ERRO_POR_FORA_SEM_CONFERIR,
@@ -560,9 +561,10 @@ describe("devolução do pagamento sem reserva (M8.2a)", () => {
     expect(await porFora(y.pagamentoId, minutos(13), { valor: TOTAL - 1000 })).toEqual({ ok: true, situacao: "por_fora" });
     expect(await c.tentativa(y.pagamentoId)).toMatchObject({ desfecho: "por_fora", devolvidoForaReconhecido: 1000 });
     expect(await devolucao(y.pagamentoId)).toMatchObject({ situacao: "por_fora", valor: TOTAL - 1000, porForaValor: TOTAL - 1000 });
+    // M8.2e: a releitura antes do por fora abre a disputa (a contestação lida vira linha em curso): recusado pela disputa.
     const z = await semReserva({ taxa: 1806 }, outras(1));
     c.provedor.contestar(z.idProvedor);
-    expect(await porFora(z.pagamentoId, minutos(14))).toMatchObject({ ok: false, erro: expect.stringContaining("contestado") });
+    expect(await porFora(z.pagamentoId, minutos(14))).toEqual({ ok: false, erro: ERRO_DEVOLUCAO_COM_DISPUTA });
   });
 
   it("por fora: a order relida precisa ser a deste pagamento (id e referência); outra order aprovada não serve, e nada é registrado", async () => {

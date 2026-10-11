@@ -16,6 +16,12 @@
  * dela ficam nela e o pagamento leva a união; o "devolvido por fora" é recalculado a cada leitura (D21). A tentativa da
  * diferença de uma alteração tem o próprio alvo no cartão (as datas da alteração) e só as tentativas do mesmo alvo são
  * canceladas quando o dinheiro chega numa delas.
+ *
+ * Disputa do pagamento (M8.2e): o número do pagamento (`id_pagamento_provedor`) é gravado também no Pix; as contestações
+ * que a order mostra são aplicadas às disputas do pagamento sob a mesma trava (`aplicarLeiturasDaDisputa`); a situação
+ * que a leitura vale sai de `situacaoDaLeitura` (a `contestado` explicada pelas disputas já encerradas mantém a local); o
+ * aviso `contestado` só vale com uma disputa em curso (a união `avisosComContestacoes`); com disputa em curso ou perdida,
+ * a liberação lida nunca lança (aviso `contestacao_liberacao_lida`) e a taxa lida não muda a reserva.
  */
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
@@ -29,22 +35,26 @@ import { alvoDaCobranca, falhaDoAlvo } from "./alvo";
 import { FOLGA_PRAZO_PAGAMENTO_MS, inicioDoPrazoDeReleitura } from "./andamento";
 import { avisosComDevolucoes, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { decidirAprovacao } from "./confirmacao";
+import { aplicarLeiturasDaDisputa, avisosComContestacoes, leiturasDaOrder, trocarAvisosDaContestacao } from "./contestacao-leitura";
+import { contestacaoEmCurso, contestacaoNaoFinal } from "./contestacao-regras";
 import { avaliarDisjuntor, contaNoDisjuntor } from "./disjuntor";
 import { acordarDevolucoesQueEsperam, FUSO_PAGAMENTO, gravarTaxaNaReserva, liberarPeloProvedor, recebimentosDoPagamento, taxaCanalDaReserva } from "./liberacao";
-import { type Cobranca, DESAFIO_3DS_MINUTOS, type DetalheFinanceiro, PARCELAS_MAXIMAS, RETENCAO_ORDERS_DIAS, STATUS_TRES_DS, urlDoDesafio } from "./provedor";
+import { type Cobranca, DESAFIO_3DS_MINUTOS, type DetalheFinanceiro, ID_NUMERICO_PROVEDOR, PARCELAS_MAXIMAS, RETENCAO_ORDERS_DIAS, STATUS_TRES_DS, urlDoDesafio } from "./provedor";
 import { type CodigoAviso, comDinheiro, MAXIMO_FALHAS_DEVOLUCAO, motivoDoDetalhe, origemDeDevolucaoConhecida, type SituacaoPagamento, transicaoPermitida } from "./situacoes";
 import {
   cabeNoPagamento,
   comprometido,
   comprometidoNoPagamento,
+  contestacoesDoPagamento,
   type Devolucao,
   devolucaoInexplicada,
   devolucoesDoPagamento,
+  devolvidoPelaDisputa,
   devolvidoProprio,
   dinheiroDaReserva,
   type Pagamento,
   possivelmenteNoProvedor,
-  situacaoExplicada,
+  situacaoDaLeitura,
   type Travado,
   valorPagoAprovado,
 } from "./travas";
@@ -83,7 +93,6 @@ export type Efeitos = {
 
 const ENCERRADAS: readonly SituacaoPagamento[] = ["recusado", "cancelado", "expirado"];
 const BANDEIRA = /^[a-z0-9_-]{1,40}$/;
-const ID_PAGAMENTO = /^\d{1,30}$/;
 
 export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, pagamentoId: string, leitura: Leitura, agora: Date): Promise<Efeitos> {
   const p = t.tentativas.find((x) => x.id === pagamentoId);
@@ -103,6 +112,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   let situacao: SituacaoPagamento = p.situacao;
   // O financeiro (taxa, líquido, liberação) vem da order lida: só vale se a order for desta tentativa (mais abaixo).
   let f = leitura.financeiro ?? null;
+  // M8.2e: uma disputa já conhecida em curso (ou perdida) antes desta leitura (o MED registrado num Pix aprovado, o caso
+  // achado só pela Chargebacks API): a taxa lida não muda a reserva e a liberação lida não lança.
+  const disputaAntes = contestacaoEmCurso(t, p.id);
 
   const semOrder = situacao === "criando" || situacao === "incerta";
   if (leitura.incerta && situacao === "criando") situacao = "incerta";
@@ -147,8 +159,10 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
       if (c.aoVivo === true) ligar("ao_vivo");
       // D28: o pago fica congelado na aprovação (o total pago lido depois de uma devolução pode já vir líquido dela).
       if (c.pago !== null && !(p.aprovadoEm && p.valorPago !== null)) patch.valorPago = c.pago;
-      // D27: "processed/refunded" depois de uma devolução nossa de parte do valor é explicada pelas nossas devoluções.
-      const nova = situacaoExplicada(c, p, devolucoesDoPagamento(t, p.id));
+      // D27: "processed/refunded" depois de uma devolução nossa de parte do valor é explicada pelas nossas devoluções. M8.2e:
+      // a leitura `contestado` explicada pelas disputas já encerradas (cada uma de uma linha final, sem `in_process`) mantém
+      // a situação local (a ganha já voltou o pagamento à situação de antes).
+      const nova = situacaoDaLeitura(c, p, devolucoesDoPagamento(t, p.id), contestacoesDoPagamento(t, p.id));
       if (nova === null) ligar("situacao_desconhecida");
       else {
         desligar("situacao_desconhecida");
@@ -167,6 +181,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     }
   }
   if (f) patch.financeiroConsultadoEm = agora;
+  // M8.2e: o número do pagamento na Payments API, de qualquer forma (o Pix também): é por ele que a disputa é lida depois dos
+  // 85 dias. O limite é o mesmo do caso (`ID_NUMERICO_PROVEDOR`, num lugar só).
+  if (f?.idPagamento && ID_NUMERICO_PROVEDOR.test(f.idPagamento) && f.idPagamento !== p.idPagamentoProvedor) patch.idPagamentoProvedor = f.idPagamento;
   // M8.2c: o que a leitura aplicada mostrou das devoluções fica gravado (o cancelamento pela política lê daqui: devolvido
   // em parte ou devolução em andamento esperam se resolver). Só valores; a lista de devoluções nunca é gravada.
   if (cobrancaAplicada) {
@@ -203,7 +220,6 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     if (cc && Number.isInteger(cc.parcelas) && cc.parcelas! >= 1 && cc.parcelas! <= PARCELAS_MAXIMAS) patch.parcelas = cc.parcelas;
     if (cc?.cartao?.bandeira && BANDEIRA.test(cc.cartao.bandeira)) patch.bandeira = cc.cartao.bandeira;
     if (cc?.cartao?.tresDSStatus && (STATUS_TRES_DS as readonly string[]).includes(cc.cartao.tresDSStatus)) patch.tresDSStatus = cc.cartao.tresDSStatus;
-    if (f?.idPagamento && ID_PAGAMENTO.test(f.idPagamento)) patch.idPagamentoProvedor = f.idPagamento;
     // Etapa só enquanto pendente; sem leitura aplicada da order, fica a que já se sabia.
     let etapa: EtapaCartao | null = null;
     if (situacao === "pendente") etapa = cc ? (cc.cartao?.desafio ? "desafio" : cc.situacao === "em_analise" ? (cc.cartao?.analise ? "analise" : "processando") : null) : p.etapaCartao;
@@ -291,7 +307,12 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   if (f && f.liquido !== null && situacao === "aprovado" && !semTaxaAutomatica) {
     const lida = p.valor - f.liquido;
     if (lida < 0 || f.liquido > p.valor) ligar("taxa_invalida");
-    else {
+    else if (disputaAntes) {
+      // M8.2e: durante a disputa, o líquido informado pode vir reduzido por ela (item 73): a taxa não muda sozinha;
+      // diferente da conhecida, o aviso de sempre. A liberação registrada à mão decide.
+      desligar("taxa_invalida");
+      if (taxa !== null && taxa !== lida) ligar("taxa_divergente");
+    } else {
       desligar("taxa_invalida");
       liquidoInformado = f.liquido;
       if (taxa === lida) {
@@ -445,10 +466,25 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // em cada devolução confirmada, até a equipe informar no quadro do pagamento (nunca palpite).
   for (const dev of devs) if (dev.situacao === "confirmada" && dev.taxaPerdida === null) await trocarAvisosDaDevolucao(tx, dev, { ligar: ["taxa_perdida_desconhecida"] }, agora);
 
+  // M8.2e: as contestações que a order mostra, nas disputas do pagamento (sob a mesma trava), depois das devoluções (a
+  // disputa que abre substitui as que ainda não foram pedidas) e antes da liberação. Sem item na lista, uma order de novo
+  // aprovada depois de uma disputa no cartão lida é o fato "a transação voltou a aprovada".
+  let disputaMudou = false;
+  if (cobrancaAplicada) {
+    const comDisputaLida = p.situacao === "contestado" && contestacoesDoPagamento(t, p.id).some((l) => l.tipo === "chargeback" && contestacaoNaoFinal(l.situacao));
+    const ef = await aplicarLeiturasDaDisputa(tx, organizacaoId, t, p, leiturasDaOrder(cobrancaAplicada, agora, { comDisputaLida }), agora, { fonte: "order", desfecho, sincronizar: false });
+    disputaMudou = ef.mudou;
+    if (ef.aoVivo) ligar("ao_vivo");
+    if (ef.ambigua === true) ligar("contestacao_ambigua");
+    else if (ef.ambigua === false) desligar("contestacao_ambigua");
+  }
+  const emDisputa = contestacaoEmCurso(t, p.id);
+
   // D21, recalculado a cada leitura: o Mercado Pago mostra devolvido além do que as nossas devoluções e o reconhecido
   // explicam (ou devolvido sem nada nosso). Na reserva, a parte do proprietário fica em conferência; sem reserva, o aviso.
+  // M8.2e: o MED e a reclamação registrados explicam a devolução lida, até o valor deles.
   const lido = { situacao, devolvidoLido, devolvidoForaReconhecido: reconhecido };
-  const inexplicada = devolucaoInexplicada(lido, devs);
+  const inexplicada = devolucaoInexplicada(lido, devs, devolvidoPelaDisputa(t, p.id));
   // Já devolvido (desfecho devolução ou por fora): não liga mais (o em dobro abaixo é o aviso dele), mas desliga o que a
   // devolução nossa ou o reconhecido passou a explicar (o restante sem reserva, D17).
   if (inexplicada && desfecho !== "por_fora" && desfecho !== "devolucao") ligar("devolvido_por_fora");
@@ -462,15 +498,23 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
     (devolvidoLido > proprio + reconhecido || (devolvidoNoProvedor && devolvidoLido === 0 && proprio + reconhecido === 0) || (emAndamentoLido && !devs.some((d) => possivelmenteNoProvedor(d))))
   )
     ligar("devolucao_em_dobro");
-  if (situacao === "contestado") ligar("contestado");
+  // O aviso `contestado`: com disputas registradas, é a união (`avisosComContestacoes`, só com uma em curso); sem nenhuma
+  // linha (a leitura ambígua), fica pela situação lida.
+  if (situacao === "contestado" && !contestacoesDoPagamento(t, p.id).length) ligar("contestado");
   // O dia em que o sistema viu "devolvido" pela primeira vez: só na leitura que leva a "devolvido". O pagamento que já estava
   // devolvido antes da coluna (M8.2c) fica sem ele, e o caixa do cancelamento usa o dia da auditoria dessa leitura.
   if (situacao === "devolvido" && p.situacao !== "devolvido" && !p.devolvidoVistoEm) patch.devolvidoVistoEm = agora;
 
   // Liberação: só o dinheiro da reserva (o que a confirmou e a diferença aplicada, M8.2d), ainda aprovado (ou devolvido
-  // em parte pelas nossas devoluções), e só com o sinal explícito.
+  // em parte pelas nossas devoluções), e só com o sinal explícito. M8.2e: com disputa em curso ou perdida, a liberação lida
+  // nunca lança nem fica registrada sozinha (o aviso pede o registro à mão com o líquido que caiu); o dinheiro da reserva
+  // contestado sem disputa registrada (leitura ambígua) também não.
   if (f?.liberado === true) {
-    if (dinheiroDaReserva({ desfecho }) && (situacao === "aprovado" || (situacao === "devolvido_parcial" && !inexplicada))) {
+    if (dinheiroDaReserva({ desfecho }) && emDisputa) {
+      for (const l of contestacoesDoPagamento(t, p.id)) {
+        if (contestacaoNaoFinal(l.situacao) || l.situacao === "perdida") disputaMudou = (await trocarAvisosDaContestacao(tx, l, { ligar: ["contestacao_liberacao_lida"] }, agora)) || disputaMudou;
+      }
+    } else if (dinheiroDaReserva({ desfecho }) && (situacao === "aprovado" || (situacao === "devolvido_parcial" && !inexplicada))) {
       const [r] = await tx.select().from(reservas).where(eq(reservas.id, t.reserva.id));
       if (r && reservaCalculadaPeloMotor(r)) {
         // Confirmada, ou cancelada com valor retido (M8.2c): o dinheiro ficou com a empresa e entra como recebimento.
@@ -500,7 +544,7 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
         await acertarCaixasPendentes(tx, organizacaoId, t, p, hojeISO(FUSO_PAGAMENTO, agora), agora);
         await acordarDevolucoesQueEsperam(tx, t, p, agora);
       }
-    } else if (!p.liberacaoConfirmadaEm) {
+    } else if (!p.liberacaoConfirmadaEm && !(dinheiroDaReserva({ desfecho }) && situacao === "contestado")) {
       // Liberação de tentativa sem a reserva: fica registrada só aqui, nunca no livro.
       patch.liberacaoConfirmadaEm = agora;
       patch.liberacaoOrigem = "provedor";
@@ -523,8 +567,8 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   }
 
   if (situacao !== p.situacao) patch.situacao = situacao;
-  // Os avisos do pagamento: os dele mais a união dos avisos das devoluções (M8.2d).
-  patch.avisos = avisosComDevolucoes([...avisos], t.devolucoes, p.id);
+  // Os avisos do pagamento: os dele mais a união dos avisos das devoluções (M8.2d) e das disputas (M8.2e).
+  patch.avisos = avisosComContestacoes(avisosComDevolucoes([...avisos], t.devolucoes, p.id), t.contestacoes, p.id);
   await tx.update(pagamentos).set(patch).where(eq(pagamentos.id, p.id));
   const mudou = situacao !== p.situacao || desfecho !== p.desfecho || motivoSemReserva !== p.motivoSemReserva;
   if (mudou) {
@@ -546,7 +590,7 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // Por último, com todas as travas do pagamento já tomadas: a tentativa que conta pode desligar o cartão.
   if (patch.contaNoDisjuntor === true) await avaliarDisjuntor(tx, organizacaoId, agora);
   efeitos.situacao = situacao;
-  efeitos.mudou = mudou;
+  efeitos.mudou = mudou || disputaMudou;
   return efeitos;
 }
 

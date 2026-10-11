@@ -73,6 +73,7 @@ import { situacaoEfetiva } from "./alteracao-regras";
 import { inicioDoPrazoDePedirDevolucao, inicioDoPrazoDeReleitura } from "./andamento";
 import { sincronizarAvisosDoPagamento, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { cancelarNoProvedor, conferirTentativa } from "./conferencia";
+import { disputaDoPagamento, TEXTO_CONTESTACAO_PERDIDA, TEXTO_DISPUTA_EM_CURSO_CANCELAMENTO } from "./contestacao-regras";
 import { ERRO_FORA_SEM_VALOR, PRAZO_DEVOLUCAO_CARTAO_DIAS, tentarDevolucao } from "./devolucao";
 import { entradasDasAlteracoes } from "./entradas";
 import { FUSO_PAGAMENTO, taxaCanalDaReserva } from "./liberacao";
@@ -132,6 +133,7 @@ export type CodigoRecusaCancelamento =
   | "devolucao_a_menor"
   | "ha_alteracao"
   | "contestado"
+  | "contestacao_perdida"
   | "sem_leitura"
   | "repasse_a_pagar"
   | "estadia_encerrada"
@@ -219,7 +221,14 @@ export const TEXTO_FORA_SEM_VALOR =
   "O Mercado Pago mostra parte deste pagamento devolvida pelo painel, sem informar quanto: informe o valor que aparece no painel do Mercado Pago (de cada pagamento pedido) antes de cancelar.";
 export const TEXTO_ALTERACAO_EM_ANDAMENTO =
   "Há uma alteração desta reserva com o pagamento da diferença em andamento: espere o pagamento terminar ou desista da alteração antes de cancelar.";
-export const TEXTO_CONTESTADO = "Pagamento contestado no Mercado Pago: o cancelamento espera a contestação (M8.2e).";
+/**
+ * Disputa do pagamento em curso (M8.2e): o cancelamento pela política espera o resultado. Registro de decisão (11/10/2026):
+ * antes, "Pagamento contestado no Mercado Pago: o cancelamento espera a contestação (M8.2e)."; agora o texto do desenho,
+ * que aponta o pedido do hóspede (vale pelo horário em que chegou) e a ação "Cancelar a reserva contestada".
+ */
+export const TEXTO_CONTESTADO = TEXTO_DISPUTA_EM_CURSO_CANCELAMENTO;
+/** Disputa perdida (M8.2e): o valor já voltou ao hóspede por ela; não se cancela pela política (recusa `contestacao_perdida`). */
+export const TEXTO_CONTESTADO_PERDIDA = TEXTO_CONTESTACAO_PERDIDA;
 export const TEXTO_MOMENTO = "Informe quando o pedido chegou (não pode ser no futuro nem antes do pagamento).";
 
 /** A base da decisão, em palavras (painel; nunca vai ao hóspede assim). */
@@ -398,7 +407,12 @@ async function montarDecisao(db: Db, organizacaoId: string, t: Travado, e: Entra
   const andando = t.tentativas.find((x) => emAndamento(x.situacao) && x.criadoEm.getTime() >= inicioLeitura);
   if (andando) return recusa("em_andamento", avisoDoPagamento({ id: andando.id, forma: andando.forma, situacao: andando.situacao, pixExpiraEm: andando.pixExpiraEm, desfecho: andando.desfecho }, fuso, "cancelar"));
   const andandoAntiga = t.tentativas.some((x) => emAndamento(x.situacao) && x.criadoEm.getTime() < inicioLeitura);
-  // 4. O que o Mercado Pago mostra de cada pagamento (pela leitura gravada) e as devoluções dele.
+  // 4. O que o Mercado Pago mostra de cada pagamento (pela leitura gravada) e as devoluções dele. M8.2e: a disputa de
+  // qualquer pagamento da reserva (uma regra, um lugar: `disputaDoPagamento`, de qualquer origem — também o MED registrado
+  // num Pix aprovado e o caso tardio só da Chargebacks API): em curso, espera o resultado; perdida, recusa própria.
+  const disputas = daReserva.map((x) => disputaDoPagamento(t, x.id));
+  if (disputas.includes("em_curso")) return recusa("contestado", TEXTO_CONTESTADO);
+  if (disputas.includes("perdida")) return recusa("contestacao_perdida", TEXTO_CONTESTADO_PERDIDA);
   if (daReserva.some((x) => x.situacao === "contestado")) return recusa("contestado", TEXTO_CONTESTADO);
   for (const x of daReserva) {
     const devs = devolucoesDoPagamento(t, x.id);

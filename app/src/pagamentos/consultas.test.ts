@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { auditoria, cotacoes, devolucoesPagamento, eventosPagamento, lancamentos, pagamentos } from "@/db/schema";
+import { auditoria, contestacoesPagamento, cotacoes, devolucoesPagamento, eventosPagamento, lancamentos, pagamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { estornar } from "@/financeiro/ledger";
@@ -22,7 +22,7 @@ import {
   vistaDaCotacaoParaHospede,
 } from "./consultas";
 import { marcarHospedeAvisado, marcarOtaLiberada } from "./cancelamento";
-import { devolverPeloProvedor, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
+import { devolverPeloProvedor, ERRO_DEVOLUCAO_COM_DISPUTA, registrarDevolucaoPorFora, registrarRecusaNoPainel, registrarTaxaPerdida, tentarDevolucao } from "./devolucao";
 import { registrarEventoDeAviso } from "./eventos";
 import { conferirPendentes } from "./rotina";
 import { gerarPix } from "./pix";
@@ -191,7 +191,7 @@ describe("leituras que faltam dado e situações inesperadas (M8.2a)", () => {
     });
   });
 
-  it("contestado antes de o sistema decidir: 'Registrar devolução feita por fora' continua oferecido; recusado enquanto o Mercado Pago mostra a contestação, aceito quando ele volta a mostrar aprovado", async () => {
+  it("contestado antes de o sistema decidir: 'Registrar devolução feita por fora' continua oferecido; recusado enquanto a disputa não termina, aceito depois de ganha (M8.2e)", async () => {
     const { cotacaoId, reservaId } = await c.segurar();
     const p = await c.pix(cotacaoId);
     c.provedor.aprovar(p.idProvedor);
@@ -201,12 +201,20 @@ describe("leituras que faltam dado e situações inesperadas (M8.2a)", () => {
     expect(q).toMatchObject({ situacao: "contestado", desfecho: null, motivoSemReserva: "situacao_inesperada", acoes: { devolver: false, devolucaoPorFora: true } });
     expect((await avisosDePagamento(db, c.org, minutos(3), { env: env({}) })).contagens).toMatchObject({ aprovadoSemDesfecho: 0, situacaoInesperada: 1 });
     const porFora = (quando: Date) => registrarDevolucaoPorFora(db, c.org, p.pagamentoId, { data: "2026-10-01", valor: TOTAL, nota: "" }, null, c.provedor, quando);
-    expect(await porFora(minutos(4))).toMatchObject({ ok: false, erro: expect.stringContaining("contestado") });
-    // A contestação se resolve (o Mercado Pago volta a mostrar aprovado); a situação local continua "contestado".
-    c.provedor.aprovar(p.idProvedor);
+    // M8.2e: a contestação lida abriu a disputa do pagamento (em curso): o por fora espera o resultado.
+    expect(await porFora(minutos(4))).toEqual({ ok: false, erro: ERRO_DEVOLUCAO_COM_DISPUTA });
+    // O Mercado Pago mostra a disputa encerrada e a transação aprovada de novo: resultado a conferir pela equipe (C1); a
+    // situação local continua "contestado" e o por fora continua esperando.
+    c.provedor.resolverContestacao(p.idProvedor, { estado: "settled", transacaoAprovada: true });
     await conferir(p.pagamentoId, minutos(5));
     const [q2] = await pagamentosDaReserva(db, c.org, reservaId, minutos(5));
     expect(q2).toMatchObject({ situacao: "contestado", acoes: { devolucaoPorFora: true } });
+    expect(await db.select({ situacao: contestacoesPagamento.situacao }).from(contestacoesPagamento).where(eq(contestacoesPagamento.pagamentoId, p.pagamentoId))).toEqual([{ situacao: "a_confirmar" }]);
+    expect(await porFora(minutos(6))).toEqual({ ok: false, erro: ERRO_DEVOLUCAO_COM_DISPUTA });
+    // A equipe confirma que a SCL ganhou (o "Confirmar o resultado" do quadro da disputa, simulado aqui): o pagamento volta à
+    // situação de antes e a order ainda contestada (encerrada) é explicada pela disputa ganha: o por fora vale.
+    await db.update(contestacoesPagamento).set({ situacao: "ganha" }).where(eq(contestacoesPagamento.pagamentoId, p.pagamentoId));
+    await db.update(pagamentos).set({ situacao: "aprovado" }).where(eq(pagamentos.id, p.pagamentoId));
     expect(await porFora(minutos(6))).toEqual({ ok: true, situacao: "por_fora" });
     expect((await avisosDePagamento(db, c.org, minutos(7), { env: env({}) })).contagens.situacaoInesperada).toBe(0);
   });

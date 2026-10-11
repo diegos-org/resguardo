@@ -455,8 +455,9 @@ describe("recusas e a assinatura da prévia (M8.2c)", () => {
       expect(await previa()).toEqual({ ok: false, codigo: "devolvido_em_parte", erro: TEXTO_DEVOLVIDO_EM_PARTE });
       await limpar();
     }
+    // Contestado sem disputa registrada (lido antes do M8.2e): espera, com o texto da disputa em curso (M8.2e).
     await db.update(pagamentos).set({ situacao: "contestado" }).where(eq(pagamentos.id, x.pagamentoId));
-    expect(await previa()).toMatchObject({ ok: false, codigo: "contestado", erro: expect.stringContaining("M8.2e") });
+    expect(await previa()).toMatchObject({ ok: false, codigo: "contestado", erro: expect.stringContaining("Disputa do pagamento em curso") });
     await limpar();
     // Com o valor lido (a releitura mostra R$ 10,00 devolvidos pelo painel): o cancelamento vale e a integral devolve o restante.
     c.provedor.devolverNoProvedor(x.idProvedor, 1000);
