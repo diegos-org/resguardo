@@ -404,6 +404,17 @@ describe("registro pela equipe (item 22)", () => {
     expect(ev.find((e) => e.tipo === "aberta")).toMatchObject({ fonte: "equipe", usuarioId: equipe });
   });
 
+  it("o e-mail da abertura diz o dia em que a disputa abriu no Mercado Pago, não o do registro (Codex, 11/10)", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    await salvarEmpresa(db, c.org, { ...(await lerEmpresa(db, c.org)), email: "equipe@example.com" }, null);
+    const correio = new CorreioMemoria();
+    // Registrada em 06/10; aberta no painel do Mercado Pago em 03/10.
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ abertaEm: "2026-10-03" }), equipe, null, dias(5), { correio })).toMatchObject({ ok: true });
+    expect(correio.enviadas).toHaveLength(1);
+    expect(correio.enviadas[0].texto).toContain("aberta em 03/10.");
+    expect(correio.enviadas[0].texto).not.toContain("06/10");
+  });
+
   it("o prazo dos documentos nunca antes do dia em que a disputa abriu", async () => {
     const x = await pagarEConfirmar(c);
     const r = await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "med", abertaEm: "2026-10-01", prazo: "2026-09-30" }), equipe, null, minutos(20));

@@ -146,8 +146,10 @@ export async function registrarEventoDaContestacao(
  */
 export function leiturasDaOrder(c: Pick<Cobranca, "contestacoes" | "transacaoAprovada" | "aoVivo" | "situacao">, lidaEm: Date, o: { comDisputaLida?: boolean } = {}): LeituraDeContestacao[] {
   if (!c.contestacoes.length) {
+    // Fala só da contestação no cartão (`soDoTipo`), como a da Payments API: um MED ou uma reclamação ao lado não a tornam
+    // ambígua nem recebem o fato.
     if (o.comDisputaLida && c.transacaoAprovada && c.situacao === "aprovado")
-      return [{ fonte: "order", idCaso: null, idContestacao: null, estadoLido: null, coberturaAplicada: null, valor: null, voltouAAprovada: true, aoVivo: c.aoVivo, lidaEm, atualizadoNoProvedorEm: null }];
+      return [{ fonte: "order", idCaso: null, idContestacao: null, estadoLido: null, coberturaAplicada: null, valor: null, voltouAAprovada: true, aoVivo: c.aoVivo, lidaEm, atualizadoNoProvedorEm: null, soDoTipo: "chargeback" }];
     // Contestada sem nada que diga qual nem em que estado (a mesma leitura de `contestacaoDaLeitura`): nunca cria linha nem
     // muda uma; sem linha que a explique, vira o aviso `contestacao_ambigua`.
     if (c.situacao === "contestado") return [{ fonte: "order", idCaso: null, idContestacao: null, estadoLido: "desconhecido", coberturaAplicada: null, valor: null, aoVivo: c.aoVivo, lidaEm, atualizadoNoProvedorEm: null }];

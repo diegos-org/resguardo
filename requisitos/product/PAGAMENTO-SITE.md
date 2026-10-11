@@ -3405,14 +3405,26 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   cada fato", item 1)*. *Antes:* a correção anterior (a Payments API, depois dos 85 dias) não valia para a leitura da
   order: dentro dos 85 dias, a order aprovada de novo, sem disputa listada, só dava o fato com o pagamento `contestado`; a
   contestação no cartão registrada pela equipe (o pagamento continua `aprovado`) ficava aberta. *Agora:* uma regra só,
-  `comContestacaoNoCartaoEmAberto` (`contestacao-regras.ts`): a leitura da order e a da Payments API dão o fato sempre que
-  há uma contestação no cartão não final no quadro, de qualquer origem; a disputa vai para `a_confirmar` e a equipe
-  confirma o resultado, como sempre.
+  `comContestacaoNoCartaoEmAberto` (`contestacao-regras.ts`; desde a rodada seguinte, `voltouAAprovadaTemDisputa`, abaixo):
+  a leitura da order e a da Payments API dão o fato sempre que há uma contestação no cartão não final no quadro, de
+  qualquer origem; a disputa vai para `a_confirmar` e a equipe confirma o resultado, como sempre.
 - **Um orçamento só para a volta das disputas** *(segue o desenho, "Rotina", orçamento de 60 s)*. *Antes:* a releitura das
   disputas abertas e a busca tardia da mesma volta tinham 60 s cada (até uns 120 s na volta). *Agora:* as duas dividem um
   orçamento só, contado do início da volta (`disputasDaVolta` na rotina e no "Conferir agora" da empresa,
   `conferirContestacoesDoPagamento` no de uma reserva): a busca usa o que a releitura deixou, e o que não coube fica para a
   próxima volta, com a vez intacta. *Motivo:* a volta tem de caber no tempo da função.
+- **"Voltou a aprovado" depois de uma disputa perdida** *(segue o desenho, "Transições": a leitura que contradiz uma linha
+  final liga `contestacao_resultado_mudou`)*. *Antes:* o fato só valia com uma contestação no cartão não final; com a
+  única disputa já confirmada como perdida, a order (ou a Payments API) de novo aprovada, sem disputa listada, não dava
+  fato nenhum, ou era tida como explicada pela linha final, e a perda definitiva e o livro ficavam sem aviso. *Agora:* a
+  regra (`voltouAAprovadaTemDisputa`) inclui a contestação no cartão perdida; sem id e só com linhas finais, o fato vai para
+  a perdida mais nova (a ganha mais nova o explica; a sem efeito não conta); a perdida contradita pela transação de volta a
+  aprovada liga o aviso, sem mudar a linha, a situação do pagamento nem o livro (a correção é da equipe, por um ajuste), e
+  "Conferir o aviso" o tira até um fato novo. O fato da order sem lista fala só da contestação no cartão (`soDoTipo`), como
+  o da Payments API. *Motivo:* "avisar em vez de supor".
+- **O e-mail da abertura com o dia em que a disputa abriu** *(segue o desenho, "Painel", "E-mail à equipe")*. *Antes:* o e-mail
+  dizia o dia do registro (ou da primeira leitura). *Agora:* diz a abertura no Mercado Pago (a data que a equipe informou,
+  ou a do caso), como o quadro; sem ela, o dia em que o sistema a viu.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

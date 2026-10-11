@@ -206,6 +206,21 @@ describe("casamento e idempotência (matriz de casarContestacao)", () => {
     expect(juntas.linhas[0]).toMatchObject({ idCaso: "123" });
   });
 
+  it("o \"voltou a aprovada\" sem id, só com linhas finais no cartão, vai para a perdida mais nova (o aviso); a ganha mais nova o explica; a sem efeito não conta; o MED não o recebe (Codex, 11/10)", () => {
+    const voltou = leitura({ estadoLido: null, valor: null, voltouAAprovada: true, soDoTipo: "chargeback", lidaEm: em(100) });
+    const perdida = linha({ id: "c1", situacao: "perdida" });
+    expect(casarContestacao([voltou], [perdida])).toMatchObject({ existentes: [{ linhaId: "c1" }], novas: [], explicadas: [], ambiguas: [] });
+    const ganha2 = linha({ id: "c2", situacao: "ganha", rodada: 2, abertaEm: em(50) });
+    expect(casarContestacao([voltou], [perdida, ganha2])).toMatchObject({ existentes: [], novas: [], explicadas: [voltou] });
+    const semEfeito = linha({ id: "c3", situacao: "sem_efeito", abertaEm: em(60) });
+    expect(casarContestacao([voltou], [perdida, semEfeito])).toMatchObject({ existentes: [{ linhaId: "c1" }], novas: [] });
+    expect(casarContestacao([voltou], [linha({ id: "c4", tipo: "med", situacao: "perdida" })])).toMatchObject({ existentes: [], novas: [] });
+    // A volta inteira: o aviso na perdida, sem linha nova nem mudança de situação.
+    const v = volta([perdida], [voltou]);
+    expect(v.linhas).toHaveLength(1);
+    expect(v.linhas[0]).toMatchObject({ situacao: "perdida", avisos: ["contestacao_resultado_mudou"] });
+  });
+
   it("a leitura de um tipo só (Payments API) casa só com as linhas desse tipo: o MED e a reclamação ao lado não a tornam ambígua", () => {
     const cartao = linha({ id: "c1", tipo: "chargeback" });
     const reclamacao = linha({ id: "c2", tipo: "reclamacao", abertaEm: em(10) });
@@ -434,6 +449,9 @@ describe("situações e transições (matriz de transicaoDaContestacao)", () => 
     expect(ler(ganha, caso("1", { coberturaAplicada: false }))).toMatchObject({ situacao: "ganha", avisos: ["contestacao_resultado_mudou"] });
     expect(ler(ganha, leitura({ idCaso: "1", estadoLido: "reimbursed" }))).toMatchObject({ situacao: "ganha", avisos: [] });
     expect(ler(perdida, caso("1", { coberturaAplicada: true }))).toMatchObject({ situacao: "perdida", avisos: ["contestacao_resultado_mudou"] });
+    // A transação de volta a aprovada contradiz a perdida, não a ganha (Codex, 11/10).
+    expect(ler(perdida, leitura({ idCaso: "1", estadoLido: null, voltouAAprovada: true }))).toMatchObject({ situacao: "perdida", avisos: ["contestacao_resultado_mudou"] });
+    expect(ler(ganha, leitura({ idCaso: "1", estadoLido: null, voltouAAprovada: true }))).toMatchObject({ situacao: "ganha", avisos: [] });
     // Pelo id, a perdida relida in_process não é contradição (a correção é um ajuste); a sem efeito também não.
     expect(ler(perdida, leitura({ idCaso: "1" }))).toMatchObject({ situacao: "perdida", avisos: [] });
     expect(ler(linha({ idCaso: "1", situacao: "sem_efeito" }), leitura({ idCaso: "1" })).avisos).toEqual([]);

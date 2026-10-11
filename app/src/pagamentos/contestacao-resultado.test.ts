@@ -494,6 +494,33 @@ describe("encerrar sem efeito e conferir o aviso", () => {
     expect((await c.tentativa(x.pagamentoId)).avisos).toContain("contestado");
     expect(await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, c.org), eq(auditoria.acao, "contestacao.reabrir")))).toHaveLength(1);
   });
+
+  it("perdida e a order de novo aprovada, sem disputa listada: o aviso de resultado que mudou na perdida, sem mexer na situação nem no livro; 'continua encerrada' limpa e a mesma leitura não o religa (Codex, 11/10)", async () => {
+    const x = await pagarEConfirmar(c, { liberar: true });
+    // A contestação só na transação, sem item na lista da order.
+    c.provedor.contestar(x.idProvedor, "transacao", { naLista: false });
+    await conferir(x.pagamentoId, sp("2026-10-20 10:00"));
+    const [l] = await linhas(x.pagamentoId);
+    expect(l).toMatchObject({ situacao: "aberta", idCaso: null, idContestacao: null });
+    await debito(l, "2026-10-21", TOTAL);
+    await decidir(l, "proporcional", sp("2026-10-22 10:00"));
+    expect(await confirmar(l, "perdida", sp("2026-12-10 10:00"), { valorPerdido: TOTAL, liquidoNaoEntrou: 0, debitoEm: "2026-10-21" })).toMatchObject({ ok: true });
+    const situacao = (await c.tentativa(x.pagamentoId)).situacao;
+    const livro = (await daDisputa(l)).map((y) => [y.id, y.valor, y.montante, y.estado]);
+    // O Mercado Pago volta a mostrar a transação aprovada, sem nenhuma contestação na order.
+    c.provedor.resolverContestacao(x.idProvedor, { transacaoAprovada: true });
+    expect(await c.provedor.consultar(x.idProvedor)).toMatchObject({ situacao: "aprovado", transacaoAprovada: true, contestacoes: [] });
+    await conferir(x.pagamentoId, sp("2026-12-11 10:00"));
+    const depois = await linha(l.id);
+    expect(depois.situacao).toBe("perdida");
+    expect(depois.avisos).toContain("contestacao_resultado_mudou");
+    // A perda definitiva e o livro ficam: a correção é da equipe (aviso, nunca palpite).
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe(situacao);
+    expect((await daDisputa(l)).map((y) => [y.id, y.valor, y.montante, y.estado])).toEqual(livro);
+    expect(await conferirAviso(db, c.org, l.id, { como: "continua_encerrada", nota: "O painel mostra a disputa perdida." }, equipe, sp("2026-12-11 11:00"))).toMatchObject({ ok: true });
+    await conferir(x.pagamentoId, sp("2026-12-12 10:00"));
+    expect((await linha(l.id)).avisos).not.toContain("contestacao_resultado_mudou");
+  });
 });
 
 describe("cancelar a reserva contestada (item 18)", () => {

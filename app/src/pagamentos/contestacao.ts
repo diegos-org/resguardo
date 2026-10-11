@@ -68,7 +68,6 @@ import {
   chavesDaContestacao,
   CODIGOS_CAUSA_CONTESTACAO,
   type CodigoCausaContestacao,
-  comContestacaoNoCartaoEmAberto,
   confirmadoPelasSubstituidas,
   contestacaoNaoFinal,
   DESFECHO_CONTESTACAO,
@@ -110,6 +109,7 @@ import {
   type TipoContestacao,
   transicaoDaContestacao,
   valorSeguradoDesatualizado,
+  voltouAAprovadaTemDisputa,
 } from "./contestacao-regras";
 import { confirmarDevolucaoPelaDisputa, devolucaoDevidaDepoisDaDisputa } from "./devolucao";
 import { liquidoQueAindaPodeEntrar, recebimentosDoPagamento, registrarLiberacaoManual } from "./liberacao";
@@ -285,8 +285,8 @@ async function lerFontes(
     try {
       const s = await provedor.situacaoDoPagamento(p.idPagamentoProvedor);
       // "Voltou a aprovado" só fala de um pagamento que esteve contestado: pela leitura (`contestado`) ou por uma contestação
-      // no cartão ainda não final no quadro (`comContestacaoNoCartaoEmAberto`, a mesma regra da leitura da order).
-      const contestado = p.situacao === "contestado" || comContestacaoNoCartaoEmAberto(linhas);
+      // no cartão no quadro, não final ou perdida (`voltouAAprovadaTemDisputa`, a mesma regra da leitura da order).
+      const contestado = p.situacao === "contestado" || voltouAAprovadaTemDisputa(linhas);
       const l = s ? leituraDaSituacao(s, agora, contestado) : null;
       if (l) {
         lido.leituras.push(l);
@@ -831,7 +831,8 @@ export async function avisarEquipeDasContestacoes(
       else if (faltam > 0 && faltam <= diasDeAviso.get(l.organizacaoId)! && !jaFoi(l.id, "prazo_aviso")) momentos.push("prazo_aviso");
     }
     for (const momento of momentos) {
-      const m = mensagemDaDisputa({ tipo: l.tipo, abertaEm: l.abertaEm, reservaCodigo, imovel, prazo: l.documentacaoPrazo }, momento, agora, o.linkPainel);
+      // A abertura no Mercado Pago (a data que a equipe informou, ou a do caso), como no quadro; sem ela, quando o sistema a viu.
+      const m = mensagemDaDisputa({ tipo: l.tipo, abertaEm: l.abertaNoProvedorEm ?? l.abertaEm, reservaCodigo, imovel, prazo: l.documentacaoPrazo }, momento, agora, o.linkPainel);
       const res = await avisarEquipePorEmail(db, l.organizacaoId, correio, { ...m, chave: `contestacao:${l.id}:email:${momento}`, rotulo: "disputa do pagamento" });
       if (res !== "enviado") continue;
       n++;

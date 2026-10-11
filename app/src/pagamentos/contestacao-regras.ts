@@ -25,12 +25,13 @@ export const contestacaoNaoFinal = (s: SituacaoContestacao) => s === "aberta" ||
 
 /**
  * O "voltou a aprovada" (a order ou a Payments API aprovada de novo, sem disputa listada) fala de uma contestação no cartão
- * ainda não final no quadro, de qualquer origem: a lida, a registrada pela equipe e a achada pela Chargebacks API (estas
- * duas não mudam a situação do pagamento, que continua `aprovado`). Uma regra, um lugar: a leitura da order e a da Payments
- * API leem daqui.
+ * do quadro, de qualquer origem: a lida, a registrada pela equipe e a achada pela Chargebacks API (estas duas não mudam a
+ * situação do pagamento, que continua `aprovado`). Na ainda não final, leva a disputa a `a_confirmar`; na perdida, contradiz
+ * o resultado e liga `contestacao_resultado_mudou` (casamento, item 3). Uma regra, um lugar: a leitura da order e a da
+ * Payments API leem daqui.
  */
-export const comContestacaoNoCartaoEmAberto = (linhas: readonly { tipo: TipoContestacao; situacao: SituacaoContestacao }[]): boolean =>
-  linhas.some((l) => l.tipo === "chargeback" && contestacaoNaoFinal(l.situacao));
+export const voltouAAprovadaTemDisputa = (linhas: readonly { tipo: TipoContestacao; situacao: SituacaoContestacao }[]): boolean =>
+  linhas.some((l) => l.tipo === "chargeback" && (contestacaoNaoFinal(l.situacao) || l.situacao === "perdida"));
 
 /**
  * `chargeback`: contestação no cartão (o caso principal, detectado sozinho; também o `charged_back` lido num Pix);
@@ -511,6 +512,15 @@ type Alvo = {
   duplicataPossivel: boolean;
 };
 const maisNovaRodada = (as: Alvo[]) => [...as].sort((a, b) => b.rodada - a.rodada || b.abertaEm - a.abertaEm || b.chave - a.chave)[0];
+/**
+ * A disputa final mais nova com resultado (a sem efeito não conta), quando é uma perdida: é dela que fala o "voltou a
+ * aprovada" sem identificação num pagamento sem disputa não final (ele contradiz a perda). A ganha mais nova o explica.
+ */
+const perdidaMaisNova = (finais: Alvo[]): Alvo | undefined => {
+  const comResultado = finais.filter((a) => a.situacao !== "sem_efeito");
+  const a = comResultado.length ? maisNovaRodada(comResultado) : undefined;
+  return a?.situacao === "perdida" ? a : undefined;
+};
 /** A leitura não contradiz a identificação da linha: em cada id, um dos lados é vazio ou os dois são iguais. */
 const compativel = (a: Alvo, l: LeituraDeContestacao) =>
   (a.idCaso === null || l.idCaso === null || a.idCaso === l.idCaso) && (a.idContestacao === null || l.idContestacao === null || a.idContestacao === l.idContestacao);
@@ -524,7 +534,8 @@ const compativel = (a: Alvo, l: LeituraDeContestacao) =>
  *    outro id do mesmo tipo): é essa linha, completada, nunca duplicada;
  * 3. leitura encerrada, ou que só casa com linhas finais, nunca cria linha: sem id e encerrada, é explicada por qualquer
  *    linha final; `in_process` sem id com só linhas finais vai para a final mais nova (que liga
- *    `contestacao_resultado_mudou`); num pagamento sem linha, ou com um id desconhecido, é ambígua;
+ *    `contestacao_resultado_mudou`), e o "voltou a aprovada" sem id, para a perdida mais nova (`perdidaMaisNova`, o mesmo
+ *    aviso); num pagamento sem linha, ou com um id desconhecido, é ambígua;
  * 4. linha nova só com `in_process` e nenhuma linha não final;
  * 5. qualquer outro caso (duas não finais e uma leitura sem id, por exemplo) é ambíguo;
  * 6. segunda disputa com outra ainda não final (pela equipe, ou um caso com id novo e outro aberto): nasce como possível
@@ -610,7 +621,8 @@ export function casarContestacao(lidas: readonly LeituraDeContestacao[], linhas:
         const comResultado = finais.filter((a) => a.situacao !== "sem_efeito");
         if (comResultado.length) naLinha(maisNovaRodada(comResultado), l);
         else nova(l, false);
-      } else if (leituraEncerrada(l) && finais.length) explicadas.push(l);
+      } else if (l.voltouAAprovada === true && perdidaMaisNova(finais)) naLinha(perdidaMaisNova(finais)!, l);
+      else if (leituraEncerrada(l) && finais.length) explicadas.push(l);
       else ambiguas.push(l);
       continue;
     }
@@ -802,7 +814,7 @@ function pelaLeitura(linha: LinhaDeContestacao, leituras: readonly LeituraDeCont
     const inProcess = validas.some((l) => l.estadoLido === "in_process");
     const contradiz =
       (linha.situacao === "ganha" && (inProcess || j.fatos.coberturaAplicada === false)) ||
-      (linha.situacao === "perdida" && j.fatos.coberturaAplicada === true) ||
+      (linha.situacao === "perdida" && (j.fatos.coberturaAplicada === true || validas.some((l) => l.voltouAAprovada === true))) ||
       validas.some((l) => l.estadoLido === "in_process" && !temId(l));
     if (contradiz && !avisos.includes("contestacao_resultado_mudou") && (fatosMudaram(linha, j.fatos) || linha.avisoConferidoEm === null))
       avisos = comAviso(avisos, "contestacao_resultado_mudou", true);
