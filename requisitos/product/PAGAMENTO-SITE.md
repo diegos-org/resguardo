@@ -3455,6 +3455,13 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   leitura vale para a contestação no cartão ganha ou perdida (sem outra no cartão ainda não final): `charged_back/in_process`
   liga o aviso na ganha, e a equipe abre a rodada seguinte por "Conferir o aviso". *Motivo:* uma disputa ativa não pode
   ficar tida como resolvida.
+- **O pagamento contestado de novo com só disputas encerradas no quadro** *(segue o desenho, "Estados da página": "enquanto
+  a disputa não termina")*. *Antes:* `disputaDoPagamentoOuSituacao` só olhava a situação do pagamento quando ele não tinha
+  linha nenhuma. Com uma disputa encerrada (ganha, sem efeito ou perdida) e uma leitura nova que não casou
+  (`contestacao_ambigua`, o pagamento `contestado` de novo), a página do hóspede não dizia "em conferência", ou mostrava a
+  perda antiga como o resultado. *Agora:* com o pagamento contestado, vale "em curso" quando o quadro não o explica (sem
+  linha, só encerradas sem perda) ou com a leitura ambígua, mesmo ao lado de uma perdida; a perdida sozinha (que deixa o
+  pagamento contestado) segue perdida. Uma regra, um lugar: as três telas do hóspede e o pedido de cancelamento por ele.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

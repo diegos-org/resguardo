@@ -500,4 +500,20 @@ describe("revisão das telas (11/10/2026)", () => {
     expect((await vistaDaCotacaoParaHospede(db, c.org, y.cotacaoId, sp("2026-10-05 11:00"), { comAutorizacao: true }))?.pagamentoEmConferencia).toBe(true);
     expect(await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, y.reservaCodigo, sp("2026-10-05 11:00"))).toEqual({ ok: false, erro: NAO_DA });
   });
+
+  it("só com uma disputa encerrada no quadro, o pagamento contestado de novo pela leitura que não casou: o hóspede vê 'em conferência', nunca o resultado antigo (Codex, 11/10)", async () => {
+    const x = await disputada();
+    const pr = await previaDoResultado(db, c.org, x.id);
+    if (!pr.ok) throw new Error(pr.erro);
+    expect(
+      await confirmarResultado(db, c.org, x.id, { resultado: "ganha", data: "2026-10-08", nota: "Painel do Mercado Pago mostra ganha.", notaReforcada: true, versao: pr.fatos.versao, assinatura: pr.fatos.assinatura, tarifa: null }, equipe, null, sp("2026-10-08 10:00")),
+    ).toMatchObject({ ok: true });
+    const emConferencia = async () => (await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, sp("2026-10-09 11:00"), { comAutorizacao: true }))?.pagamentoEmConferencia;
+    expect(await emConferencia()).toBeUndefined();
+    // Uma disputa nova que a leitura não soube casar: o pagamento contestado de novo, com o aviso.
+    await db.update(pagamentos).set({ situacao: "contestado", avisos: ["contestacao_ambigua"] }).where(eq(pagamentos.id, x.pagamentoId));
+    expect(await emConferencia()).toBe(true);
+    expect(await cancelamentoNoPortal(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, sp("2026-10-09 11:00"))).toMatchObject({ podePedir: false, emConferencia: true });
+    expect(await pedirCancelamentoPeloHospede(db, c.org, EMAIL_HOSPEDE, x.reservaCodigo, sp("2026-10-09 11:00"))).toEqual({ ok: false, erro: NAO_DA });
+  });
 });

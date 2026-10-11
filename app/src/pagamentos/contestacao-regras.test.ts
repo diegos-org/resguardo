@@ -17,6 +17,7 @@ import {
   contestacaoSemDecisao,
   DIAS_ESCALADA_CONTESTACAO,
   disputaDoPagamento,
+  disputaDoPagamentoOuSituacao,
   dividirPerda,
   divisaoDaDecisao,
   ehChaveDeContestacao,
@@ -508,6 +509,23 @@ describe("situações e transições (matriz de transicaoDaContestacao)", () => 
 });
 
 describe("a situação que vale para o pagamento (contestacaoDaLeitura) e o em curso", () => {
+  it("disputaDoPagamentoOuSituacao: as linhas; o pagamento contestado sem disputa que o explique, ou com a leitura ambígua, está em curso, nunca o resultado antigo (Codex, 11/10)", () => {
+    const p = (situacao: string, avisos: string[] = []) => ({ id: "p1", situacao, avisos });
+    const com = (...ls: LinhaDeContestacao[]) => ({ contestacoes: ls });
+    expect(disputaDoPagamentoOuSituacao(com(), p("aprovado"))).toBeNull();
+    expect(disputaDoPagamentoOuSituacao(com(), p("contestado"))).toBe("em_curso");
+    expect(disputaDoPagamentoOuSituacao(com(linha({ situacao: "aberta" })), p("aprovado"))).toBe("em_curso");
+    // Só encerradas sem perda: nada a mostrar, até o pagamento aparecer contestado de novo (a disputa nova que não casou).
+    expect(disputaDoPagamentoOuSituacao(com(linha({ situacao: "ganha" })), p("aprovado"))).toBeNull();
+    expect(disputaDoPagamentoOuSituacao(com(linha({ situacao: "ganha" })), p("contestado", ["contestacao_ambigua"]))).toBe("em_curso");
+    expect(disputaDoPagamentoOuSituacao(com(linha({ situacao: "sem_efeito" })), p("contestado"))).toBe("em_curso");
+    // A perdida deixa o pagamento contestado: segue perdida, salvo a leitura ambígua (uma disputa nova ao lado dela).
+    expect(disputaDoPagamentoOuSituacao(com(linha({ situacao: "perdida" })), p("contestado"))).toBe("perdida");
+    expect(disputaDoPagamentoOuSituacao(com(linha({ situacao: "perdida" })), p("contestado", ["contestacao_ambigua"]))).toBe("em_curso");
+    // Linha de outro pagamento não conta.
+    expect(disputaDoPagamentoOuSituacao(com(linha({ pagamentoId: "p2", situacao: "aberta" })), p("aprovado"))).toBeNull();
+  });
+
   const contestado = (...contestacoes: Parameters<typeof contestacaoDaLeitura>[0]["contestacoes"]) => ({ situacao: "contestado", contestacoes });
   const item = (x: Partial<LeituraDeContestacao> = {}) => ({ idCaso: null, idContestacao: null, estadoLido: "in_process" as const, ...x });
 

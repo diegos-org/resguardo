@@ -991,13 +991,16 @@ export const pagamentoContestado = (p: { situacao: string; avisos: readonly stri
 
 /**
  * A disputa de um pagamento para o que o hóspede vê (Minha reserva, a página da reserva, também a da reserva cancelada):
- * a das linhas (`disputaDoPagamento`) ou, sem linha nenhuma deste pagamento, a situação dele: contestado é `em_curso`.
- * Sem linha: a leitura que não casou com segurança (`contestacao_ambigua`, que não cria linha) ou o pagamento contestado
- * antes do M8.2e. Uma regra, um lugar: as três telas e o pedido de cancelamento pelo hóspede leem daqui.
+ * a das linhas (`disputaDoPagamento`) e, com o pagamento contestado, a situação dele. Contestado é `em_curso` quando o quadro
+ * não o explica: sem linha nenhuma deste pagamento (contestado antes do M8.2e), só com disputas encerradas sem perda (a
+ * disputa nova depois de uma ganha ou de uma sem efeito), ou com a leitura que não casou com segurança
+ * (`contestacao_ambigua`, que não cria linha), mesmo ao lado de uma perdida: o hóspede vê "em conferência", nunca o
+ * resultado antigo. Uma regra, um lugar: as três telas e o pedido de cancelamento pelo hóspede leem daqui.
  */
 export function disputaDoPagamentoOuSituacao(t: { contestacoes: readonly LinhaEmCurso[] }, p: { id: string; situacao: string; avisos: readonly string[] }): "em_curso" | "perdida" | null {
-  if (t.contestacoes.some((x) => x.pagamentoId === p.id)) return disputaDoPagamento(t, p.id);
-  return pagamentoContestado(p) ? "em_curso" : null;
+  const pelasLinhas = t.contestacoes.some((x) => x.pagamentoId === p.id) ? disputaDoPagamento(t, p.id) : null;
+  if (pelasLinhas === "em_curso" || !pagamentoContestado(p)) return pelasLinhas;
+  return pelasLinhas === null || p.avisos.includes("contestacao_ambigua") ? "em_curso" : pelasLinhas;
 }
 
 export type LinhaParaConferencia = Pick<LinhaDeContestacao, "situacao" | "duplicataPossivel"> & {
