@@ -8,11 +8,11 @@
 import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { contestacoesPagamento, devolucoesPagamento, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, repasses } from "@/db/schema";
+import { contestacoesPagamento, devolucoesPagamento, eventosContestacao, imoveis, lancamentos, organizacoes, proprietarioImoveis, proprietarios, repasses } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { estornarDespesa, listarDespesas, marcarDespesaPaga, obterDespesa, textoDaDespesaDaDisputa, totaisDespesas, ERRO_DESPESA_DA_CONTESTACAO } from "@/despesas/despesas";
-import { lancar, LancamentoInvalido, saldoAcerto } from "@/financeiro/ledger";
+import { estornar, lancar, LancamentoInvalido, saldoAcerto } from "@/financeiro/ledger";
 import {
   chavesDaContestacao,
   descricaoSeguradoDoProprietario,
@@ -202,9 +202,9 @@ describe("reserva em conferência por disputa (M8.2e, teste 8)", () => {
     await db.update(repasses).set({ criadoEm: sp("2026-11-02") }).where(eq(repasses.id, fechado));
     const r = (await obterRepasse(db, org, fechado))!;
     expect(r).toMatchObject({ valor: 72250, foraDoFechamento: 72250 });
-    const foraPorDisputa = await foraPorDisputaDoFechamento(db, org, r);
-    expect(foraPorDisputa).toBe(72250);
-    const email = textoDoEmailDoRepasse(r, await itensDoRepasse(db, org, fechado), "Sua Casa", { foraPorDisputa });
+    const fora = await foraPorDisputaDoFechamento(db, org, r);
+    expect(fora).toEqual({ presa: 72250, seguradoJunto: 0, outras: 0 });
+    const email = textoDoEmailDoRepasse(r, await itensDoRepasse(db, org, fechado), "Sua Casa", { fora });
     expect(email.texto).toContain("Para o próximo repasse (reserva em conferência: disputa do pagamento)");
     expect(email.texto).not.toContain("dinheiro ainda não recebido pela empresa");
   });
@@ -262,7 +262,7 @@ describe("o valor segurado no repasse (teste 11)", () => {
     const itens = await itensDoRepasse(db, org, rep);
     const daDisputa = itens.find((i) => i.valor < 0)!;
     expect(daDisputa).toMatchObject({ reservaId: r.id, parcial: false, hospede: "", disputa: { variante: "segurado", situacao: "aberta" } });
-    expect(descricaoDoItem(daDisputa)).toBe("valor segurado pela disputa do pagamento (até o resultado)");
+    expect(descricaoDoItem(daDisputa)).toBe("valor segurado pela disputa do pagamento (até o resultado); causa registrada: Problema do imóvel (estrutura, equipamento ou obra do proprietário)");
     // A parte verdadeira da reserva não vira "parcial" por causa da linha da disputa.
     expect(itens.find((i) => i.reservaId === r.id && i.valor > 0)).toMatchObject({ parcial: false });
     expect(itens.find((i) => i.reservaId === outra.id)).toMatchObject({ parcial: false });
@@ -487,13 +487,22 @@ describe("o que o proprietário vê (teste 27) e os meses fechados (teste 28)", 
         { ...doItem, id: "i2", lancamentoId: "l2", reservaId: "r2", competencia: "2026-11-01", valor: -85000, codigoReserva: "SCL-0002", hospede: "", disputa: { variante: "segurado", situacao: "aberta" } },
       ],
       "Sua Casa",
-      { foraPorDisputa: 72250 },
+      { fora: { presa: 72250, seguradoJunto: 0, outras: 0 } },
     );
     expect(email.texto).toContain("Disputa do pagamento: − R$ 850,00");
     expect(email.texto).toContain("Para o próximo repasse (reserva em conferência: disputa do pagamento): R$ 722,50");
     expect(email.texto).not.toContain("dinheiro ainda não recebido");
     expect(email.texto).toContain("403 · SCL-0002 · 10/11/2026 a 13/11/2026 · -R$ 850,00 (valor segurado pela disputa do pagamento (até o resultado))");
     expect(divisaoDoDeve({ valor: 50000, descontoCancelamento: 20000, descontoDisputa: 10000 })).toEqual({ proximoRepasse: 30000, transferir: 20000 });
+    // Revisão de 11/10: com mais de cinco itens, a linha da disputa (com a causa e a explicação) nunca fica no "e mais N".
+    const muitos = [1, 2, 3, 4, 5, 6].map((n) => ({ ...doItem, id: `c${n}`, lancamentoId: `lc${n}`, reservaId: `rc${n}`, competencia: "2026-11-01", valor: 10000, codigoReserva: `SCL-010${n}`, hospede: "Hóspede Fictício" }));
+    const comDisputa = textoDoEmailDoRepasse(
+      fechamento,
+      [...muitos, { ...doItem, id: "d1", lancamentoId: "ld1", reservaId: "rd1", competencia: "2026-11-01", valor: -85000, codigoReserva: "SCL-0002", hospede: "", disputa: { variante: "segurado", situacao: "aberta", causa: "Problema do imóvel", explicacao: "Infiltração" } }],
+      "Sua Casa",
+    );
+    expect(comDisputa.texto).toContain("SCL-0002 · 10/11/2026 a 13/11/2026 · -R$ 850,00 (valor segurado pela disputa do pagamento (até o resultado); causa registrada: Problema do imóvel; Infiltração)");
+    expect(comDisputa.texto).toContain("e mais 3 reserva(s) — a lista completa está no portal");
   });
 
   it("o dono de outro imóvel não vê; o portal e o relatório: linha própria sem noites nem bruto em dobro, a conciliação fecha, o mês já enviado não muda", async () => {
@@ -538,5 +547,194 @@ describe("o que o proprietário vê (teste 27) e os meses fechados (teste 28)", 
       .from(lancamentos)
       .where(and(eq(lancamentos.proprietarioId, dono), sql`${lancamentos.competencia} < '2026-11-01'`));
     expect(Number(total)).toBe(0);
+  });
+});
+
+describe("revisão de 11/10 (dinheiro): linhas de várias versões, causa e explicação, fechamento gravado e despesas", () => {
+  /** Uma versão seguinte da decisão ("Mudar quem arca" ou "Atualizar o valor segurado"): só a diferença, numa linha nova (`…:proprietario:vN`). */
+  async function novaVersao(c: Disputa, r: Reserva, n: number, diferenca: number, agora: Date, set: Partial<typeof contestacoesPagamento.$inferInsert>) {
+    await db.update(contestacoesPagamento).set({ decisaoVersao: n, decisaoEm: agora, ...set }).where(eq(contestacoesPagamento.id, c.id));
+    const l = await lancarAcertoDoProprietario(
+      db,
+      org,
+      ORIGEM_LANCAMENTO_CONTESTACAO,
+      { chave: chavesDaContestacao(c.pagamentoId, c.id).proprietario(n), proprietarioId: dono, imovelId: a, reservaId: r.id, valor: -diferenca, competencia: mesDoDesconto(agora), descricao: `Disputa do pagamento da reserva ${r.codigo}: valor segurado muda` },
+      null,
+      agora,
+    );
+    await db.update(lancamentos).set({ criadoEm: agora }).where(eq(lancamentos.id, l.id));
+    return l;
+  }
+  /** A perda prevista da SCL de uma versão da decisão (`…:scl:vN`), lançada em `agora`. */
+  async function perdaDaScl(c: Disputa, r: Reserva, n: number, perda: number, agora: Date) {
+    const [l] = await lancar(db, org, [{ tipo: "despesa_empresa", descricao: `Disputa do pagamento da reserva ${r.codigo}: perda prevista da SCL`, valor: -perda, montante: perda, competencia: mesDoDesconto(agora), estado: "previsto", imovelId: a, reservaId: r.id, origem: ORIGEM_LANCAMENTO_CONTESTACAO, chaveOrigem: chavesDaContestacao(c.pagamentoId, c.id).scl(n) }], null);
+    await db.update(lancamentos).set({ criadoEm: agora }).where(eq(lancamentos.id, l.id));
+  }
+  /** Fecha o mês, marca pago e acerta a criação do fechamento para o dia do teste (o relógio do banco é o de verdade). */
+  async function fecharEPagar(mes: string, dia: string) {
+    const rep = id(await fecharMes(db, org, dono, mes, dia, null));
+    id(await marcarRepassePago(db, org, rep, dia, dia, null, { texto: "E2E-R" }));
+    await db.update(repasses).set({ criadoEm: sp(dia) }).where(eq(repasses.id, rep));
+    return (await obterRepasse(db, org, rep))!;
+  }
+  const evento = (c: Disputa, tipo: "resultado" | "sem_efeito" | "decisao", em: Date, depois: Record<string, string | number | boolean | null>) =>
+    db.insert(eventosContestacao).values({ contestacaoId: c.id, fonte: "equipe", tipo, antes: { situacao: "aberta" }, depois, em });
+  const daDisputa = (ps: Awaited<ReturnType<typeof partes>>, r: Reserva) => ps.filter((x) => x.reservaId === r.id && x.origemLancamento === ORIGEM_LANCAMENTO_CONTESTACAO).sort((x, y) => x.valor - y.valor);
+
+  it("cada linha da disputa diz o valor dela: a primeira decisão, a mudança que devolve tudo (a SCL arca) e a de proporcional para o proprietário", async () => {
+    const r = await criar(reserva("2026-10-10", "2026-10-13"), "2026-10-10");
+    id(await marcarRepassePago(db, org, id(await gerarAntecipado(db, org, dono, "2026-10-14", null)), "2026-10-14", "2026-10-14", null));
+    const c = await disputa(r);
+    await decidir(c, r, sp("2026-10-20"), { x: 100000, quemArca: "proprietario" });
+    await novaVersao(c, r, 2, -100000, sp("2026-10-22"), { causa: "cobranca", quemArca: "scl", parteProprietario: 0, parteScl: 100000 });
+    const [v1, v2] = daDisputa(await partes("2026-10-22"), r);
+    expect([v1.valor, v1.motivo]).toEqual([-100000, `Disputa do pagamento da reserva ${r.codigo}: R$ 1.000,00 segurados dos seus próximos repasses até o resultado, pela primeira decisão (atualizada depois). Sai do próximo repasse.`]);
+    expect([v2.valor, v2.motivo]).toEqual([
+      100000,
+      `Disputa do pagamento da reserva ${r.codigo}: com a decisão atualizada, o valor segurado passa de R$ 1.000,00 para R$ 0,00: R$ 1.000,00 voltam a você. Nada fica segurado de você. Causa registrada: Falha na cobrança (valor errado, cobrança em dobro, devolução que não saiu). Volta no próximo repasse.`,
+    ]);
+
+    // Proporcional sobre R$ 500,00 (v1 −425,00) e depois "o proprietário arca" (v2 −75,00): cada linha com o seu valor.
+    const s = await criar(reserva("2026-10-20", "2026-10-23"), "2026-10-20");
+    const cs = await disputa(s, { idCaso: "7000000002", valor: 50000, valorEmRisco: 50000 });
+    await decidir(cs, s, sp("2026-10-24"), { x: 42500 });
+    await novaVersao(cs, s, 2, 7500, sp("2026-10-25"), { quemArca: "proprietario", parteProprietario: 50000, parteScl: 0 });
+    const [w1, w2] = daDisputa(await partes("2026-10-25"), s);
+    expect(w1.valor).toBe(-42500);
+    expect(w1.motivo).toBe(`Disputa do pagamento da reserva ${s.codigo}: R$ 425,00 segurados dos seus próximos repasses até o resultado, pela primeira decisão (atualizada depois). Sai do próximo repasse.`);
+    expect(w2.valor).toBe(-7500);
+    expect(w2.motivo).toBe(
+      `Disputa do pagamento da reserva ${s.codigo}: com a decisão atualizada, o valor segurado passa de R$ 425,00 para R$ 500,00 — o valor em disputa inteiro, que inclui a comissão e a taxa do pagamento; mais R$ 75,00 segurados dos seus próximos repasses até o resultado. Se a SCL ganhar a disputa, o valor volta no repasse seguinte. Causa registrada: Problema do imóvel (estrutura, equipamento ou obra do proprietário). Sai do próximo repasse.`,
+    );
+    // Ganha: a primeira linha "segurados, devolvidos depois" pelo valor dela, nunca pelo total em vigor.
+    await db.update(contestacoesPagamento).set({ situacao: "ganha", resultadoEm: "2026-10-26" }).where(eq(contestacoesPagamento.id, cs.id));
+    const [g1, g2] = daDisputa(await partes("2026-10-26"), s);
+    expect(g1.motivo).toContain("R$ 425,00 segurados, devolvidos depois (a SCL ganhou a disputa em 26/10).");
+    expect(g2.motivo).toContain("mais R$ 75,00 segurados com a decisão atualizada (de R$ 425,00 para R$ 500,00), devolvidos depois (a SCL ganhou a disputa em 26/10).");
+  });
+
+  it("o e-mail do repasse e o PDF levam a causa e a explicação ao proprietário ao lado da linha da disputa (nunca a nota interna)", async () => {
+    const r = await criar(reserva("2026-10-10", "2026-10-13"), "2026-10-10");
+    id(await marcarRepassePago(db, org, id(await gerarAntecipado(db, org, dono, "2026-10-14", null)), "2026-10-14", "2026-10-14", null));
+    const c = await disputa(r);
+    await decidir(c, r, sp("2026-10-20"), { x: 100000, quemArca: "proprietario", explicacao: "Infiltração no banheiro relatada na estadia" });
+    await criar(reserva("2026-11-01", "2026-11-04", { valorBruto: 200000, taxaCanal: 30000 }), "2026-11-01");
+    const rep = id(await gerarAntecipado(db, org, dono, "2026-11-05", null));
+    id(await marcarRepassePago(db, org, rep, "2026-11-05", "2026-11-05", null, { texto: "E2E-3" }));
+    const itens = await itensDoRepasse(db, org, rep);
+    const linha = itens.find((i) => i.disputa)!;
+    expect(descricaoDoItem(linha)).toBe("valor segurado pela disputa do pagamento (até o resultado); causa registrada: Problema do imóvel (estrutura, equipamento ou obra do proprietário); Infiltração no banheiro relatada na estadia");
+    const email = textoDoEmailDoRepasse((await obterRepasse(db, org, rep))!, itens, "Sua Casa");
+    expect(email.texto).toContain("causa registrada: Problema do imóvel (estrutura, equipamento ou obra do proprietário); Infiltração no banheiro relatada na estadia");
+    expect(email.texto).not.toContain("Nota interna");
+    // PDF de outubro (o mês da linha): a causa e a explicação abaixo da tabela das reservas.
+    const rel = textosDoRelatorio(
+      await dadosDoRelatorio(db, org, { donos: [{ id: dono, nome: "Dona Exemplo" }], imoveis: [{ id: a, codigo: "403", nome: "Quatro" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-06", agora: sp("2026-11-06") }),
+    );
+    expect(rel.notaReservas).toContain(`Disputa do pagamento da reserva ${r.codigo}: causa registrada: Problema do imóvel (estrutura, equipamento ou obra do proprietário). Infiltração no banheiro relatada na estadia.`);
+    expect(JSON.stringify(rel)).not.toContain("Nota interna");
+    expect(JSON.stringify(rel)).not.toContain("7000000001");
+  });
+
+  it("e-mail do fechamento: a parte fora por dinheiro não recebido, numa disputa decidida antes do fechamento e mudada depois, continua 'dinheiro ainda não recebido'", async () => {
+    const presa = await criar(reserva("2026-11-10", "2026-11-13"));
+    await criar(reserva("2026-11-20", "2026-11-23"), "2026-11-20");
+    const c = await disputa(presa, { abertaEm: sp("2026-11-20") });
+    // 28/11: a SCL arca (só a perda prevista da SCL).
+    await db.update(contestacoesPagamento).set({ decisaoVersao: 1, causa: "cobranca", quemArca: "scl", decisaoEm: sp("2026-11-28"), exposicao: 100000, parteProprietario: 0, parteScl: 100000 }).where(eq(contestacoesPagamento.id, c.id));
+    await perdaDaScl(c, presa, 1, 100000, sp("2026-11-28"));
+    const r = await fecharEPagar("2026-11", "2026-12-02");
+    expect(r.foraDoFechamento).toBe(72250);
+    // 05/12: "Atualizar o valor segurado" (versão 2): a data da decisão passa para depois do fechamento.
+    await db.update(contestacoesPagamento).set({ decisaoVersao: 2, decisaoEm: sp("2026-12-05"), exposicao: 90000, parteScl: 90000 }).where(eq(contestacoesPagamento.id, c.id));
+    await perdaDaScl(c, presa, 2, -10000, sp("2026-12-05"));
+    const fora = await foraPorDisputaDoFechamento(db, org, r);
+    expect(fora).toEqual({ presa: 0, seguradoJunto: 0, outras: 72250 });
+    const email = textoDoEmailDoRepasse(r, await itensDoRepasse(db, org, r.id), "Sua Casa", { fora });
+    expect(email.texto).toContain("Para o próximo repasse (dinheiro ainda não recebido pela empresa): R$ 722,50");
+    expect(email.texto).not.toContain("disputa do pagamento)");
+  });
+
+  it("e-mail e painel do fechamento gravado: a parte presa por disputa sem decisão, encerrada sem efeito depois, continua com o motivo da disputa", async () => {
+    const presa = await criar(reserva("2026-10-10", "2026-10-13"), "2026-10-10");
+    await criar(reserva("2026-10-20", "2026-10-23"), "2026-10-20");
+    const c = await disputa(presa);
+    // O retido previsto da abertura (o caixa da disputa: montante = valor em risco).
+    const [retido] = await lancar(db, org, [{ tipo: "devolucao", descricao: `Reserva ${presa.codigo} — valor em disputa bloqueado pelo Mercado Pago (a confirmar)`, valor: 0, montante: 100000, competencia: "2026-10-15", estado: "previsto", imovelId: a, reservaId: presa.id, origem: ORIGEM_LANCAMENTO_CONTESTACAO, chaveOrigem: chavesDaContestacao(c.pagamentoId, c.id).retido() }], null);
+    await db.update(lancamentos).set({ criadoEm: sp("2026-10-15") }).where(eq(lancamentos.id, retido.id));
+    const r = await fecharEPagar("2026-10", "2026-11-02");
+    expect(r.foraDoFechamento).toBe(72250);
+    // O painel do mês já fechado dá o motivo da disputa (C2), o mesmo do e-mail.
+    const [antes] = await preverRepasses(db, org, "2026-10", "2026-11-03", [dono]);
+    expect(antes.avisos).toContain("R$ 722,50 da competência ficaram fora deste repasse (reserva em conferência: disputa do pagamento) e vão para o repasse seguinte.");
+    expect(antes.avisos.join(" ")).not.toContain("dinheiro ainda não registrado");
+    expect(antes.foraPorDisputa).toBe(72250);
+    expect(antes.foraDividido).toEqual({ presa: 72250, seguradoJunto: 0, outras: 0 });
+    // 04/11: "Encerrar sem efeito": o valor em risco vai a 0 e o retido previsto é estornado.
+    await db.update(contestacoesPagamento).set({ situacao: "sem_efeito", valorEmRisco: 0 }).where(eq(contestacoesPagamento.id, c.id));
+    await evento(c, "sem_efeito", sp("2026-11-04"), { situacao: "sem_efeito" });
+    await estornar(db, org, retido.id, "disputa encerrada sem efeito", null);
+    await db.update(lancamentos).set({ criadoEm: sp("2026-11-04") }).where(eq(lancamentos.estornoDe, retido.id));
+    const fora = await foraPorDisputaDoFechamento(db, org, r);
+    expect(fora).toEqual({ presa: 72250, seguradoJunto: 0, outras: 0 });
+    const email = textoDoEmailDoRepasse(r, await itensDoRepasse(db, org, r.id), "Sua Casa", { fora });
+    expect(email.texto).toContain("Para o próximo repasse (reserva em conferência: disputa do pagamento): R$ 722,50");
+    expect(email.texto).not.toContain("dinheiro ainda não recebido");
+    const [depois] = await preverRepasses(db, org, "2026-10", "2026-11-05", [dono]);
+    expect(depois.avisos).toContain("R$ 722,50 da competência ficaram fora deste repasse (reserva em conferência: disputa do pagamento) e vão para o repasse seguinte.");
+  });
+
+  it("e-mail do fechamento: o valor segurado que espera junto com a parte (total fora negativo) tem linha própria, nunca '-R$' no motivo da disputa", async () => {
+    const r = await criar(reserva("2026-10-10", "2026-10-13"));
+    await criar(reserva("2026-10-20", "2026-10-23"), "2026-10-20");
+    const c = await disputa(r);
+    await decidir(c, r, sp("2026-10-20"));
+    const [p] = await preverRepasses(db, org, "2026-10", "2026-11-02", [dono]);
+    expect(p).toMatchObject({ valor: 72250, fora: -12750, foraPorDisputa: -85000, foraDividido: { presa: 0, seguradoJunto: -85000, outras: 72250 } });
+    const rep = await fecharEPagar("2026-10", "2026-11-02");
+    expect(rep.foraDoFechamento).toBe(-12750);
+    const fora = await foraPorDisputaDoFechamento(db, org, rep);
+    expect(fora).toEqual({ presa: 0, seguradoJunto: -85000, outras: 72250 });
+    const email = textoDoEmailDoRepasse(rep, await itensDoRepasse(db, org, rep.id), "Sua Casa", { fora });
+    expect(email.texto).toContain("Para o próximo repasse (dinheiro ainda não recebido pela empresa): R$ 722,50");
+    expect(email.texto).toContain("Valor segurado pela disputa do pagamento, fora deste repasse (espera junto com a sua parte da reserva): − R$ 850,00");
+    expect(email.texto).not.toContain("-R$");
+    expect(email.texto).not.toContain("(reserva em conferência: disputa do pagamento)");
+    // O painel do mês fechado diz o mesmo.
+    const [fechado] = await preverRepasses(db, org, "2026-10", "2026-11-03", [dono]);
+    expect(fechado.foraDividido).toEqual({ presa: 0, seguradoJunto: -85000, outras: 72250 });
+    expect(fechado.avisos).toContain("R$ 722,50 da competência ficaram fora deste repasse (dinheiro ainda não registrado com a empresa) e vão para o repasse seguinte.");
+    expect(fechado.avisos).toContain("O valor segurado de R$ 850,00 pela disputa do pagamento esperou junto com a parte da reserva: ficou fora deste repasse e vai para o seguinte.");
+  });
+
+  it("e-mail do fechamento: uma disputa ganha antes do fechamento, sem decisão, não faz da parte que esperava o dinheiro uma 'disputa'", async () => {
+    const r = await criar(reserva("2026-10-10", "2026-10-13"));
+    await criar(reserva("2026-10-20", "2026-10-23"), "2026-10-20");
+    const c = await disputa(r);
+    await db.update(contestacoesPagamento).set({ situacao: "ganha", resultadoEm: "2026-10-20" }).where(eq(contestacoesPagamento.id, c.id));
+    await evento(c, "resultado", sp("2026-10-20"), { situacao: "ganha" });
+    const [p] = await preverRepasses(db, org, "2026-10", "2026-11-02", [dono]);
+    expect(p).toMatchObject({ fora: 72250, foraPorDisputa: 0 });
+    const rep = await fecharEPagar("2026-10", "2026-11-02");
+    const fora = await foraPorDisputaDoFechamento(db, org, rep);
+    expect(fora).toEqual({ presa: 0, seguradoJunto: 0, outras: 72250 });
+    const email = textoDoEmailDoRepasse(rep, await itensDoRepasse(db, org, rep.id), "Sua Casa", { fora });
+    expect(email.texto).toContain("Para o próximo repasse (dinheiro ainda não recebido pela empresa): R$ 722,50");
+    expect(email.texto).not.toContain("(reserva em conferência: disputa do pagamento)");
+  });
+
+  it("despesas: a taxa perdida do pagamento sem reserva e a tarifa da disputa têm texto próprio, sem 'acompanhe' nas já realizadas", async () => {
+    const r = await criar(reserva("2026-10-10", "2026-10-13"), "2026-10-10");
+    const c = await disputa(r, { reservaId: null, situacao: "perdida", resultadoEm: "2026-12-10" });
+    const k = chavesDaContestacao(c.pagamentoId, c.id);
+    const realizada = (chave: string, descricao: string, v: number) =>
+      lancar(db, org, [{ tipo: "despesa_empresa", descricao, valor: -v, montante: v, competencia: "2026-12-10", dataCaixa: "2026-12-10", estado: "realizado", imovelId: a, origem: ORIGEM_LANCAMENTO_CONTESTACAO, chaveOrigem: chave }], null);
+    const [taxa] = await realizada(k.taxa(), "Taxa do pagamento do site perdida na disputa (pagamento sem reserva)", 1824);
+    const [tarifa] = await realizada(k.tarifa(), "Tarifa do Mercado Pago pela disputa do pagamento", 1500);
+    const lista = await listarDespesas(db, org);
+    expect(textoDaDespesaDaDisputa(lista.find((x) => x.id === taxa.id)!.disputa!)).toBe("Taxa do pagamento do site perdida na disputa (pagamento sem reserva), definitiva (disputa perdida em 10/12)");
+    expect(textoDaDespesaDaDisputa(lista.find((x) => x.id === tarifa.id)!.disputa!)).toBe("Tarifa do Mercado Pago pela disputa do pagamento, já paga (disputa perdida em 10/12)");
+    await db.update(contestacoesPagamento).set({ situacao: "ganha" }).where(eq(contestacoesPagamento.id, c.id));
+    expect(textoDaDespesaDaDisputa((await obterDespesa(db, org, tarifa.id))!.disputa!)).toBe("Tarifa do Mercado Pago pela disputa do pagamento, já paga (disputa ganha em 10/12)");
   });
 });

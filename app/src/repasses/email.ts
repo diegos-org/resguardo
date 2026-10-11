@@ -23,7 +23,7 @@ import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { montarEmail } from "@/email/modelo";
 import { formatBRL } from "@/lib/money";
 import { MOTIVO_FECHAMENTO_DISPUTA, ROTULO_DISPUTA_PROPRIETARIO } from "@/pagamentos/contestacao-regras";
-import { arquivoPorId, foraPorDisputaDoFechamento, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado, descricaoDoItem, separarAntecipado } from "./repasses";
+import { arquivoPorId, type ForaDoFechamento, foraPorDisputaDoFechamento, itensDoRepasse, JANELA_TENTATIVA_EMAIL_MS, nomeMes, obterRepasse, type RepasseListado, descricaoDoItem, separarAntecipado } from "./repasses";
 
 export type SituacaoEnvioRepasse = "enviado" | "ja_enviado" | "nao_pago" | "por_fora" | "sem_comprovante" | "sem_email" | "sem_provedor" | "incerto" | "aguardando" | "em_andamento" | "falhou" | "nao_encontrado";
 
@@ -34,6 +34,7 @@ const JANELA_TENTATIVA_MS = JANELA_TENTATIVA_EMAIL_MS;
 const JANELA_PROVEDOR_MS = 23 * 3_600_000;
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+const comSinal = (v: number) => (v < 0 ? `− ${formatBRL(-v)}` : formatBRL(v));
 
 export async function destinosDoRepasse(db: Db, organizacaoId: string, proprietarioId: string): Promise<string[]> {
   const [dono] = await db.select({ email: proprietarios.email }).from(proprietarios).where(and(eq(proprietarios.id, proprietarioId), eq(proprietarios.organizacaoId, organizacaoId)));
@@ -45,11 +46,11 @@ type Item = Awaited<ReturnType<typeof itensDoRepasse>>[number];
 
 /**
  * Texto e HTML do e-mail (puros, para teste e prévia), no esqueleto da casa (M5.7, `email/modelo.ts`): saudação, o que é,
- * o destaque (valor e data do Pix), o que entrou, onde ver mais. `foraPorDisputa` (M8.2e): do que ficou fora do
- * fechamento, o que era parte de reserva em conferência por disputa do pagamento (`foraPorDisputaDoFechamento`), com o
- * motivo próprio.
+ * o destaque (valor e data do Pix), o que entrou, onde ver mais. `fora` (M8.2e): o que ficou fora do fechamento dividido
+ * pelo motivo (`foraPorDisputaDoFechamento`): a parte de reserva em conferência por disputa do pagamento, com o motivo
+ * próprio, e o valor segurado que esperou junto com a parte; sem ele, tudo é "dinheiro ainda não recebido".
  */
-export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[], empresa: string, o: { foraPorDisputa?: number } = {}): { assunto: string; texto: string; html: string } {
+export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[], empresa: string, o: { fora?: ForaDoFechamento } = {}): { assunto: string; texto: string; html: string } {
   const quando = dataBr(r.dataPagamento ?? r.data);
   const assunto = `${r.tipo === "fechamento" ? `Repasse do fechamento de ${nomeMes(r.mes.slice(0, 7))}` : `Repasse de ${dataBr(r.data)}`} — ${empresa}`;
   // A chave Pix é a usada no pagamento (guardada ao marcar pago), nunca a atual do cadastro; sem registro, não se cita.
@@ -59,10 +60,13 @@ export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[],
     valores.push({ rotulo: `Saldo de ${nomeMes(r.mes.slice(0, 7))}`, valor: formatBRL(r.saldo + r.descontado + r.contestado) });
     if (r.descontado) valores.push({ rotulo: "Adiantamentos descontados", valor: `− ${formatBRL(r.descontado)}` });
     if (r.contestado) valores.push({ rotulo: "Contestados (fora deste repasse)", valor: formatBRL(r.contestado) });
-    // M8.2e (C2): a parte presa por disputa do pagamento fica fora com o motivo próprio, nunca "dinheiro ainda não recebido".
-    const foraDisputa = Math.min(r.foraDoFechamento, Math.max(0, o.foraPorDisputa ?? 0));
-    if (r.foraDoFechamento - foraDisputa) valores.push({ rotulo: "Para o próximo repasse (dinheiro ainda não recebido pela empresa)", valor: formatBRL(r.foraDoFechamento - foraDisputa) });
-    if (foraDisputa) valores.push({ rotulo: `Para o próximo repasse (${MOTIVO_FECHAMENTO_DISPUTA})`, valor: formatBRL(foraDisputa) });
+    // M8.2e (C2): o que ficou fora, pelo motivo daquele instante (`foraPorDisputaDoFechamento`): a parte presa por disputa
+    // do pagamento com o motivo próprio (nunca "dinheiro ainda não recebido"), e o valor segurado que esperou junto com a
+    // parte da reserva numa linha própria, com o sinal dele (o total gravado pode ser negativo).
+    const f = o.fora ?? { presa: 0, seguradoJunto: 0, outras: r.foraDoFechamento };
+    if (f.outras) valores.push({ rotulo: "Para o próximo repasse (dinheiro ainda não recebido pela empresa)", valor: comSinal(f.outras) });
+    if (f.presa) valores.push({ rotulo: `Para o próximo repasse (${MOTIVO_FECHAMENTO_DISPUTA})`, valor: comSinal(f.presa) });
+    if (f.seguradoJunto) valores.push({ rotulo: "Valor segurado pela disputa do pagamento, fora deste repasse (espera junto com a sua parte da reserva)", valor: comSinal(f.seguradoJunto) });
     // M8.2c: o "antecipado" gravado junta as noites de meses seguintes com o desconto de cancelamento de mês seguinte (a
     // parte já repassada) e o estorno da parte nunca paga (que anula a parte deste saldo): cada um na sua linha, pelos itens.
     const a = separarAntecipado(r.antecipado, itens, r.mes);
@@ -72,14 +76,23 @@ export function textoDoEmailDoRepasse(r: RepasseListado, itens: readonly Item[],
     // M8.2e: as linhas da disputa do pagamento (o valor segurado e a reversão) numa linha própria.
     if (a.disputa) valores.push({ rotulo: ROTULO_DISPUTA_PROPRIETARIO, valor: a.disputa < 0 ? `− ${formatBRL(-a.disputa)}` : formatBRL(a.disputa) });
   }
-  const reservas = itens.map((i) => `${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} a ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${descricaoDoItem(i)})`);
+  const linhaDe = (i: Item) => `${i.codigoImovel} · ${i.hospede || i.codigoReserva} · ${dataBr(i.checkin)} a ${dataBr(i.checkout)} · ${formatBRL(i.valor)} (${descricaoDoItem(i)})`;
+  const reservas = itens.map(linhaDe);
+  // M8.2e: as linhas da disputa (com a causa e a explicação ao proprietário) nunca ficam no "e mais N": o resto é cortado antes.
+  const daDisputa = itens.filter((i) => i.disputa);
+  const comuns = itens.filter((i) => !i.disputa);
+  const cabem = Math.max(0, 4 - daDisputa.length);
+  const restantes = comuns.length - cabem;
   const { texto, html } = montarEmail({
     empresa,
     nome: r.nome,
     frase,
     destaque: { rotulo: r.tipo === "fechamento" ? `Repasse do fechamento de ${nomeMes(r.mes.slice(0, 7))}` : "Repasse", valor: formatBRL(r.valor), nota: `Pix em ${quando}` },
     valores,
-    linhas: reservas.length <= 5 ? reservas : [...reservas.slice(0, 4), `e mais ${reservas.length - 4} reserva(s) — a lista completa está no portal`],
+    linhas:
+      reservas.length <= 5
+        ? reservas
+        : [...comuns.slice(0, cabem).map(linhaDe), ...daDisputa.map(linhaDe), ...(restantes > 0 ? [`e mais ${restantes} reserva(s) — a lista completa está no portal`] : [])],
     proximoPasso: `${reservas.length ? "Reservas pagas neste repasse acima. " : ""}O extrato completo está no portal do proprietário.`,
   });
   return { assunto, texto, html };
@@ -123,8 +136,8 @@ export async function enviarEmailDoRepasse(db: Db, organizacaoId: string, repass
   } else {
     const destinos = await destinosDoRepasse(db, organizacaoId, r.proprietarioId);
     if (!destinos.length) return "sem_email";
-    const [empresa, itens, foraPorDisputa] = await Promise.all([nomeDaEmpresa(db, organizacaoId), itensDoRepasse(db, organizacaoId, r.id), foraPorDisputaDoFechamento(db, organizacaoId, r)]);
-    const { assunto, texto, html } = textoDoEmailDoRepasse(r, itens, empresa, { foraPorDisputa });
+    const [empresa, itens, fora] = await Promise.all([nomeDaEmpresa(db, organizacaoId), itensDoRepasse(db, organizacaoId, r.id), foraPorDisputaDoFechamento(db, organizacaoId, r)]);
+    const { assunto, texto, html } = textoDoEmailDoRepasse(r, itens, empresa, { fora });
     pedido = { para: destinos[0], copias: destinos.slice(1), assunto, texto, html, anexoArquivoId: r.comprovanteArquivoId };
   }
   const destinos = [pedido.para, ...pedido.copias];

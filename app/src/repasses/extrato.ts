@@ -139,7 +139,40 @@ export type DisputaDaLinha = {
   exposicao: number | null;
   parteProprietario: number | null;
   explicacao: string;
+  /** Qual linha da disputa é esta, pela chave (`linhaDaChave`); ausente = sem a chave (o texto segue só o sinal do valor). */
+  linha?: LinhaDaDisputaDoProprietario;
 };
+
+/**
+ * Qual linha do proprietário da disputa é esta, pela chave dela (revisão de 11/10): a versão N da decisão (`…:proprietario:vN`,
+ * só a diferença para a anterior), com o valor segurado antes e depois dela e se é a versão em vigor (`ultima`); a reversão
+ * da ganha (`…:proprietario:reverte`); o ajuste da perdida (`…:proprietario:final`; `comVersoes` = havia valor segurado antes
+ * dele); ou o espelho do "Encerrar sem efeito" (`…:sem_efeito:<lançamento>`). Cada linha é descrita pelo valor dela.
+ */
+export type LinhaDaDisputaDoProprietario =
+  | { tipo: "versao"; versao: number; ultima: boolean; antes: number; depois: number }
+  | { tipo: "reverte" }
+  | { tipo: "final"; comVersoes: boolean }
+  | { tipo: "sem_efeito" };
+
+const CHAVE_VERSAO_DO_PROPRIETARIO = /:proprietario:v([1-9]\d*)$/;
+
+/**
+ * A linha da disputa pela chave (pura): `versoes` = as linhas de versão do proprietário em vigor da mesma disputa (número
+ * e valor com sinal: o débito é negativo). O valor segurado depois da versão N é a soma dos débitos até ela.
+ */
+export function linhaDaChave(chave: string, versoes: readonly { versao: number; valor: number }[]): LinhaDaDisputaDoProprietario | undefined {
+  const m = CHAVE_VERSAO_DO_PROPRIETARIO.exec(chave);
+  if (m) {
+    const n = Number(m[1]);
+    const ate = (k: number) => versoes.filter((v) => v.versao <= k).reduce((t, v) => t - v.valor, 0);
+    return { tipo: "versao", versao: n, ultima: !versoes.some((v) => v.versao > n), antes: ate(n - 1), depois: ate(n) };
+  }
+  if (chave.endsWith(":proprietario:reverte")) return { tipo: "reverte" };
+  if (chave.endsWith(":proprietario:final")) return { tipo: "final", comVersoes: versoes.length > 0 };
+  if (/:sem_efeito:[^:]+$/.test(chave)) return { tipo: "sem_efeito" };
+  return undefined;
+}
 
 /** A parte é uma linha da disputa do pagamento (M8.2e): o valor segurado, a reversão ou o ajuste, origem "contestacao_pagamento". */
 export const ehLinhaDeContestacao = (p: Pick<ParteBruta, "origemLancamento">) => p.origemLancamento === ORIGEM_LANCAMENTO_CONTESTACAO;
@@ -250,22 +283,44 @@ const porcento = (parte: number, total: number) => `${((parte * 100) / total).to
  * O texto de uma linha da disputa para o proprietário (extrato, portal, PDF): só o código da reserva, o valor, a variante
  * (segurado, definitivo ou devolvido), a causa registrada e a explicação ao proprietário — nunca a nota interna, o número
  * do caso nem o nome do hóspede. Uma regra, um lugar: `classificarParte` e o relatório leem daqui.
+ *
+ * Revisão de 11/10: cada linha diz o valor dela (`linha`, pela chave). "Mudar quem arca" e "Atualizar o valor segurado"
+ * lançam só a diferença numa linha nova: a versão N diz "o valor segurado passa de R$ a para R$ b" e se a diferença é mais
+ * segurado ou volta ao proprietário; a versão antiga (não mais em vigor) não leva a causa nem a proporção, que são as da
+ * decisão em vigor.
  */
 export function textoDaLinhaDaDisputa(p: Pick<ParteBruta, "codigoReserva" | "valor" | "disputa">): string {
   const d = p.disputa;
   const inicio = `${ROTULO_DISPUTA_PROPRIETARIO} da reserva ${p.codigoReserva}`;
   const variante = varianteDaDisputa(d?.situacao);
   const quando = d?.resultadoEm ? ` em ${ddmm(d.resultadoEm)}` : "";
-  const segurado = d?.parteProprietario && d.parteProprietario > 0 ? d.parteProprietario : Math.abs(p.valor);
-  const causa = d?.causa ? ` Causa registrada: ${d.causa}.` : "";
-  const explicacao = d?.explicacao.trim() ? ` ${d.explicacao.trim().replace(/([^.!?])$/, "$1.")}` : "";
-  if (variante === "definitivo")
+  const valor = Math.abs(p.valor);
+  const linha = d?.linha;
+  const versao = linha?.tipo === "versao" ? linha : null;
+  const seguinte = versao && versao.versao > 1 ? versao : null;
+  const antiga = versao !== null && !versao.ultima;
+  // A causa e a explicação são as da decisão em vigor: nunca numa versão que já não vale.
+  const causa = !antiga && d?.causa ? ` Causa registrada: ${d.causa}.` : "";
+  const explicacao = !antiga && d?.explicacao.trim() ? ` ${d.explicacao.trim().replace(/([^.!?])$/, "$1.")}` : "";
+  const passa = (v: { antes: number; depois: number }) => `o valor segurado passa de ${formatBRL(v.antes)} para ${formatBRL(v.depois)}`;
+  if (variante === "definitivo") {
+    const perdeu = `a SCL perdeu a disputa${quando}`;
+    if (seguinte) return `${inicio}: com a decisão atualizada antes do resultado, ${passa(seguinte)} (${p.valor < 0 ? `mais ${formatBRL(valor)} descontados` : `${formatBRL(valor)} de volta a você`}); ficou definitivo (${perdeu}).${causa}${explicacao}`;
+    if (antiga) return `${inicio}: ${formatBRL(valor)} segurados pela primeira decisão (atualizada depois), em desconto definitivo (${perdeu}).`;
+    if (linha?.tipo === "final" && linha.comVersoes && p.valor < 0) return `${inicio}: ajuste do desconto definitivo (${perdeu}; o valor perdido ficou maior que o segurado).${causa}${explicacao}`;
     return p.valor < 0
-      ? `${inicio}: desconto definitivo (a SCL perdeu a disputa${quando}).${causa}${explicacao}`
-      : `${inicio}: ajuste do desconto definitivo (a SCL perdeu a disputa${quando}; o valor perdido ficou menor que o segurado).${causa}${explicacao}`;
+      ? `${inicio}: desconto definitivo (${perdeu}).${causa}${explicacao}`
+      : `${inicio}: ajuste do desconto definitivo (${perdeu}; o valor perdido ficou menor que o segurado).${causa}${explicacao}`;
+  }
   if (variante === "devolvido") {
     const porque = d?.situacao === "sem_efeito" ? "a disputa foi encerrada sem efeito" : `a SCL ganhou a disputa${quando}`;
-    return p.valor > 0 ? `${inicio}: valor segurado devolvido (${porque}).` : `${inicio}: ${formatBRL(segurado)} segurados, devolvidos depois (${porque}).`;
+    const de = (v: { antes: number; depois: number }) => `(de ${formatBRL(v.antes)} para ${formatBRL(v.depois)})`;
+    if (seguinte)
+      return p.valor < 0
+        ? `${inicio}: mais ${formatBRL(valor)} segurados com a decisão atualizada ${de(seguinte)}, devolvidos depois (${porque}).`
+        : `${inicio}: ${formatBRL(valor)} devolvidos com a decisão atualizada ${de(seguinte)}, antes do resultado (${porque}).`;
+    if (linha?.tipo === "sem_efeito" && p.valor < 0) return `${inicio}: ${formatBRL(valor)} que tinham voltado a você com a decisão atualizada saem de novo (${porque}; somadas, as linhas desta disputa dão zero).`;
+    return p.valor > 0 ? `${inicio}: valor segurado devolvido (${porque}).` : `${inicio}: ${formatBRL(valor)} segurados, devolvidos depois (${porque}).`;
   }
   const proporcao =
     d?.quemArca === "proprietario"
@@ -273,7 +328,16 @@ export function textoDaLinhaDaDisputa(p: Pick<ParteBruta, "codigoReserva" | "val
       : d?.quemArca === "proporcional" && d.exposicao && d.exposicao > 0 && d.parteProprietario !== null
         ? ` — ${porcento(d.parteProprietario, d.exposicao)} do valor em disputa (${formatBRL(d.exposicao)}), a proporção da sua parte`
         : "";
-  return `${inicio}: ${formatBRL(segurado)} segurados dos seus próximos repasses até o resultado${proporcao}. Se a SCL ganhar a disputa, o valor volta no repasse seguinte.${causa}${explicacao}`;
+  const seGanhar = " Se a SCL ganhar a disputa, o valor volta no repasse seguinte.";
+  if (seguinte) {
+    const emVigor = seguinte.ultima && seguinte.depois > 0 ? proporcao : "";
+    const diferenca = p.valor < 0 ? `; mais ${formatBRL(valor)} segurados dos seus próximos repasses até o resultado` : `: ${formatBRL(valor)} voltam a você`;
+    const depois = seguinte.ultima ? (seguinte.depois > 0 ? seGanhar : " Nada fica segurado de você.") : "";
+    return `${inicio}: com a decisão atualizada, ${passa(seguinte)}${emVigor}${diferenca}.${depois}${causa}${explicacao}`;
+  }
+  if (antiga) return `${inicio}: ${formatBRL(valor)} segurados dos seus próximos repasses até o resultado, pela primeira decisão (atualizada depois).`;
+  if (p.valor > 0) return `${inicio}: ajuste do valor segurado: ${formatBRL(valor)} voltam a você.${causa}${explicacao}`;
+  return `${inicio}: ${formatBRL(valor)} segurados dos seus próximos repasses até o resultado${proporcao}.${seGanhar}${causa}${explicacao}`;
 }
 
 const descontoDe = (p: Pick<ParteBruta, "codigoReserva">) => `Desconto da sua parte já repassada da reserva ${p.codigoReserva} (cancelada com devolução integral ao hóspede)`;
@@ -401,9 +465,11 @@ export async function partesDoProprietario(db: Db, organizacaoId: string, propri
 
 /**
  * Os fatos da disputa de cada linha da disputa, pela chave (`mercadopago:<pagamento>:contestacao:<contestação>:…`), só o
- * que o proprietário pode ver (`DisputaDaLinha`), com o nome da causa pela configuração em vigor.
+ * que o proprietário pode ver (`DisputaDaLinha`), com o nome da causa pela configuração em vigor e qual linha é (`linha`,
+ * pelas linhas de versão do proprietário em vigor da mesma disputa, lidas do livro: um repasse pode levar só uma delas).
+ * Uma regra, um lugar: o extrato, os itens do repasse (painel, portal, e-mail) e o relatório leem daqui.
  */
-async function disputasDasLinhas(db: Db, organizacaoId: string, chaves: readonly string[]): Promise<Map<string, DisputaDaLinha>> {
+export async function disputasDasLinhas(db: Db, organizacaoId: string, chaves: readonly string[]): Promise<Map<string, DisputaDaLinha>> {
   const idDe = (chave: string) => chave.split(":")[3] ?? "";
   const ids = [...new Set(chaves.map(idDe).filter(uuidValido))];
   if (!ids.length) return new Map();
@@ -422,6 +488,25 @@ async function disputasDasLinhas(db: Db, organizacaoId: string, chaves: readonly
     .where(and(eq(contestacoesPagamento.organizacaoId, organizacaoId), inArray(contestacoesPagamento.id, ids)));
   if (!linhas.length) return new Map();
   const causas = (await lerConfigPagamentoSite(db, organizacaoId)).causasContestacao;
+  // As linhas de versão do proprietário em vigor de cada disputa (a diferença de cada versão; o débito é negativo).
+  const doLivro = await db
+    .select({ chave: lancamentos.chaveOrigem, valor: lancamentos.valor })
+    .from(lancamentos)
+    .where(
+      and(
+        eq(lancamentos.organizacaoId, organizacaoId),
+        eq(lancamentos.tipo, "direito_proprietario"),
+        eq(lancamentos.origem, ORIGEM_LANCAMENTO_CONTESTACAO),
+        inArray(sql<string>`split_part(${lancamentos.chaveOrigem}, ':', 4)`, linhas.map((c) => c.id)),
+        sql`${lancamentos.chaveOrigem} ~ ':proprietario:v[1-9][0-9]*$'`,
+        lancamentoEmVigor(db),
+      ),
+    );
+  const versoes = new Map<string, { versao: number; valor: number }[]>();
+  for (const v of doLivro) {
+    const m = CHAVE_VERSAO_DO_PROPRIETARIO.exec(v.chave);
+    if (m) versoes.set(idDe(v.chave), [...(versoes.get(idDe(v.chave)) ?? []), { versao: Number(m[1]), valor: v.valor }]);
+  }
   const porId = new Map(
     linhas.map((c) => [
       c.id,
@@ -437,7 +522,14 @@ async function disputasDasLinhas(db: Db, organizacaoId: string, chaves: readonly
       } satisfies DisputaDaLinha,
     ]),
   );
-  return new Map(chaves.filter((k) => porId.has(idDe(k))).map((k) => [k, porId.get(idDe(k))!]));
+  return new Map(
+    chaves
+      .filter((k) => porId.has(idDe(k)))
+      .map((k) => {
+        const linha = linhaDaChave(k, versoes.get(idDe(k)) ?? []);
+        return [k, { ...porId.get(idDe(k))!, ...(linha ? { linha } : {}) }] as const;
+      }),
+  );
 }
 
 /** A liberação prevista do site como a parte a leva (o dia em São Paulo; "da diferença" quando só ela falta). */

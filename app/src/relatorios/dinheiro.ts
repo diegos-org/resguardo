@@ -51,6 +51,12 @@ export type ParteDoRelatorio = {
    * resultado; `definitivo` na perdida; `devolvido` na ganha (ou encerrada sem efeito). Ausente nas demais.
    */
   contestacao?: VarianteDaDisputa;
+  /**
+   * Revisão de 11/10: na linha da disputa, a causa registrada (o nome configurado) e a explicação ao proprietário da decisão
+   * em vigor (lista branca do extrato, `disputasDasLinhas`), para o PDF mostrá-las ao lado da linha. Ausentes nas demais.
+   */
+  causaDaDisputa?: string | null;
+  explicacaoDaDisputa?: string;
 };
 
 /** O espelho no mês do cancelamento (o desconto da parte já repassada ou o estorno da parte nunca paga): sem noites, sem canal. */

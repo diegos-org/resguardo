@@ -119,6 +119,8 @@ export async function partesDoRelatorio(db: Db, organizacaoId: string, o: { dono
           pagamento: null,
           repasse: p.repasse,
           contestacao: varianteDaDisputa(p.disputa?.situacao),
+          causaDaDisputa: p.disputa?.causa ?? null,
+          explicacaoDaDisputa: p.disputa?.explicacao ?? "",
         };
       return {
         reservaId: p.reservaId,

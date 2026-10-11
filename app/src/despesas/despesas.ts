@@ -241,17 +241,29 @@ export async function estornarDespesa(db: Db, organizacaoId: string, id: string,
  * M8.2e: a disputa de uma despesa da disputa do pagamento: a situação dela, o dia do resultado e o código da reserva
  * (nunca o nome do hóspede).
  */
-export type DisputaDaDespesa = { situacao: SituacaoContestacao | null; resultadoEm: string | null; codigoReserva: string | null; tarifa: boolean };
+export type DisputaDaDespesa = {
+  situacao: SituacaoContestacao | null;
+  resultadoEm: string | null;
+  codigoReserva: string | null;
+  /** A tarifa do Mercado Pago pela disputa (`…:tarifa`): despesa da SCL já paga no resultado. */
+  tarifa: boolean;
+  /** A taxa do pagamento sem reserva perdida na disputa (`…:taxa`): o que a SCL perde, já realizado e definitivo. */
+  taxa: boolean;
+};
 export type LinhaDespesa = Lancamento & { categoria: string | null; estornada: boolean; disputa?: DisputaDaDespesa };
 
 const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 /**
  * M8.2e: o texto da despesa da disputa na lista: "Perda por disputa do pagamento (prevista até o resultado): acompanhe no
- * quadro da disputa", depois "definitiva (disputa perdida em dd/mm)" ou "revertida (disputa ganha em dd/mm)".
+ * quadro da disputa", depois "definitiva (disputa perdida em dd/mm)" ou "revertida (disputa ganha em dd/mm)". A tarifa do
+ * Mercado Pago pela disputa e a taxa do pagamento sem reserva perdida têm texto próprio e, já realizadas no resultado, nunca
+ * "acompanhe" (revisão de 11/10).
  */
 export function textoDaDespesaDaDisputa(d: DisputaDaDespesa): string {
-  if (d.tarifa) return "Tarifa do Mercado Pago pela disputa do pagamento: acompanhe no quadro da disputa";
   const quando = d.resultadoEm ? ` em ${ddmm(d.resultadoEm)}` : "";
+  const resultado = d.situacao === "perdida" ? ` (disputa perdida${quando})` : d.situacao === "ganha" ? ` (disputa ganha${quando})` : "";
+  if (d.taxa) return `Taxa do pagamento do site perdida na disputa (pagamento sem reserva), definitiva${resultado}`;
+  if (d.tarifa) return `Tarifa do Mercado Pago pela disputa do pagamento, já paga${resultado}`;
   if (d.situacao === "perdida") return `Perda por disputa do pagamento definitiva (disputa perdida${quando})`;
   if (d.situacao === "ganha") return `Perda por disputa do pagamento revertida (disputa ganha${quando})`;
   if (d.situacao === "sem_efeito") return "Perda por disputa do pagamento revertida (disputa encerrada sem efeito)";
@@ -278,7 +290,7 @@ async function comDisputas(db: Db, organizacaoId: string, linhas: LinhaDespesa[]
   return linhas.map((l) => {
     if (!ehDespesaDaContestacao(l)) return l;
     const c = disputas.get(idDe(l.chaveOrigem));
-    return { ...l, disputa: { situacao: c?.situacao ?? null, resultadoEm: c?.situacao === "sem_efeito" ? null : (c?.resultadoEm ?? null), codigoReserva: c?.codigo ?? null, tarifa: /:(tarifa|taxa)$/.test(l.chaveOrigem) } };
+    return { ...l, disputa: { situacao: c?.situacao ?? null, resultadoEm: c?.situacao === "sem_efeito" ? null : (c?.resultadoEm ?? null), codigoReserva: c?.codigo ?? null, tarifa: /:tarifa$/.test(l.chaveOrigem), taxa: /:taxa$/.test(l.chaveOrigem) } };
   });
 }
 

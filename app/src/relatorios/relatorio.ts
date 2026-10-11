@@ -321,6 +321,24 @@ export function textoDoSaldo(r: Rodape, empresa: string, diaFechamento: number =
   }
 }
 
+/**
+ * M8.2e (revisão de 11/10): a causa registrada e a explicação ao proprietário de cada disputa com linha no mês (desenho,
+ * "Quem arca": "mostrada no extrato, no PDF e no e-mail, ao lado da causa"), uma frase por disputa, só com o código da
+ * reserva. A coluna da situação na tabela é curta (cortada no PDF): a frase vai na nota logo abaixo dela. A linha devolvida
+ * (a SCL ganhou, sem efeito) não leva a causa, como no extrato.
+ */
+function notasDasDisputas(doMes: readonly ParteDoRelatorio[]): string[] {
+  const notas = doMes
+    .filter((p) => ehLinhaDaDisputa(p) && p.contestacao !== "devolvido")
+    .map((p) => {
+      const explicacao = (p.explicacaoDaDisputa ?? "").trim().replace(/([^.!?])$/, "$1.");
+      const causa = p.causaDaDisputa ? `causa registrada: ${p.causaDaDisputa}.` : "";
+      return causa || explicacao ? `${ROTULO_DISPUTA_PROPRIETARIO} da reserva ${p.codigo}: ${[causa, explicacao].filter(Boolean).join(" ")}` : "";
+    })
+    .filter(Boolean);
+  return [...new Set(notas)];
+}
+
 /** "Sua Casa Leblon" → { inicio: "Sua Casa", destaque: "Leblon" } (a última palavra em itálico dourado, como no site). */
 export function marcaDe(empresa: string): { inicio: string; destaque: string } {
   const palavras = empresa.trim().split(/\s+/).filter(Boolean);
@@ -601,7 +619,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     reservasTitulo: `Reservas do mês · ${nReservas} ${plural(nReservas, "reserva", "reservas")} · ${noites} ${plural(noites, "noite", "noites")} em ${mesNome}`,
     reservas: linhasReservas,
     totalReservas,
-    notaReservas: `${atravessam.length ? `* Estadia que atravessa o mês entra só com as noites de ${mesNome}, rateadas por noite (regra de 24/09); as outras noites vão para o relatório do mês delas. ` : ""}A limpeza está dentro do bruto. Do hóspede, só o primeiro nome; o código é o do canal.`,
+    notaReservas: `${atravessam.length ? `* Estadia que atravessa o mês entra só com as noites de ${mesNome}, rateadas por noite (regra de 24/09); as outras noites vão para o relatório do mês delas. ` : ""}A limpeza está dentro do bruto. Do hóspede, só o primeiro nome; o código é o do canal.${notasDasDisputas(doMes).map((n) => ` ${n}`).join("")}`,
     conciliacaoIntro: `O que cada canal pagou em ${mesNome} (pela data do pagamento: Airbnb no dia seguinte ao check-in, direto a você; Booking, site e direta pela data em que a ${e} recebeu), a ponte para o resultado por noite, e como o dinheiro chegou (ou vai chegar) até você.`,
     conciliacao: conc.map((l) => ({ rotulo: l.rotulo, reservas: String(l.reservas), bruto: formatBRL(l.bruto), taxa: formatBRL(l.taxa), quemRecebeu: l.quemRecebeu, suaParte: formatBRL(l.suaParte), tipo: l.tipo })),
     conciliacaoFecha: conciliacaoFecha(conc),

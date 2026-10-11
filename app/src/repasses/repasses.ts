@@ -18,7 +18,7 @@ import { desfazerCompensacoesDoRepasse, listarAdiantamentos, quitar } from "@/ad
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { travarConfig } from "@/configuracoes/armazem";
 import { violouUnicidade } from "@/db/erros";
-import { ajustes, arquivos, contestacoesAdiantamento, contestacoesPagamento, imoveis, lancamentos, pagamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
+import { ajustes, arquivos, contestacoesAdiantamento, contestacoesPagamento, devolucoesPagamento, eventosContestacao, imoveis, lancamentos, pagamentos, quitacoesAdiantamento, proprietarioImoveis, proprietarios, repasseItens, repasses, type SituacaoRepasse, type TipoRepasse } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dataDoFechamento, ehDiaDeFechamento } from "./periodicidade";
 import { formatBRL } from "@/lib/money";
@@ -30,7 +30,7 @@ import { ehChaveDeContestacao, MOTIVO_FECHAMENTO_DISPUTA, MOTIVO_PARTE_EM_CONFER
 import { lancamentoEmConferencia } from "@/portal/posse";
 import { reservas as reservasRef } from "@/db/schema";
 import { PREFIXO_ESPELHO_LIKE } from "./descontos";
-import { ehDescontoDeCancelamento, ehLinhaDeContestacao, type Parte, partesDisponiveis, partesDoProprietario, type VarianteDaDisputa, varianteDaDisputa } from "./extrato";
+import { type DisputaDaLinha, disputasDasLinhas, ehDescontoDeCancelamento, ehLinhaDeContestacao, type LinhaDaDisputaDoProprietario, type Parte, partesDisponiveis, partesDoProprietario, type VarianteDaDisputa, varianteDaDisputa } from "./extrato";
 import { avisoIndefinidas, ladoDoInicio, type LadoDoInicio, livroDeAntes } from "./inicio";
 import { lerRegrasRepasses, lerInicioDoSistema } from "./regras-config";
 
@@ -138,9 +138,16 @@ export type PrevisaoRepasse = ReturnType<typeof calcularRepasse> & {
   /**
    * M8.2e: do que fica fora (`fora`), o que é de reserva em conferência por disputa do pagamento (a parte presa e as
    * linhas da disputa que esperam junto): o motivo é "reserva em conferência: disputa do pagamento", nunca "dinheiro
-   * ainda não recebido pela empresa".
+   * ainda não recebido pela empresa". Com o fechamento gravado (`repasse`), a divisão daquele instante
+   * (`foraPorDisputaDoFechamento`), a mesma do e-mail.
    */
   foraPorDisputa: number;
+  /**
+   * M8.2e (revisão de 11/10): o que fica fora (`fora`) dividido pelo motivo — `presa` (reserva em conferência por disputa do
+   * pagamento), `seguradoJunto` (as linhas da disputa que esperam junto com a parte, com sinal) e `outras` (dinheiro ainda
+   * não com a empresa) —, a mesma divisão do e-mail. Com o fechamento gravado, a daquele instante (`foraPorDisputaDoFechamento`).
+   */
+  foraDividido: ForaDoFechamento;
   /**
    * M4.10 (6ª rodada do Codex): toda reserva de que este cálculo depende — as das partes (pagas, fora,
    * só informação) e as de qualquer lançamento do proprietário até o mês. O fechamento trava todas antes
@@ -366,13 +373,18 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   if (calc.valor > 0 && !dono.chavePix.trim()) avisos.push("Sem chave Pix no cadastro do proprietário.");
   if (calc.contestado > 0) avisos.push(`Adiantamentos contestados (${(calc.contestado / 100).toFixed(2).replace(".", ",")}) ficam fora do desconto até a contestação ser resolvida.`);
   let diferenca = 0;
+  // M8.2e (C2): no fechamento gravado, o que ficou fora dele dividido pelo motivo daquele instante, o mesmo do e-mail.
+  const foraGravado = atual ? await foraPorDisputaDoFechamento(db, org, atual) : null;
   if (atual && !posterior) {
     // O que vai para o próximo repasse é o saldo com os contestados somados de volta. Logo depois
     // do fechamento isso dá o que ficou fora dele (M4.10: dinheiro ainda não com a empresa); se mudou
     // além disso (lançamento novo, contestação resolvida…), avisa.
     diferenca = calc.saldo + calc.contestado - atual.foraDoFechamento;
     if (diferenca !== 0) avisos.push(`Depois do fechamento, o acerto até este mês mudou em ${(diferenca / 100).toFixed(2).replace(".", ",")}: a diferença entra no próximo repasse.`);
-    if (atual.foraDoFechamento > 0) avisos.push(`${brl(atual.foraDoFechamento)} da competência ficaram fora deste repasse (dinheiro ainda não registrado com a empresa) e vão para o repasse seguinte.`);
+    const f = foraGravado!;
+    if (f.outras > 0) avisos.push(`${brl(f.outras)} da competência ficaram fora deste repasse (dinheiro ainda não registrado com a empresa) e vão para o repasse seguinte.`);
+    if (f.presa > 0) avisos.push(`${brl(f.presa)} da competência ficaram fora deste repasse (${MOTIVO_FECHAMENTO_DISPUTA}) e vão para o repasse seguinte.`);
+    if (f.seguradoJunto < 0) avisos.push(`O valor segurado de ${brl(-f.seguradoJunto)} pela disputa do pagamento esperou junto com a parte da reserva: ficou fora deste repasse e vai para o seguinte.`);
   }
   if (posterior) {
     // Há repasse de mês seguinte: o saldo até este mês (e o que mudou depois do fechamento dele)
@@ -431,7 +443,7 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
   }
   const separado = separarAntecipado(
     calc.antecipado,
-    antecipadas.map((x) => ({ competencia: x.competencia, valor: x.valor, anula: x.anulacao === "estorno", anulada: x.anulacao === "anulada", ...(ehLinhaDeContestacao(x) ? { disputa: disputaDoItem(x.disputa?.situacao ?? null) } : {}) })),
+    antecipadas.map((x) => ({ competencia: x.competencia, valor: x.valor, anula: x.anulacao === "estorno", anulada: x.anulacao === "anulada", ...(ehLinhaDeContestacao(x) ? { disputa: disputaDoItem(x.disputa) } : {}) })),
     lim.inicio,
   );
   return { ...calc, proprietarioId: dono.id, nome: dono.nome, email: dono.email, chavePix: dono.chavePix, imoveis: vinculos.map((v) => v.codigo), bloqueios, avisos, repasse: atual ?? null,
@@ -441,7 +453,8 @@ async function calcularDono(db: Db, org: string, dono: Dono, mes: string, hoje: 
     diferencaPosFechamento: diferenca,
     itens,
     foraDoFechamento,
-    foraPorDisputa,
+    foraPorDisputa: foraGravado ? foraGravado.presa + foraGravado.seguradoJunto : foraPorDisputa,
+    foraDividido: foraGravado ?? { presa: somaFora(foraDisputa.filter((x) => !ehLinhaDeContestacao(x))), seguradoJunto: somaFora(foraDisputa.filter(ehLinhaDeContestacao)), outras: somaFora(foraOutras) },
     reservasDoCalculo,
   };
 }
@@ -655,9 +668,19 @@ export type ItemDoRepasse = RepasseItem & {
   disputaAbertaEm?: Date;
 };
 
-/** A linha da disputa num item de repasse: a variante para o proprietário e a situação da disputa (o "sem efeito" tem texto próprio). */
-export type DisputaDoItem = { variante: VarianteDaDisputa; situacao: SituacaoContestacao | null };
-const disputaDoItem = (situacao: SituacaoContestacao | null): DisputaDoItem => ({ variante: varianteDaDisputa(situacao), situacao });
+/**
+ * A linha da disputa num item de repasse: a variante para o proprietário e a situação da disputa (o "sem efeito" tem texto
+ * próprio), e — revisão de 11/10 — a causa registrada (o nome configurado), a explicação ao proprietário e qual linha é
+ * (`linha`, pela chave), lidas por `disputasDasLinhas` com a mesma lista branca do extrato.
+ */
+export type DisputaDoItem = { variante: VarianteDaDisputa; situacao: SituacaoContestacao | null; causa?: string | null; explicacao?: string; linha?: LinhaDaDisputaDoProprietario };
+const disputaDoItem = (d: DisputaDaLinha | undefined): DisputaDoItem => ({
+  variante: varianteDaDisputa(d?.situacao),
+  situacao: d?.situacao ?? null,
+  causa: d?.causa ?? null,
+  explicacao: d?.explicacao ?? "",
+  ...(d?.linha ? { linha: d.linha } : {}),
+});
 
 /**
  * M8.2c: o "antecipado" de um fechamento (as partes de meses seguintes que ele levou, um número só no repasse) separado no
@@ -689,14 +712,31 @@ export function descricaoDoItem(i: Pick<ItemDoRepasse, "parcial" | "diferenca" |
   return i.parcial ? `parte de ${nomeMes(i.competencia.slice(0, 7))}; o restante vem em outro repasse` : "integral";
 }
 
-/** M8.2e: a descrição de uma linha da disputa num repasse (painel, portal e e-mail), pela variante e pelo sinal. */
+/**
+ * M8.2e: a descrição de uma linha da disputa num repasse (painel, portal e e-mail), pela variante, pelo sinal e pela linha
+ * (a versão N da decisão diz de quanto a quanto passa o valor segurado). Revisão de 11/10: a causa registrada e a
+ * explicação ao proprietário vão ao lado (desenho, "Quem arca"), salvo na linha devolvida e na versão que já não vale.
+ */
 function descricaoDaDisputaNoItem(d: DisputaDoItem, valor: number): string {
-  if (d.variante === "definitivo") return valor < 0 ? "desconto definitivo da disputa do pagamento" : "ajuste do desconto definitivo da disputa do pagamento (volta a você)";
+  const v = d.linha?.tipo === "versao" ? d.linha : null;
+  const seguinte = v && v.versao > 1 ? v : null;
+  const passa = seguinte ? `passa de ${formatBRL(seguinte.antes)} para ${formatBRL(seguinte.depois)} com a decisão atualizada` : "";
+  const ao = (base: string) => {
+    if (d.variante === "devolvido" || (v && !v.ultima)) return base;
+    const explicacao = (d.explicacao ?? "").trim().replace(/[.!?]$/, "");
+    return [base, d.causa ? `causa registrada: ${d.causa}` : "", explicacao].filter(Boolean).join("; ");
+  };
+  if (d.variante === "definitivo") {
+    if (seguinte) return ao(`desconto definitivo da disputa do pagamento: o valor segurado ${passa}`);
+    return ao(valor < 0 ? "desconto definitivo da disputa do pagamento" : "ajuste do desconto definitivo da disputa do pagamento (volta a você)");
+  }
   if (d.variante === "devolvido") {
     const porque = d.situacao === "sem_efeito" ? "a disputa foi encerrada sem efeito" : "a SCL ganhou a disputa";
     return valor > 0 ? `valor segurado devolvido (${porque})` : `valor segurado pela disputa do pagamento (devolvido depois: ${porque})`;
   }
-  return valor < 0 ? "valor segurado pela disputa do pagamento (até o resultado)" : "ajuste do valor segurado pela disputa do pagamento (até o resultado)";
+  if (seguinte) return ao(`valor segurado pela disputa do pagamento: ${passa}${valor < 0 ? " (até o resultado)" : " (a diferença volta a você)"}`);
+  if (v && !v.ultima) return "valor segurado pela disputa do pagamento (até o resultado; primeira decisão, atualizada depois)";
+  return ao(valor < 0 ? "valor segurado pela disputa do pagamento (até o resultado)" : "ajuste do valor segurado pela disputa do pagamento (até o resultado)");
 }
 
 /**
@@ -758,13 +798,9 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
   const daDisputa = (l: (typeof linhas)[number]) => ehChaveDeContestacao(l.chaveOrigem);
   const nesteRepasse = new Map<string, number>();
   for (const l of linhas) if (l.item.valor >= 0 && !daDisputa(l)) nesteRepasse.set(l.item.reservaId, (nesteRepasse.get(l.item.reservaId) ?? 0) + 1);
-  // M8.2e: a situação de cada disputa das linhas dela (pela chave) e a disputa em curso de cada reserva (o aviso do repasse a pagar).
-  const idsDisputa = [...new Set(linhas.filter(daDisputa).map((l) => l.chaveOrigem.split(":")[3]).filter(uuidValido))];
-  const situacoes = new Map(
-    idsDisputa.length
-      ? (await db.select({ id: contestacoesPagamento.id, situacao: contestacoesPagamento.situacao }).from(contestacoesPagamento).where(and(eq(contestacoesPagamento.organizacaoId, org), inArray(contestacoesPagamento.id, idsDisputa)))).map((c) => [c.id, c.situacao] as const)
-      : [],
-  );
+  // M8.2e: os fatos da disputa de cada linha dela (pela chave, a lista branca do extrato: situação, causa, explicação e qual
+  // linha é) e a disputa em curso de cada reserva (o aviso do repasse a pagar).
+  const disputas = await disputasDasLinhas(db, org, linhas.filter(daDisputa).map((l) => l.chaveOrigem));
   const emCurso = await disputasEmCursoDasReservas(db, org, linhas.filter((l) => !daDisputa(l)).map((l) => l.item.reservaId));
   // O espelho (chave `cancelamento:<id>:espelho:<parte>`) cuja parte original está neste mesmo repasse a anula.
   const lancamentosDoItem = new Set(linhas.map((l) => l.item.lancamentoId));
@@ -774,7 +810,7 @@ export async function itensDoRepasse(db: Db, org: string, repasseId: string): Pr
     ...l.item,
     ...(anula(l) ? { anula: true } : {}),
     ...(l.item.valor > 0 && anuladas.has(l.item.lancamentoId) ? { anulada: true } : {}),
-    ...(daDisputa(l) ? { disputa: disputaDoItem(situacoes.get(l.chaveOrigem.split(":")[3]) ?? null) } : {}),
+    ...(daDisputa(l) ? { disputa: disputaDoItem(disputas.get(l.chaveOrigem)) } : {}),
     ...(!daDisputa(l) && emCurso.has(l.item.reservaId) ? { disputaAbertaEm: emCurso.get(l.item.reservaId)! } : {}),
     codigoReserva: l.codigoReserva,
     codigoImovel: l.codigoImovel,
@@ -1088,18 +1124,48 @@ export async function estornarRepasse(db: Db, org: string, id: string, motivo: s
 }
 
 /**
- * M8.2e: do que ficou fora de um fechamento já gravado (`foraDoFechamento`), quanto era parte de reserva em conferência por
- * disputa do pagamento naquele instante — para o e-mail do repasse dar o motivo certo ("reserva em conferência: disputa do
- * pagamento", nunca "dinheiro ainda não recebido pela empresa"). O repasse guarda só o total: a conta é refeita pelo
- * livro como estava no fechamento (partes do mês ou antes, já lançadas, sem estorno e fora de repasse até ali) e pelas
- * disputas da reserva abertas antes dele e ainda sem decisão nele. Limitado ao total gravado.
+ * M8.2e (C2): do que ficou fora de um fechamento gravado (`foraDoFechamento`), a divisão pelo motivo, como o painel a fez
+ * naquele instante (`calcularDono`): `presa` = a parte de reserva em conferência por disputa do pagamento sem decisão de quem
+ * arca; `seguradoJunto` = as linhas da disputa (o valor segurado, com sinal) que esperaram junto com a parte da reserva;
+ * `outras` = o resto (dinheiro ainda não com a empresa). Uma regra, um lugar: o e-mail do repasse e o painel do mês fechado
+ * leem daqui.
  */
-export async function foraPorDisputaDoFechamento(db: Db, org: string, r: Pick<Repasse, "tipo" | "proprietarioId" | "mes" | "criadoEm" | "foraDoFechamento">): Promise<number> {
+export type ForaDoFechamento = { presa: number; seguradoJunto: number; outras: number };
+
+/**
+ * A divisão de `ForaDoFechamento`, refeita pelo livro como estava no instante do fechamento (as partes do mês ou antes, já
+ * lançadas, sem estorno e fora de repasse até ali) e pelas disputas como estavam nele (revisão de 11/10): aberta antes dele;
+ * não duplicada nele (`confirmada_outra_em`); sem decisão nele — a primeira decisão sempre lança uma linha do proprietário ou
+ * da SCL (`…:v1`, ou `…:final` na perdida) e grava o evento `decisao`, e `decisao_em` é regravado a cada versão, por isso não
+ * basta; ainda correndo nele (o evento `resultado` ou `sem_efeito` veio depois) com valor em risco — o do "sem efeito", que o
+ * zera, pelo retido em vigor no fechamento —, ou perdida antes dele com perda a dividir. O repasse guarda só o total; sem
+ * coluna para a divisão, o valor em risco de uma disputa ainda aberta é o de agora.
+ */
+export async function foraPorDisputaDoFechamento(db: Db, org: string, r: Pick<Repasse, "tipo" | "proprietarioId" | "mes" | "criadoEm" | "foraDoFechamento">): Promise<ForaDoFechamento> {
   const lim = limitesDoMes(r.mes.slice(0, 7));
-  if (r.tipo !== "fechamento" || r.foraDoFechamento <= 0 || !lim) return 0;
+  if (r.tipo !== "fechamento") return { presa: 0, seguradoJunto: 0, outras: 0 };
+  if (r.foraDoFechamento === 0 || !lim) return { presa: 0, seguradoJunto: 0, outras: r.foraDoFechamento };
   const corte = sql`${r.criadoEm.toISOString()}::timestamptz`;
+  const prefixo = sql`('mercadopago:' || cp.pagamento_id::text || ':contestacao:' || cp.id::text || ':')`;
+  const eventoAte = (tipos: string) => sql`exists (select 1 from ${eventosContestacao} e where e.contestacao_id = cp.id and e.tipo in (${sql.raw(tipos)}) and e.em <= ${corte})`;
+  const segurava = sql`exists (select 1 from ${contestacoesPagamento} cp join ${pagamentos} cpp on cpp.id = cp.pagamento_id
+    where cpp.reserva_id = ${lancamentos.reservaId} and cpp.desfecho in ('reserva', 'alteracao') and cp.aberta_em <= ${corte}
+      and not cp.duplicata_possivel and (cp.confirmada_outra_em is null or cp.confirmada_outra_em <= ${corte})
+      and (cp.decisao_em is null or cp.decisao_em > ${corte}) and not ${eventoAte("'decisao'")}
+      and not exists (select 1 from ${lancamentos} d where d.organizacao_id = ${org} and d.chave_origem like ${prefixo} || '%'
+        and d.chave_origem ~ ':(proprietario|scl):(v[1-9][0-9]*|final)$' and d.criado_em <= ${corte})
+      and ((not ${eventoAte("'resultado', 'sem_efeito'")}
+          and ((cp.situacao <> 'sem_efeito' and cp.valor_em_risco > 0)
+            or (cp.situacao = 'sem_efeito' and exists (select 1 from ${lancamentos} x where x.organizacao_id = ${org} and x.chave_origem like ${prefixo} || 'retido%'
+              and coalesce(x.montante, 0) > 0 and x.estorno_de is null and x.criado_em <= ${corte}
+              and not exists (select 1 from ${lancamentos} y where y.estorno_de = x.id and y.criado_em <= ${corte})))))
+        or (cp.situacao = 'perdida' and ${eventoAte("'resultado'")}
+          and coalesce(cp.valor_perdido, 0) > coalesce((select sum(greatest(dv.valor, 0)) from ${devolucoesPagamento} dv where dv.contestacao_id = cp.id), 0))))`;
   const [x] = await db
-    .select({ total: sql<string | null>`coalesce(sum(${lancamentos.efeitoSaldo}), 0)` })
+    .select({
+      presa: sql<string | null>`coalesce(sum(${lancamentos.efeitoSaldo}) filter (where ${lancamentos.origem} <> ${ORIGEM_LANCAMENTO_CONTESTACAO} and ${segurava}), 0)`,
+      junto: sql<string | null>`coalesce(sum(${lancamentos.efeitoSaldo}) filter (where ${lancamentos.origem} = ${ORIGEM_LANCAMENTO_CONTESTACAO}), 0)`,
+    })
     .from(lancamentos)
     .where(
       and(
@@ -1113,12 +1179,17 @@ export async function foraPorDisputaDoFechamento(db: Db, org: string, r: Pick<Re
         sql`${lancamentos.criadoEm} <= ${corte}`,
         sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id} and e.criado_em <= ${corte})`,
         sql`not exists (select 1 from ${repasseItens} i join ${repasses} rr on rr.id = i.repasse_id where i.lancamento_id = ${lancamentos.id} and rr.criado_em <= ${corte} and (i.liberado_em is null or i.liberado_em > ${corte}))`,
-        sql`exists (select 1 from ${contestacoesPagamento} cp join ${pagamentos} cpp on cpp.id = cp.pagamento_id
-          where cpp.reserva_id = ${lancamentos.reservaId} and cpp.desfecho in ('reserva', 'alteracao') and not cp.duplicata_possivel and cp.valor_em_risco > 0
-            and cp.aberta_em <= ${corte} and (cp.decisao_em is null or cp.decisao_em > ${corte}))`,
       ),
     );
-  return Math.min(r.foraDoFechamento, Math.max(0, Number(x?.total ?? 0)));
+  const seguradoJunto = Number(x?.junto ?? 0);
+  let presa = Math.max(0, Number(x?.presa ?? 0));
+  // O resto é o dinheiro que não estava com a empresa; nunca negativo (o livro mudou depois de um jeito que a conta não vê: a parte presa cede).
+  let outras = r.foraDoFechamento - presa - seguradoJunto;
+  if (outras < 0) {
+    presa = Math.max(0, presa + outras);
+    outras = r.foraDoFechamento - presa - seguradoJunto;
+  }
+  return { presa, seguradoJunto, outras };
 }
 
 /** Repasses (inclusive estornados) de um proprietário, do mais recente para o mais antigo. */
