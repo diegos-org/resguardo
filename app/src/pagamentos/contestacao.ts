@@ -249,7 +249,11 @@ async function lerFontes(
   if (!naOrder && p.idPagamentoProvedor && linhas.some((l) => l.tipo === "chargeback") && !semTempo()) {
     try {
       const s = await provedor.situacaoDoPagamento(p.idPagamentoProvedor);
-      const l = s ? leituraDaSituacao(s, agora, p.situacao === "contestado") : null;
+      // "Voltou a aprovado" só fala de um pagamento que esteve contestado: pela leitura (`contestado`) ou por uma contestação
+      // no cartão ainda não final no quadro (a registrada pela equipe e a achada pela Chargebacks API depois dos 85 dias não
+      // mudam a situação do pagamento, que continua `aprovado`).
+      const contestado = p.situacao === "contestado" || linhas.some((l) => l.tipo === "chargeback" && contestacaoNaoFinal(l.situacao));
+      const l = s ? leituraDaSituacao(s, agora, contestado) : null;
       if (l) {
         lido.leituras.push(l);
         lido.util = true;

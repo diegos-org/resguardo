@@ -3296,6 +3296,13 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   do pagamento que a leitura da disputa liga (`ao_vivo` e este) passam pela gravação única dos avisos
   (`sincronizarAvisosDaDisputa`, `ligar`/`desligar`), em vez de mudar a lista na memória antes dela (o que podia pular a
   escrita num pagamento sem disputa em curso). *Motivo:* "avisar em vez de supor": a falta de permissão tem de aparecer.
+- **"Voltou a aprovado" com a contestação que o pagamento não registra** *(segue o desenho, "De onde vem cada fato",
+  item 3)*. *Antes:* depois dos 85 dias, o `approved` da Payments API só valia como "a transação voltou a aprovada" quando
+  o pagamento estava `contestado`. A contestação no cartão registrada pela equipe, ou achada pela Chargebacks API depois
+  dos 85 dias, não muda a situação do pagamento (continua `aprovado`); sem o caso legível na Chargebacks API, a disputa
+  ficava aberta para sempre. *Agora:* vale também quando o quadro tem uma contestação no cartão não final; a disputa vai
+  para `a_confirmar` e a equipe confirma o resultado (como sempre). *Motivo:* o fato que a Payments API dá é o mesmo; o que
+  muda é só por onde o sistema soube da disputa.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

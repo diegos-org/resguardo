@@ -179,7 +179,8 @@ export const leituraDoCaso = (caso: CasoDeContestacao, lidaEm: Date): LeituraDeC
 
 /**
  * A Payments API pelo número como leitura (a terceira fonte, depois dos 85 dias): `charged_back/<estado>` dá o estado;
- * `approved` de um pagamento que uma leitura contestou (`contestado`) é o fato "a transação voltou a aprovada". Outra
+ * `approved` de um pagamento contestado (`contestado`: pela leitura, ou com uma contestação no cartão não final no quadro)
+ * é o fato "a transação voltou a aprovada". Outra
  * situação não diz nada da disputa (null). Fala só da contestação no cartão (`soDoTipo`): o MED e a reclamação
  * registrados no mesmo pagamento não recebem a leitura.
  */

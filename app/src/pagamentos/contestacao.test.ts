@@ -147,6 +147,35 @@ describe("rotina das disputas (item 20)", () => {
     expect(semCaso.avisos).toContain("contestacao_sem_fonte");
   });
 
+  it("depois dos 85 dias, o \"voltou a aprovado\" da Payments API vale para a contestação achada tarde (o pagamento continua aprovado)", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    await envelhecer(c, x.pagamentoId, 100);
+    const numero = (await c.tentativa(x.pagamentoId)).idPagamentoProvedor!;
+    c.provedor.contestarTarde(numero, { valor: 40_000 });
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, minutos(30))).toMatchObject({ novas: 1 });
+    // A disputa nasce pela Chargebacks API, sem mudar a situação do pagamento.
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("aprovado");
+    // O Mercado Pago resolve a favor: a transação volta a aprovada, e a Chargebacks API não acha mais o caso.
+    c.provedor.respostaChargebacks.consultarContestacao = "404";
+    c.provedor.situacaoDoPagamento = async () => ({ status: "approved", statusDetail: "accredited", moneyReleaseStatus: null });
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    const [l] = await linhas(x.pagamentoId);
+    expect(l).toMatchObject({ situacao: "a_confirmar", origem: "leitura" });
+    expect(l.avisos).not.toContain("contestacao_sem_fonte");
+  });
+
+  it("depois dos 85 dias, o \"voltou a aprovado\" vale também para a contestação registrada pela equipe", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada(), equipe, null, minutos(20))).toMatchObject({ ok: true });
+    await envelhecer(c, x.pagamentoId, 90);
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("aprovado");
+    c.provedor.situacaoDoPagamento = async () => ({ status: "approved", statusDetail: "accredited", moneyReleaseStatus: null });
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    const [l] = await linhas(x.pagamentoId);
+    expect(l).toMatchObject({ situacao: "a_confirmar", origem: "equipe" });
+    expect(l.avisos).not.toContain("contestacao_sem_fonte");
+  });
+
   it("dia 85 sem fonte: sem caso nem número do pagamento, o aviso contestacao_sem_fonte (em vez de esperar os 240 dias)", async () => {
     const x = await pagarEConfirmar(c);
     expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "med" }), equipe, null, minutos(20))).toMatchObject({ ok: true });
