@@ -1562,7 +1562,9 @@ export async function confirmarResultado(
     const tr = transicaoDaContestacao(l, { tipo: "resultado", resultado, em: agora, emDisputaNaLeitura: leitura.emDisputa, notaReforcada: e.notaReforcada });
     if (!tr.ok) return recusada(tr.erro, tr.codigo);
     if (tr.descartada) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
-    const data = conferirData(e.data, diaDe(l.abertaEm), agora, "a data do resultado");
+    // O resultado pode vir antes de o sistema ver a disputa (registrada ou achada dias depois): vale desde a abertura no
+    // Mercado Pago (`desdeAberturaDaDisputa`, como o débito), nunca antes da aprovação.
+    const data = conferirData(e.data, desdeAberturaDaDisputa(p, l), agora, "a data do resultado");
     if (!data.ok) return data;
     const daReserva = !fatos.semReserva;
     const pago = valorPagoAprovado(p);

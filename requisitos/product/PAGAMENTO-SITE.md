@@ -3388,6 +3388,13 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   pagamento menos o que as outras perdidas dele já levaram (`taxaJaPerdidaNoPagamento`, `contestacao-leitura.ts`); a
   proposta do valor perdido segue o mesmo teto (zero quando outra disputa já levou a taxa), e a recusa diz quanto as outras
   já levaram. *Motivo:* a taxa de um pagamento é cobrada uma vez só.
+- **A data do resultado** *(segue o desenho, "Confirmar o resultado": a data entre a abertura e hoje)*. *Antes:* o mínimo
+  era o dia em que o sistema viu ou a equipe registrou a disputa (`aberta_em`); numa disputa registrada ou achada dias
+  depois de abrir, um resultado verdadeiro entre a abertura e o registro era recusado (e o formulário levava ao mesmo
+  mínimo, forçando uma data falsa). *Agora:* o mínimo é o da abertura no Mercado Pago (`desdeAberturaDaDisputa`, a mesma
+  regra do débito; sem ela, a aprovação), no domínio e no formulário (`ResultadoNaTela.desde`). Os passos da defesa
+  (documentos e prazo, `desdeADefesa`) continuam a partir da abertura ou, sem ela, do dia em que o sistema viu a disputa.
+  *Motivo:* o resultado, como o débito, pode vir antes de o sistema ver a disputa.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

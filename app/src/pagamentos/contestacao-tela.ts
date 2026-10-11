@@ -800,7 +800,7 @@ function resultadoDoForm(l: Contestacao, p: Pagamento, f: FatosDoResultado, emAn
     proposta: { ...f.proposta, liquido: p.liquido },
     liberacaoAntes: f.liberacaoAntesDaPerda,
     contaDoPerdido: conta,
-    desde: hojeISO(FUSO, l.abertaEm),
+    desde: desdeAberturaDaDisputa(p, l),
     perguntas: {
       ganha: `Confirmar que a SCL GANHOU a disputa (resultado em {data})? ${f.lancado.proprietario > 0 ? `O valor segurado do proprietário (${formatBRL(f.lancado.proprietario)}) volta no repasse seguinte e a perda prevista da SCL é desfeita.` : "Nada foi descontado de ninguém."} O resultado não se desfaz pelo sistema: uma correção depois é um ajuste.`,
       perdida: `Confirmar que a SCL PERDEU a disputa (resultado em {data}), com {valor} perdidos${f.semReserva ? "" : " ({naoEntrou} deste pagamento nunca entraram na conta)"}? ${l.decisaoVersao > 0 ? "O desconto do proprietário e a perda da SCL ficam definitivos no mês corrente." : "Sem decisão de quem arca, a reserva continua em conferência até a decisão."} O resultado não se desfaz pelo sistema: uma correção depois é um ajuste.`,

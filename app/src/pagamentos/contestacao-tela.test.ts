@@ -468,6 +468,20 @@ describe("revisão das telas (11/10/2026)", () => {
     expect(await confirmarResultado(db, c.org, reg.contestacaoId, { ...entrada, notaReforcada: true }, equipe, c.provedor, sp("2026-10-06 10:10"))).toMatchObject({ ok: true });
   });
 
+  it("resultado de uma disputa registrada dias depois de abrir: a data vale desde a abertura no Mercado Pago, no domínio e no formulário (Codex, 11/10)", async () => {
+    // Aprovado em 01/10; o MED abriu no Mercado Pago em 02/10 e a equipe o registrou em 06/10.
+    const y = await pagarEConfirmar(c, { forma: "pix", liberar: true, entrada: "2026-11-02", saida: "2026-11-05" });
+    const reg = await registrarContestacaoDaEquipe(db, c.org, y.pagamentoId, { tipo: "med", abertaEm: "2026-10-02", valor: TOTAL, prazo: null, idCaso: null, nota: "MED visto no painel do Mercado Pago." }, equipe, null, sp("2026-10-06 10:00"));
+    if (!reg.ok) throw new Error(reg.erro);
+    const [d] = await lerContestacoesDaEquipe(db, sessao("admin"), y.reservaId, sp("2026-10-06 11:00"));
+    expect(d.acoes.resultado?.desde).toBe("2026-10-02");
+    const r = d.acoes.resultado!;
+    const entrada = { resultado: "ganha" as const, nota: "Painel do Mercado Pago mostra o MED recusado.", notaReforcada: true, versao: r.versao, assinatura: r.assinatura, tarifa: null };
+    expect(await confirmarResultado(db, c.org, reg.contestacaoId, { ...entrada, data: "2026-10-01" }, equipe, null, sp("2026-10-06 12:00"))).toMatchObject({ ok: false, erro: expect.stringContaining("não pode ser antes de 02/10/2026") });
+    // Entre a abertura no Mercado Pago e o registro: a data verdadeira do resultado.
+    expect(await confirmarResultado(db, c.org, reg.contestacaoId, { ...entrada, data: "2026-10-04" }, equipe, null, sp("2026-10-06 12:00"))).toMatchObject({ ok: true });
+  });
+
   it("'Pedir o cancelamento' pelo servidor com o MED registrado num Pix que segue aprovado: recusado sob a trava, nada gravado (Codex, 11/10)", async () => {
     const y = await pagarEConfirmar(c, { forma: "pix", liberar: true, entrada: "2026-11-02", saida: "2026-11-05" });
     const reg = await registrarContestacaoDaEquipe(db, c.org, y.pagamentoId, { tipo: "med", abertaEm: "2026-10-05", valor: TOTAL, prazo: null, idCaso: null, nota: "MED visto no painel do Mercado Pago." }, equipe, null, sp("2026-10-05 10:00"));
