@@ -315,6 +315,27 @@ describe("rotina das disputas (item 20)", () => {
     expect((await c.tentativa(velho.pagamentoId)).contestacoesBuscadasEm).toBeNull();
   });
 
+  it("uma chamada só começa se o tempo dela cabe no orçamento: a leitura da order (até 30 s) não começa aos 35 s; a busca tardia (8 s) não começa aos 55 s (Codex, 11/10)", async () => {
+    const x = await contestado();
+    const naOrder = () => chamadas("consultar").filter((ch) => ch.id === x.idProvedor).length;
+    const antes = naOrder();
+    const [l0] = await linhas(x.pagamentoId);
+    // Aos 35 s da volta, a order e o financeiro (2 × 15 s) não cabem: nada é lido e a disputa continua na vez.
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(2), { relogio: () => 35_000, inicio: 0 })).toMatchObject({ lidas: 0 });
+    expect(naOrder()).toBe(antes);
+    expect(chamadas("consultarContestacao")).toEqual([]);
+    expect((await linhas(x.pagamentoId))[0]).toMatchObject({ consultadaEm: l0.consultadaEm, proximaLeituraEm: l0.proximaLeituraEm });
+    // Aos 20 s, cabe: a order e o caso são lidos.
+    expect(await conferirContestacoes(db, c.org, c.provedor, dias(2), { relogio: () => 20_000, inicio: 0 })).toMatchObject({ lidas: 1 });
+    expect(naOrder()).toBe(antes + 1);
+    // A busca tardia: aos 55 s, a chamada de 8 s não cabe (a vez fica intacta); aos 50 s, cabe.
+    const velho = await pagarEConfirmar(c, { forma: "cartao", entrada: "2026-11-02", saida: "2026-11-05", email: "outro@example.com" });
+    await envelhecer(c, velho.pagamentoId, 100);
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, dias(2), { relogio: () => 55_000, inicio: 0 })).toMatchObject({ buscados: 0 });
+    expect((await c.tentativa(velho.pagamentoId)).contestacoesBuscadasEm).toBeNull();
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, dias(2), { relogio: () => 50_000, inicio: 0 })).toMatchObject({ buscados: 1 });
+  });
+
   it("busca tardia semanal, de todo desfecho, na janela, reservada pela coluna", async () => {
     const x = await pagarEConfirmar(c, { forma: "cartao" });
     const numero = (await c.tentativa(x.pagamentoId)).idPagamentoProvedor!;

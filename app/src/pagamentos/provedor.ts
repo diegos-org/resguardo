@@ -171,6 +171,8 @@ export const liberadoPeloStatus = (status: string | null): boolean | null => (st
 
 /** Tempo-limite de cada chamada da Chargebacks API, da Payments API pelo número e do GET /users/me que dá o X-Caller-Id. */
 export const TEMPO_LIMITE_CONTESTACAO_MS = 8_000;
+/** Tempo-limite padrão das outras chamadas do cliente (a order, o financeiro, a criação, a devolução). */
+export const TEMPO_LIMITE_PADRAO_MS = 15_000;
 /** Quantos itens a leitura guarda de cada lista de contestações (da order, da busca e de `payments[]` de um caso). */
 export const MAXIMO_CONTESTACOES_LIDAS = 20;
 

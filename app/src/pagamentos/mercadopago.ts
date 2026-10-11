@@ -17,7 +17,7 @@
 import {
   chaveIdempotenciaValida, CODIGOS_TOKEN, emailPlausivel, ErroProvedor, estadoLidoDaContestacao, idContestacaoValido, idDevolucaoValido, idNumericoLido, idNumericoValido,
   idProvedorValido, liberadoPeloStatus, MAXIMO_CONTESTACOES_LIDAS, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida, SITUACOES_DOCUMENTACAO, STATUS_TRES_DS,
-  TEMPO_LIMITE_CONTESTACAO_MS, urlDoDesafio, validadePixMinutos,
+  TEMPO_LIMITE_CONTESTACAO_MS, TEMPO_LIMITE_PADRAO_MS, urlDoDesafio, validadePixMinutos,
 } from "./provedor";
 import type {
   CasoDeContestacao, Cobranca, CodigoDevolucao, ContestacaoLida, DadosCartao, DetalheFinanceiro, DevolucaoLida, EstadoDevolucaoLida, FormaPagamento, OpcoesDevolucao, PedidoCartao,
@@ -627,7 +627,7 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     this.ambiente = o.ambiente;
     this.fetchImpl = o.fetchImpl ?? fetch;
     this.agora = o.agora ?? (() => new Date());
-    this.timeoutMs = o.timeoutMs ?? 15_000;
+    this.timeoutMs = o.timeoutMs ?? TEMPO_LIMITE_PADRAO_MS;
   }
 
   /** Uma chamada, com tempo-limite cobrindo também a leitura do corpo. Lança só falha de transporte. */

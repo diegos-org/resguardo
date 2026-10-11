@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import type { DesfechoPagamento, SituacaoPagamento } from "@/db/schema";
 import { formatBRL } from "@/lib/money";
-import { ESTADOS_LIDOS_CONTESTACAO, type EstadoLidoContestacao, SITUACOES_DOCUMENTACAO, type SituacaoDocumentacao } from "./provedor";
+import { ESTADOS_LIDOS_CONTESTACAO, type EstadoLidoContestacao, SITUACOES_DOCUMENTACAO, type SituacaoDocumentacao, TEMPO_LIMITE_CONTESTACAO_MS, TEMPO_LIMITE_PADRAO_MS } from "./provedor";
 
 // ---------------------------------------------------------------- listas fechadas
 
@@ -158,6 +158,17 @@ export const RELER_CONTESTACAO_A_CADA_MS = DIA_MS;
 export const LEITURAS_DE_CONTESTACAO_POR_VOLTA = 50;
 /** Orçamento de tempo de uma volta das contestações (cada chamada tem 8 s, `TEMPO_LIMITE_CONTESTACAO_MS`). */
 export const ORCAMENTO_VOLTA_CONTESTACAO_MS = 60_000;
+/**
+ * O tempo que a leitura da order (`conferirTentativa`) pode levar na volta das disputas: a order e o financeiro, cada um com
+ * o tempo-limite padrão do cliente (`TEMPO_LIMITE_PADRAO_MS`).
+ */
+export const TEMPO_LEITURA_DA_ORDER_MS = 2 * TEMPO_LIMITE_PADRAO_MS;
+/**
+ * Uma chamada da volta das disputas só começa se o tempo máximo dela cabe no que resta do orçamento (a releitura e a busca
+ * tardia dividem o mesmo): a volta nunca passa dos 60 s. `gastoMs`: desde o início da volta; `precisaMs`: o tempo-limite da
+ * chamada (8 s para a Chargebacks API e a Payments API, `TEMPO_LEITURA_DA_ORDER_MS` para a order).
+ */
+export const cabeNoOrcamento = (gastoMs: number, precisaMs: number = TEMPO_LIMITE_CONTESTACAO_MS): boolean => gastoMs + precisaMs <= ORCAMENTO_VOLTA_CONTESTACAO_MS;
 /** Até quantos dias da abertura a disputa é lida (os 6 meses da decisão, com folga); depois, `contestacao_fora_do_prazo`. */
 export const PRAZO_LEITURA_CONTESTACAO_DIAS = 240;
 /**

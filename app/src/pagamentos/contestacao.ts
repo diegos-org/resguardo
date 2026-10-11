@@ -63,6 +63,7 @@ import {
   assinaturaDaDecisao,
   assinaturaDoResultado,
   type AvisoDeContestacao,
+  cabeNoOrcamento,
   casarContestacao,
   casoDestePagamento,
   chavesDaContestacao,
@@ -87,7 +88,6 @@ import {
   NOTA_SEM_CONFERIR_AGORA,
   NOTA_SEM_LEITURA,
   novaContestacao,
-  ORCAMENTO_VOLTA_CONTESTACAO_MS,
   perdaADividir,
   PRAZO_LEITURA_CONTESTACAO_DIAS,
   QUEM_ARCA_CONTESTACAO,
@@ -105,6 +105,7 @@ import {
   TEXTO_PAGAMENTO_SEM_RESERVA,
   TEXTO_SEM_AVISO_A_CONFERIR,
   TEXTO_SEM_PARTES_PARA_DIVIDIR,
+  TEMPO_LEITURA_DA_ORDER_MS,
   TEXTO_SEM_PROPRIETARIO_NA_RESERVA,
   TIPOS_CONTESTACAO,
   type TipoContestacao,
@@ -114,7 +115,7 @@ import {
 } from "./contestacao-regras";
 import { confirmarDevolucaoPelaDisputa, devolucaoDevidaDepoisDaDisputa } from "./devolucao";
 import { avisarLiberacaoLidaNaDisputa, liquidoQueAindaPodeEntrar, recebimentosDoPagamento, registrarLiberacaoManual } from "./liberacao";
-import { ErroProvedor, ID_NUMERICO_PROVEDOR, liberadoPeloStatus, type ProvedorPagamento, semAcessoContestacao, type SituacaoDoPagamento } from "./provedor";
+import { ErroProvedor, ID_NUMERICO_PROVEDOR, liberadoPeloStatus, type ProvedorPagamento, semAcessoContestacao, type SituacaoDoPagamento, TEMPO_LIMITE_CONTESTACAO_MS } from "./provedor";
 import { comDinheiro } from "./situacoes";
 import {
   type Contestacao,
@@ -196,8 +197,8 @@ type PagamentoLido = Pick<Pagamento, "id" | "organizacaoId" | "cotacaoId" | "idP
  * (`o.buscar`; os casos já lidos pelo número não entram de novo); depois dos 85 dias, a Payments API pelo número (só para
  * disputas no cartão: o MED e a reclamação não aparecem nela). Cada caso só vale se for deste pagamento
  * (`casoDestePagamento`); um sem o número do pagamento fica só como referência (não é lido).
- * `o.semTempo` (a rotina): conferido antes de cada chamada da Chargebacks API e da Payments API; esgotado, a leitura para ali
- * (`interrompido`) e devolve o que já leu.
+ * `o.semTempo` (a rotina): conferido antes de cada chamada, com o tempo-limite dela (`cabeNoOrcamento`: a order, a Chargebacks
+ * API e a Payments API); sem tempo para ela, a leitura para ali (`interrompido`) e devolve o que já leu.
  */
 async function lerFontes(
   db: Db,
@@ -205,7 +206,7 @@ async function lerFontes(
   p: PagamentoLido,
   linhas: readonly Pick<Contestacao, "idCaso" | "tipo" | "situacao">[],
   agora: Date,
-  o: { order: boolean; buscar: boolean; semTempo?: () => boolean },
+  o: { order: boolean; buscar: boolean; semTempo?: (precisaMs: number) => boolean },
 ): Promise<LidoDasFontes> {
   const lido: LidoDasFontes = {
     leituras: [],
@@ -225,11 +226,13 @@ async function lerFontes(
     lido.falhou = true;
     lido.fonteDoPagamentoFalhou = true;
   };
-  const semTempo = () => {
-    if (o.semTempo?.()) lido.interrompido = true;
+  const semTempo = (precisaMs: number = TEMPO_LIMITE_CONTESTACAO_MS) => {
+    if (o.semTempo?.(precisaMs)) lido.interrompido = true;
     return lido.interrompido;
   };
   const naOrder = !!p.idProvedor && p.criadoEm.getTime() >= inicioDoPrazoDeReleitura(agora).getTime();
+  // A leitura da order só começa se o tempo dela (a order e o financeiro) cabe no orçamento: senão, nada é lido nesta volta.
+  if (o.order && naOrder && semTempo(TEMPO_LEITURA_DA_ORDER_MS)) return lido;
   if (o.order && naOrder) {
     // Melhor esforço: a trava da cotação ocupada (outra leitura, uma ação na outra aba) é uma leitura que não deu agora.
     try {
@@ -397,7 +400,7 @@ export async function conferirContestacoes(
   const resumo = resumoVazio();
   const relogio = o.relogio ?? (() => Date.now());
   const inicio = o.inicio ?? relogio();
-  const semTempo = () => relogio() - inicio >= ORCAMENTO_VOLTA_CONTESTACAO_MS;
+  const semTempo = (precisaMs: number = TEMPO_LIMITE_CONTESTACAO_MS) => !cabeNoOrcamento(relogio() - inicio, precisaMs);
   const corte = new Date(agora.getTime() - PRAZO_LEITURA_CONTESTACAO_DIAS * DIA_MS);
   const filtros = and(
     inArray(contestacoesPagamento.situacao, ["aberta", "a_confirmar"]),
@@ -525,7 +528,7 @@ export async function buscarContestacoesTardias(
     .limit(LEITURAS_DE_CONTESTACAO_POR_VOLTA * 4);
   const naJanela = candidatos.filter((x) => naJanelaTardia(x.p.aprovadoEm!, x.checkout ? instanteLocal(x.checkout, "12:00", FUSO) : null, agora)).slice(0, LEITURAS_DE_CONTESTACAO_POR_VOLTA);
   for (const { p } of naJanela) {
-    if (relogio() - inicio >= ORCAMENTO_VOLTA_CONTESTACAO_MS) break;
+    if (!cabeNoOrcamento(relogio() - inicio)) break;
     const antes = p.contestacoesBuscadasEm;
     const [reservada] = await db
       .update(pagamentos)
@@ -549,7 +552,7 @@ export async function buscarContestacoesTardias(
       lista = await provedor.buscarContestacoes(p.idPagamentoProvedor!);
       if (lerSituacao) {
         // Sem tempo para a segunda chamada: a vez volta inteira (a próxima volta faz as duas).
-        if (relogio() - inicio >= ORCAMENTO_VOLTA_CONTESTACAO_MS) {
+        if (!cabeNoOrcamento(relogio() - inicio)) {
           await devolverAVez();
           resumo.buscados--;
           break;

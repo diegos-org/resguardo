@@ -3462,6 +3462,15 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   perda antiga como o resultado. *Agora:* com o pagamento contestado, vale "em curso" quando o quadro não o explica (sem
   linha, só encerradas sem perda) ou com a leitura ambígua, mesmo ao lado de uma perdida; a perdida sozinha (que deixa o
   pagamento contestado) segue perdida. Uma regra, um lugar: as três telas do hóspede e o pedido de cancelamento por ele.
+- **Cada chamada da volta das disputas só começa se o tempo dela cabe no orçamento** *(segue o desenho, "Rotina", orçamento
+  de 60 s)*. *Antes:* o orçamento era conferido antes de cada pagamento e antes das chamadas da Chargebacks API e da
+  Payments API, mas a leitura da order (`conferirTentativa`, a order e o financeiro, cada um com o tempo-limite padrão de
+  15 s) começava sem conferir. Com o orçamento quase no fim, uma order lenta levava a volta a uns 75 s. *Agora:* uma regra
+  só, `cabeNoOrcamento` (`contestacao-regras.ts`): uma chamada só começa se o tempo máximo dela cabe no que resta do
+  orçamento. A order reserva `TEMPO_LEITURA_DA_ORDER_MS` (2 × 15 s), e a Chargebacks API e a Payments API reservam 8 s,
+  na releitura e na busca tardia. A volta nunca passa dos 60 s, e o que não coube fica na vez para a próxima.
+  `TEMPO_LIMITE_PADRAO_MS` (`provedor.ts`) é o tempo-limite padrão do cliente, num lugar só. *Motivo:* a volta tem de caber
+  no tempo da função.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 
