@@ -19,6 +19,7 @@ import {
   conferirContestacoes,
   conferirContestacoesDoPagamento,
   type EntradaRegistroDisputa,
+  previaDoResultado,
   registrarContestacaoDaEquipe,
   TEXTO_MED_SO_NO_PIX,
 } from "./contestacao";
@@ -119,6 +120,25 @@ describe("rotina das disputas (item 20)", () => {
     const [l] = await linhas(x.pagamentoId);
     expect(l.avisos.filter((a) => a === "contestacao_sem_leitura")).toHaveLength(1);
     expect((await c.tentativa(x.pagamentoId)).avisos).toContain("contestacao_sem_leitura");
+  });
+
+  it("depois dos 85 dias, a liberação que a Payments API mostra num pagamento em disputa liga o aviso que pede o registro à mão; o \"pending\" não (Codex, 11/10)", async () => {
+    const x = await contestado();
+    await envelhecer(c, x.pagamentoId, 90);
+    // Ainda não liberado no Mercado Pago (money_release_status "pending"): nada a pedir.
+    c.provedor.atualizarFinanceiro(x.idProvedor, { liberado: false });
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    expect((await linhas(x.pagamentoId))[0].avisos).not.toContain("contestacao_liberacao_lida");
+    // Liberado ("released"), sem recebimento no sistema: o aviso, na disputa e no pagamento.
+    c.provedor.atualizarFinanceiro(x.idProvedor, { liberado: true });
+    await conferirContestacoes(db, c.org, c.provedor, dias(4));
+    expect(chamadas("situacaoDoPagamento")).toHaveLength(2);
+    const [l] = await linhas(x.pagamentoId);
+    expect(l.avisos).toContain("contestacao_liberacao_lida");
+    expect((await c.tentativa(x.pagamentoId)).avisos).toContain("contestacao_liberacao_lida");
+    // A proposta do resultado não supõe que o líquido nunca entrou.
+    const pv = await previaDoResultado(db, c.org, l.id);
+    expect(pv.ok && pv.fatos.proposta.liquidoNaoEntrou).toBeNull();
   });
 
   it("depois dos 85 dias, a Payments API é lida com uma reclamação ao lado da contestação no cartão, e vale só para a do cartão", async () => {

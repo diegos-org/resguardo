@@ -69,6 +69,7 @@ import {
   CODIGOS_CAUSA_CONTESTACAO,
   type CodigoCausaContestacao,
   confirmadoPelasSubstituidas,
+  contestacaoEmCurso,
   contestacaoNaoFinal,
   DESFECHO_CONTESTACAO,
   divisaoDaDecisao,
@@ -112,8 +113,8 @@ import {
   voltouAAprovadaTemDisputa,
 } from "./contestacao-regras";
 import { confirmarDevolucaoPelaDisputa, devolucaoDevidaDepoisDaDisputa } from "./devolucao";
-import { liquidoQueAindaPodeEntrar, recebimentosDoPagamento, registrarLiberacaoManual } from "./liberacao";
-import { ErroProvedor, ID_NUMERICO_PROVEDOR, type ProvedorPagamento, semAcessoContestacao } from "./provedor";
+import { avisarLiberacaoLidaNaDisputa, liquidoQueAindaPodeEntrar, recebimentosDoPagamento, registrarLiberacaoManual } from "./liberacao";
+import { ErroProvedor, ID_NUMERICO_PROVEDOR, liberadoPeloStatus, type ProvedorPagamento, semAcessoContestacao } from "./provedor";
 import { comDinheiro } from "./situacoes";
 import {
   type Contestacao,
@@ -179,6 +180,8 @@ type LidoDasFontes = {
   casosRespondidos: string[];
   /** O orçamento da volta acabou antes da última chamada (`o.semTempo`): o que não foi chamado fica para a próxima volta. */
   interrompido: boolean;
+  /** A liberação que a Payments API mostra (`liberadoPeloStatus`); null quando ela não foi lida ou não diz. */
+  liberadoLido: boolean | null;
 };
 
 /** O número do caso que a Chargebacks API pode ler (só algarismos, no tamanho de um id do Mercado Pago). */
@@ -216,6 +219,7 @@ async function lerFontes(
     chargebacksRespondeu: false,
     casosRespondidos: [],
     interrompido: false,
+    liberadoLido: null,
   };
   const falhaDoPagamento = () => {
     lido.falhou = true;
@@ -288,6 +292,8 @@ async function lerFontes(
       // no cartão no quadro, não final ou perdida (`voltouAAprovadaTemDisputa`, a mesma regra da leitura da order).
       const contestado = p.situacao === "contestado" || voltouAAprovadaTemDisputa(linhas);
       const l = s ? leituraDaSituacao(s, agora, contestado) : null;
+      // A liberação vem na mesma resposta: depois dos 85 dias, é a única leitura dela (a order não é mais lida).
+      if (s) lido.liberadoLido = liberadoPeloStatus(s.moneyReleaseStatus);
       if (l) {
         lido.leituras.push(l);
         lido.util = true;
@@ -340,6 +346,9 @@ async function aplicarFontes(db: Db, p: PagamentoLido, lidas: readonly string[],
       else if (foraDaOrder && !lido.interrompido && (!falhou || falhas >= FALHAS_PARA_SEM_FONTE)) ligar.push("contestacao_sem_fonte");
       if (await trocarAvisosDaContestacao(tx, l, { ligar, desligar }, agora)) mudou = true;
     }
+    // A liberação que a Payments API mostra com a disputa em curso (ou perdida): o mesmo aviso da leitura da order, que pede
+    // o registro à mão com o líquido que caiu (nunca lança sozinha).
+    if (lido.liberadoLido === true && dinheiroDaReserva(pt) && contestacaoEmCurso(t, pt.id)) mudou = (await avisarLiberacaoLidaNaDisputa(tx, p.organizacaoId, t, pt, agora)) || mudou;
     // A Chargebacks API e a Payments API só ligam a ambígua; quem a desliga é a releitura da order (`aplicarLeitura`) ou o
     // registro pela equipe (o aviso que a order deu nunca some pela leitura de outra fonte).
     await sincronizarAvisosDaDisputa(tx, t, pt, agora, { ambigua: ef.ambigua === true ? true : null, ligar: ef.aoVivo ? ["ao_vivo"] : [] });

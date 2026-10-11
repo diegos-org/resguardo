@@ -142,7 +142,9 @@ export async function conferirAgoraAcao(_e: EstadoAcaoPagamento, form: FormData)
       revalidar();
       const situacao = NOMES_SITUACAO_PAGAMENTO[r.situacao].toLowerCase();
       const daDisputa = disputas.novas ? ` ${disputas.novas} disputa(s) nova(s) no quadro.` : disputas.mudaram ? " As disputas do pagamento foram atualizadas." : "";
-      return { ok: true, mensagem: `${r.mudou ? `Conferido com o Mercado Pago: atualizado (${situacao}).` : `Conferido com o Mercado Pago: nada mudou (${situacao}).`}${daDisputa}` };
+      // A leitura das disputas que falhou (a Chargebacks API, a busca ou a Payments API): nunca um "nada mudou" em silêncio.
+      const falhaDaDisputa = disputas.falhas ? " Não deu para conferir as disputas do pagamento agora: tente de novo em instantes." : "";
+      return { ok: true, mensagem: `${r.mudou ? `Conferido com o Mercado Pago: atualizado (${situacao}).` : `Conferido com o Mercado Pago: nada mudou (${situacao}).`}${daDisputa}${falhaDaDisputa}` };
     }
     // Do painel, lê agora (sem os intervalos da rotina): o botão promete conferir tudo o que está pendente.
     const resumo = await conferirPendentes(db, sessao.organizacaoId, gate.provedor, new Date(), { forcar: true });

@@ -35,16 +35,16 @@ import { alvoDaCobranca, falhaDoAlvo } from "./alvo";
 import { FOLGA_PRAZO_PAGAMENTO_MS, inicioDoPrazoDeReleitura } from "./andamento";
 import { avisosComDevolucoes, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { decidirAprovacao } from "./confirmacao";
-import { acertarRetidoDasDevolucoesLidas, aplicarLeiturasDaDisputa, avisosComContestacoes, leiturasDaOrder, trocarAvisosDaContestacao } from "./contestacao-leitura";
-import { contestacaoEmCurso, contestacaoNaoFinal, voltouAAprovadaTemDisputa } from "./contestacao-regras";
+import { acertarRetidoDasDevolucoesLidas, aplicarLeiturasDaDisputa, avisosComContestacoes, leiturasDaOrder } from "./contestacao-leitura";
+import { contestacaoEmCurso, voltouAAprovadaTemDisputa } from "./contestacao-regras";
 import { avaliarDisjuntor, contaNoDisjuntor } from "./disjuntor";
 import {
   acordarDevolucoesQueEsperam,
+  avisarLiberacaoLidaNaDisputa,
   desligarAvisosDaLiberacaoNaDisputa,
   FUSO_PAGAMENTO,
   gravarTaxaNaReserva,
   liberarPeloProvedor,
-  liquidoQueAindaPodeEntrar,
   recebimentosDoPagamento,
   taxaCanalDaReserva,
 } from "./liberacao";
@@ -525,18 +525,9 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
   // nunca lança nem fica registrada sozinha (o aviso pede o registro à mão com o líquido que caiu); o dinheiro da reserva
   // contestado sem disputa registrada (leitura ambígua) também não.
   if (f?.liberado === true) {
-    if (dinheiroDaReserva({ desfecho }) && emDisputa) {
-      // O aviso só pede o que ainda falta: sem recebimento em vigor (a liberação já registrada à mão, ou lida antes da
-      // disputa, não se registra de novo) e com líquido que ainda cabe (a perdida que já contou o líquido como "nunca entrou"
-      // não pede a liberação por cima do caixa final dela).
-      const comRecebimento = (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.length > 0;
-      const cabe = liquidoQueAindaPodeEntrar(t, p);
-      const pede = !comRecebimento && (cabe === null || cabe > 0);
-      for (const l of contestacoesDoPagamento(t, p.id)) {
-        if (!contestacaoNaoFinal(l.situacao) && l.situacao !== "perdida") continue;
-        disputaMudou = (await trocarAvisosDaContestacao(tx, l, pede ? { ligar: ["contestacao_liberacao_lida"] } : { desligar: ["contestacao_liberacao_lida"] }, agora)) || disputaMudou;
-      }
-    } else if (dinheiroDaReserva({ desfecho }) && (situacao === "aprovado" || (situacao === "devolvido_parcial" && !inexplicada))) {
+    // O aviso só pede o que ainda falta (`avisarLiberacaoLidaNaDisputa`, a mesma regra da Payments API depois dos 85 dias).
+    if (dinheiroDaReserva({ desfecho }) && emDisputa) disputaMudou = (await avisarLiberacaoLidaNaDisputa(tx, organizacaoId, t, p, agora)) || disputaMudou;
+    else if (dinheiroDaReserva({ desfecho }) && (situacao === "aprovado" || (situacao === "devolvido_parcial" && !inexplicada))) {
       const [r] = await tx.select().from(reservas).where(eq(reservas.id, t.reserva.id));
       if (r && reservaCalculadaPeloMotor(r)) {
         // Confirmada, ou cancelada com valor retido (M8.2c): o dinheiro ficou com a empresa e entra como recebimento.

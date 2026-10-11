@@ -16,7 +16,7 @@
  */
 import {
   chaveIdempotenciaValida, CODIGOS_TOKEN, emailPlausivel, ErroProvedor, estadoLidoDaContestacao, idContestacaoValido, idDevolucaoValido, idNumericoLido, idNumericoValido,
-  idProvedorValido, MAXIMO_CONTESTACOES_LIDAS, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida, SITUACOES_DOCUMENTACAO, STATUS_TRES_DS,
+  idProvedorValido, liberadoPeloStatus, MAXIMO_CONTESTACOES_LIDAS, problemaNoCartao, problemaNoPedido, RECUSA_GENERICA, referenciaValida, SITUACOES_DOCUMENTACAO, STATUS_TRES_DS,
   TEMPO_LIMITE_CONTESTACAO_MS, urlDoDesafio, validadePixMinutos,
 } from "./provedor";
 import type {
@@ -390,7 +390,7 @@ export function financeiroDoPagamento(pg: unknown): DetalheFinanceiro {
   }
   const situacaoLiberacao = codigo(pg.money_release_status) ?? codigo(pg.money_release_date);
   const liberacaoEmParcelas = liberaEmParcelas(pg.money_release_schema);
-  const liberado = liberacaoEmParcelas ? null : situacaoLiberacao === "released" ? true : situacaoLiberacao === "pending" ? false : null;
+  const liberado = liberacaoEmParcelas ? null : liberadoPeloStatus(situacaoLiberacao);
   return {
     taxa,
     liquido,

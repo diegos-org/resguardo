@@ -119,6 +119,15 @@ describe("conferir agora", () => {
     expect(await conferirAgoraAcao({}, form({ pagamentoId: ID }))).toEqual({ mensagem: "Pagamento não encontrado." });
   });
 
+  it("a leitura das disputas do pagamento que falhou entra na mensagem: nunca um \"nada mudou\" em silêncio (Codex, 11/10)", async () => {
+    m.conferir.mockResolvedValue({ ok: true, situacao: "aprovado", consultou: true, mudou: false });
+    m.disputas.mockResolvedValue({ lidas: 1, mudaram: 0, falhas: 1, foraDoPrazo: 0, buscados: 0, novas: 0 });
+    expect(await conferirAgoraAcao({}, form({ pagamentoId: ID }))).toEqual({
+      ok: true,
+      mensagem: "Conferido com o Mercado Pago: nada mudou (aprovado). Não deu para conferir as disputas do pagamento agora: tente de novo em instantes.",
+    });
+  });
+
   it("id inválido não chega ao provedor; travas do ambiente voltam como mensagem", async () => {
     expect(await conferirAgoraAcao({}, form({ pagamentoId: "x' or 1=1" }))).toEqual({ mensagem: "Pagamento não encontrado." });
     expect(m.gate).not.toHaveBeenCalled();

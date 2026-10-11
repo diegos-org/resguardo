@@ -3425,6 +3425,18 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
 - **O e-mail da abertura com o dia em que a disputa abriu** *(segue o desenho, "Painel", "E-mail à equipe")*. *Antes:* o e-mail
   dizia o dia do registro (ou da primeira leitura). *Agora:* diz a abertura no Mercado Pago (a data que a equipe informou,
   ou a do caso), como o quadro; sem ela, o dia em que o sistema a viu.
+- **A liberação lida pela Payments API depois dos 85 dias** *(segue o desenho, "Taxa, liberação e recebimento": a liberação
+  sob disputa só à mão, com o aviso)*. *Antes:* a leitura do pagamento pelo número (`situacaoDoPagamento`) trazia o
+  `money_release_status`, mas a disputa só usava a situação: um pagamento em disputa liberado depois dos 85 dias nunca
+  ligava `contestacao_liberacao_lida`, e o resultado podia propor que o líquido nunca entrou. *Agora:* uma regra só para o
+  status (`liberadoPeloStatus`, `provedor.ts`: o financeiro da order e a Payments API leem dela) e uma só para o aviso
+  (`avisarLiberacaoLidaNaDisputa`, `liberacao.ts`: a leitura da order e a da Payments API chamam a mesma): com a disputa em
+  curso ou perdida, sem recebimento em vigor e com líquido que ainda cabe, o aviso pede o registro à mão. *Motivo:* o
+  sinal do Mercado Pago é o mesmo; só muda por onde o sistema o lê.
+- **O "Conferir agora" de uma reserva diz quando a leitura das disputas falhou** *(segue o desenho, "Painel")*. *Antes:* a
+  falha na Chargebacks API, na busca ou na Payments API (a order lida sem problema) não entrava na mensagem, que podia
+  dizer "nada mudou". *Agora:* a mensagem diz "Não deu para conferir as disputas do pagamento agora: tente de novo em
+  instantes.", como o "Conferir agora" da empresa já diz das falhas.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

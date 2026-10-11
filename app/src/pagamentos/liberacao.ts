@@ -45,7 +45,7 @@ import { repasseAPagarDaReserva } from "@/repasses/recebimentos";
 import { dataValida } from "@/reservas/regras";
 import { acertarCaixasPendentes } from "./acerto-cancelamento";
 import { sincronizarAvisosDaDisputa, trocarAvisosDaContestacao } from "./contestacao-leitura";
-import { TEXTO_ESTORNO_LIBERACAO_COM_RETIDO } from "./contestacao-regras";
+import { contestacaoNaoFinal, TEXTO_ESTORNO_LIBERACAO_COM_RETIDO } from "./contestacao-regras";
 import type { CodigoAviso } from "./situacoes";
 import {
   type Alteracao,
@@ -358,6 +358,32 @@ export async function registrarLiberacaoManual(db: Db, organizacaoId: string, pa
 export async function desligarAvisosDaLiberacaoNaDisputa(tx: Db, t: Pick<Travado, "contestacoes">, p: Pick<Pagamento, "id">, agora: Date): Promise<boolean> {
   let mudou = false;
   for (const c of contestacoesDoPagamento(t, p.id)) mudou = (await trocarAvisosDaContestacao(tx, c, { desligar: ["contestacao_liberacao_lida", "contestacao_ganha_sem_recebimento"] }, agora)) || mudou;
+  return mudou;
+}
+
+/**
+ * M8.2e: o Mercado Pago mostra a liberação de um pagamento com disputa em curso ou perdida (a order, ou a Payments API pelo
+ * número depois dos 85 dias): a liberação lida nunca lança nem fica registrada sozinha. O aviso `contestacao_liberacao_lida`,
+ * nas disputas não finais e nas perdidas, pede só o que ainda falta: sem recebimento em vigor (a liberação já registrada à
+ * mão, ou lida antes da disputa, não se registra de novo) e com líquido que ainda cabe (a perdida que já contou o líquido
+ * como "nunca entrou" não pede a liberação por cima do caixa final dela); senão sai. Uma regra, um lugar: a leitura da order
+ * (`aplicarLeitura`) e a da Payments API (`aplicarFontes`). Sob as travas de quem chama. Devolve se algum aviso mudou.
+ */
+export async function avisarLiberacaoLidaNaDisputa(
+  tx: Db,
+  organizacaoId: string,
+  t: Pick<Travado, "contestacoes">,
+  p: Pick<Pagamento, "id" | "valor" | "liquido" | "taxa">,
+  agora: Date,
+): Promise<boolean> {
+  const comRecebimento = (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.length > 0;
+  const cabe = liquidoQueAindaPodeEntrar(t, p);
+  const pede = !comRecebimento && (cabe === null || cabe > 0);
+  let mudou = false;
+  for (const l of contestacoesDoPagamento(t, p.id)) {
+    if (!contestacaoNaoFinal(l.situacao) && l.situacao !== "perdida") continue;
+    mudou = (await trocarAvisosDaContestacao(tx, l, pede ? { ligar: ["contestacao_liberacao_lida"] } : { desligar: ["contestacao_liberacao_lida"] }, agora)) || mudou;
+  }
   return mudou;
 }
 

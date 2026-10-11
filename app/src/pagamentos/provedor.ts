@@ -162,6 +162,12 @@ export const semAcessoContestacao = (v: unknown): v is SemAcessoContestacao => t
  * (null = ausente ou fora do formato). Fonte das contestações com mais de 85 dias e da disputa ganha sem recebimento.
  */
 export type SituacaoDoPagamento = { status: string | null; statusDetail: string | null; moneyReleaseStatus: string | null };
+/**
+ * A liberação pelo `money_release_status`: true SÓ com "released", false com "pending", senão null (desconhecido). Uma
+ * regra, um lugar: o financeiro da order (`financeiroDoPagamento`) e a Payments API pelo número (a disputa depois dos 85
+ * dias) leem daqui.
+ */
+export const liberadoPeloStatus = (status: string | null): boolean | null => (status === "released" ? true : status === "pending" ? false : null);
 
 /** Tempo-limite de cada chamada da Chargebacks API, da Payments API pelo número e do GET /users/me que dá o X-Caller-Id. */
 export const TEMPO_LIMITE_CONTESTACAO_MS = 8_000;
