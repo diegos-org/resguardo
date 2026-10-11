@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DIAS_ARREPENDIMENTO, decidirPelaPolitica, type EntradaPolitica, entradaQueConta, HORA_ENTRADA_PADRAO, horaDeEntrada, regrasComPadrao } from "./politica-cancelamento";
+import { DIAS_ARREPENDIMENTO, decidirPelaPolitica, type EntradaPolitica, entradaQueConta, fimDoArrependimento, HORA_ENTRADA_PADRAO, horaDeEntrada, regrasComPadrao } from "./politica-cancelamento";
 
 const SP = "America/Sao_Paulo";
 /** Um instante dado pelo relógio de São Paulo (UTC−3, sem horário de verão desde 2019). */
@@ -122,6 +122,15 @@ describe("decidirPelaPolitica (M8.2c, regra pura)", () => {
 });
 
 describe("depois de uma alteração (M8.2d): a entrada que conta e a entrada atual", () => {
+  it("fimDoArrependimento: 7 dias depois do pagamento ou, com a política parando na entrada, a entrada quando vem antes", () => {
+    expect(fimDoArrependimento("2026-10-08", true, "2026-10-05")).toEqual({ ate: "2026-10-05", ateEntrada: true });
+    expect(fimDoArrependimento("2026-10-08", true, "2026-10-08")).toEqual({ ate: "2026-10-08", ateEntrada: true });
+    expect(fimDoArrependimento("2026-10-08", true, "2026-10-12")).toEqual({ ate: "2026-10-08", ateEntrada: false });
+    expect(fimDoArrependimento("2026-10-08", false, "2026-10-05")).toEqual({ ate: "2026-10-08", ateEntrada: false });
+    expect(fimDoArrependimento("2026-10-08", null, "2026-10-05")).toEqual({ ate: "2026-10-08", ateEntrada: false });
+    expect(fimDoArrependimento("2026-10-08", true, null)).toEqual({ ate: "2026-10-08", ateEntrada: false });
+  });
+
   it("entradaQueConta: a menor entre a da cotação original e a atual; data inválida é erro", () => {
     expect(entradaQueConta("2027-01-15", "2026-11-28")).toBe("2026-11-28");
     expect(entradaQueConta("2026-11-28", "2027-01-15")).toBe("2026-11-28");

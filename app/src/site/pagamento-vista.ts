@@ -14,7 +14,7 @@
  * devolução da diferença), a que não pôde valer e a que não vale mais, e o compositor único do texto dela
  * (`textoDaAlteracao`: a página, a variável `{alteracao}` das mensagens e o botão "Copiar a proposta" do painel).
  */
-import { pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
+import { fimDoArrependimento, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import type { TextosSite } from "@/configuracoes/textos-site";
 import type { AlteracaoParaHospede, CancelamentoParaHospede, EstadoPagamentoHospede, VistaPagamentoHospede } from "@/pagamentos/consultas";
 import { urlDoDesafio } from "@/pagamentos/provedor";
@@ -314,6 +314,13 @@ const quando = (d: Date | string | null): Date | null => {
   return Number.isNaN(x.getTime()) ? null : x;
 };
 const juntar = (...partes: (string | null | undefined)[]) => partes.filter((x): x is string => !!x && !!x.trim()).join(" ");
+/** AAAA-MM-DD de um instante no fuso. */
+const isoNoFuso = (d: Date, fuso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: fuso, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+/** "até dd/mm" ou, quando a política para o arrependimento na entrada e ela vem antes, "até a entrada, em dd/mm" (`fimDoArrependimento`). */
+const ateOArrependimento = (ate: string, ateEntrada: boolean | null | undefined, entrada: string | null) => {
+  const fim = fimDoArrependimento(ate, ateEntrada ?? null, entrada);
+  return { fim, texto: fim.ateEntrada ? `até a entrada, em ${diaIso(fim.ate)}` : `até ${diaIso(fim.ate)}` };
+};
 
 /**
  * Como o dinheiro volta, pelas partes da devolução (a regra única do cancelamento e da alteração, `rotasDaDevolucao`):
@@ -356,6 +363,8 @@ export function textoDoCancelamento(
     return { linhas: [linha], decisao: "", comoVolta: null };
   }
   const recebido = quando(c.recebidoEm)!;
+  const entradaQuando = quando(c.entradaEm);
+  const entradaDaEstadia = entradaQuando ? isoNoFuso(entradaQuando, BRASILIA) : null;
   const cabecalho =
     c.quemCancela === "empresa"
       ? `Nós cancelamos a sua reserva ${codigo}${c.motivoEmpresa === "imovel_sem_condicoes" ? ": o apartamento ficou sem condições de receber você" : c.motivoEmpresa === "forca_maior" ? " por motivo de força maior" : ""}.`
@@ -392,10 +401,14 @@ export function textoDoCancelamento(
   } else if (c.base === "nao_comparecimento") decisoes.push(textos.cancelamentoSemDevolucaoNaoComparecimento);
   else if (c.base === "sem_politica" || !c.integralAte) decisoes.push(textos.cancelamentoSemDevolucaoEquipe);
   else if (pagaSemPrazoIntegral(c) && c.arrependimentoAte)
-    // Paga já depois do prazo do reembolso integral: esse prazo nunca valeu para ela; só o arrependimento.
-    decisoes.push(juntar(`Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até ${diaIso(c.arrependimentoAte)}.`, textos.cancelamentoSemDevolucaoPrazo));
+    // Paga já depois do prazo do reembolso integral: esse prazo nunca valeu para ela; só o arrependimento (que para na
+    // entrada, quando a política aceita diz isso e a entrada vem antes).
+    decisoes.push(
+      juntar(`Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: ${ateOArrependimento(c.arrependimentoAte, c.arrependimentoAteEntrada, entradaDaEstadia).texto}.`, textos.cancelamentoSemDevolucaoPrazo),
+    );
   else {
-    const arrependimento = c.arrependimentoAte && c.arrependimentoAte > c.integralAte ? ` Arrependimento: até ${diaIso(c.arrependimentoAte)}.` : "";
+    const arr = c.arrependimentoAte ? ateOArrependimento(c.arrependimentoAte, c.arrependimentoAteEntrada, entradaDaEstadia) : null;
+    const arrependimento = arr && arr.fim.ate > c.integralAte ? ` Arrependimento: ${arr.texto}.` : "";
     decisoes.push(juntar(`Prazo de reembolso integral: pedidos até ${diaIso(c.integralAte)}, às 23h59.${arrependimento}`, textos.cancelamentoSemDevolucaoPrazo));
   }
   const decisao = juntar(...decisoes);
@@ -441,7 +454,12 @@ const prazoBrasilia = (ate: Date, desde: Date | null) => (desde && diaMes(ate, B
 
 /** Por que a política devolve (ou não) a diferença, em palavras do hóspede (os fatos da decisão pela política). */
 function porqueDaReducao(r: NonNullable<AlteracaoParaHospede["reducao"]> & { integralAte: string }, entradaDaPolitica: string): string {
-  if (r.base === "arrependimento") return "direito de arrependimento: até 7 dias depois do pagamento";
+  if (r.base === "arrependimento") {
+    // A mesma regra da decisão: com a política parando na entrada, o direito acaba nela quando ela vem antes dos 7 dias.
+    if (!r.arrependimentoAte) return "direito de arrependimento: até 7 dias depois do pagamento";
+    const fim = fimDoArrependimento(r.arrependimentoAte, r.arrependimentoAteEntrada ?? null, r.entradaDaEstadia ?? null);
+    return fim.ateEntrada ? `direito de arrependimento: até a entrada, em ${diaIso(fim.ate)}` : `direito de arrependimento: até ${diaIso(fim.ate)}, 7 dias depois do pagamento`;
+  }
   return `o pedido chegou ${r.direito === "integral" ? "até" : "depois de"} ${diaIso(r.integralAte)}, 23h59, contando da entrada de ${diaIso(entradaDaPolitica)}`;
 }
 

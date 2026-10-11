@@ -139,6 +139,8 @@ export type CancelamentoParaHospede = {
   estornoPelaEquipe: boolean;
   integralAte: string | null;
   arrependimentoAte: string | null;
+  /** A política aceita para o arrependimento na entrada (`fimDoArrependimento`); null sem a política gravada. */
+  arrependimentoAteEntrada?: boolean | null;
   entradaEm: Date | null;
   politicaVersao: number | null;
 };
@@ -163,8 +165,18 @@ export type AlteracaoParaHospede = {
   holdAte: Date | null;
   preparadaEm: Date;
   aplicadaEm: Date | null;
-  /** A redução pela política: a decisão, a base e o último dia do reembolso integral (null fora da redução). */
-  reducao: { direito: DireitoCancelamento; base: BaseCancelamento | null; integralAte: string | null } | null;
+  /**
+   * A redução pela política: a decisão, a base, o último dia do reembolso integral e o fim do arrependimento (o dia 7 depois
+   * do pagamento, se a política para na entrada e a entrada da estadia de então) — null fora da redução.
+   */
+  reducao: {
+    direito: DireitoCancelamento;
+    base: BaseCancelamento | null;
+    integralAte: string | null;
+    arrependimentoAte?: string | null;
+    arrependimentoAteEntrada?: boolean | null;
+    entradaDaEstadia?: string | null;
+  } | null;
   /** A devolução da diferença (as da alteração juntas); null sem redução integral aplicada. */
   devolucao: {
     estado: "aguardando_liberacao" | "pedida" | "feita" | "com_a_equipe" | "em_conferencia";
@@ -568,7 +580,10 @@ const comum = (a: Alteracao, situacao: AlteracaoParaHospede["situacao"]): Altera
   holdAte: a.holdAte,
   preparadaEm: a.criadoEm,
   aplicadaEm: a.aplicadaEm,
-  reducao: a.diferenca < 0 && a.direito ? { direito: a.direito, base: a.base, integralAte: a.integralAte } : null,
+  reducao:
+    a.diferenca < 0 && a.direito
+      ? { direito: a.direito, base: a.base, integralAte: a.integralAte, arrependimentoAte: a.arrependimentoAte, arrependimentoAteEntrada: a.arrependimentoAteEntrada, entradaDaEstadia: a.checkinAntes }
+      : null,
   devolucao: null,
   pagoSemAlteracao: null,
   pagamento: null,
@@ -738,6 +753,7 @@ function estadoDoCancelamento(
     estornoPelaEquipe: devs.some((d) => estornaPelaEquipe(doPagamento(d), d, agora)),
     integralAte: canc.integralAte,
     arrependimentoAte: canc.arrependimentoAte,
+    arrependimentoAteEntrada: canc.arrependimentoAteEntrada,
     entradaEm: canc.entradaEm,
     politicaVersao: canc.politicaVersao,
     aguardandoLiberacao:

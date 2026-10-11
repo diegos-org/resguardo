@@ -130,9 +130,15 @@ describe("a página da reserva: os outros estados da alteração (M8.2d §8)", (
     expect(v?.alteracao).toMatchObject({ situacao: "segurada", rumo: "reducao", pagamento: null, reducao: { direito: "integral", base: "arrependimento" } });
     expect(texto(v!.alteracao!, x.reservaCodigo).linhas).toEqual([
       `Alteração da reserva ${x.reservaCodigo}: de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–14/10 (2 noites, 4 pessoas). Valor: de R$ 1.824,00 para R$ 1.624,00 — diferença de R$ 200,00. Datas seguradas até 13:20 (horário de Brasília). ${TEXTOS_SITE_INICIAIS.alteracaoAguardaConfirmacao}`,
-      "Pela política, a diferença de R$ 200,00 é devolvida (direito de arrependimento: até 7 dias depois do pagamento).",
+      "Pela política, a diferença de R$ 200,00 é devolvida (direito de arrependimento: até 08/10, 7 dias depois do pagamento).",
       politica,
     ]);
+    // Entrada (05/10) antes dos 7 dias do pagamento (08/10), com a política parando na entrada: o direito acaba nela.
+    const z = await pagarEConfirmar(c, { entrada: "2026-10-05", saida: "2026-10-08", email: "z@example.com" });
+    expect((await alterar(c, z.reservaId, { checkout: "2026-10-07", valor: menos200 }, minutos(20), { autorId: equipe })).resultado).toMatchObject({ ok: true, situacao: "segurada" });
+    const vz = await pagina(z.cotacaoId, minutos(21));
+    expect(vz?.alteracao?.reducao).toMatchObject({ direito: "integral", base: "arrependimento" });
+    expect(texto(vz!.alteracao!, z.reservaCodigo).linhas[1]).toMatch(/^Pela política, a diferença de R\$ [\d.,]+ é devolvida \(direito de arrependimento: até a entrada, em 05\/10\)\.$/);
     // Mesmo valor (outra reserva: só as datas mudam).
     const y = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "y@example.com" });
     const mantido = { origem: "mantido" as const, motivo: "acordo_com_hospede" as const, nota: "Mesmas noites em outra semana" };

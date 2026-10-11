@@ -1579,7 +1579,9 @@ noites, pessoas, valores, diferença, prazo "até HH:MM", ou "dd/mm às HH:MM" q
 versão da política e a data de que os prazos contam) e frases editáveis em Textos do site (`alteracaoEmAndamento`,
 `alteracaoAguardaConfirmacao`, `alteracaoPolitica`, `alteracaoConfirmada`, `devolucaoAguardaLiberacao`,
 `alteracaoSemDevolucao`, `alteracaoNaoAplicada`, `alteracaoNaoVale`; as cinco primeiras obrigatórias). Nunca
-"Beds24", nunca dado pessoal.
+"Beds24", nunca dado pessoal. O fim do arrependimento é escrito com a mesma regra da decisão (`fimDoArrependimento`):
+"até dd/mm, 7 dias depois do pagamento" ou, quando a política aceita para o arrependimento na entrada e ela vem antes,
+"até a entrada, em dd/mm" (também no texto do cancelamento, desde 11/10).
 - **Segurada** (em qualquer rumo): "Alteração da sua reserva"; no aumento, com o Pix e o cartão da diferença
   (aceite D11 quando preciso); na redução ou no mesmo valor, "Para confirmar, responda à nossa mensagem…" e a linha
   da política com a decisão ("…é devolvida | não é devolvida…").

@@ -111,6 +111,16 @@ export function entradaQueConta(original: string, atual: string, anteriores: rea
   return todas.reduce((menor, d) => (d < menor ? d : menor));
 }
 
+/**
+ * O fim do direito de arrependimento como o hóspede o lê (a mesma regra de `decidirPelaPolitica`): 7 dias depois do
+ * pagamento (`arrependimentoAte`) ou, com `arrependimentoAteEntrada`, a entrada da estadia quando ela vem antes (a
+ * decisão para quando a estadia começa). `ateEntrada`: o fim é a entrada.
+ */
+export function fimDoArrependimento(arrependimentoAte: string, arrependimentoAteEntrada: boolean | null, entrada: string | null): { ate: string; ateEntrada: boolean } {
+  if (arrependimentoAteEntrada && entrada && entrada <= arrependimentoAte) return { ate: entrada, ateEntrada: true };
+  return { ate: arrependimentoAte, ateEntrada: false };
+}
+
 export function decidirPelaPolitica(e: EntradaPolitica): DecisaoPolitica {
   // Entrada inválida é erro de quem chama (como em `prazoDoReembolso`): nunca uma decisão por palpite.
   if (!dataDeEntradaValida(e.checkin)) throw new Error("Data de entrada inválida.");

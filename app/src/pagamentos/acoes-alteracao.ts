@@ -185,7 +185,17 @@ async function propostaDe(organizacaoId: string, p: PreviaAlteracao, agora: Date
     valorNovo: p.valorNovo,
     holdAte: p.holdAte ?? prazoDasDatas(agora, p.holdMinutos, p.limiteDoPrazo),
     preparadaEm: agora,
-    reducao: p.rumo === "reducao" && p.direito ? { direito: p.direito, base: p.base, integralAte: p.decisao?.integralAte ?? null } : null,
+    reducao:
+      p.rumo === "reducao" && p.direito
+        ? {
+            direito: p.direito,
+            base: p.base,
+            integralAte: p.decisao?.integralAte ?? null,
+            arrependimentoAte: p.decisao?.arrependimentoAte ?? null,
+            arrependimentoAteEntrada: p.politica?.arrependimentoAteEntrada ?? null,
+            entradaDaEstadia: p.antes.checkin,
+          }
+        : null,
     politicaVersao: p.politica?.versao ?? null,
     entradaDaPolitica: p.entradaDaPolitica,
     entradaDosPrazos: p.entradaDaPolitica,
