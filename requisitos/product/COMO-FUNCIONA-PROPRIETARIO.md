@@ -16,7 +16,9 @@ tabela `aceites_documento` (migração 0054), telas em Configurações → Como 
   Seção vazia não aparece no portal. Pelo menos uma seção escrita para publicar.
 - **Nada publicado até a primeira versão:** sem versão, o painel traz um rascunho sugerido (a partir
   das regras do sistema; "contestações" em branco até a decisão de Diego) e o portal não mostra o
-  documento nem pede aceite. Avisar em vez de supor: o texto é decisão de Diego, não do sistema.
+  documento nem pede aceite. Desde o M8.2e (11/10/2026), o texto-base da seção "Contestações de pagamento" está no
+  GUIA, seção 6, item 42 (passo 5), para Diego colar e publicar na versão 2; o rascunho do painel continua com a seção
+  vazia (o texto depende das decisões ★ 1, 2, 3 e da 14 da disputa, GUIA, seção 7) e a dica da seção aponta para o guia. Avisar em vez de supor: o texto é decisão de Diego, não do sistema.
 - **Versões:** publicar com texto diferente da versão atual cria a versão seguinte (número + 1, data de
   hoje, autor); texto igual não cria versão. As versões ficam na configuração `como_funciona`
   (`{ versoes: [...] }`), e cada publicação entra na auditoria com o que mudou por seção.
@@ -83,6 +85,21 @@ precisar do rascunho com a frase, é uma mudança pequena de texto, num PR segui
   `app/src/configuracoes/documentos-versionados.ts` (o "Como funciona" continua com o mesmo formato
   gravado e as mesmas funções), mas o aceite do hóspede tem a própria tabela, `aceites_site`: o
   hóspede não tem usuário, e `aceites_documento` exige proprietário e usuário.
-- Texto das contestações: espera a decisão de Diego (GUIA, seção 7); até lá a seção fica vazia.
+- Texto das contestações: espera a decisão de Diego (GUIA, seção 7); até lá a seção fica vazia. **Desde o M8.2e
+  (11/10/2026):** a regra de quem arca foi decidida por Diego em 7/10 (quem deu causa ao motivo da disputa) e
+  implementada em teste (`PAGAMENTO-SITE.md`, seção "Contestação (M8.2e)"). O texto-base proposto, com o exemplo, está no
+  GUIA (item 42, passo 5):
+  > Quando um hóspede contesta no banco uma cobrança de reserva paga pelo site, o Mercado Pago segura o valor até a
+  > decisão do banco, o que pode levar alguns meses. Enquanto isso, a reserva fica em conferência: se a sua parte dela
+  > ainda não foi repassada, ela espera; se já foi, nada é descontado até a equipe registrar quem arca. Arca quem deu
+  > causa ao motivo da disputa: um problema do imóvel fica com você; uma falha da SCL ou na cobrança fica com a SCL; sem
+  > como separar, cada um arca na proporção da sua parte. Com a decisão, o seu valor fica segurado nos próximos repasses
+  > (de qualquer reserva sua) até o resultado: se a SCL ganhar, ele volta no repasse seguinte; se perder, o desconto fica
+  > definitivo. Exemplo: numa reserva de R$ 1.000,00 em que a sua parte é R$ 807,67 e a da SCL R$ 142,53, uma disputa
+  > perdida dividida na proporção desconta R$ 850,00 de você e R$ 150,00 da SCL; se o problema foi do imóvel, R$ 1.000,00
+  > de você. Cada passo aparece no seu extrato.
+
+  Diego publica a versão 2 (todos aceitam de novo). Na decisão de quem arca, o quadro da disputa avisa, sem bloquear,
+  quando o proprietário ainda não aceitou uma versão com essa seção preenchida (`aceitouComoFuncionaDasDisputas`).
 - Correção pequena sem novo aceite: não existe — qualquer mudança de texto pede aceite de novo, como
   Diego pediu. Se virar incômodo, a decisão é dele (ex.: marcar uma publicação como "correção").

@@ -9,6 +9,7 @@
 import { createHash } from "node:crypto";
 import type { DesfechoPagamento, SituacaoPagamento } from "@/db/schema";
 import { formatBRL } from "@/lib/money";
+import { ESTADOS_LIDOS_CONTESTACAO, type EstadoLidoContestacao, SITUACOES_DOCUMENTACAO, type SituacaoDocumentacao } from "./provedor";
 
 // ---------------------------------------------------------------- listas fechadas
 
@@ -37,13 +38,12 @@ export type OrigemContestacao = (typeof ORIGENS_CONTESTACAO)[number];
  * depois da contestação". Páginas antigas já disseram o contrário de `reimbursed` (item 61): o sentido está a conferir.
  * Fora da lista = `desconhecido`, que nunca sobrescreve o último conhecido (`estado_lido` guarda só os da lista).
  */
-export const ESTADOS_LIDOS_CONTESTACAO = ["in_process", "settled", "reimbursed"] as const;
+// Uma regra, um lugar: as duas listas vivem no contrato do adaptador (`provedor.ts`), que as lê; aqui só se reexportam.
+export { ESTADOS_LIDOS_CONTESTACAO, type EstadoLidoContestacao };
 export type EstadoConhecidoContestacao = (typeof ESTADOS_LIDOS_CONTESTACAO)[number];
-export type EstadoLidoContestacao = EstadoConhecidoContestacao | "desconhecido";
 
-/** `documentation_status` da Chargebacks API (o mesmo de `provedor.ts`); fora da lista = `desconhecida`. */
-export const SITUACOES_DOCUMENTACAO = ["pending", "review_pending", "valid", "invalid", "not_supplied", "not_applicable"] as const;
-export type SituacaoDocumentacao = (typeof SITUACOES_DOCUMENTACAO)[number];
+/** `documentation_status` da Chargebacks API (a lista de `provedor.ts`); fora da lista = `desconhecida`. */
+export { SITUACOES_DOCUMENTACAO, type SituacaoDocumentacao };
 export type DocumentacaoDaContestacao = SituacaoDocumentacao | "desconhecida";
 
 /** A causa da disputa na decisão de quem arca: códigos fixos; o nome e a frase de cada um são editáveis (Configurações). */

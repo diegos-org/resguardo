@@ -12,11 +12,12 @@ import { auditoria, cancelamentosReserva, contestacoesPagamento, cotacoes, devol
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
+import { mensagensDoCancelamento } from "@/mensagens/hospede";
 import { partesDoProprietario } from "@/repasses/extrato";
 import { dinheiroComAEmpresa, recebidoPorReserva } from "@/repasses/recebimentos";
 import { cancelarReservaContestada, canceladaPelaDisputa, previaDoCancelamentoContestado, TEXTO_PREVIA_MUDOU, TEXTO_SEM_DISPUTA_PARA_CANCELAR } from "./cancelamento";
 import { conferirTentativa } from "./conferencia";
-import { avisosDeCancelamento, vistaDaCotacaoParaHospede } from "./consultas";
+import { avisosDeCancelamento, pagamentosDaReserva, vistaDaCotacaoParaHospede } from "./consultas";
 import {
   conferirAviso,
   confirmarDebito,
@@ -42,6 +43,7 @@ import {
 } from "./contestacao-regras";
 import { devolverPeloProvedor, registrarTaxaPerdida } from "./devolucao";
 import type { ProvedorPagamento } from "./provedor";
+import { textoDevolucaoDevidaDepoisDaDisputa } from "./situacoes";
 import type { Contestacao } from "./travas";
 import { type Cenario, cancelar, entradaPadrao, liberar, minutos, montarCenario, pagarEConfirmar, reduzirDeTeste, repassar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
 
@@ -395,6 +397,10 @@ describe("devolução substituída (item 16)", () => {
     expect(devida.avisos).toContain("devolucao_devida_depois_da_disputa");
     expect(devida.avisos).not.toContain("devolucao_parada");
     expect((await c.tentativa(x.pagamentoId)).avisos).toContain("devolucao_devida_depois_da_disputa");
+    // O quadro diz o valor da devolução devida (sem R$ para quem não lê o financeiro).
+    const [quadro] = await pagamentosDaReserva(db, c.org, x.reservaId, sp("2026-10-25 10:30"));
+    expect(quadro.avisos).toContain(textoDevolucaoDevidaDepoisDaDisputa(diferenca));
+    expect(quadro.avisosSemValores).toContain(textoDevolucaoDevidaDepoisDaDisputa(null));
     // Pedir de novo (o Mercado Pago já mostra a disputa encerrada): pedida, o aviso sai.
     c.provedor.resolverContestacao(x.idProvedor, { estado: "settled", transacaoAprovada: true });
     expect(await devolverPeloProvedor(db, c.org, { devolucaoId: d.id }, equipe, c.provedor, sp("2026-10-25 11:00"))).toMatchObject({ ok: true });
@@ -487,6 +493,9 @@ describe("cancelar a reserva contestada (item 18)", () => {
     expect((await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, x.reservaId), eq(lancamentos.origem, "motor")))).map((l) => l.id)).toEqual(motorAntes);
     // A tarefa das OTAs e a página do hóspede.
     expect((await avisosDeCancelamento(db, c.org, quando)).find((a) => a.texto.includes("reabra as datas nas OTAs"))?.texto).toContain(x.reservaCodigo);
+    // Sem a mensagem da decisão ao hóspede (nem o aviso de mensagem pendente): numa disputa, a equipe fala caso a caso.
+    expect((await avisosDeCancelamento(db, c.org, sp("2026-10-23 10:00"))).some((a) => a.texto.includes("mensagem ao hóspede pendente"))).toBe(false);
+    expect((await mensagensDoCancelamento(db, c.org, x.reservaId, quando)).decidido).toBeNull();
     expect((await vistaDaCotacaoParaHospede(db, c.org, x.cotacaoId, quando, { comAutorizacao: true, oferecido: true }))?.estado).toBe("cancelada_em_conferencia");
     expect((await db.select().from(eventosContestacao).where(and(eq(eventosContestacao.contestacaoId, x.l.id), eq(eventosContestacao.tipo, "cancelamento"))))).toHaveLength(1);
     expect(await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, c.org), eq(auditoria.acao, "contestacao.cancelar_reserva")))).toHaveLength(1);

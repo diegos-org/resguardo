@@ -93,7 +93,8 @@ describe("reservas do portal", () => {
     const [c] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "999", nome: "Sem dono" }).returning();
     await criarContrato(db, org, c.id, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);
     await criarReserva(db, org, reserva(c.id, "2026-10-10", "2026-10-12"), null);
-    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: c.id });
+    // O vínculo num dia fixo antes da entrada (com o dia de hoje, uma entrada já passada ficaria do dono anterior).
+    await db.insert(proprietarioImoveis).values({ proprietarioId: dona, imovelId: c.id, criadoEm: new Date("2026-10-01T12:00:00Z") });
     const r = await lista([dona], [a, c.id]);
     expect(r.map((x) => [x.imovelCodigo, x.situacao, x.bruto, x.suaParte])).toEqual([
       ["403", "sem_calculo", 0, 0],

@@ -216,7 +216,7 @@ export const AVISOS_PAGAMENTO = {
   devolucao_aguardando_liberacao_atrasada:
     "A liberação deste pagamento passou da data prevista e a devolução de parte do valor continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.",
   // M8.2e: a devolução que uma disputa do pagamento substituía, de volta a devida depois da disputa ganha (ou encerrada sem
-  // efeito). O quadro troca este texto pelo com o valor (`textoDevolucaoDevidaDepoisDaGanha`, na ganha).
+  // efeito). O quadro troca este texto pelo com o valor (`textoDevolucaoDevidaDepoisDaDisputa`).
   devolucao_devida_depois_da_disputa:
     "A disputa do pagamento terminou sem o dinheiro voltar ao hóspede por ela: a devolução que a reserva deve a ele continua devida. Peça de novo pelo quadro do pagamento (até 78 dias; depois, pelo painel do Mercado Pago ou por fora).",
   ...TEXTOS_AVISOS_DE_CONTESTACAO,
@@ -264,6 +264,13 @@ export const textoDevolucaoAguardandoLiberacaoAtrasada = (valor: number | null) 
   `A liberação deste pagamento passou da data prevista e a devolução de ${valor === null ? "parte do valor" : formatBRL(valor)} continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.`;
 
 // ---------------------------------------------------------------- disputa do pagamento (M8.2e)
+
+/**
+ * O aviso `devolucao_devida_depois_da_disputa` com o valor da devolução que voltou a ser devida (a ganha e o sem efeito
+ * dizem o mesmo: o dinheiro não voltou ao hóspede pela disputa); sem o valor (null), sem R$.
+ */
+export const textoDevolucaoDevidaDepoisDaDisputa = (valor: number | null) =>
+  `A disputa do pagamento terminou sem o dinheiro voltar ao hóspede por ela: a devolução de ${valor === null ? "que a reserva deve a ele" : `${formatBRL(valor)} que a reserva deve a ele`} continua devida. Peça de novo pelo quadro do pagamento (até 78 dias; depois, pelo painel do Mercado Pago ou por fora).`;
 
 /** O aviso `contestado` do pagamento, por tipo da disputa em curso (sem o tipo, o texto geral). */
 export const TEXTOS_AVISO_CONTESTADO: Record<TipoContestacao, string> = {

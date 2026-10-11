@@ -52,6 +52,7 @@ import {
   type CodigoAviso,
   codigoMotivo,
   textoDevolucaoAguardandoLiberacaoAtrasada,
+  textoDevolucaoDevidaDepoisDaDisputa,
   comDinheiro,
   emAndamento,
   motivoDoDetalhe,
@@ -1072,6 +1073,10 @@ function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined, devs: reado
         const d = comAviso(c);
         if (d) return textoDevolucaoAguardandoLiberacaoAtrasada(valor(d.valor));
       }
+      if (c === "devolucao_devida_depois_da_disputa") {
+        const d = comAviso(c);
+        if (d) return textoDevolucaoDevidaDepoisDaDisputa(valor(d.valor));
+      }
       // O aviso de devolução recusada (M8.2c) também vem da recusa do painel do Mercado Pago registrada pela equipe e da
       // leitura que mostrou a nossa devolução falha: o texto diz qual foi (nem sempre foram "três vezes").
       if (c === "devolucao_falhou" && dev?.situacao === "recusada" && dev.recusaNoPainelEm) return TEXTO_RECUSA_NO_PAINEL;
@@ -1810,7 +1815,8 @@ export async function avisosDeCancelamento(db: Db, organizacaoId: string, agora:
   for (const x of canceladas) {
     const { c } = x;
     const desde: Date[] = [];
-    if (!c.hospedeAvisadoDecisaoEm && c.canceladaEm) desde.push(c.canceladaEm);
+    // M8.2e: "Cancelar a reserva contestada" não tem a mensagem da decisão (a equipe fala com o hóspede caso a caso).
+    if (!c.hospedeAvisadoDecisaoEm && c.canceladaEm && c.base !== MOTIVO_CANCELAMENTO_CONTESTACAO) desde.push(c.canceladaEm);
     // M8.2d: a devolução feita é a de todas as devoluções do cancelamento (o dia da última); a substituída não conta.
     const doCancelamento = devs.filter((x) => x.cancelamentoId === c.id && x.situacao !== "substituida");
     const dias = doCancelamento.map((d) => (d.situacao === "confirmada" ? d.confirmadaEm : d.situacao === "por_fora" && d.porForaData ? instanteLocal(d.porForaData, "12:00", "America/Sao_Paulo") : null));

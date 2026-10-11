@@ -5,7 +5,7 @@ import { AVISOS_DE_CONTESTACAO } from "./contestacao-regras";
 import {
   AVISOS_DE_DEVOLUCAO, AVISOS_PAGAMENTO, CODIGOS_FALHA_DO_PROVEDOR, CODIGOS_TOKEN, codigoMotivo, MOTIVO_RECUSA_CARTAO_GENERICO, MOTIVOS_RECUSA_CARTAO, MOTIVOS_SEM_RESERVA, motivoDoDetalhe,
   NOMES_DESFECHO, origemDeDevolucaoConhecida, ORIGENS_DEVOLUCAO_CONHECIDAS, situacaoLocal, textoContestacaoComDevolucao, textoContestacaoValorAcima, textoContestacaoValorMudou,
-  textoDevolucaoAguardandoLiberacaoAtrasada, textoDoAvisoContestado, textoMotivoRecusaCartao, textoMotivoSemReserva, textosDosAvisos, transicaoPermitida,
+  textoDevolucaoAguardandoLiberacaoAtrasada, textoDevolucaoDevidaDepoisDaDisputa, textoDoAvisoContestado, textoMotivoRecusaCartao, textoMotivoSemReserva, textosDosAvisos, transicaoPermitida,
 } from "./situacoes";
 
 describe("situações e transições do pagamento (M8.2a)", () => {
@@ -79,6 +79,10 @@ describe("alteração de reserva paga (M8.2d): listas fechadas", () => {
     expect(AVISOS_DE_DEVOLUCAO).toEqual(expect.arrayContaining(["devolucao_falhou", "devolucao_a_menor", "taxa_perdida_desconhecida", "devolucao_aguardando_liberacao_atrasada"]));
     for (const a of AVISOS_DE_DEVOLUCAO) expect(AVISOS_PAGAMENTO[a], a).toBeTruthy();
     expect(AVISOS_DE_DEVOLUCAO).not.toContain("devolvido_por_fora");
+    // M8.2e: a devolução de volta a devida depois da disputa, com e sem o valor.
+    expect(AVISOS_DE_DEVOLUCAO).toContain("devolucao_devida_depois_da_disputa");
+    expect(textoDevolucaoDevidaDepoisDaDisputa(40_000)).toContain(`a devolução de ${formatBRL(40_000)} que a reserva deve a ele continua devida`);
+    expect(textoDevolucaoDevidaDepoisDaDisputa(null)).not.toContain("R$");
   });
 });
 

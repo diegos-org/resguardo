@@ -503,9 +503,11 @@ describe("dados e acesso", () => {
         { organizacaoId: org, nome: "Outro Fictício" },
       ])
       .returning();
+    // Vínculos de 1/10 (dia fixo, antes das estadias de outubro): com o dia de hoje, as estadias de antes dele ficariam fora
+    // da posse e os números mudariam com o calendário.
     await db.insert(proprietarioImoveis).values([
-      { proprietarioId: dona, imovelId: a },
-      { proprietarioId: outro, imovelId: b },
+      { proprietarioId: dona, imovelId: a, criadoEm: new Date("2026-10-01T12:00:00-03:00") },
+      { proprietarioId: outro, imovelId: b, criadoEm: new Date("2026-10-01T12:00:00-03:00") },
     ]);
     await db.insert(representantes).values([
       { proprietarioId: dona, nome: "Rep Autorizado", recebeRelatorios: true },

@@ -24,8 +24,8 @@ export function FormComoFunciona({ atual, valores, salvar }: Props) {
       {!atual ? (
         <p role="note" style={{ margin: 0, fontSize: "0.875rem", padding: "10px 14px", borderLeft: "3px solid var(--scl-dourado)", background: "var(--scl-papel)" }}>
           <strong>Nenhuma versão publicada ainda.</strong> O texto abaixo é um rascunho sugerido a partir das regras que já valem no sistema: revise com calma, ajuste o que quiser e clique em
-          &ldquo;Publicar a versão 1&rdquo;. Até lá o portal não mostra o documento nem pede aceite. &ldquo;Contestações&rdquo; ficou em branco de propósito (decisão pendente): seção vazia não
-          aparece para o proprietário.
+          &ldquo;Publicar a versão 1&rdquo;. Até lá o portal não mostra o documento nem pede aceite. &ldquo;Contestações de pagamento&rdquo; fica em branco até você colar o texto-base do guia (item 42), depois de
+          decidir quem arca nas disputas: seção vazia não aparece para o proprietário.
         </p>
       ) : (
         <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>

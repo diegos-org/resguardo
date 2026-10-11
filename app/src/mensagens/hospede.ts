@@ -78,7 +78,7 @@ import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { marcarAvisadoDaAlteracao, type MensagemDaAlteracao } from "@/pagamentos/alteracao";
-import { marcarAvisado, type MensagemAoHospede } from "@/pagamentos/cancelamento";
+import { canceladaPelaDisputa, marcarAvisado, type MensagemAoHospede } from "@/pagamentos/cancelamento";
 import { type AlteracaoParaHospede, alteracaoParaMensagem, vistaDaCotacaoParaHospede } from "@/pagamentos/consultas";
 import { textoDaAlteracao, textoDoCancelamento } from "@/site/pagamento-vista";
 
@@ -199,6 +199,11 @@ export type DadosPrazoCancelamento = {
   canceladaEm: Date | null;
   /** A devolução feita (confirmada, ou por fora ao meio-dia do dia informado); null enquanto não foi. */
   devolucao: { id: string; em: Date } | null;
+  /**
+   * M8.2e: "Cancelar a reserva contestada" (sem decisão pela política). Não tem a mensagem da decisão: numa disputa do
+   * pagamento a equipe fala com o hóspede caso a caso (PAGAMENTO-SITE.md, "Contestação (M8.2e)", "O que o hóspede vê").
+   */
+  pelaDisputa?: boolean;
 };
 
 /**
@@ -212,7 +217,7 @@ export function prazoDaMensagemDoCancelamento(tipo: TipoMensagemCancelamento, c:
     case "cancelamento_recebido":
       return ativo && c.doHospede ? { inicio: c.pedidoRecebidoEm, fim: new Date(c.pedidoRecebidoEm.getTime() + PRAZO_PEDIDO_RECEBIDO_MS), referencia: c.cancelamentoId } : null;
     case "cancelamento_decidido":
-      return c.situacao === "cancelada" && c.canceladaEm ? { inicio: c.canceladaEm, fim: new Date(c.canceladaEm.getTime() + PRAZO_DECISAO_MS), referencia: c.cancelamentoId } : null;
+      return c.situacao === "cancelada" && c.canceladaEm && !c.pelaDisputa ? { inicio: c.canceladaEm, fim: new Date(c.canceladaEm.getTime() + PRAZO_DECISAO_MS), referencia: c.cancelamentoId } : null;
     case "devolucao_concluida":
       return c.situacao === "cancelada" && c.devolucao ? { inicio: c.devolucao.em, fim: new Date(c.devolucao.em.getTime() + PRAZO_DECISAO_MS), referencia: c.devolucao.id } : null;
   }
@@ -287,6 +292,7 @@ async function alvosDeCancelamento(db: Db, organizacaoId: string, f: { reservaId
       pedidoRecebidoEm: l.c.pedidoRecebidoEm,
       canceladaEm: l.c.canceladaEm,
       devolucao: d && em && l.c.direito === "integral" ? { id: d.id, em } : null,
+      pelaDisputa: canceladaPelaDisputa(l.c),
       reservaId: l.c.reservaId,
       codigo: l.codigo,
       checkin: l.checkin,

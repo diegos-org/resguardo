@@ -12,6 +12,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { cancelamentosReserva, contestacoesPagamento, devolucoesPagamento, lancamentos, pagamentos, proprietarioImoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { ORIGEM_LANCAMENTO_CONTESTACAO } from "@/pagamentos/contestacao-regras";
+import { devolvidoPelaDisputaSql } from "@/pagamentos/travas";
 
 /** Lançamento em vigor: não é estorno e não foi estornado. */
 export function lancamentoEmVigor(db: Db) {
@@ -33,14 +34,15 @@ export const reservaCalculadaSql = () => sql`(${reservas.estado} = 'confirmada' 
  * nosso nem reconhecido — fora do cancelamento pela política com devolução integral. O dinheiro já voltou ao hóspede: a
  * parte do proprietário fica em conferência e não é repassada. Gêmeo TS: `devolucaoInexplicada` (`pagamentos/travas.ts`),
  * por pagamento, em `devolvidaNoProvedor` (`pagamentos/consultas.ts`). O aviso `devolvido_por_fora` é saída disto, nunca
- * entrada.
+ * entrada. M8.2e: o MED do Pix e a reclamação registrados explicam a devolução lida, até o valor deles
+ * (`devolvidoPelaDisputaSql`, o gêmeo de `devolvidoPelaDisputa`); daí em diante, quem segura a reserva é a disputa.
  */
 export const devolvidaNoProvedorSql = () => sql`(exists (select 1 from ${pagamentos} p where p.reserva_id = ${reservas.id} and p.desfecho in ('reserva', 'alteracao')
-    and (p.devolvido_lido > p.devolvido_fora_reconhecido + (select coalesce(sum(case
+    and (p.devolvido_lido > p.devolvido_fora_reconhecido + ${devolvidoPelaDisputaSql(sql.raw("p.id"))} + (select coalesce(sum(case
             when d.situacao = 'confirmada' then least(coalesce(d.valor_confirmado, d.valor), d.valor)
             when d.situacao = 'pedida' and d.tentativas > 0 and (d.chave_aceita or d.chave_em_duvida) then d.valor
             else 0 end), 0) from ${devolucoesPagamento} d where d.pagamento_id = p.id)
-      or (p.situacao in ('devolvido', 'devolvido_parcial') and p.devolvido_fora_reconhecido = 0 and not exists (select 1 from ${devolucoesPagamento} d
+      or (p.situacao in ('devolvido', 'devolvido_parcial') and p.devolvido_fora_reconhecido = 0 and ${devolvidoPelaDisputaSql(sql.raw("p.id"))} = 0 and not exists (select 1 from ${devolucoesPagamento} d
             where d.pagamento_id = p.id and (d.situacao = 'confirmada' or (d.situacao = 'pedida' and d.tentativas > 0 and (d.chave_aceita or d.chave_em_duvida)))))))
   and not exists (select 1 from ${cancelamentosReserva} c where c.reserva_id = ${reservas.id} and c.situacao = 'cancelada' and c.direito = 'integral'))`;
 

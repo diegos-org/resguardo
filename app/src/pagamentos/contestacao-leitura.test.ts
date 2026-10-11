@@ -5,11 +5,12 @@
  * a substituição das devoluções; o aviso assinado; o Pix (o número do pagamento e `contestacao_pix`).
  * Itens 3, 4, 5, 7, 13, 19, 21 e 23 de "Testes a escrever" (PAGAMENTO-SITE.md, "Contestação (M8.2e)").
  */
-import { and, asc, eq, like } from "drizzle-orm";
+import { and, asc, eq, like, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { auditoria, contestacoesPagamento, devolucoesPagamento, eventosContestacao, lancamentos, pagamentos } from "@/db/schema";
+import { auditoria, contestacoesPagamento, devolucoesPagamento, eventosContestacao, lancamentos, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { devolvidaNoProvedorSql } from "@/portal/posse";
 import { registrarRecebimento } from "@/repasses/recebimentos";
 import { previaDaAlteracao } from "./alteracao";
 import { previaDoCancelamento, TEXTO_CONTESTADO, TEXTO_CONTESTADO_PERDIDA } from "./cancelamento";
@@ -54,6 +55,9 @@ const linhas = (pagamentoId: string) => db.select().from(contestacoesPagamento).
 const eventos = (contestacaoId: string) => db.select().from(eventosContestacao).where(eq(eventosContestacao.contestacaoId, contestacaoId)).orderBy(asc(eventosContestacao.em), asc(eventosContestacao.id));
 const daDisputa = (pagamentoId: string) => db.select().from(lancamentos).where(like(lancamentos.chaveOrigem, `mercadopago:${pagamentoId}:contestacao:%`)).orderBy(asc(lancamentos.criadoEm), asc(lancamentos.chaveOrigem));
 const recebimentos = (pagamentoId: string) => db.select().from(lancamentos).where(and(eq(lancamentos.tipo, "recebimento"), like(lancamentos.chaveOrigem, `mercadopago:${pagamentoId}:recebimento%`)));
+/** O D21 pela regra SQL da conferência (`devolvidaNoProvedorSql`), para a reserva. */
+const devolvidaPeloD21 = async (reservaId: string) =>
+  (await db.select({ d: sql<boolean>`coalesce(${devolvidaNoProvedorSql()}, false)` }).from(reservas).where(eq(reservas.id, reservaId)))[0].d;
 /** Reserva com entrada em 20/11 (o cancelamento pela política dá a devolução integral). */
 const longe = { entrada: "2026-11-20", saida: "2026-11-23" };
 /** A equipe confirma o resultado (o "Confirmar o resultado" do quadro da disputa, de outro bloco do M8.2e, simulado aqui). */
@@ -320,6 +324,7 @@ describe("retido (item 13: abertura e MED)", () => {
     await conferir(x.pagamentoId, minutos(10));
     const antes = await c.tentativa(x.pagamentoId);
     expect(antes).toMatchObject({ situacao: "devolvido", devolvidoLido: TOTAL, devolvidoVistoEm: minutos(10), avisos: expect.arrayContaining(["devolvido_por_fora"]) });
+    expect(await devolvidaPeloD21(x.reservaId)).toBe(true);
     const r = await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, { tipo: "med", abertaEm: "2026-10-01", valor: TOTAL, prazo: "2026-10-10", idCaso: null, nota: "MED aceito pelo Mercado Pago" }, equipe, c.provedor, minutos(30));
     expect(r).toMatchObject({ ok: true });
     const [l] = await linhas(x.pagamentoId);
@@ -329,6 +334,8 @@ describe("retido (item 13: abertura e MED)", () => {
     const depois = await c.tentativa(x.pagamentoId);
     expect(depois).toMatchObject({ devolvidoForaReconhecido: 0 });
     expect(depois.avisos).not.toContain("devolvido_por_fora");
+    // A regra SQL da conferência (o gêmeo de `devolucaoInexplicada`) também conta o MED: o D21 não segura mais a reserva.
+    expect(await devolvidaPeloD21(x.reservaId)).toBe(false);
     // A leitura seguinte não o liga de novo: o MED explica a devolução lida.
     await conferir(x.pagamentoId, minutos(40));
     expect((await c.tentativa(x.pagamentoId)).avisos).not.toContain("devolvido_por_fora");
