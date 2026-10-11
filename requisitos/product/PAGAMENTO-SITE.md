@@ -3401,6 +3401,18 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   passava do orçamento mais do que uma chamada. *Agora:* os 8 s valem para o método inteiro (`chamarContestacoes`,
   `mercadopago.ts`): a leitura do id sai do mesmo prazo, e o pedido à Chargebacks API fica com o que sobrar (sem sobra, a
   chamada falha por tempo, como as outras). *Motivo:* o orçamento conta cada chamada do provedor como no máximo 8 s.
+- **"Voltou a aprovado" pela order, com a contestação que o pagamento não registra** *(segue o desenho, "De onde vem
+  cada fato", item 1)*. *Antes:* a correção anterior (a Payments API, depois dos 85 dias) não valia para a leitura da
+  order: dentro dos 85 dias, a order aprovada de novo, sem disputa listada, só dava o fato com o pagamento `contestado`; a
+  contestação no cartão registrada pela equipe (o pagamento continua `aprovado`) ficava aberta. *Agora:* uma regra só,
+  `comContestacaoNoCartaoEmAberto` (`contestacao-regras.ts`): a leitura da order e a da Payments API dão o fato sempre que
+  há uma contestação no cartão não final no quadro, de qualquer origem; a disputa vai para `a_confirmar` e a equipe
+  confirma o resultado, como sempre.
+- **Um orçamento só para a volta das disputas** *(segue o desenho, "Rotina", orçamento de 60 s)*. *Antes:* a releitura das
+  disputas abertas e a busca tardia da mesma volta tinham 60 s cada (até uns 120 s na volta). *Agora:* as duas dividem um
+  orçamento só, contado do início da volta (`disputasDaVolta` na rotina e no "Conferir agora" da empresa,
+  `conferirContestacoesDoPagamento` no de uma reserva): a busca usa o que a releitura deixou, e o que não coube fica para a
+  próxima volta, com a vez intacta. *Motivo:* a volta tem de caber no tempo da função.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

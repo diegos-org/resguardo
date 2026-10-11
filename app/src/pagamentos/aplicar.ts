@@ -36,7 +36,7 @@ import { FOLGA_PRAZO_PAGAMENTO_MS, inicioDoPrazoDeReleitura } from "./andamento"
 import { avisosComDevolucoes, trocarAvisosDaDevolucao } from "./avisos-devolucao";
 import { decidirAprovacao } from "./confirmacao";
 import { acertarRetidoDasDevolucoesLidas, aplicarLeiturasDaDisputa, avisosComContestacoes, leiturasDaOrder, trocarAvisosDaContestacao } from "./contestacao-leitura";
-import { contestacaoEmCurso, contestacaoNaoFinal } from "./contestacao-regras";
+import { comContestacaoNoCartaoEmAberto, contestacaoEmCurso, contestacaoNaoFinal } from "./contestacao-regras";
 import { avaliarDisjuntor, contaNoDisjuntor } from "./disjuntor";
 import {
   acordarDevolucoesQueEsperam,
@@ -477,10 +477,11 @@ export async function aplicarLeitura(tx: Db, organizacaoId: string, t: Travado, 
 
   // M8.2e: as contestações que a order mostra, nas disputas do pagamento (sob a mesma trava), depois das devoluções (a
   // disputa que abre substitui as que ainda não foram pedidas) e antes da liberação. Sem item na lista, uma order de novo
-  // aprovada depois de uma disputa no cartão lida é o fato "a transação voltou a aprovada".
+  // aprovada com uma contestação no cartão não final no quadro (`comContestacaoNoCartaoEmAberto`, de qualquer origem: a
+  // registrada pela equipe deixa o pagamento `aprovado`) é o fato "a transação voltou a aprovada".
   let disputaMudou = false;
   if (cobrancaAplicada) {
-    const comDisputaLida = p.situacao === "contestado" && contestacoesDoPagamento(t, p.id).some((l) => l.tipo === "chargeback" && contestacaoNaoFinal(l.situacao));
+    const comDisputaLida = comContestacaoNoCartaoEmAberto(contestacoesDoPagamento(t, p.id));
     const ef = await aplicarLeiturasDaDisputa(tx, organizacaoId, t, p, leiturasDaOrder(cobrancaAplicada, agora, { comDisputaLida }), agora, { fonte: "order", desfecho, sincronizar: false });
     disputaMudou = ef.mudou;
     if (ef.aoVivo) ligar("ao_vivo");

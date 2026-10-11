@@ -231,17 +231,21 @@ export async function conferirPendentes(db: Db, organizacaoId: string | null, pr
 
 /**
  * As disputas de uma volta (M8.2e): a releitura das abertas (`conferirContestacoes`), a busca tardia semanal e os e-mails à
- * equipe (abertura e prazo dos documentos). Uma falha numa parte não impede as outras.
+ * equipe (abertura e prazo dos documentos). Uma falha numa parte não impede as outras. A releitura e a busca dividem um
+ * orçamento só (`ORCAMENTO_VOLTA_CONTESTACAO_MS`, contado do início da volta): a busca usa o que a releitura deixou.
+ * `o.relogio` (testes): o relógio do orçamento.
  */
-async function disputasDaVolta(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date, o: { forcar?: boolean; correio?: Correio | null }): Promise<ResumoContestacoes> {
+async function disputasDaVolta(db: Db, organizacaoId: string | null, provedor: ProvedorPagamento, agora: Date, o: { forcar?: boolean; correio?: Correio | null; relogio?: () => number }): Promise<ResumoContestacoes> {
   let r: ResumoContestacoes = { lidas: 0, mudaram: 0, falhas: 0, foraDoPrazo: 0, buscados: 0, novas: 0 };
+  const relogio = o.relogio ?? (() => Date.now());
+  const inicio = relogio();
   try {
-    r = await conferirContestacoes(db, organizacaoId, provedor, agora, { forcar: o.forcar });
+    r = await conferirContestacoes(db, organizacaoId, provedor, agora, { forcar: o.forcar, relogio, inicio });
   } catch {
     r.falhas++;
   }
   try {
-    const b = await buscarContestacoesTardias(db, organizacaoId, provedor, agora);
+    const b = await buscarContestacoesTardias(db, organizacaoId, provedor, agora, { relogio, inicio });
     r = { ...r, buscados: b.buscados, novas: r.novas + b.novas, mudaram: r.mudaram + b.mudaram, falhas: r.falhas + b.falhas };
   } catch {
     r.falhas++;
@@ -256,19 +260,20 @@ async function disputasDaVolta(db: Db, organizacaoId: string | null, provedor: P
  * Depois dos holds, as disputas do pagamento (M8.2e): um Mercado Pago lento nas disputas nunca atrasa o vencimento. Sem
  * provedor (pagamento desligado, como no deploy de produção), só vence (e avisa a equipe do prazo dos documentos) — a
  * carência de um pagamento em andamento continua valendo. Em qualquer caso, apaga os avisos do Mercado Pago com mais de 90
- * dias (o webhook grava no deploy de produção). `o.correio`: o dos e-mails à equipe (padrão: o do ambiente).
+ * dias (o webhook grava no deploy de produção). `o.correio`: o dos e-mails à equipe (padrão: o do ambiente). `o.relogio`
+ * (testes): o relógio do orçamento das disputas.
  */
 export async function rotinaDoSite(
   db: Db,
   provedor: ProvedorPagamento | null,
   agora: Date = new Date(),
-  o: { correio?: Correio | null } = {},
+  o: { correio?: Correio | null; relogio?: () => number } = {},
 ): Promise<{ pagamentos: ResumoConferencia | null; alteracoes: ResumoAlteracoesVencidas; holds: ResumoExpiracao; contestacoes: ResumoContestacoes | null; eventosApagados: number }> {
   const pagamentos = provedor ? await conferirPendentes(db, null, provedor, agora) : null;
   const alteracoes = await expirarAlteracoesVencidas(db, null, agora);
   const holds = await expirarHoldsVencidos(db, null, agora);
   const correio = o.correio === undefined ? correioDoAmbiente() : o.correio;
-  const contestacoes = provedor ? await disputasDaVolta(db, null, provedor, agora, { correio }) : null;
+  const contestacoes = provedor ? await disputasDaVolta(db, null, provedor, agora, { correio, relogio: o.relogio }) : null;
   if (!provedor) await avisarEquipeDasContestacoes(db, null, correio, agora).catch(() => 0);
   return { pagamentos, alteracoes, holds, contestacoes, eventosApagados: await apagarEventosAntigos(db, agora) };
 }

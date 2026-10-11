@@ -24,6 +24,15 @@ export const SITUACOES_NAO_FINAIS_CONTESTACAO = ["aberta", "a_confirmar"] as con
 export const contestacaoNaoFinal = (s: SituacaoContestacao) => s === "aberta" || s === "a_confirmar";
 
 /**
+ * O "voltou a aprovada" (a order ou a Payments API aprovada de novo, sem disputa listada) fala de uma contestação no cartão
+ * ainda não final no quadro, de qualquer origem: a lida, a registrada pela equipe e a achada pela Chargebacks API (estas
+ * duas não mudam a situação do pagamento, que continua `aprovado`). Uma regra, um lugar: a leitura da order e a da Payments
+ * API leem daqui.
+ */
+export const comContestacaoNoCartaoEmAberto = (linhas: readonly { tipo: TipoContestacao; situacao: SituacaoContestacao }[]): boolean =>
+  linhas.some((l) => l.tipo === "chargeback" && contestacaoNaoFinal(l.situacao));
+
+/**
  * `chargeback`: contestação no cartão (o caso principal, detectado sozinho; também o `charged_back` lido num Pix);
  * `med`: MED do Pix e `reclamacao`: reclamação no Mercado Pago, que só entram pelo registro da equipe.
  */

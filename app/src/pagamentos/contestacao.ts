@@ -68,6 +68,7 @@ import {
   chavesDaContestacao,
   CODIGOS_CAUSA_CONTESTACAO,
   type CodigoCausaContestacao,
+  comContestacaoNoCartaoEmAberto,
   confirmadoPelasSubstituidas,
   contestacaoNaoFinal,
   DESFECHO_CONTESTACAO,
@@ -284,9 +285,8 @@ async function lerFontes(
     try {
       const s = await provedor.situacaoDoPagamento(p.idPagamentoProvedor);
       // "Voltou a aprovado" só fala de um pagamento que esteve contestado: pela leitura (`contestado`) ou por uma contestação
-      // no cartão ainda não final no quadro (a registrada pela equipe e a achada pela Chargebacks API depois dos 85 dias não
-      // mudam a situação do pagamento, que continua `aprovado`).
-      const contestado = p.situacao === "contestado" || linhas.some((l) => l.tipo === "chargeback" && contestacaoNaoFinal(l.situacao));
+      // no cartão ainda não final no quadro (`comContestacaoNoCartaoEmAberto`, a mesma regra da leitura da order).
+      const contestado = p.situacao === "contestado" || comContestacaoNoCartaoEmAberto(linhas);
       const l = s ? leituraDaSituacao(s, agora, contestado) : null;
       if (l) {
         lido.leituras.push(l);
@@ -375,18 +375,19 @@ const resumoVazio = (): ResumoContestacoes => ({ lidas: 0, mudaram: 0, falhas: 0
  * as outras ficam na frente da próxima volta. A fila anda também na falha (espera crescente). Até 240 dias da abertura; depois,
  * o aviso `contestacao_fora_do_prazo`, uma vez, linha a linha sob a trava, e a disputa sai da fila.
  * `o.pagamentoId`: só as disputas daquele pagamento ("Conferir agora" do quadro de uma reserva); `o.forcar`: sem esperar a
- * vez de cada uma. `o.relogio` (testes): o relógio do orçamento.
+ * vez de cada uma. `o.relogio` (testes): o relógio do orçamento. `o.inicio`: o início do orçamento quando ele é dividido com
+ * a busca tardia na mesma volta (`disputasDaVolta`); sem ele, agora.
  */
 export async function conferirContestacoes(
   db: Db,
   organizacaoId: string | null,
   provedor: ProvedorPagamento,
   agora: Date = new Date(),
-  o: { pagamentoId?: string; forcar?: boolean; relogio?: () => number } = {},
+  o: { pagamentoId?: string; forcar?: boolean; relogio?: () => number; inicio?: number } = {},
 ): Promise<ResumoContestacoes> {
   const resumo = resumoVazio();
   const relogio = o.relogio ?? (() => Date.now());
-  const inicio = relogio();
+  const inicio = o.inicio ?? relogio();
   const semTempo = () => relogio() - inicio >= ORCAMENTO_VOLTA_CONTESTACAO_MS;
   const corte = new Date(agora.getTime() - PRAZO_LEITURA_CONTESTACAO_DIAS * DIA_MS);
   const filtros = and(
@@ -468,18 +469,19 @@ export async function conferirContestacoes(
  * disputas) gasta a vez e liga, sob a trava, o aviso `contestacao_busca_sem_acesso` no pagamento (no Início e no quadro):
  * nunca uma semana em silêncio. A primeira busca tardia que responder (a da semana seguinte, ou a do "Conferir agora")
  * desliga o aviso.
- * `o.pagamentoId` com `o.forcar` ("Conferir agora" de uma reserva): só aquele pagamento, sem esperar a semana.
+ * `o.pagamentoId` com `o.forcar` ("Conferir agora" de uma reserva): só aquele pagamento, sem esperar a semana. `o.inicio`:
+ * o início do orçamento da volta, dividido com `conferirContestacoes` (um orçamento só, de 60 s, para as duas); sem ele, agora.
  */
 export async function buscarContestacoesTardias(
   db: Db,
   organizacaoId: string | null,
   provedor: ProvedorPagamento,
   agora: Date = new Date(),
-  o: { pagamentoId?: string; forcar?: boolean; relogio?: () => number } = {},
+  o: { pagamentoId?: string; forcar?: boolean; relogio?: () => number; inicio?: number } = {},
 ): Promise<Pick<ResumoContestacoes, "buscados" | "novas" | "falhas" | "mudaram">> {
   const resumo = { buscados: 0, novas: 0, falhas: 0, mudaram: 0 };
   const relogio = o.relogio ?? (() => Date.now());
-  const inicio = relogio();
+  const inicio = o.inicio ?? relogio();
   const j = JANELA_CONTESTACAO_TARDIA;
   const semanaAtras = new Date(agora.getTime() - j.aCadaMs);
   const daVez = o.forcar && o.pagamentoId ? undefined : or(isNull(pagamentos.contestacoesBuscadasEm), lt(pagamentos.contestacoesBuscadasEm, semanaAtras));
@@ -564,8 +566,10 @@ export async function buscarContestacoesTardias(
  * dele é lida por quem chama (`conferirTentativa`) antes.
  */
 export async function conferirContestacoesDoPagamento(db: Db, organizacaoId: string, pagamentoId: string, provedor: ProvedorPagamento, agora: Date = new Date()): Promise<ResumoContestacoes> {
-  const r = await conferirContestacoes(db, organizacaoId, provedor, agora, { pagamentoId, forcar: true });
-  const b = await buscarContestacoesTardias(db, organizacaoId, provedor, agora, { pagamentoId, forcar: true });
+  // Um orçamento só para as duas partes (a releitura e a busca), como na volta da rotina.
+  const inicio = Date.now();
+  const r = await conferirContestacoes(db, organizacaoId, provedor, agora, { pagamentoId, forcar: true, inicio });
+  const b = await buscarContestacoesTardias(db, organizacaoId, provedor, agora, { pagamentoId, forcar: true, inicio });
   return { ...r, buscados: b.buscados, novas: r.novas + b.novas, falhas: r.falhas + b.falhas, mudaram: r.mudaram + b.mudaram };
 }
 

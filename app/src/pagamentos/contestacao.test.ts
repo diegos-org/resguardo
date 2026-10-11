@@ -204,6 +204,18 @@ describe("rotina das disputas (item 20)", () => {
     expect(l.avisos).not.toContain("contestacao_sem_fonte");
   });
 
+  it("antes dos 85 dias, a order aprovada sem disputa listada também é o \"voltou a aprovado\" da contestação registrada pela equipe (Codex, 11/10)", async () => {
+    const x = await pagarEConfirmar(c, { forma: "cartao" });
+    expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada(), equipe, null, minutos(20))).toMatchObject({ ok: true });
+    expect((await c.tentativa(x.pagamentoId)).situacao).toBe("aprovado");
+    // A leitura da order (dentro dos 85 dias): aprovada, sem nenhuma contestação listada.
+    await conferirContestacoes(db, c.org, c.provedor, dias(2));
+    const [l] = await linhas(x.pagamentoId);
+    expect(l).toMatchObject({ situacao: "a_confirmar", origem: "equipe" });
+    // A Payments API não foi chamada: a order ainda é lida.
+    expect(chamadas("situacaoDoPagamento")).toEqual([]);
+  });
+
   it("dia 85 sem fonte: sem caso nem número do pagamento, o aviso contestacao_sem_fonte (em vez de esperar os 240 dias)", async () => {
     const x = await pagarEConfirmar(c);
     expect(await registrarContestacaoDaEquipe(db, c.org, x.pagamentoId, entrada({ tipo: "med" }), equipe, null, minutos(20))).toMatchObject({ ok: true });
@@ -254,6 +266,33 @@ describe("rotina das disputas (item 20)", () => {
     // A volta seguinte (sem o relógio estourado) segue de onde parou e chega no segundo pagamento.
     await conferirContestacoes(db, c.org, c.provedor, dias(4));
     expect((await linhas(y.pagamentoId))[0].consultadaEm).toEqual(dias(4));
+  });
+
+  it("a releitura e a busca tardia da mesma volta dividem um orçamento só de 60 s (Codex, 11/10)", async () => {
+    const x = await contestado();
+    const [l0] = await linhas(x.pagamentoId);
+    const base: Partial<typeof l0> = { ...l0 };
+    delete base.id;
+    await db.insert(contestacoesPagamento).values(
+      Array.from({ length: 9 }, (_, i) => ({ ...(base as Omit<typeof l0, "id">), idCaso: String(8_200_000_000 + i), idContestacao: null, duplicataPossivel: true, retidoLancamentoId: null, proximaLeituraEm: minutos(i), avisos: [] })),
+    );
+    // Um pagamento antigo, na janela da busca tardia.
+    const velho = await pagarEConfirmar(c, { forma: "cartao", entrada: "2026-11-02", saida: "2026-11-05", email: "outro@example.com" });
+    await envelhecer(c, velho.pagamentoId, 100);
+    // O relógio anda 12 s por caso: a releitura gasta o minuto inteiro (cinco casos).
+    let relogio = 0;
+    const original = c.provedor.consultarContestacao.bind(c.provedor);
+    c.provedor.consultarContestacao = async (id: string) => {
+      relogio += 12_000;
+      return original(id);
+    };
+    const antes = chamadas("buscarContestacoes").length;
+    const r = await rotinaDoSite(db, c.provedor, dias(2), { correio: null, relogio: () => relogio });
+    c.provedor.consultarContestacao = original;
+    expect(r.contestacoes).toMatchObject({ lidas: 5, buscados: 0 });
+    // A busca tardia não começou um minuto novo: fica para a próxima volta, com a vez do pagamento antigo intacta.
+    expect(chamadas("buscarContestacoes").length - antes).toBe(0);
+    expect((await c.tentativa(velho.pagamentoId)).contestacoesBuscadasEm).toBeNull();
   });
 
   it("busca tardia semanal, de todo desfecho, na janela, reservada pela coluna", async () => {
