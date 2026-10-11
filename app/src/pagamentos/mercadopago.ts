@@ -984,13 +984,13 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
   /**
    * O X-Caller-Id: o id da conta em GET /users/me (`idDaContaDoUsuario`), lido uma vez (chamadas simultâneas esperam a
    * mesma leitura) e guardado só em memória, neste cliente. Sem ele, a Chargebacks API não é chamada: lança `ErroProvedor`.
-   * O `user_id` do corpo de um aviso (não assinado) nunca serve.
+   * O `user_id` do corpo de um aviso (não assinado) nunca serve. `tempoMs`: o que sobra do prazo de quem chama.
    */
-  private idDaConta(): Promise<string> {
+  private idDaConta(tempoMs: number = TEMPO_LIMITE_CONTESTACAO_MS): Promise<string> {
     if (this.idConta) return Promise.resolve(this.idConta);
     this.idContaEmAndamento ??= (async () => {
       try {
-        const r = await this.chamar("GET", "/users/me", { tempoMs: TEMPO_LIMITE_CONTESTACAO_MS });
+        const r = await this.chamar("GET", "/users/me", { tempoMs });
         if (r.status >= 500) throw new ErroProvedor("incerto", MENSAGENS.erroServidor);
         const id = r.status === 200 ? idDaContaDoUsuario(r.corpo) : null;
         if (!id) throw new ErroProvedor("incerto", MENSAGENS.semIdDaConta);
@@ -1003,10 +1003,17 @@ export class ClienteMercadoPagoHttp implements ProvedorPagamento {
     return this.idContaEmAndamento;
   }
 
-  /** GET na Chargebacks API: sempre com o X-Caller-Id, 403 e 404 voltam ao método, tempo-limite de 8 s. */
+  /**
+   * GET na Chargebacks API: sempre com o X-Caller-Id, 403 e 404 voltam ao método. O tempo-limite de 8 s vale para o método
+   * inteiro: num cliente novo, a leitura do id da conta (GET /users/me) sai do mesmo prazo, e o pedido à Chargebacks API fica
+   * com o que sobrar. Assim cada chamada do provedor cabe nos 8 s que o orçamento da rotina conta.
+   */
   private async chamarContestacoes(caminho: string, params?: Record<string, string>): Promise<Resposta> {
-    const conta = await this.idDaConta();
-    return this.chamar("GET", caminho, { params, cabecalhos: { "X-Caller-Id": conta }, aceitar: [403, 404], tempoMs: TEMPO_LIMITE_CONTESTACAO_MS });
+    const prazo = Date.now() + TEMPO_LIMITE_CONTESTACAO_MS;
+    const conta = await this.idDaConta(TEMPO_LIMITE_CONTESTACAO_MS);
+    const resta = prazo - Date.now();
+    if (resta <= 0) throw new ErroProvedor("incerto", MENSAGENS.tempo);
+    return this.chamar("GET", caminho, { params, cabecalhos: { "X-Caller-Id": conta }, aceitar: [403, 404], tempoMs: resta });
   }
 
   /**

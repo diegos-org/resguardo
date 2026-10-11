@@ -3395,6 +3395,12 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   regra do débito; sem ela, a aprovação), no domínio e no formulário (`ResultadoNaTela.desde`). Os passos da defesa
   (documentos e prazo, `desdeADefesa`) continuam a partir da abertura ou, sem ela, do dia em que o sistema viu a disputa.
   *Motivo:* o resultado, como o débito, pode vir antes de o sistema ver a disputa.
+- **O id da conta dentro dos 8 s da chamada** *(segue o desenho, "Rotina", orçamento de 60 s com 8 s por chamada)*.
+  *Antes:* num cliente novo, a primeira chamada da Chargebacks API lia antes o id da conta (GET /users/me, para o
+  X-Caller-Id) com 8 s próprios, e o pedido do caso tinha mais 8 s: uma chamada do provedor podia levar 16 s, e a volta
+  passava do orçamento mais do que uma chamada. *Agora:* os 8 s valem para o método inteiro (`chamarContestacoes`,
+  `mercadopago.ts`): a leitura do id sai do mesmo prazo, e o pedido à Chargebacks API fica com o que sobrar (sem sobra, a
+  chamada falha por tempo, como as outras). *Motivo:* o orçamento conta cada chamada do provedor como no máximo 8 s.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

@@ -1630,6 +1630,36 @@ describe("Chargebacks API no cliente HTTP (M8.2e)", () => {
     }
   });
 
+  it("num cliente novo, a leitura do id da conta (GET /users/me) e o pedido à Chargebacks API cabem juntos nos 8 s (Codex, 11/10)", async () => {
+    vi.useFakeTimers();
+    try {
+      // /users/me responde só depois de 5 s; a Chargebacks API não responde.
+      const meDemorado = (_p: Pedido, init?: RequestInit) =>
+        new Promise<Response>((resolver, rejeitar) => {
+          const t = setTimeout(() => resolver(usuarioMe()), 5_000);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(t);
+            rejeitar(new DOMException("aborted", "AbortError"));
+          });
+        });
+      const pendurado = (_p: Pedido, init?: RequestInit) => new Promise<Response>((_, rejeitar) => {
+        init?.signal?.addEventListener("abort", () => rejeitar(new DOMException("aborted", "AbortError")));
+      });
+      const f = fetchFalso(meDemorado, pendurado);
+      let erro: unknown = null;
+      const consulta = cliente(f.impl).consultarContestacao("1").catch((e) => { erro = e; });
+      await vi.advanceTimersByTimeAsync(7_999);
+      expect(erro).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      await consulta;
+      // A consulta inteira acaba nos 8 s (antes, 5 s do /users/me e mais 8 s da Chargebacks API).
+      expect(erro).toMatchObject({ tipo: "incerto" });
+      expect(f.pedidos.map((p) => p.url.pathname)).toEqual(["/users/me", "/v1/chargebacks/1"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("o JSON oficial cheio de dados pessoais (reason em frase, documentation com e-mail, references) não sai em nada normalizado nem nas mensagens", async () => {
     const espioes = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
     const order = comLista(orderContestadaOficial(), [itemOficial(), itemOficial({ id: "CBK02", case_id: 77, status: "settled", amount: 12.5, reason: { description: "Maria Ficticia" } })]);
