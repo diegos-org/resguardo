@@ -59,6 +59,16 @@ async function decidir(id: string, quemArca: "proprietario" | "scl" | "proporcio
 }
 
 describe("o bloco da disputa na ficha (item 9: quem lê o quê)", () => {
+  it("um estado lido fora da lista que esta versão conhece aparece como desconhecido, nunca como \"undefined\" (Codex, 11/10)", async () => {
+    const x = await disputada();
+    // O estado gravado é só um dos conhecidos (o desconhecido vai no código); um valor de fora da lista ainda tem frase.
+    await db.update(contestacoesPagamento).set({ estadoLido: "desconhecido" as never, codigo: "novo_status" }).where(eq(contestacoesPagamento.id, x.id));
+    const [d] = await lerContestacoesDaEquipe(db, sessao("admin"), x.reservaId, sp("2026-10-05 10:05"));
+    const situacao = d.mercadoPago.find((t) => t.startsWith("Situação:"))!;
+    expect(situacao).toContain("Situação: situação que o sistema não conhece (código novo_status");
+    expect(situacao).not.toContain("undefined");
+  });
+
   it("a equipe que lê o financeiro vê tudo: cabeçalho por tipo, situação, valores com a conta, o que o Mercado Pago mostra, a linha do tempo e as ações que o domínio permite", async () => {
     const x = await disputada();
     const [d] = await lerContestacoesDaEquipe(db, sessao("admin"), x.reservaId, sp("2026-10-05 10:05"));

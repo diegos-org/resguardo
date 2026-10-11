@@ -36,6 +36,7 @@ import {
   type CodigoCausaContestacao,
   confirmacaoReforcadaDaDecisao,
   contestacaoNaoFinal,
+  type EstadoConhecidoContestacao,
   fraseDaCausa,
   leituraEmDisputa,
   NOMES_QUEM_ARCA,
@@ -145,11 +146,14 @@ export function prazoDosDocumentos(
   return { texto: `Envie os documentos pelo painel do Mercado Pago ${quando}; depois marque "Documentos enviados".`, nivel: faltam <= diasAviso ? "atencao" : "info", vencido: false };
 }
 
-const ESTADO_LIDO: Record<string, string> = {
+const ESTADO_LIDO: Record<EstadoConhecidoContestacao, string> = {
   in_process: "em análise no banco",
   settled: "encerrada: a transação foi liquidada",
   reimbursed: "encerrada: devolvido ao pagador depois da contestação",
 };
+const TEXTO_ESTADO_DESCONHECIDO = "situação que o sistema não conhece";
+/** O estado lido em palavras; o que não está na lista (nenhum, ou um que esta versão não conhece) diz que é desconhecido. */
+const estadoEmPalavras = (e: string | null): string => (e && Object.hasOwn(ESTADO_LIDO, e) ? ESTADO_LIDO[e as EstadoConhecidoContestacao] : TEXTO_ESTADO_DESCONHECIDO);
 const DOCUMENTACAO: Record<string, string> = {
   pending: "pendente",
   review_pending: "em análise",
@@ -173,7 +177,7 @@ const MODO_TRES_DS: Record<string, string> = { on_fraud_risk: "pedida quando hou
 export function oQueOMercadoPagoMostra(l: Contestacao): string[] {
   const linhas: string[] = [];
   if (l.estadoLido || l.codigo) {
-    const estado = l.estadoLido ? ESTADO_LIDO[l.estadoLido] : "situação que o sistema não conhece";
+    const estado = estadoEmPalavras(l.estadoLido);
     const codigo = l.codigo && l.codigo !== l.estadoLido ? `código ${l.codigo}${l.estadoLido ? `; o último conhecido é ${l.estadoLido}` : ""}` : `código ${l.estadoLido}`;
     linhas.push(`Situação: ${estado} (${codigo})${l.estadoLido === "reimbursed" ? " — o sentido está a conferir" : ""}.`);
   } else linhas.push(l.origem === "equipe" ? `Situação: ainda sem leitura (${TEXTO_REGISTRADA_A_MAO}).` : "Situação: ainda sem leitura.");

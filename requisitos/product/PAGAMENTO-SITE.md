@@ -3504,6 +3504,13 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   no mesmo instante, pelo id. Uma regra, um lugar: o valor em risco, o devolvido que cada disputa explica, o acerto do
   retido lido, a primeira disputa não final e o tipo da disputa em curso. *Motivo:* o mesmo fato tem de dar o mesmo
   caixa, sem depender de empate.
+- **O estado lido que o painel não conhece** *(segue o desenho: o estado fora da lista é "desconhecido" e nunca
+  sobrescreve o último conhecido)*. *Antes:* o quadro "O que o Mercado Pago mostra" traduzia o estado gravado por uma
+  lista sem frase de reserva. O estado gravado é sempre um dos conhecidos (o desconhecido vai só no código), mas um valor
+  de fora da lista (uma versão futura, um dado antigo) aparecia como "Situação: undefined". *Agora:* a lista exige uma
+  frase para cada estado conhecido (`Record<EstadoConhecidoContestacao, string>`), e o que não está nela diz "situação
+  que o sistema não conhece", com o código lido, como já acontecia com a documentação. *Motivo:* avisar em vez de supor,
+  e nunca mostrar um texto quebrado.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 
