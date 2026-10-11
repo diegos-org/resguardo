@@ -3448,6 +3448,13 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   (sem espera crescente nem `contestacao_sem_fonte`). A falha dessa leitura, ou a falta de tempo para ela na volta,
   devolve a vez, como a falha da busca. *Motivo:* a perda definitiva não pode ficar sem aviso quando o Mercado Pago a
   desfaz, e a busca semanal já é a leitura dos pagamentos antigos.
+- **A disputa ganha no cartão reaberta depois dos 85 dias** *(segue o desenho, "Transições": a ganha relida `in_process`
+  liga `contestacao_resultado_mudou` e volta a segurar o "em curso"; "Conferir o aviso" com "A disputa foi reaberta")*.
+  *Antes:* a leitura da Payments API na busca semanal (item anterior) valia só para a perdida; a ganha reaberta
+  (reapresentação ou arbitragem) depois dos 85 dias não era vista: a Chargebacks API não diz `in_process`. *Agora:* a mesma
+  leitura vale para a contestação no cartão ganha ou perdida (sem outra no cartão ainda não final): `charged_back/in_process`
+  liga o aviso na ganha, e a equipe abre a rodada seguinte por "Conferir o aviso". *Motivo:* uma disputa ativa não pode
+  ficar tida como resolvida.
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

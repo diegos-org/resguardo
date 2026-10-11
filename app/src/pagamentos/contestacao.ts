@@ -478,11 +478,12 @@ export async function conferirContestacoes(
  * disputas) gasta a vez e liga, sob a trava, o aviso `contestacao_busca_sem_acesso` no pagamento (no Início e no quadro):
  * nunca uma semana em silêncio. A primeira busca tardia que responder (a da semana seguinte, ou a do "Conferir agora")
  * desliga o aviso.
- * Depois dos 85 dias (a order não é mais lida), o pagamento cuja contestação no cartão foi perdida, sem outra no cartão ainda
- * não final (essa a releitura diária já lê), tem a situação lida também pela Payments API na mesma vez: a transação de volta a
- * aprovada contradiz a perda (`contestacao_resultado_mudou`) e a liberação lida pede o registro à mão
- * (`avisarLiberacaoLidaNaDisputa`), como na leitura da order. A disputa perdida não volta à fila diária (sem espera crescente
- * nem `contestacao_sem_fonte`); a falha dessa leitura devolve a vez, como a da busca.
+ * Depois dos 85 dias (a order não é mais lida), o pagamento cuja contestação no cartão terminou ganha ou perdida, sem outra no
+ * cartão ainda não final (essa a releitura diária já lê), tem a situação lida também pela Payments API na mesma vez, pelo
+ * mesmo casamento e pelas mesmas transições da leitura da order: a transação de volta a aprovada contradiz a perda, e
+ * `charged_back/in_process` contradiz a ganha (a disputa reaberta: reapresentação ou arbitragem), as duas com
+ * `contestacao_resultado_mudou`; a liberação lida pede o registro à mão (`avisarLiberacaoLidaNaDisputa`). A disputa final não
+ * volta à fila diária (sem espera crescente nem `contestacao_sem_fonte`); a falha dessa leitura devolve a vez, como a da busca.
  * `o.pagamentoId` com `o.forcar` ("Conferir agora" de uma reserva): só aquele pagamento, sem esperar a semana. `o.inicio`:
  * o início do orçamento da volta, dividido com `conferirContestacoes` (um orçamento só, de 60 s, para as duas); sem ele, agora.
  */
@@ -534,11 +535,14 @@ export async function buscarContestacoesTardias(
     if (!reservada) continue;
     resumo.buscados++;
     const devolverAVez = () => db.update(pagamentos).set({ contestacoesBuscadasEm: antes }).where(and(eq(pagamentos.id, p.id), eq(pagamentos.contestacoesBuscadasEm, agora)));
-    // A disputa perdida no cartão fora da order (sem outra no cartão ainda não final): a situação pela Payments API também.
+    // A disputa no cartão ganha ou perdida fora da order (sem outra no cartão ainda não final): a situação pela Payments API
+    // também (a perda desfeita, ou a ganha reaberta).
     const doPagamento = await db.select({ tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao }).from(contestacoesPagamento).where(eq(contestacoesPagamento.pagamentoId, p.id));
     const noCartao = doPagamento.filter((l) => l.tipo === "chargeback");
     const lerSituacao =
-      (!p.idProvedor || p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime()) && noCartao.some((l) => l.situacao === "perdida") && !noCartao.some((l) => contestacaoNaoFinal(l.situacao));
+      (!p.idProvedor || p.criadoEm.getTime() < inicioDoPrazoDeReleitura(agora).getTime()) &&
+      noCartao.some((l) => l.situacao === "perdida" || l.situacao === "ganha") &&
+      !noCartao.some((l) => contestacaoNaoFinal(l.situacao));
     let lista: Awaited<ReturnType<ProvedorPagamento["buscarContestacoes"]>>;
     let situacao: SituacaoDoPagamento | null = null;
     try {

@@ -546,6 +546,23 @@ describe("encerrar sem efeito e conferir o aviso", () => {
     expect(l.avisos).not.toContain("contestacao_sem_fonte");
     expect(l.falhasLeitura).toBe(0);
   });
+
+  it("depois dos 85 dias, a disputa ganha no cartão reaberta: a busca semanal lê a Payments API, o in_process liga o aviso e a ganha volta a segurar o em curso (Codex, 11/10)", async () => {
+    const x = await disputada();
+    expect(await confirmar(x.l, "ganha", sp("2026-10-25 10:00"))).toMatchObject({ ok: true });
+    await envelhecer(c, x.pagamentoId, 100);
+    // A releitura diária não pega a ganha; a busca semanal lê a Payments API, que mostra a disputa em andamento de novo.
+    await conferirContestacoes(db, c.org, c.provedor, sp("2026-12-11 09:00"));
+    const naPayments = () => c.provedor.chamadas.filter((ch) => ch.metodo === "situacaoDoPagamento").length;
+    expect(naPayments()).toBe(0);
+    c.provedor.resolverContestacao(x.idProvedor, { estado: "in_process", transacaoAprovada: false });
+    expect(await buscarContestacoesTardias(db, c.org, c.provedor, sp("2026-12-11 10:00"))).toMatchObject({ buscados: 1, falhas: 0, mudaram: 1 });
+    expect(naPayments()).toBe(1);
+    const l = await linha(x.l.id);
+    expect(l).toMatchObject({ situacao: "ganha", estadoLido: "in_process", falhasLeitura: 0 });
+    expect(l.avisos).toContain("contestacao_resultado_mudou");
+    expect(l.avisos).not.toContain("contestacao_sem_fonte");
+  });
 });
 
 describe("cancelar a reserva contestada (item 18)", () => {
