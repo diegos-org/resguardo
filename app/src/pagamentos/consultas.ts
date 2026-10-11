@@ -65,6 +65,7 @@ import {
   textoRestanteRecusado,
 } from "./situacoes";
 import { situacaoEfetiva, valorNovo } from "./alteracao-regras";
+import { MOTIVO_CANCELAMENTO_CONTESTACAO } from "./contestacao-regras";
 import {
   type Alteracao,
   carenciaNoTravado,
@@ -126,7 +127,7 @@ export type CancelamentoParaHospede = {
   /** Ao menos uma parte foi feita por fora (com outras pelo Mercado Pago, as duas frases de como volta). */
   algumaPorFora: boolean;
   /** Quem confirmou a devolução: a leitura do Mercado Pago ou a equipe (vista no painel dele). */
-  confirmadaPor: "leitura" | "equipe" | null;
+  confirmadaPor: "leitura" | "equipe" | "contestacao" | null;
   /**
    * M8.2d (D13): a devolução (ou uma parte dela, com vários pagamentos) espera o Mercado Pago liberar o pagamento — nada
    * foi pedido ainda, e a página nunca diz "já pedimos"; a data prevista quando há. null nas outras situações.
@@ -734,9 +735,14 @@ function estadoDoCancelamento(
   const estados = devs.map((d) => estadoDaCancelada(doPagamento(d), canc.direito!, d, estornaPelaEquipe(doPagamento(d), d, agora), agora, vivasDe(doPagamento(d))));
   const ordem: EstadoPagamentoHospede[] = ["cancelada_devolucao_pedida", "cancelada_com_a_equipe", "cancelada_em_conferencia", "cancelada_devolvida"];
   const esperando = devs.filter((d) => esperaALiberacao(doPagamento(d), d, vivasDe(doPagamento(d))));
+  // M8.2e: "Cancelar a reserva contestada" (sem devolução pelo sistema): em conferência enquanto a disputa de um pagamento da
+  // reserva está em curso ou perdida (o dinheiro pode voltar, ou voltou, ao hóspede por ela).
+  const pelaDisputa = canc.base === MOTIVO_CANCELAMENTO_CONTESTACAO && pagamentosDaReserva.some(emDisputa);
   const estado: EstadoPagamentoHospede =
     canc.direito === "nenhum"
-      ? "cancelada_sem_devolucao"
+      ? pelaDisputa
+        ? "cancelada_em_conferencia"
+        : "cancelada_sem_devolucao"
       : devs.length === 0
         ? estadoDaCancelada(p0, canc.direito!, undefined, false, agora, vivasDe(p0))
         : (ordem.find((e) => estados.includes(e)) ?? estados[0]);
@@ -882,7 +888,7 @@ export type PagamentoDoPainel = {
     origem?: string;
     /** Último código da resposta do Mercado Pago (lista fechada): explica a espera ou a recusa no quadro. */
     ultimoCodigo?: CodigoDevolucao | null;
-    confirmadaPor?: "leitura" | "equipe" | null;
+    confirmadaPor?: "leitura" | "equipe" | "contestacao" | null;
     confirmadaNota?: string;
     valorConfirmado?: number | null;
     recusaNoPainelEm?: Date | null;
@@ -984,7 +990,7 @@ export type DevolucaoDoPainel = {
   // parada pela equipe e a parada pelo prazo (pela regra do domínio).
   tentativas: number;
   falhas: number;
-  confirmadaPor: "leitura" | "equipe" | null;
+  confirmadaPor: "leitura" | "equipe" | "contestacao" | null;
   confirmadaNota: string;
   porForaNota: string;
   recusaNoPainelEm: Date | null;

@@ -86,6 +86,8 @@ const BASES = {
   fora_do_prazo: "pedido depois do prazo de reembolso integral",
   estadia_iniciada: "pedido depois do início da estadia",
   nao_comparecimento: "não comparecimento",
+  // M8.2e: a base do "Cancelar a reserva contestada" (a lista é uma só com a do cancelamento); uma alteração nunca a tem.
+  contestacao: "disputa do pagamento",
 } as const;
 /** As bases em que a política decidiu (as outras são decisão da equipe ou da SCL). */
 const pelaPolitica = (base: keyof typeof BASES | null) => base === "prazo" || base === "arrependimento" || base === "fora_do_prazo" || base === "estadia_iniciada" || base === "nao_comparecimento";

@@ -215,6 +215,10 @@ export const AVISOS_PAGAMENTO = {
   // troca este texto pelo com o valor (`textoDevolucaoAguardandoLiberacaoAtrasada`).
   devolucao_aguardando_liberacao_atrasada:
     "A liberação deste pagamento passou da data prevista e a devolução de parte do valor continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.",
+  // M8.2e: a devolução que uma disputa do pagamento substituía, de volta a devida depois da disputa ganha (ou encerrada sem
+  // efeito). O quadro troca este texto pelo com o valor (`textoDevolucaoDevidaDepoisDaGanha`, na ganha).
+  devolucao_devida_depois_da_disputa:
+    "A disputa do pagamento terminou sem o dinheiro voltar ao hóspede por ela: a devolução que a reserva deve a ele continua devida. Peça de novo pelo quadro do pagamento (até 78 dias; depois, pelo painel do Mercado Pago ou por fora).",
   ...TEXTOS_AVISOS_DE_CONTESTACAO,
 } as const;
 export type CodigoAviso = keyof typeof AVISOS_PAGAMENTO;
@@ -294,6 +298,7 @@ export const AVISOS_DE_DEVOLUCAO = [
   "taxa_perdida_desconhecida",
   "devolucao_data_a_conferir",
   "devolucao_aguardando_liberacao_atrasada",
+  "devolucao_devida_depois_da_disputa",
 ] as const satisfies readonly CodigoAviso[];
 
 // ---------------------------------------------------------------- cartão (M8.2b)

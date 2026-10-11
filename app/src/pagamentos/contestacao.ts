@@ -5,6 +5,13 @@
  * (casamento, transições, valor em risco, retido, substituição das devoluções, avisos) mora em `contestacao-leitura.ts`,
  * que `aplicarLeitura` também usa.
  *
+ * E as ações da equipe no quadro da disputa: "Confirmar o débito do Mercado Pago", "Registrar quem arca" / "Mudar quem
+ * arca" / "Atualizar o valor segurado" (com a prévia: versão e assinatura, como no M8.2c), "Confirmar que é outra
+ * disputa", "Documentos enviados", o prazo dos documentos, "Confirmar o resultado" (fase 0 de releitura sem trava, fase 1
+ * numa transação), "Encerrar sem efeito" e "Conferir o aviso" (que pode reabrir a rodada seguinte). O livro de cada momento
+ * mora em `contestacao-acerto.ts` (`lancarContestacao`). As permissões ficam nas ações do painel; aqui, o id resolvido com
+ * o filtro da organização antes de qualquer trava (`contestacaoDaOrganizacao`) e o autor.
+ *
  * Toda chamada ao provedor acontece fora de transação; toda gravação em `contestacoes_pagamento` e `eventos_contestacao`
  * acontece dentro de `travarCotacao` (a ordem única das travas). Ler usa o provedor de conferência; o registro pela equipe
  * segue sem ele (com "sem leitura do Mercado Pago" na nota). Nada de dado pessoal: só ids do Mercado Pago, códigos, valores
@@ -13,6 +20,7 @@
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { violouUnicidade } from "@/db/erros";
 import { contestacoesPagamento, eventosContestacao, imoveis, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -20,9 +28,20 @@ import { avisarEquipePorEmail } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
 import { hojeISO, instanteLocal } from "@/lib/datas";
+import { formatBRL } from "@/lib/money";
 import { dataValida } from "@/reservas/regras";
 import { inicioDoPrazoDeReleitura } from "./andamento";
 import { conferirTentativa } from "./conferencia";
+import {
+  lancarContestacao,
+  livroDaDisputa,
+  type PartesEfetivas,
+  partesEfetivasDaReserva,
+  RecusaDaContestacao,
+  retidoDaAssinatura,
+  retidoRealizado,
+  TEXTO_DEBITO_JA_CONFIRMADO,
+} from "./contestacao-acerto";
 import {
   aplicarLeiturasDaDisputa,
   contextoDaNova,
@@ -33,41 +52,76 @@ import {
   recalcularDisputas,
   registrarEventoDaContestacao,
   sincronizarAvisosDaDisputa,
+  substituirDevolucoes,
   trocarAvisosDaContestacao,
 } from "./contestacao-leitura";
 import {
+  acertoDaPerda,
+  assinaturaDaDecisao,
+  assinaturaDoResultado,
   casarContestacao,
   casoDestePagamento,
+  chavesDaContestacao,
+  CODIGOS_CAUSA_CONTESTACAO,
+  type CodigoCausaContestacao,
+  confirmadoPelasSubstituidas,
   contestacaoNaoFinal,
+  DESFECHO_CONTESTACAO,
+  divisaoDaDecisao,
   esperaDaLeituraDaContestacao,
   type FonteEventoContestacao,
   JANELA_CONTESTACAO_TARDIA,
   LEITURAS_DE_CONTESTACAO_POR_VOLTA,
   type LeituraDeContestacao,
+  leituraEmDisputa,
   LIMITE_NOTA_CONTESTACAO,
+  liquidoNaoEntrouProposto,
   naJanelaTardia,
   NOMES_TIPO_CONTESTACAO,
+  NOTA_SEM_CONFERIR_AGORA,
   NOTA_SEM_LEITURA,
   novaContestacao,
   ORCAMENTO_VOLTA_CONTESTACAO_MS,
+  perdaADividir,
   PRAZO_LEITURA_CONTESTACAO_DIAS,
+  QUEM_ARCA_CONTESTACAO,
+  type QuemArcaContestacao,
   RELER_CONTESTACAO_A_CADA_MS,
+  resultadoSugeridoPelaLeitura,
   TEXTO_CASO_DE_OUTRO_PAGAMENTO,
+  TEXTO_CONTESTACAO_PREVIA_MUDOU,
+  TEXTO_DECISAO_MUDOU,
   TEXTO_DISPUTA_JA_NO_QUADRO,
+  TEXTO_DISPUTA_JA_TERMINOU,
+  TEXTO_NADA_A_DIVIDIR,
+  TEXTO_NAO_E_DUPLICATA,
+  TEXTO_NOTA_REFORCADA,
+  TEXTO_PAGAMENTO_SEM_RESERVA,
+  TEXTO_SEM_AVISO_A_CONFERIR,
+  TEXTO_SEM_PARTES_PARA_DIVIDIR,
+  TEXTO_SEM_PROPRIETARIO_NA_RESERVA,
   TIPOS_CONTESTACAO,
   type TipoContestacao,
+  transicaoDaContestacao,
+  valorSeguradoDesatualizado,
 } from "./contestacao-regras";
+import { confirmarDevolucaoPelaDisputa, devolucaoDevidaDepoisDaDisputa } from "./devolucao";
+import { recebimentosDoPagamento, registrarLiberacaoManual } from "./liberacao";
 import { ErroProvedor, ID_NUMERICO_PROVEDOR, type ProvedorPagamento, semAcessoContestacao } from "./provedor";
 import { comDinheiro } from "./situacoes";
 import {
   type Contestacao,
+  contestacaoDaOrganizacao,
   contestacoesDoPagamento,
   devolucaoInexplicada,
   devolucoesDoPagamento,
   devolvidoPelaDisputa,
+  dinheiroDaReserva,
+  lerCotacaoSemTravar,
   type Pagamento,
   pagamentoDaOrganizacao,
   travaOcupada,
+  type Travado,
   travarCotacao,
   valorPagoAprovado,
 } from "./travas";
@@ -80,7 +134,11 @@ const DIA_MS = 86_400_000;
 const dataBr = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
 const diaMes = (d: Date) => dataBr(hojeISO(FUSO, d));
 
-export type ResultadoContestacao = { ok: true; contestacaoId: string; mensagem?: string } | { ok: false; erro: string };
+/**
+ * O resultado de uma ação da disputa. `codigo` (M8.2e, as ações da equipe): `contestacao_previa_mudou` (a assinatura da
+ * prévia mudou), `decisao_mudou` (a versão da decisão mudou), `nao_encontrada`, `ocupado`, `dados` e os da transição.
+ */
+export type ResultadoContestacao = { ok: true; contestacaoId: string; mensagem?: string } | { ok: false; erro: string; codigo?: string };
 
 /** Muitas mudanças no mesmo pagamento ao mesmo tempo (trava ocupada): nada foi gravado. */
 export const TEXTO_OCUPADO_CONTESTACAO = "Muitas mudanças neste pagamento agora: tente de novo em instantes.";
@@ -99,6 +157,8 @@ type LidoDasFontes = {
   util: boolean;
   /** Os casos que a Chargebacks API mostra de outro pagamento (nada deles é usado). */
   casosDeOutro: string[];
+  /** A order foi relida e aplicada nesta volta (`conferirTentativa` sem falha). */
+  orderLida: boolean;
 };
 
 type PagamentoLido = Pick<Pagamento, "id" | "organizacaoId" | "cotacaoId" | "idProvedor" | "idPagamentoProvedor" | "criadoEm" | "consultadoEm" | "situacao">;
@@ -118,11 +178,12 @@ async function lerFontes(
   agora: Date,
   o: { order: boolean; buscar: boolean },
 ): Promise<LidoDasFontes> {
-  const lido: LidoDasFontes = { leituras: [], semAcesso: false, falhou: false, util: false, casosDeOutro: [] };
+  const lido: LidoDasFontes = { leituras: [], semAcesso: false, falhou: false, util: false, casosDeOutro: [], orderLida: false };
   const naOrder = !!p.idProvedor && p.criadoEm.getTime() >= inicioDoPrazoDeReleitura(agora).getTime();
   if (o.order && naOrder) {
     const r = await conferirTentativa(db, p.organizacaoId, p.id, provedor, agora, { forcar: true, origem: "rotina" });
     if (!r.ok) lido.falhou = true;
+    else lido.orderLida = true;
   }
   const casos = [...new Set(linhas.map((l) => l.idCaso).filter((x): x is string => !!x && ID_NUMERICO_PROVEDOR.test(x)))];
   try {
@@ -667,4 +728,878 @@ export async function avisarEquipeDasContestacoes(
     }
   }
   return n;
+}
+
+// ---------------------------------------------------------------- as ações da equipe: o comum
+
+export const TEXTO_DISPUTA_NAO_ENCONTRADA = "Disputa não encontrada.";
+export const TEXTO_DUPLICATA_SEM_DECIDIR = "Esta disputa pode ser a mesma de outra do quadro: confirme que é outra disputa (ou encerre sem efeito) antes de decidir ou de confirmar o débito.";
+export const TEXTO_SEM_DECISAO_PARA_MUDAR = "Esta disputa ainda não tem decisão de quem arca: registre quem arca.";
+export const TEXTO_VALOR_SEGURADO_EM_DIA = "O valor segurado já é o valor em disputa de agora: nada a atualizar.";
+export const TEXTO_DEBITO_DEPOIS_DO_RESULTADO = "A disputa já terminou: o dia e o valor do débito entram na confirmação do resultado.";
+export const TEXTO_NOTA_DO_DEBITO = "O valor debitado é diferente do valor em risco: escreva a nota (o que o painel do Mercado Pago mostra).";
+export const TEXTO_NOTA_DO_RESULTADO = "Escreva a nota: o resultado ou o valor diferem do que o Mercado Pago mostra, ou ele não mostra o resultado (confirme pelo painel dele).";
+
+type Recusa = { ok: false; erro: string; codigo: string };
+const recusada = (erro: string, codigo = "dados"): Recusa => ({ ok: false, erro, codigo });
+const diaDe = (d: Date) => hojeISO(FUSO, d);
+/** dd/mm/aaaa de uma data AAAA-MM-DD. */
+const dataCompleta = (d: string) => d.split("-").reverse().join("/");
+
+/** Nota de uma ação da disputa (até 300, sem dado pessoal; obrigatória quando pedida). */
+function conferirNota(nota: string | undefined, obrigatoria: boolean, faltando = "Escreva a nota (sem dados pessoais)."): { ok: true; nota: string } | Recusa {
+  const n = (nota ?? "").trim();
+  if (obrigatoria && !n) return recusada(faltando);
+  if (n.length > LIMITE_NOTA_CONTESTACAO) return recusada(`A nota passa de ${LIMITE_NOTA_CONTESTACAO} caracteres.`);
+  if (n && textoSemDadosPessoais(n) === null) return recusada(ERRO_DADOS_PESSOAIS);
+  return { ok: true, nota: n };
+}
+
+/** Uma data AAAA-MM-DD entre `desde` e hoje (em São Paulo), ou o erro com o texto dado. */
+function conferirData(d: string | null | undefined, desde: string, agora: Date, oQue: string): { ok: true; data: string } | Recusa {
+  if (!d || !dataValida(d)) return recusada(`Informe ${oQue}.`);
+  const hoje = diaDe(agora);
+  if (d > hoje) return recusada(`${oQue[0].toUpperCase()}${oQue.slice(1)} não pode ser no futuro.`);
+  if (d < desde) return recusada(`${oQue[0].toUpperCase()}${oQue.slice(1)} não pode ser antes de ${dataCompleta(desde)}.`);
+  return { ok: true, data: d };
+}
+
+/**
+ * Uma ação da equipe numa disputa, sob a trava da cotação (a ordem única), com o retrato (a linha e o pagamento) e, no fim,
+ * a união dos avisos no pagamento. O id já foi resolvido com o filtro da organização antes de qualquer trava
+ * (`contestacaoDaOrganizacao`). Uma recusa no meio (`RecusaDaContestacao`) desfaz tudo; trava ocupada = "ocupado".
+ */
+async function naDisputa(
+  db: Db,
+  organizacaoId: string,
+  alvo: { cotacaoId: string; pagamentoId: string; contestacaoId: string },
+  agora: Date,
+  f: (tx: Db, t: Travado, p: Pagamento, l: Contestacao) => Promise<ResultadoContestacao>,
+): Promise<ResultadoContestacao> {
+  try {
+    return await db.transaction(async (tx) => {
+      const t = await travarCotacao(tx, organizacaoId, alvo.cotacaoId);
+      const p = t?.tentativas.find((x) => x.id === alvo.pagamentoId);
+      const l = t?.contestacoes.find((x) => x.id === alvo.contestacaoId);
+      if (!t || !p || !l) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+      const r = await f(tx, t, p, l);
+      if (r.ok) await sincronizarAvisosDaDisputa(tx, t, p, agora);
+      return r;
+    });
+  } catch (e) {
+    if (e instanceof RecusaDaContestacao) return recusada(e.erro, e.codigo ?? "dados");
+    if (travaOcupada(e)) return recusada(TEXTO_OCUPADO_CONTESTACAO, "ocupado");
+    throw e;
+  }
+}
+
+/** Grava campos da linha (sob a trava) e o retrato junto. */
+async function gravarLinha(tx: Db, l: Contestacao, mudanca: Partial<typeof contestacoesPagamento.$inferInsert>, agora: Date): Promise<void> {
+  const m = { ...mudanca, atualizadoEm: agora };
+  await tx.update(contestacoesPagamento).set(m).where(eq(contestacoesPagamento.id, l.id));
+  Object.assign(l, m);
+}
+
+/** As devoluções do pagamento substituídas por esta disputa (o vínculo `contestacao_id`), em ordem de id. */
+const substituidasPor = (t: Pick<Travado, "devolucoes">, p: Pick<Pagamento, "id">, l: Pick<Contestacao, "id">) => devolucoesDoPagamento(t, p.id).filter((d) => d.contestacaoId === l.id);
+
+/**
+ * A disputa terminou sem o dinheiro voltar ao hóspede por ela (ganha, ou encerrada sem efeito): com todas as disputas do
+ * pagamento `ganha` ou `sem_efeito`, o pagamento volta a `situacao_pagamento_antes` — só se ainda estiver `contestado` (uma
+ * devolução aceita que se confirmou no meio já o levou a `devolvido`). Auditado (`pagamento.situacao`).
+ */
+async function voltarASituacaoDeAntes(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, l: Contestacao, motivo: "contestacao_ganha" | "contestacao_sem_efeito", autorId: string | null, agora: Date): Promise<void> {
+  if (p.situacao !== "contestado" || !contestacoesDoPagamento(t, p.id).every((x) => x.situacao === "ganha" || x.situacao === "sem_efeito")) return;
+  const situacao = l.situacaoPagamentoAntes;
+  await tx.update(pagamentos).set({ situacao, atualizadoEm: agora }).where(eq(pagamentos.id, p.id));
+  await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.situacao", entidade: "pagamento", entidadeId: p.id, mudancas: { situacao: [p.situacao, situacao], motivo: [null, motivo] } });
+  p.situacao = situacao;
+}
+
+/**
+ * Fase 0 das ações de resultado (sem trava, melhor esforço): relê a disputa como a rotina (a order nos 85 dias, a Chargebacks
+ * API pelo caso ou pela busca do pagamento, a Payments API depois dos 85 dias) e aplica sob a trava. `lida`: alguma fonte
+ * respondeu sem falha; `emDisputa`: uma leitura de agora mostra esta disputa em andamento (`in_process` do mesmo caso, ou o
+ * caso ainda sem cobertura) — o resultado e o "sem efeito" pedem então a nota reforçada. Sem provedor (trava fechada):
+ * nada lido.
+ */
+async function releituraDaDisputa(db: Db, alvo: { pagamentoId: string; contestacaoId: string }, provedor: ProvedorPagamento | null, agora: Date): Promise<{ lida: boolean; emDisputa: boolean }> {
+  if (!provedor) return { lida: false, emDisputa: false };
+  const [x] = await db.select({ l: contestacoesPagamento, p: pagamentos }).from(contestacoesPagamento).innerJoin(pagamentos, eq(pagamentos.id, contestacoesPagamento.pagamentoId)).where(eq(contestacoesPagamento.id, alvo.contestacaoId));
+  if (!x || !contestacaoNaoFinal(x.l.situacao)) return { lida: false, emDisputa: false };
+  const lido = await lerFontes(db, provedor, x.p, [x.l], agora, { order: true, buscar: !x.l.idCaso });
+  try {
+    await aplicarFontes(db, x.p, [x.l.id], lido, agora);
+  } catch (e) {
+    if (!travaOcupada(e)) throw e;
+    return { lida: false, emDisputa: false };
+  }
+  const [depois] = await db.select().from(contestacoesPagamento).where(eq(contestacoesPagamento.id, x.l.id));
+  const pelaOrder = lido.orderLida && depois?.lidaEm?.getTime() === agora.getTime() && depois.estadoLido === "in_process";
+  const peloCaso = lido.leituras.some((y) => y.fonte === "chargebacks" && (x.l.idCaso === null || y.idCaso === x.l.idCaso) && leituraEmDisputa(y, x.l.coberturaAplicada !== null));
+  const pelaSituacao = lido.leituras.some((y) => y.fonte === "payments" && y.estadoLido === "in_process");
+  return { lida: !lido.falhou && (lido.orderLida || lido.util), emDisputa: pelaOrder || peloCaso || pelaSituacao };
+}
+
+// ---------------------------------------------------------------- confirmar o débito, documentos, prazo, outra disputa
+
+/** "Confirmar o débito do Mercado Pago": o dia e o valor que ele debitou (nota quando o valor difere do valor em risco). */
+export type EntradaDebito = { data: string; valor: number; nota: string };
+
+/**
+ * "Confirmar o débito do Mercado Pago" (`financeiro:editar`, conferido por quem chama), com a disputa `aberta` ou
+ * `a_confirmar`: o retido vira realizado na data e no valor confirmados (a prevista é estornada e nasce a realizada `#N`,
+ * com competência = data de caixa = o dia do débito; `lancarContestacao`, momento `debito`). Data entre a aprovação e hoje;
+ * valor até o pago. Uma vez (o MED lido como devolução já nasce realizado). No pagamento sem reserva (o dinheiro dele nunca
+ * entrou no livro), só a data e a marca. A nota é conferida (sem dado pessoal) e não é gravada: a 0069 não tem coluna para
+ * ela (fica a auditoria com os valores).
+ */
+export async function confirmarDebito(db: Db, organizacaoId: string, contestacaoId: string, e: EntradaDebito, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DEBITO_DEPOIS_DO_RESULTADO, "nao_permitida");
+    if (l.duplicataPossivel) return recusada(TEXTO_DUPLICATA_SEM_DECIDIR, "duplicata");
+    if (l.retidoConfirmadoEm) return recusada(TEXTO_DEBITO_JA_CONFIRMADO, "nao_permitida");
+    const data = conferirData(e.data, diaDe(p.aprovadoEm ?? p.criadoEm), agora, "o dia em que o Mercado Pago debitou");
+    if (!data.ok) return data;
+    const pago = valorPagoAprovado(p);
+    if (!Number.isSafeInteger(e.valor) || e.valor < 1 || e.valor > pago) return recusada(`Informe o valor debitado (de R$ 0,01 até o pago, ${formatBRL(pago)}).`);
+    const nota = conferirNota(e.nota, e.valor !== l.valorEmRisco, TEXTO_NOTA_DO_DEBITO);
+    if (!nota.ok) return nota;
+    const antes = { retidoConfirmadoEm: null, valorEmRisco: l.valorEmRisco };
+    await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "debito", data: data.data, valor: e.valor }, autorId, agora);
+    await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: "debito_confirmado", antes, depois: { valor: e.valor, data: data.data }, usuarioId: autorId }, agora);
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "contestacao.debito", entidade: "pagamento", entidadeId: p.id, mudancas: { contestacao: [null, l.id], valor: [l.valorEmRisco, e.valor], data: [null, data.data] } });
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+/**
+ * "Documentos enviados no painel do Mercado Pago" (`reserva:editar` ou `financeiro:editar`, conferido por quem chama): a
+ * data do envio (entre a aprovação e hoje), com a disputa ainda não final. Uma vez; auditado (`contestacao.documentos`).
+ */
+export async function marcarDocumentosEnviados(db: Db, organizacaoId: string, contestacaoId: string, e: { data: string }, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
+    if (l.documentosEnviadosEm) return recusada(`Os documentos já foram marcados como enviados em ${diaMes(l.documentosEnviadosEm)}.`, "nao_permitida");
+    const data = conferirData(e.data, diaDe(p.aprovadoEm ?? p.criadoEm), agora, "o dia em que os documentos foram enviados");
+    if (!data.ok) return data;
+    await gravarLinha(tx, l, { documentosEnviadosEm: instanteLocal(data.data, "12:00", FUSO), documentosEnviadosPor: autorId }, agora);
+    await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: "documentos_enviados", depois: { data: data.data }, usuarioId: autorId }, agora);
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "contestacao.documentos", entidade: "pagamento", entidadeId: p.id, mudancas: { contestacao: [null, l.id], documentosEnviadosEm: [null, data.data] } });
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+/**
+ * O prazo dos documentos informado pela equipe (`financeiro:editar`), quando a leitura não o trouxe ou o registro não o
+ * tinha: o aviso `contestacao_prazo_desconhecido` sai. A data (a partir da abertura) vale até as 23h59 em São Paulo.
+ * Auditado (`contestacao.prazo`).
+ */
+export async function informarPrazoDocumentos(db: Db, organizacaoId: string, contestacaoId: string, e: { prazo: string }, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
+    const desde = diaDe(l.abertaNoProvedorEm ?? l.abertaEm);
+    if (!e.prazo || !dataValida(e.prazo) || e.prazo < desde) return recusada(`Informe o prazo dos documentos (a partir de ${dataCompleta(desde)}).`);
+    const antes = l.documentacaoPrazo ? diaDe(l.documentacaoPrazo) : null;
+    await gravarLinha(tx, l, { documentacaoPrazo: instanteLocal(e.prazo, "23:59", FUSO) }, agora);
+    await trocarAvisosDaContestacao(tx, l, { desligar: ["contestacao_prazo_desconhecido"] }, agora);
+    await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: "prazo", antes: { prazo: antes }, depois: { prazo: e.prazo }, usuarioId: autorId }, agora);
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "contestacao.prazo", entidade: "pagamento", entidadeId: p.id, mudancas: { contestacao: [null, l.id], prazo: [antes, e.prazo] } });
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+/**
+ * "Confirmar que é outra disputa" (`financeiro:editar`), numa possível duplicata: ela passa a valer (valor em risco, retido
+ * previsto, as devoluções que ainda caibam substituídas), sem nunca passar do pago com as outras. Auditado
+ * (`contestacao.outra_disputa`).
+ */
+export async function confirmarOutraDisputa(db: Db, organizacaoId: string, contestacaoId: string, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    const tr = transicaoDaContestacao(l, { tipo: "outra_disputa", em: agora });
+    if (!tr.ok) return recusada(tr.erro, tr.codigo);
+    if (tr.descartada) return recusada(TEXTO_NAO_E_DUPLICATA, "nao_permitida");
+    await gravarLinha(tx, l, { duplicataPossivel: tr.duplicataPossivel, avisos: tr.avisos, confirmadaOutraEm: agora, confirmadaOutraPor: autorId }, agora);
+    for (const ev of tr.eventos) await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: ev.tipo, antes: ev.antes, depois: ev.depois, usuarioId: autorId }, agora);
+    await substituirDevolucoes(tx, organizacaoId, t, p, l, agora, autorId);
+    await recalcularDisputas(tx, organizacaoId, t, p, agora);
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "contestacao.outra_disputa", entidade: "pagamento", entidadeId: p.id, mudancas: { contestacao: [null, l.id], duplicataPossivel: [true, false], valorEmRisco: [0, l.valorEmRisco] } });
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+// ---------------------------------------------------------------- quem arca: a decisão da equipe
+
+/** Uma opção de quem arca: os dois valores (`divisaoDaDecisao`) e a assinatura das entradas (`assinaturaDaDecisao`). */
+export type OpcaoDaDecisao = { proprietario: number; scl: number; assinatura: string };
+
+/**
+ * Os fatos da decisão de uma disputa (a prévia e a ação leem daqui): o valor que se divide (o valor em risco, ou a perda a
+ * dividir da perdida), as partes efetivas de agora (D, C, quem recebe a parte), a base congelada da decisão em vigor e se
+ * ela difere da de agora ("a divisão da reserva mudou depois da decisão", calculado na leitura, nunca gravado), cada opção
+ * de quem arca (null = recusada: sem proprietário nas linhas do motor, ou sem partes para dividir), a do "Atualizar o
+ * valor segurado" (a mesma causa e quem arca, sobre a base congelada) e por que a decisão não se registra agora.
+ */
+export type FatosDaDecisao = {
+  versao: number;
+  valor: number;
+  perdida: boolean;
+  semReserva: boolean;
+  partes: PartesEfetivas;
+  base: { parteProprietario: number; comissao: number } | null;
+  divisaoMudou: boolean;
+  opcoes: Record<QuemArcaContestacao, OpcaoDaDecisao | null>;
+  atualizacao: OpcaoDaDecisao | null;
+  /** Σx e Σy já lançados (o segurado em vigor de cada lado). */
+  lancado: { proprietario: number; scl: number };
+  /** Por que "Registrar quem arca" não vale agora; null = vale. */
+  recusa: string | null;
+};
+
+async function fatosDaDecisao(tx: Db, organizacaoId: string, t: Travado, p: Pagamento, l: Contestacao): Promise<FatosDaDecisao> {
+  const semReserva = !dinheiroDaReserva(p) || !l.reservaId;
+  const perdida = l.situacao === "perdida";
+  const valor = perdida ? Math.max(0, perdaADividir(l.valorPerdido ?? 0, substituidasPor(t, p, l).map((d) => d.valor))) : l.valorEmRisco;
+  const partes: PartesEfetivas = semReserva ? { parteProprietario: 0, comissao: 0, proprietarioId: null } : await partesEfetivasDaReserva(tx, organizacaoId, t.reserva.id);
+  const livro = await livroDaDisputa(tx, organizacaoId, l);
+  const opcao = (quemArca: QuemArcaContestacao, D: number, C: number): OpcaoDaDecisao | null => {
+    if (semReserva || (quemArca !== "scl" && !partes.proprietarioId)) return null;
+    const d = divisaoDaDecisao(quemArca, valor, D, C);
+    return d ? { ...d, assinatura: assinaturaDaDecisao({ valor, baseParteProprietario: D, baseComissao: C, quemArca }) } : null;
+  };
+  const base = l.decisaoVersao > 0 && l.baseParteProprietario !== null && l.baseComissao !== null ? { parteProprietario: l.baseParteProprietario, comissao: l.baseComissao } : null;
+  let recusa: string | null = null;
+  if (semReserva) recusa = TEXTO_PAGAMENTO_SEM_RESERVA;
+  else if (l.situacao === "ganha" || l.situacao === "sem_efeito" || (perdida && l.decisaoVersao > 0)) recusa = TEXTO_DISPUTA_JA_TERMINOU;
+  else if (l.duplicataPossivel) recusa = TEXTO_DUPLICATA_SEM_DECIDIR;
+  else if (valor <= 0) recusa = TEXTO_NADA_A_DIVIDIR;
+  return {
+    versao: l.decisaoVersao,
+    valor,
+    perdida,
+    semReserva,
+    partes,
+    base,
+    divisaoMudou: !!base && (base.parteProprietario !== partes.parteProprietario || base.comissao !== partes.comissao),
+    opcoes: Object.fromEntries(QUEM_ARCA_CONTESTACAO.map((q) => [q, opcao(q, partes.parteProprietario, partes.comissao)])) as Record<QuemArcaContestacao, OpcaoDaDecisao | null>,
+    atualizacao: base && l.quemArca ? opcao(l.quemArca, base.parteProprietario, base.comissao) : null,
+    lancado: { proprietario: livro.proprietario, scl: livro.scl },
+    recusa,
+  };
+}
+
+/** A prévia da decisão (sem trava): os fatos de `fatosDaDecisao`, para o formulário (a versão e a assinatura de cada opção). */
+export async function previaDaDecisao(db: Db, organizacaoId: string, contestacaoId: string): Promise<{ ok: true; fatos: FatosDaDecisao } | Recusa> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  const t = await lerCotacaoSemTravar(db, organizacaoId, alvo.cotacaoId);
+  const p = t?.tentativas.find((x) => x.id === alvo.pagamentoId);
+  const l = t?.contestacoes.find((x) => x.id === alvo.contestacaoId);
+  if (!t || !p || !l) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  return { ok: true, fatos: await fatosDaDecisao(db, organizacaoId, t, p, l) };
+}
+
+/** "Registrar quem arca" e "Mudar quem arca": a causa, quem arca, a nota (obrigatória) e a explicação ao proprietário (opcional), com a versão e a assinatura da prévia. */
+export type EntradaDecisao = { causa: string; quemArca: string; nota: string; explicacao: string; versao: number; assinatura: string };
+
+/** A causa, quem arca, a nota e a explicação de uma decisão, conferidas (listas fechadas; notas sem dado pessoal). */
+function conferirEntradaDaDecisao(e: EntradaDecisao, faltaNota: string): { ok: true; causa: CodigoCausaContestacao; quemArca: QuemArcaContestacao; nota: string; explicacao: string } | Recusa {
+  if (!(CODIGOS_CAUSA_CONTESTACAO as readonly string[]).includes(e.causa)) return recusada("Escolha a causa da disputa.");
+  if (!(QUEM_ARCA_CONTESTACAO as readonly string[]).includes(e.quemArca)) return recusada("Escolha quem arca.");
+  const nota = conferirNota(e.nota, true, faltaNota);
+  if (!nota.ok) return nota;
+  const explicacao = conferirNota(e.explicacao, false);
+  if (!explicacao.ok) return recusada(explicacao.erro === ERRO_DADOS_PESSOAIS ? "Tire dados pessoais da explicação ao proprietário (CPF, e-mail, telefone, chave Pix, cartão)." : explicacao.erro.replace("A nota", "A explicação ao proprietário"));
+  return { ok: true, causa: e.causa as CodigoCausaContestacao, quemArca: e.quemArca as QuemArcaContestacao, nota: nota.nota, explicacao: explicacao.nota };
+}
+
+/** A opção escolhida, ou a recusa dela (sem proprietário nas linhas do motor; sem partes para dividir; a assinatura mudou). */
+function opcaoEscolhida(f: FatosDaDecisao, opcao: OpcaoDaDecisao | null, quemArca: QuemArcaContestacao, assinatura: string): { ok: true; opcao: OpcaoDaDecisao } | Recusa {
+  if (!opcao) {
+    if (quemArca !== "scl" && !f.partes.proprietarioId) return recusada(TEXTO_SEM_PROPRIETARIO_NA_RESERVA, "sem_proprietario");
+    return recusada(TEXTO_SEM_PARTES_PARA_DIVIDIR, "sem_partes");
+  }
+  if (!assinatura || assinatura !== opcao.assinatura) return recusada(TEXTO_CONTESTACAO_PREVIA_MUDOU, "contestacao_previa_mudou");
+  return { ok: true, opcao };
+}
+
+/**
+ * Grava a versão nova da decisão (sob as travas): as colunas (a base congelada, a exposição e a divisão em vigor) e as
+ * linhas do livro — na disputa ainda não final, a diferença de cada lado no mês corrente (`decisao`); na perdida sem
+ * decisão, a decisão nasce definitiva (`definitivos`, e `definitivo_em`). O evento `decisao` e a auditoria
+ * `contestacao.decisao` [antes, depois] (códigos e valores, nunca a nota nem a explicação).
+ */
+async function gravarDecisao(
+  tx: Db,
+  organizacaoId: string,
+  t: Travado,
+  p: Pagamento,
+  l: Contestacao,
+  d: { causa: CodigoCausaContestacao; quemArca: QuemArcaContestacao; nota: string | null; explicacao: string | null; base: { parteProprietario: number; comissao: number }; valor: number; opcao: OpcaoDaDecisao; proprietarioId: string | null; atualizacao: boolean },
+  autorId: string | null,
+  agora: Date,
+): Promise<void> {
+  const antes = { versao: l.decisaoVersao, causa: l.causa, quemArca: l.quemArca, valor: l.exposicao, proprietario: l.parteProprietario, scl: l.parteScl };
+  const versao = l.decisaoVersao + 1;
+  await gravarLinha(
+    tx,
+    l,
+    {
+      causa: d.causa,
+      quemArca: d.quemArca,
+      ...(d.nota !== null ? { decisaoNota: d.nota } : {}),
+      ...(d.explicacao !== null ? { explicacaoProprietario: d.explicacao } : {}),
+      decisaoPor: autorId,
+      decisaoEm: agora,
+      decisaoVersao: versao,
+      baseParteProprietario: d.base.parteProprietario,
+      baseComissao: d.base.comissao,
+      exposicao: d.valor,
+      parteProprietario: d.opcao.proprietario,
+      parteScl: d.opcao.scl,
+    },
+    agora,
+  );
+  if (l.situacao === "perdida") {
+    await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "definitivos", resultadoEm: l.resultadoEm ?? diaDe(agora), proprietario: d.opcao.proprietario, scl: d.opcao.scl, proprietarioId: d.proprietarioId }, autorId, agora);
+    await gravarLinha(tx, l, { definitivoEm: agora }, agora);
+  } else {
+    await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "decisao", versao, proprietario: d.opcao.proprietario, scl: d.opcao.scl, proprietarioId: d.proprietarioId }, autorId, agora);
+    await recalcularDisputas(tx, organizacaoId, t, p, agora);
+  }
+  const depois = { versao, causa: d.causa, quemArca: d.quemArca, valor: d.valor, proprietario: d.opcao.proprietario, scl: d.opcao.scl };
+  await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: "decisao", antes, depois: { ...depois, atualizacao: d.atualizacao }, usuarioId: autorId }, agora);
+  await registrarAuditoria(tx, {
+    organizacaoId,
+    usuarioId: autorId,
+    acao: "contestacao.decisao",
+    entidade: "pagamento",
+    entidadeId: p.id,
+    mudancas: {
+      contestacao: [null, l.id],
+      versao: [antes.versao, versao],
+      causa: [antes.causa, d.causa],
+      quemArca: [antes.quemArca, d.quemArca],
+      valor: [antes.valor, d.valor],
+      proprietario: [antes.proprietario, d.opcao.proprietario],
+      scl: [antes.scl, d.opcao.scl],
+      ...(d.atualizacao ? { atualizacao: [null, true] } : {}),
+    },
+  });
+}
+
+/**
+ * "Registrar quem arca" (`financeiro:editar`): com a disputa `aberta`/`a_confirmar` (valor em risco > 0) ou `perdida` sem
+ * decisão (perda a dividir > 0; a decisão nasce definitiva). O sistema nunca escolhe: a causa e quem arca vêm da equipe. Só
+ * com a versão 0 ("A decisão mudou…" senão) e a assinatura das entradas da prévia (valor, D, C, quem arca;
+ * `contestacao_previa_mudou` senão). Recusa: pagamento sem reserva; sem proprietário (proprietário e proporcional); sem
+ * partes para dividir (proporcional); possível duplicata; nota ou explicação com dado pessoal; trava ocupada.
+ */
+export async function registrarDecisao(db: Db, organizacaoId: string, contestacaoId: string, e: EntradaDecisao, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  const entrada = conferirEntradaDaDecisao(e, "Escreva a nota da decisão (sem dados pessoais).");
+  if (!entrada.ok) return entrada;
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    if (e.versao !== l.decisaoVersao || l.decisaoVersao !== 0) return recusada(TEXTO_DECISAO_MUDOU, "decisao_mudou");
+    const f = await fatosDaDecisao(tx, organizacaoId, t, p, l);
+    if (f.recusa) return recusada(f.recusa, "nao_permitida");
+    const escolhida = opcaoEscolhida(f, f.opcoes[entrada.quemArca], entrada.quemArca, e.assinatura);
+    if (!escolhida.ok) return escolhida;
+    await gravarDecisao(
+      tx,
+      organizacaoId,
+      t,
+      p,
+      l,
+      { causa: entrada.causa, quemArca: entrada.quemArca, nota: entrada.nota, explicacao: entrada.explicacao, base: f.partes, valor: f.valor, opcao: escolhida.opcao, proprietarioId: f.partes.proprietarioId, atualizacao: false },
+      autorId,
+      agora,
+    );
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+/**
+ * "Mudar quem arca" (`financeiro:editar`, nota obrigatória "por que mudar"): só antes do resultado e com uma decisão em vigor
+ * (a versão da prévia); a divisão nova sobre o valor em risco e as partes de agora (a base é congelada de novo), versão
+ * n+1, só a diferença de cada lado no mês corrente. Depois do resultado: "A disputa já terminou: corrija com um ajuste".
+ */
+export async function mudarDecisao(db: Db, organizacaoId: string, contestacaoId: string, e: EntradaDecisao, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  const entrada = conferirEntradaDaDecisao(e, "Escreva por que mudar a decisão (sem dados pessoais).");
+  if (!entrada.ok) return entrada;
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
+    if (l.decisaoVersao === 0) return recusada(TEXTO_SEM_DECISAO_PARA_MUDAR, "decisao_mudou");
+    if (e.versao !== l.decisaoVersao) return recusada(TEXTO_DECISAO_MUDOU, "decisao_mudou");
+    const f = await fatosDaDecisao(tx, organizacaoId, t, p, l);
+    if (f.semReserva) return recusada(TEXTO_PAGAMENTO_SEM_RESERVA, "nao_permitida");
+    const escolhida = opcaoEscolhida(f, f.opcoes[entrada.quemArca], entrada.quemArca, e.assinatura);
+    if (!escolhida.ok) return escolhida;
+    await gravarDecisao(
+      tx,
+      organizacaoId,
+      t,
+      p,
+      l,
+      { causa: entrada.causa, quemArca: entrada.quemArca, nota: entrada.nota, explicacao: entrada.explicacao, base: f.partes, valor: f.valor, opcao: escolhida.opcao, proprietarioId: f.partes.proprietarioId, atualizacao: false },
+      autorId,
+      agora,
+    );
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+/**
+ * "Atualizar o valor segurado" (`financeiro:editar`), a ação pronta do aviso `contestacao_valor_mudou`: a mesma causa e
+ * quem arca, sobre a base congelada, com o valor em risco de agora; versão n+1 e a diferença de cada lado no mês corrente.
+ * O sistema nunca muda o segurado sozinho. Com a versão e a assinatura da prévia (`FatosDaDecisao.atualizacao`).
+ */
+export async function atualizarValorSegurado(db: Db, organizacaoId: string, contestacaoId: string, e: { versao: number; assinatura: string }, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
+    if (l.decisaoVersao === 0 || !l.causa || !l.quemArca) return recusada(TEXTO_SEM_DECISAO_PARA_MUDAR, "decisao_mudou");
+    if (e.versao !== l.decisaoVersao) return recusada(TEXTO_DECISAO_MUDOU, "decisao_mudou");
+    if (!valorSeguradoDesatualizado(l)) return recusada(TEXTO_VALOR_SEGURADO_EM_DIA, "nao_permitida");
+    const f = await fatosDaDecisao(tx, organizacaoId, t, p, l);
+    if (!f.base) return recusada(TEXTO_SEM_DECISAO_PARA_MUDAR, "decisao_mudou");
+    const escolhida = opcaoEscolhida(f, f.atualizacao, l.quemArca, e.assinatura);
+    if (!escolhida.ok) return escolhida;
+    await gravarDecisao(
+      tx,
+      organizacaoId,
+      t,
+      p,
+      l,
+      { causa: l.causa, quemArca: l.quemArca, nota: null, explicacao: null, base: f.base, valor: f.valor, opcao: escolhida.opcao, proprietarioId: f.partes.proprietarioId, atualizacao: true },
+      autorId,
+      agora,
+    );
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+// ---------------------------------------------------------------- confirmar o resultado e encerrar sem efeito
+
+/**
+ * Os fatos do resultado (a prévia e a ação leem daqui): a assinatura (situação, estado combinado, valor em disputa, valor
+ * em risco, Σx, Σy, o retido e a versão; nunca `consultada_em`, eventos, avisos ou lançamentos de outras origens), o retido
+ * em vigor e os valores propostos ao formulário (nunca o resultado: C1).
+ */
+export type FatosDoResultado = {
+  versao: number;
+  assinatura: string;
+  semReserva: boolean;
+  lancado: { proprietario: number; scl: number };
+  retido: { estado: string; montante: number; data: string | null } | null;
+  /** O pagamento ainda não tem recebimento em vigor (o "Ganhou" oferece registrar a liberação ali mesmo). */
+  semRecebimento: boolean;
+  proposta: {
+    /** O valor em disputa (com a conta); no pagamento sem reserva, a taxa do pagamento (o que a SCL perde). */
+    valorPerdido: number | null;
+    /** O líquido sem recebimento em vigor (o Mercado Pago não liberou); 0 com recebimento. */
+    liquidoNaoEntrou: number | null;
+    /** O dia do débito confirmado, ou o do retido realizado. */
+    debitoEm: string | null;
+  };
+  /** A sugestão pela leitura (desligada: `SUGERIR_RESULTADO_PELA_LEITURA`). */
+  sugestao: "ganha" | "perdida" | null;
+};
+
+async function fatosDoResultado(tx: Db, organizacaoId: string, p: Pagamento, l: Contestacao): Promise<FatosDoResultado> {
+  const livro = await livroDaDisputa(tx, organizacaoId, l);
+  const semReserva = !dinheiroDaReserva(p) || !l.reservaId;
+  const recebidos = semReserva ? [] : (await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.filter((x) => x.estado === "realizado" || x.estado === "conciliado");
+  const comRecebimento = recebidos.length > 0;
+  return {
+    versao: l.decisaoVersao,
+    assinatura: assinaturaDoResultado({
+      situacao: l.situacao,
+      estadoLido: l.estadoLido,
+      coberturaAplicada: l.coberturaAplicada,
+      valor: l.valor,
+      valorEmRisco: l.valorEmRisco,
+      lancadoProprietario: livro.proprietario,
+      lancadoScl: livro.scl,
+      retido: retidoDaAssinatura(livro.retido),
+      decisaoVersao: l.decisaoVersao,
+    }),
+    semReserva,
+    lancado: { proprietario: livro.proprietario, scl: livro.scl },
+    retido: livro.retido ? { estado: livro.retido.estado, montante: livro.retido.montante ?? 0, data: livro.retido.dataCaixa } : null,
+    semRecebimento: !semReserva && !comRecebimento,
+    proposta: {
+      valorPerdido: semReserva ? p.taxa : (l.valor ?? valorPagoAprovado(p)),
+      liquidoNaoEntrou: semReserva ? 0 : liquidoNaoEntrouProposto({ comRecebimento, liquido: p.liquido }),
+      debitoEm: l.debitoEm ?? (retidoRealizado(livro.retido) ? livro.retido!.dataCaixa : null),
+    },
+    sugestao: resultadoSugeridoPelaLeitura(l),
+  };
+}
+
+/** A prévia do resultado (sem trava): a versão, a assinatura e os valores propostos (`FatosDoResultado`). */
+export async function previaDoResultado(db: Db, organizacaoId: string, contestacaoId: string): Promise<{ ok: true; fatos: FatosDoResultado } | Recusa> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  const t = await lerCotacaoSemTravar(db, organizacaoId, alvo.cotacaoId);
+  const p = t?.tentativas.find((x) => x.id === alvo.pagamentoId);
+  const l = t?.contestacoes.find((x) => x.id === alvo.contestacaoId);
+  if (!t || !p || !l) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  return { ok: true, fatos: await fatosDoResultado(db, organizacaoId, p, l) };
+}
+
+/**
+ * O sentido que o Mercado Pago mostra, pela página atual (só para saber se a nota é obrigatória; o resultado é sempre da
+ * equipe, C1): a cobertura true = a favor da SCL; false, ou `reimbursed` ("devolvido ao pagador"), contra; os dois juntos ou
+ * nada, null.
+ */
+function sentidoLido(l: Pick<Contestacao, "coberturaAplicada" | "estadoLido">): "ganha" | "perdida" | null {
+  const aFavor = l.coberturaAplicada === true;
+  const contra = l.coberturaAplicada === false || l.estadoLido === "reimbursed";
+  return aFavor === contra ? null : aFavor ? "ganha" : "perdida";
+}
+
+/** "Confirmar o resultado": Ganhou ou Perdeu (sem nada marcado de início, C1), a data, a nota e os campos de cada um. */
+export type EntradaResultado = {
+  resultado: string;
+  /** A data do resultado (entre a abertura e hoje). */
+  data: string;
+  nota: string;
+  /** "O painel do Mercado Pago já mostra o resultado" (pedida quando a leitura de agora mostra a disputa em andamento). */
+  notaReforcada: boolean;
+  versao: number;
+  assinatura: string;
+  /** Tarifa do Mercado Pago pela disputa (opcional; despesa da SCL, ganhe ou perca). */
+  tarifa: number | null;
+  /** Ganhou: o dia em que o dinheiro debitado voltou (padrão: a data do resultado). */
+  voltaEm?: string | null;
+  /** Ganhou, sem recebimento do pagamento: a liberação ali mesmo (as regras de `registrarLiberacaoManual`). */
+  liberacao?: { data: string; liquido: number } | null;
+  /** Perdeu: o valor que a SCL perdeu, quanto deste pagamento nunca entrou na conta e o dia em que o Mercado Pago debitou. */
+  valorPerdido?: number | null;
+  liquidoNaoEntrou?: number | null;
+  debitoEm?: string | null;
+};
+
+const centavosOuNull = (v: number | null | undefined) => (v === null || v === undefined ? null : v);
+const centavosValidos = (v: number | null, max: number) => v === null || (Number.isSafeInteger(v) && v >= 0 && v <= max);
+
+/**
+ * "Confirmar o resultado" (`financeiro:editar`), com a disputa `aberta` ou `a_confirmar`.
+ * - Fase 0 (sem trava, melhor esforço): a releitura (`releituraDaDisputa`). Falhou ou trava do provedor fechada: segue com
+ *   a nota "não deu para conferir no Mercado Pago agora". A leitura de agora mostra a disputa em andamento: não recusa, pede
+ *   a nota reforçada.
+ * - Fase 1, numa transação: a versão e a assinatura da prévia; a transição (`transicaoDaContestacao`); a nota obrigatória
+ *   quando o resultado ou o valor diferem do que o Mercado Pago mostra, quando ele não mostra o resultado, ou quando a
+ *   leitura não deu; as linhas da tabela "Lançamentos por momento" (`lancarContestacao`); a devolução substituída
+ *   (confirmada pela disputa na perdida, pelo menor entre o valor dela e o perdido; de volta a devida na ganha); o
+ *   pagamento (de volta à situação de antes na ganha, se ainda `contestado`; o desfecho `contestacao` do pagamento sem
+ *   reserva perdido); a perdida sem decisão continua em conferência (a decisão depois nasce definitiva); o evento e a
+ *   auditoria `contestacao.resultado`.
+ * - Ganhou sem recebimento: a liberação do formulário, sob a mesma trava; sem ela, o aviso `contestacao_ganha_sem_recebimento`.
+ */
+export async function confirmarResultado(
+  db: Db,
+  organizacaoId: string,
+  contestacaoId: string,
+  e: EntradaResultado,
+  autorId: string | null,
+  provedor: ProvedorPagamento | null,
+  agora: Date = new Date(),
+): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  if (e.resultado !== "ganha" && e.resultado !== "perdida") return recusada("Escolha o resultado: Ganhou ou Perdeu.");
+  const resultado = e.resultado;
+  const tarifa = centavosOuNull(e.tarifa) ?? 0;
+  if (!Number.isSafeInteger(tarifa) || tarifa < 0) return recusada("Informe a tarifa do Mercado Pago pela disputa (zero ou mais), ou deixe em branco.");
+  // Fase 0: a releitura, sem trava.
+  const leitura = await releituraDaDisputa(db, alvo, provedor, agora);
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    if (!contestacaoNaoFinal(l.situacao)) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
+    if (e.versao !== l.decisaoVersao) return recusada(TEXTO_DECISAO_MUDOU, "decisao_mudou");
+    const fatos = await fatosDoResultado(tx, organizacaoId, p, l);
+    if (!e.assinatura || e.assinatura !== fatos.assinatura) return recusada(TEXTO_CONTESTACAO_PREVIA_MUDOU, "contestacao_previa_mudou");
+    const tr = transicaoDaContestacao(l, { tipo: "resultado", resultado, em: agora, emDisputaNaLeitura: leitura.emDisputa, notaReforcada: e.notaReforcada });
+    if (!tr.ok) return recusada(tr.erro, tr.codigo);
+    if (tr.descartada) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
+    const data = conferirData(e.data, diaDe(l.abertaEm), agora, "a data do resultado");
+    if (!data.ok) return data;
+    const daReserva = !fatos.semReserva;
+    const pago = valorPagoAprovado(p);
+    // Os campos de cada resultado.
+    let valorPerdido = 0;
+    let liquidoNaoEntrou = 0;
+    let debitoEm: string | null = null;
+    let voltaEm: string | null = null;
+    const desde = diaDe(p.aprovadoEm ?? p.criadoEm);
+    if (resultado === "perdida") {
+      const v = centavosOuNull(e.valorPerdido);
+      const n = daReserva ? centavosOuNull(e.liquidoNaoEntrou) : 0;
+      if (v === null || !centavosValidos(v, pago)) return recusada(`Informe o valor que a SCL perdeu (até o pago, ${formatBRL(pago)}).`);
+      if (n === null || !centavosValidos(n, pago)) return recusada(`Informe quanto deste pagamento nunca entrou na conta (zero se entrou tudo; até ${formatBRL(pago)}).`);
+      valorPerdido = v;
+      liquidoNaoEntrou = n;
+      const dia = e.debitoEm || l.debitoEm || fatos.proposta.debitoEm;
+      if (dia) {
+        const d = conferirData(dia, desde, agora, "o dia em que o Mercado Pago debitou");
+        if (!d.ok) return d;
+        debitoEm = d.data;
+      }
+    } else if (fatos.retido && (fatos.retido.estado === "realizado" || fatos.retido.estado === "conciliado")) {
+      const d = conferirData(e.voltaEm || data.data, desde, agora, "o dia em que o dinheiro voltou");
+      if (!d.ok) return d;
+      voltaEm = d.data;
+    }
+    // A nota: obrigatória quando o resultado ou o valor diferem do que o Mercado Pago mostra, quando ele não mostra o
+    // resultado, ou quando a leitura não deu (aí ganha a observação, como no registro pela equipe).
+    const difere = l.situacao !== "a_confirmar" || sentidoLido(l) !== resultado || (resultado === "perdida" && daReserva && l.valor !== null && valorPerdido !== l.valor);
+    const obrigatoria = !leitura.lida || leitura.emDisputa || difere;
+    const nota = conferirNota(e.nota, obrigatoria, leitura.emDisputa ? TEXTO_NOTA_REFORCADA : TEXTO_NOTA_DO_RESULTADO);
+    if (!nota.ok) return nota;
+    const notaGravada = leitura.lida ? nota.nota : nota.nota ? `${nota.nota} (${NOTA_SEM_CONFERIR_AGORA})` : NOTA_SEM_CONFERIR_AGORA;
+    if (resultado === "ganha" && e.liberacao && !fatos.semRecebimento) return recusada("O pagamento já tem a liberação registrada: deixe a liberação em branco.");
+    // A situação, os fatos e os avisos da transição; o resultado.
+    const situacaoAntes = l.situacao;
+    await gravarLinha(
+      tx,
+      l,
+      {
+        situacao: tr.situacao,
+        avisos: tr.avisos,
+        lidaEm: tr.fatos.lidaEm,
+        resultadoEm: data.data,
+        resultadoPor: autorId,
+        resultadoNota: notaGravada,
+        tarifa: tarifa > 0 ? tarifa : null,
+        ...(resultado === "perdida" ? { valorPerdido, liquidoNaoEntrou, debitoEm } : {}),
+      },
+      agora,
+    );
+    for (const ev of tr.eventos) await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: ev.tipo, antes: ev.antes, depois: ev.depois, usuarioId: autorId }, agora);
+    // Ganhou sem recebimento: a liberação do formulário, sob a mesma trava (as regras de `registrarLiberacaoManual`; o
+    // pagamento ainda está contestado, explicado pela disputa). Recusada, desfaz tudo.
+    if (resultado === "ganha" && e.liberacao) {
+      const lib = await registrarLiberacaoManual(tx, organizacaoId, p.id, e.liberacao, autorId, agora);
+      if (!lib.ok) throw new RecusaDaContestacao(lib.erro);
+      await recarregar(tx, t, p);
+    }
+    const substituidas = substituidasPor(t, p, l);
+    if (resultado === "ganha") {
+      await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "ganha", resultadoEm: data.data, voltaEm, tarifa }, autorId, agora);
+      for (const d of substituidas) await devolucaoDevidaDepoisDaDisputa(tx, organizacaoId, p, d, autorId, agora);
+      await voltarASituacaoDeAntes(tx, organizacaoId, t, p, l, "contestacao_ganha", autorId, agora);
+      const semRecebimento = daReserva && reservaCalculadaPeloMotor(t.reserva) && !(await recebimentosDoPagamento(tx, organizacaoId, p.id)).emVigor.some((x) => x.estado === "realizado" || x.estado === "conciliado");
+      await trocarAvisosDaContestacao(tx, l, semRecebimento ? { ligar: ["contestacao_ganha_sem_recebimento"] } : { desligar: ["contestacao_ganha_sem_recebimento"] }, agora);
+      await gravarLinha(tx, l, { definitivoEm: agora }, agora);
+    } else {
+      await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "perdida", resultadoEm: data.data, debitoEm, valorPerdido, liquidoNaoEntrou, tarifa }, autorId, agora);
+      // A devolução substituída: confirmada pela disputa pelo menor entre o valor dela e o que sobra do perdido (no pagamento
+      // sem reserva, do valor em disputa: o perdido ali é só a taxa).
+      const confirmados = confirmadoPelasSubstituidas(
+        substituidas.map((d) => d.valor),
+        daReserva ? valorPerdido : (l.valor ?? pago),
+      );
+      const taxaDaDisputa = daReserva ? null : (await livroDaDisputa(tx, organizacaoId, l)).linhas.find((x) => x.chaveOrigem === chavesDaContestacao(p.id, l.id).taxa() && !x.estornada);
+      let primeira = true;
+      for (const [i, d] of substituidas.entries()) {
+        if (confirmados[i] > 0) {
+          await confirmarDevolucaoPelaDisputa(tx, organizacaoId, t, p, d, { valor: confirmados[i], data: debitoEm ?? data.data, taxa: daReserva ? null : primeira ? { valor: valorPerdido, lancamentoId: taxaDaDisputa?.id ?? null } : { valor: 0, lancamentoId: null } }, autorId, agora);
+          primeira = false;
+        } else await devolucaoDevidaDepoisDaDisputa(tx, organizacaoId, p, d, autorId, agora);
+      }
+      if (daReserva) {
+        // A divisão definitiva: com decisão, agora (comparada com o já lançado); sem decisão e com perda a dividir, a reserva
+        // continua em conferência e a decisão depois nasce definitiva; nada a dividir, nada a lançar.
+        const perda = perdaADividir(valorPerdido, substituidas.map((d) => d.valor));
+        if (l.decisaoVersao > 0 && l.quemArca) {
+          const acerto = acertoDaPerda({
+            valorPerdido,
+            substituidas: substituidas.map((d) => d.valor),
+            quemArca: l.quemArca,
+            baseParteProprietario: l.baseParteProprietario ?? 0,
+            baseComissao: l.baseComissao ?? 0,
+            lancadoProprietario: fatos.lancado.proprietario,
+            lancadoScl: fatos.lancado.scl,
+          });
+          if (!acerto) throw new RecusaDaContestacao(TEXTO_SEM_PARTES_PARA_DIVIDIR, "sem_partes");
+          await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "definitivos", resultadoEm: data.data, proprietario: acerto.proprietario, scl: acerto.scl, proprietarioId: null }, autorId, agora);
+          await gravarLinha(tx, l, { exposicao: acerto.perdaADividir, parteProprietario: acerto.proprietario, parteScl: acerto.scl, definitivoEm: agora }, agora);
+        } else if (perda <= 0) await gravarLinha(tx, l, { definitivoEm: agora }, agora);
+      } else {
+        // Pagamento sem reserva: o desfecho "o dinheiro voltou ao pagador pela disputa"; as ações de devolução dele param.
+        if (p.desfecho === null) {
+          const desfecho = { desfecho: DESFECHO_CONTESTACAO, desfechoMotivo: "o dinheiro voltou ao pagador pela disputa do pagamento", desfechoPor: autorId, desfechoEm: agora, atualizadoEm: agora };
+          await tx.update(pagamentos).set(desfecho).where(eq(pagamentos.id, p.id));
+          Object.assign(p, desfecho);
+          await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "pagamento.situacao", entidade: "pagamento", entidadeId: p.id, mudancas: { desfecho: [null, DESFECHO_CONTESTACAO], motivo: [null, "contestacao_perdida"] } });
+        }
+        await gravarLinha(tx, l, { definitivoEm: agora }, agora);
+      }
+    }
+    // As outras disputas do pagamento: esta não segura mais nada do pago.
+    await recalcularDisputas(tx, organizacaoId, t, p, agora);
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: "contestacao.resultado",
+      entidade: "pagamento",
+      entidadeId: p.id,
+      mudancas: {
+        contestacao: [null, l.id],
+        situacao: [situacaoAntes, tr.situacao],
+        data: [null, data.data],
+        ...(resultado === "perdida" ? { valorPerdido: [l.valor, valorPerdido], liquidoNaoEntrou: [null, liquidoNaoEntrou], debitoEm: [null, debitoEm] } : { voltaEm: [null, voltaEm] }),
+        tarifa: [null, tarifa],
+        semLeitura: [null, !leitura.lida],
+      },
+    });
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+/** Relê o pagamento e as disputas dele dentro da transação (depois de uma ação que grava pelo próprio caminho) e atualiza o retrato. */
+async function recarregar(tx: Db, t: Travado, p: Pagamento): Promise<void> {
+  const [novo] = await tx.select().from(pagamentos).where(eq(pagamentos.id, p.id));
+  if (novo) Object.assign(p, novo);
+  const linhas = await tx.select().from(contestacoesPagamento).where(eq(contestacoesPagamento.pagamentoId, p.id));
+  for (const x of linhas) {
+    const l = t.contestacoes.find((y) => y.id === x.id);
+    if (l) Object.assign(l, x);
+  }
+}
+
+/**
+ * "Encerrar sem efeito" (`financeiro:editar`, nota obrigatória; numa leitura `in_process` do mesmo caso, a nota reforçada):
+ * registrada por engano, duplicata, ou reclamação resolvida sem dinheiro. Só sem lançamentos definitivos (a disputa não
+ * final). Espelha no mês corrente os lançamentos previstos do proprietário e da SCL (`…:sem_efeito:<lançamento original>`);
+ * o retido previsto é estornado e o realizado volta no dia informado (`voltaEm`, obrigatório com ele); a devolução
+ * substituída volta a ser devida; o pagamento volta à situação de antes quando é a última disputa dele (e ele ainda está
+ * `contestado`). Auditado (`contestacao.sem_efeito`).
+ */
+export async function encerrarSemEfeito(
+  db: Db,
+  organizacaoId: string,
+  contestacaoId: string,
+  e: { nota: string; notaReforcada: boolean; voltaEm?: string | null },
+  autorId: string | null,
+  provedor: ProvedorPagamento | null,
+  agora: Date = new Date(),
+): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  const nota = conferirNota(e.nota, true, "Escreva por que a disputa fica sem efeito (sem dados pessoais).");
+  if (!nota.ok) return nota;
+  const leitura = await releituraDaDisputa(db, alvo, provedor, agora);
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    const tr = transicaoDaContestacao(l, { tipo: "sem_efeito", em: agora, emDisputaNaLeitura: leitura.emDisputa, notaReforcada: e.notaReforcada });
+    if (!tr.ok) return recusada(tr.erro, tr.codigo);
+    if (tr.descartada) return recusada(TEXTO_DISPUTA_JA_TERMINOU, "nao_permitida");
+    let voltaEm: string | null = null;
+    if (e.voltaEm) {
+      const d = conferirData(e.voltaEm, diaDe(p.aprovadoEm ?? p.criadoEm), agora, "o dia em que o dinheiro voltou");
+      if (!d.ok) return d;
+      voltaEm = d.data;
+    }
+    const antes = { situacao: l.situacao, valorEmRisco: l.valorEmRisco };
+    await gravarLinha(tx, l, { situacao: tr.situacao, avisos: tr.avisos, lidaEm: tr.fatos.lidaEm, duplicataPossivel: tr.duplicataPossivel, valorEmRisco: 0, encerradaNota: leitura.lida ? nota.nota : `${nota.nota} (${NOTA_SEM_CONFERIR_AGORA})` }, agora);
+    for (const ev of tr.eventos) await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: ev.tipo, antes: ev.antes, depois: ev.depois, usuarioId: autorId }, agora);
+    await lancarContestacao(tx, organizacaoId, t, p, l, { tipo: "sem_efeito", voltaEm }, autorId, agora);
+    for (const d of substituidasPor(t, p, l)) await devolucaoDevidaDepoisDaDisputa(tx, organizacaoId, p, d, autorId, agora);
+    await voltarASituacaoDeAntes(tx, organizacaoId, t, p, l, "contestacao_sem_efeito", autorId, agora);
+    await recalcularDisputas(tx, organizacaoId, t, p, agora);
+    await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "contestacao.sem_efeito", entidade: "pagamento", entidadeId: p.id, mudancas: { contestacao: [null, l.id], situacao: [antes.situacao, "sem_efeito"], valorEmRisco: [antes.valorEmRisco, 0], semLeitura: [null, !leitura.lida] } });
+    return { ok: true, contestacaoId: l.id };
+  });
+}
+
+/**
+ * "Conferir o aviso" (`financeiro:editar`, nota obrigatória), numa disputa final com `contestacao_resultado_mudou`:
+ * - `continua_encerrada` ("A disputa continua encerrada no painel do Mercado Pago"): o aviso sai;
+ * - `reaberta` (só numa ganha relida `in_process`: "A disputa foi reaberta (reapresentação ou arbitragem)"): nasce a rodada
+ *   seguinte (linha nova, mesma identificação, origem `equipe`, `aberta`, sem decisão), que segue o fluxo inteiro (valor em
+ *   risco, retido previsto, devoluções substituídas). A rodada ganha fica como está, com os lançamentos dela.
+ * Auditado (`contestacao.conferir_aviso` ou `contestacao.reabrir`).
+ */
+export async function conferirAviso(db: Db, organizacaoId: string, contestacaoId: string, e: { como: string; nota: string }, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
+  const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
+  if (!alvo) return recusada(TEXTO_DISPUTA_NAO_ENCONTRADA, "nao_encontrada");
+  if (e.como !== "continua_encerrada" && e.como !== "reaberta") return recusada("Escolha o que o painel do Mercado Pago mostra.");
+  const como = e.como;
+  const nota = conferirNota(e.nota, true, "Escreva o que o painel do Mercado Pago mostra (sem dados pessoais).");
+  if (!nota.ok) return nota;
+  return naDisputa(db, organizacaoId, alvo, agora, async (tx, t, p, l) => {
+    const tr = transicaoDaContestacao(l, { tipo: "conferir_aviso", como, em: agora });
+    if (!tr.ok) return recusada(tr.erro, tr.codigo);
+    if (tr.descartada) return recusada(TEXTO_SEM_AVISO_A_CONFERIR, "sem_aviso");
+    await gravarLinha(tx, l, { avisos: tr.avisos, avisoConferidoEm: agora, avisoConferidoPor: autorId, avisoConferidoNota: nota.nota }, agora);
+    for (const ev of tr.eventos) await registrarEventoDaContestacao(tx, l.id, { fonte: "equipe", tipo: ev.tipo, antes: ev.antes, depois: ev.depois, usuarioId: autorId }, agora);
+    let novaId: string | null = null;
+    if (tr.novaRodada) {
+      const ctx = contextoDaNova(t, p.id);
+      const dados = novaContestacao({
+        origem: "equipe",
+        tipo: l.tipo,
+        forma: p.forma,
+        leituras: [],
+        identificacao: { idCaso: l.idCaso, idContestacao: l.idContestacao, idTransacao: l.idTransacao },
+        duplicataPossivel: false,
+        pagamento: { situacao: p.situacao, devolvidoLido: p.devolvidoLido, pago: valorPagoAprovado(p), valor: p.valor, tresDSStatus: p.tresDSStatus },
+        deOutraNaoFinal: ctx.deOutraNaoFinal,
+        outras: ctx.outras,
+        comDevolucaoRealizada: p.devolvidoForaReconhecido > 0 || p.situacao === "devolvido" || devolucoesDoPagamento(t, p.id).some((d) => d.situacao === "confirmada" || d.situacao === "por_fora"),
+        equipe: { valor: l.valor, prazo: null },
+        agora,
+      });
+      // A rodada seguinte leva os fatos que a leitura já mostrou (o caso relido em andamento): uma leitura iniciada antes desta
+      // ação é descartada nela.
+      const nova = await criarLinha(
+        tx,
+        organizacaoId,
+        t,
+        p,
+        {
+          ...dados,
+          rodada: l.rodada + 1,
+          estadoLido: l.estadoLido,
+          codigo: l.codigo,
+          coberturaElegivel: l.coberturaElegivel,
+          motivoId: l.motivoId,
+          motivoCodigo: l.motivoCodigo,
+          valorOrigem: l.valorOrigem,
+          abertaNoProvedorEm: l.abertaNoProvedorEm,
+          aoVivo: l.aoVivo,
+          lidaEm: agora,
+          atualizadoNoProvedorEm: l.atualizadoNoProvedorEm,
+          notaRegistro: nota.nota,
+          proximaLeituraEm: agora,
+        },
+        agora,
+        { fonte: "equipe", usuarioId: autorId },
+      );
+      novaId = nova.id;
+      await recalcularDisputas(tx, organizacaoId, t, p, agora);
+    }
+    await registrarAuditoria(tx, {
+      organizacaoId,
+      usuarioId: autorId,
+      acao: tr.novaRodada ? "contestacao.reabrir" : "contestacao.conferir_aviso",
+      entidade: "pagamento",
+      entidadeId: p.id,
+      mudancas: { contestacao: [null, l.id], como: [null, como], ...(novaId ? { rodada: [l.rodada, l.rodada + 1], novaContestacao: [null, novaId] } : {}) },
+    });
+    return { ok: true, contestacaoId: novaId ?? l.id, ...(novaId ? { mensagem: `A disputa foi reaberta: rodada ${l.rodada + 1} no quadro.` } : {}) };
+  });
 }

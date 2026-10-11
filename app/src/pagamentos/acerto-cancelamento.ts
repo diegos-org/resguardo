@@ -2,7 +2,9 @@
  * Cancelamento pela política (M8.2c) — o acerto no livro, por componente (desenho §6).
  *
  * - **Resultado** (receita, taxa, comissão, parte do proprietário): todo ele na hora do cancelamento (fase 1), sob as
- *   travas da cotação e do motor. Sem devolução, o motor divide o valor retido como uma reserva normal. Com devolução
+ *   travas da cotação e do motor. Sem devolução (pela política, ou pela rota "Cancelar a reserva contestada" do M8.2e, base
+ *   `contestacao`: o dinheiro volta ao titular pela disputa, se ele ganhar), o motor divide o valor retido como uma reserva
+ *   normal. Com devolução
  *   integral e nada movimentado, o motor estorna (como em qualquer cancelamento). Com algum mês que já movimentou
  *   dinheiro (parte repassada e paga, ou lançamento realizado/conciliado), esse mês ganha espelhos no mês CORRENTE — o da
  *   parte do proprietário é o desconto (`lancarDescontoDoProprietario`) —, os outros meses são estornados no próprio mês,

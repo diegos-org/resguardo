@@ -1685,7 +1685,11 @@ export type DireitoCancelamento = (typeof DIREITOS_CANCELAMENTO)[number];
 /** O que a política diz (calculado), antes de qualquer decisão da equipe. */
 export const CALCULOS_CANCELAMENTO = ["integral", "nenhum", "sem_politica"] as const;
 export type CalculoCancelamento = (typeof CALCULOS_CANCELAMENTO)[number];
-export const BASES_CANCELAMENTO = ["prazo", "arrependimento", "empresa", "excecao", "sem_politica", "fora_do_prazo", "estadia_iniciada", "nao_comparecimento"] as const;
+/**
+ * A base da decisão do cancelamento. `contestacao` (M8.2e): "Cancelar a reserva contestada", a rota sem decisão pela política
+ * e sem devolução pelo sistema (o dinheiro volta ao titular pela disputa, se ele ganhar).
+ */
+export const BASES_CANCELAMENTO = ["prazo", "arrependimento", "empresa", "excecao", "sem_politica", "fora_do_prazo", "estadia_iniciada", "nao_comparecimento", "contestacao"] as const;
 export type BaseCancelamento = (typeof BASES_CANCELAMENTO)[number];
 
 export const cancelamentosReserva = pgTable(
@@ -2120,8 +2124,11 @@ export const devolucoesPagamento = pgTable(
     cancelamentoId: uuid("cancelamento_id"),
     /** O lançamento `devolucao` (saída do caixa), quando houve. */
     saidaLancamentoId: uuid("saida_lancamento_id").references(() => lancamentos.id),
-    /** Quem confirmou: uma leitura da order ou a equipe (devolução vista no painel do Mercado Pago). */
-    confirmadaPor: text("confirmada_por").$type<"leitura" | "equipe">(),
+    /**
+     * Quem confirmou: uma leitura da order, a equipe (devolução vista no painel do Mercado Pago) ou, desde o M8.2e, a disputa
+     * do pagamento perdida que a substituía (`contestacao`: o dinheiro voltou ao hóspede pela disputa).
+     */
+    confirmadaPor: text("confirmada_por").$type<"leitura" | "equipe" | "contestacao">(),
     /** Nota obrigatória da confirmação pela equipe (até 300, validada sem dados pessoais). */
     confirmadaNota: text("confirmada_nota").notNull().default(""),
     /** Soma das devoluções confirmadas na leitura que confirmou; null = a leitura não trouxe a lista de devoluções. */
