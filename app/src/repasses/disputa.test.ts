@@ -475,7 +475,7 @@ describe("o que o proprietário vê (teste 27) e os meses fechados (teste 28)", 
     expect(nomeDoDescontoQueNaoSeTransfere({ descontoCancelamento: 1, descontoDisputa: 1 }, true)).toBe("Desconto de reserva cancelada com devolução ao hóspede e da disputa do pagamento");
     // E-mail do fechamento: a linha própria "Disputa do pagamento" e a parte presa com o motivo próprio.
     const fechamento = {
-      id: "rep", organizacaoId: "org", proprietarioId: dono, tipo: "fechamento" as const, mes: "2026-10-01", data: "2026-11-02", saldo: 50000, descontado: 0, contestado: 0, valor: 15000, foraDoFechamento: 72250, antecipado: -35000, situacao: "pago" as const,
+      id: "rep", organizacaoId: "org", proprietarioId: dono, tipo: "fechamento" as const, mes: "2026-10-01", data: "2026-11-02", saldo: 50000, descontado: 0, contestado: 0, valor: 15000, foraDoFechamento: 72250, foraPresaDisputa: 72250, foraSeguradoJunto: 0, antecipado: -35000, situacao: "pago" as const,
       dataPagamento: "2026-11-02", comprovante: "E2E-9", comprovanteArquivoId: null, emailSituacao: "pendente" as const, emailEm: null, emailPara: "", emailChave: "", emailTentativaEm: null, emailPedido: null, chavePixPaga: "", pedidoEm: null, motivoEstorno: "",
       criadoPor: null, criadoEm: sp("2026-11-02"), estornadoEm: null, nome: "Dona Exemplo", email: "dona@example.com", chavePix: "dona@example.com",
     };
@@ -682,6 +682,23 @@ describe("revisão de 11/10 (dinheiro): linhas de várias versões, causa e expl
     expect(email.texto).not.toContain("dinheiro ainda não recebido");
     const [depois] = await preverRepasses(db, org, "2026-10", "2026-11-05", [dono]);
     expect(depois.avisos).toContain("R$ 722,50 da competência ficaram fora deste repasse (reserva em conferência: disputa do pagamento) e vão para o repasse seguinte.");
+  });
+
+  it("aceite: o fechamento grava a divisão daquele instante; a disputa ainda aberta que deixa de segurar depois não muda o motivo", async () => {
+    const presa = await criar(reserva("2026-10-10", "2026-10-13"), "2026-10-10");
+    await criar(reserva("2026-10-20", "2026-10-23"), "2026-10-20");
+    const c = await disputa(presa);
+    const r = await fecharEPagar("2026-10", "2026-11-02");
+    expect(r).toMatchObject({ foraDoFechamento: 72250, foraPresaDisputa: 72250, foraSeguradoJunto: 0 });
+    // 04/11: ainda aberta e sem decisão, o valor em risco vai a 0 (uma devolução substituída cobre o contestado). Pelo valor
+    // em risco de agora, a parte seria "dinheiro ainda não recebido"; o fechamento guardou o motivo daquele instante.
+    await db.update(contestacoesPagamento).set({ valorEmRisco: 0 }).where(eq(contestacoesPagamento.id, c.id));
+    expect(await foraPorDisputaDoFechamento(db, org, r)).toEqual({ presa: 72250, seguradoJunto: 0, outras: 0 });
+    const email = textoDoEmailDoRepasse(r, await itensDoRepasse(db, org, r.id), "Sua Casa", { fora: await foraPorDisputaDoFechamento(db, org, r) });
+    expect(email.texto).toContain("Para o próximo repasse (reserva em conferência: disputa do pagamento): R$ 722,50");
+    // Um fechamento de antes das colunas (null): a divisão continua refeita pela linha do tempo.
+    await db.update(repasses).set({ foraPresaDisputa: null, foraSeguradoJunto: null }).where(eq(repasses.id, r.id));
+    expect(await foraPorDisputaDoFechamento(db, org, (await obterRepasse(db, org, r.id))!)).toEqual({ presa: 0, seguradoJunto: 0, outras: 72250 });
   });
 
   it("e-mail do fechamento: o valor segurado que espera junto com a parte (total fora negativo) tem linha própria, nunca '-R$' no motivo da disputa", async () => {

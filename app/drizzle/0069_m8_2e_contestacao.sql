@@ -2,8 +2,9 @@
 -- 0067 e a 0068: o banco das prévias é compartilhado e as migrações entram por hash, então rodar estas instruções de novo
 -- não pode falhar nem mudar nada. Sem tipo novo no enum de lançamentos (a origem `contestacao_pagamento` é texto).
 -- Cria a disputa (`contestacoes_pagamento`) e a linha do tempo dela (`eventos_contestacao`, nunca apagada); a busca
--- tardia semanal em `pagamentos.contestacoes_buscadas_em`; e a devolução substituída pela disputa em
--- `devolucoes_pagamento.contestacao_id`.
+-- tardia semanal em `pagamentos.contestacoes_buscadas_em`; a devolução substituída pela disputa em
+-- `devolucoes_pagamento.contestacao_id`; e, no fechamento, a parte presa por disputa e o valor segurado que espera junto
+-- (`repasses.fora_presa_disputa` e `repasses.fora_segurado_junto`; null nos fechamentos de antes).
 CREATE TABLE IF NOT EXISTS "contestacoes_pagamento" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"organizacao_id" uuid NOT NULL,
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS "contestacoes_pagamento" (
 	"causa" text,
 	"quem_arca" text,
 	"decisao_nota" text DEFAULT '' NOT NULL,
+	"decisao_mudanca_nota" text DEFAULT '' NOT NULL,
 	"explicacao_proprietario" text DEFAULT '' NOT NULL,
 	"decisao_por" uuid,
 	"decisao_em" timestamp with time zone,
@@ -87,12 +89,17 @@ CREATE TABLE IF NOT EXISTS "eventos_contestacao" (
 	"antes" jsonb,
 	"depois" jsonb,
 	"usuario_id" uuid,
-	"em" timestamp with time zone DEFAULT now() NOT NULL
+	"em" timestamp with time zone DEFAULT now() NOT NULL,
+	"ordem" integer GENERATED ALWAYS AS IDENTITY (sequence name "eventos_contestacao_ordem_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1)
 );
 --> statement-breakpoint
 ALTER TABLE "devolucoes_pagamento" ADD COLUMN IF NOT EXISTS "contestacao_id" uuid;
 --> statement-breakpoint
 ALTER TABLE "pagamentos" ADD COLUMN IF NOT EXISTS "contestacoes_buscadas_em" timestamp with time zone;
+--> statement-breakpoint
+ALTER TABLE "repasses" ADD COLUMN IF NOT EXISTS "fora_presa_disputa" integer;
+--> statement-breakpoint
+ALTER TABLE "repasses" ADD COLUMN IF NOT EXISTS "fora_segurado_junto" integer;
 --> statement-breakpoint
 DO $$ BEGIN
 	IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contestacoes_pagamento_organizacao_id_organizacoes_id_fk') THEN

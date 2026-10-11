@@ -4013,6 +4013,13 @@
           "notNull": true,
           "default": "''"
         },
+        "decisao_mudanca_nota": {
+          "name": "decisao_mudanca_nota",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "explicacao_proprietario": {
           "name": "explicacao_proprietario",
           "type": "text",
@@ -5772,6 +5779,23 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "ordem": {
+          "name": "ordem",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "eventos_contestacao_ordem_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
         }
       },
       "indexes": {
@@ -10182,6 +10206,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "fora_presa_disputa": {
+          "name": "fora_presa_disputa",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fora_segurado_junto": {
+          "name": "fora_segurado_junto",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "antecipado": {
           "name": "antecipado",

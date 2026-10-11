@@ -198,6 +198,11 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     await contestacao(", id_caso, id_contestacao, rodada", ", $5, $6, 2", ["234000062890459000", "CBK01"]);
     // A linha do tempo e a devolução substituída se ligam à disputa.
     await db.query("insert into eventos_contestacao (contestacao_id, fonte, tipo, antes, depois) values ($1, 'order', 'aberta', null, $2::jsonb)", [caso.id, JSON.stringify({ situacao: "aberta" })]);
+    // A ordem de gravação vem sozinha (a linha do tempo desempata por ela).
+    await db.query("insert into eventos_contestacao (contestacao_id, fonte, tipo) values ($1, 'order', 'estado_lido')", [caso.id]);
+    expect((await db.query<{ o: number }>("select ordem as o from eventos_contestacao where contestacao_id = $1 order by ordem", [caso.id])).rows.map((x) => x.o)).toEqual([1, 2]);
+    // O fechamento antigo fica sem a divisão (null): ela é refeita pela linha do tempo.
+    expect((await db.query<{ c: string }>("select column_name as c from information_schema.columns where table_name = 'repasses' and column_name like 'fora_%' order by 1")).rows.map((x) => x.c)).toEqual(["fora_do_fechamento", "fora_presa_disputa", "fora_segurado_junto"]);
     await db.query("update devolucoes_pagamento set contestacao_id = $1 where id = $2", [caso.id, dev]);
     await expect(db.query("update devolucoes_pagamento set contestacao_id = gen_random_uuid() where id = $1", [dev])).rejects.toThrow();
 
@@ -209,7 +214,16 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     const linhas = async () => (await db.query("select id, situacao, id_caso, rodada from contestacoes_pagamento order by criado_em, id")).rows;
     const antes = { colunas: await colunas(), restricoes: await restricoes(), indices: await indices(), linhas: await linhas(), tabelas: await tabelas() };
     expect(antes.colunas).toEqual(
-      expect.arrayContaining(["pagamentos.contestacoes_buscadas_em", "devolucoes_pagamento.contestacao_id", "contestacoes_pagamento.valor_em_risco", "contestacoes_pagamento.caixa_final_lancamento_id", "eventos_contestacao.depois"]),
+      expect.arrayContaining([
+        "pagamentos.contestacoes_buscadas_em",
+        "devolucoes_pagamento.contestacao_id",
+        "contestacoes_pagamento.valor_em_risco",
+        "contestacoes_pagamento.caixa_final_lancamento_id",
+        "contestacoes_pagamento.debito_nota",
+        "contestacoes_pagamento.decisao_mudanca_nota",
+        "eventos_contestacao.depois",
+        "eventos_contestacao.ordem",
+      ]),
     );
     expect(antes.restricoes).toEqual(expect.arrayContaining(["devolucoes_pagamento_contestacao_id_fk", "contestacoes_pagamento_caixa_final_fk", "eventos_contestacao_contestacao_id_contestacoes_pagamento_id_fk"]));
     // Nenhum nome passa dos 63 caracteres do Postgres (cortado, o "se não existe" da migração não o acharia).

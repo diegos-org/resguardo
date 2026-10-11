@@ -985,6 +985,13 @@ export const repasses = pgTable(
     valor: integer("valor").notNull(),
     /** M4.10, fechamento: parte da competência que ficou fora (dinheiro ainda não com a empresa); vai para o repasse seguinte. */
     foraDoFechamento: integer("fora_do_fechamento").notNull().default(0),
+    /**
+     * M8.2e, fechamento: do `foraDoFechamento`, a parte presa por disputa do pagamento (reserva em conferência) e as linhas da
+     * disputa que esperam junto (com sinal), gravadas no fechamento. null = fechamento de antes (a divisão é refeita pela
+     * linha do tempo, `foraPorDisputaDoFechamento`).
+     */
+    foraPresaDisputa: integer("fora_presa_disputa"),
+    foraSeguradoJunto: integer("fora_segurado_junto"),
     /** M4.10, fechamento: partes já disponíveis com noites fora do mês fechado, pagas neste repasse como adiantamento vinculado. */
     antecipado: integer("antecipado").notNull().default(0),
     situacao: text("situacao").$type<SituacaoRepasse>().notNull().default("a_pagar"),
@@ -1982,8 +1989,10 @@ export const contestacoesPagamento = pgTable(
     // --- Decisão de quem arca
     causa: text("causa").$type<CodigoCausaContestacao>(),
     quemArca: text("quem_arca").$type<QuemArcaContestacao>(),
-    /** Nota obrigatória da decisão (até 300, validada); nunca vai ao proprietário. */
+    /** Nota obrigatória da decisão (até 300, validada); nunca vai ao proprietário. "Mudar quem arca" não a apaga. */
     decisaoNota: text("decisao_nota").notNull().default(""),
+    /** A nota "por que mudar" da mudança mais recente ("Mudar quem arca"; até 300, validada); nunca vai ao proprietário. */
+    decisaoMudancaNota: text("decisao_mudanca_nota").notNull().default(""),
     /** Explicação ao proprietário (opcional, até 300, validada): no extrato, no PDF e no e-mail, ao lado da causa. */
     explicacaoProprietario: text("explicacao_proprietario").notNull().default(""),
     decisaoPor: uuid("decisao_por").references(() => usuarios.id, { onDelete: "set null" }),
@@ -2063,6 +2072,8 @@ export const eventosContestacao = pgTable(
     /** null = o sistema. */
     usuarioId: uuid("usuario_id").references(() => usuarios.id, { onDelete: "set null" }),
     em: timestamp("em", { withTimezone: true }).notNull().defaultNow(),
+    /** A ordem de gravação (os eventos de uma mesma ação têm o mesmo `em`): a linha do tempo desempata por ela. */
+    ordem: integer("ordem").generatedAlwaysAsIdentity(),
   },
   (t) => [index("eventos_contestacao_contestacao").on(t.contestacaoId, t.em)],
 );

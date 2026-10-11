@@ -143,6 +143,8 @@ const equipe = (o: Partial<ContestacaoDaEquipe> = {}, acoes: Partial<Contestacao
   ...base,
   origem: "leitura",
   registradaAMao: false,
+  origemTexto: "Lida no Mercado Pago como contestação: pode ser uma reclamação no Mercado Pago (mediação); o sistema não tem como separar, confira no painel dele.",
+  notaDebito: "",
   duplicataPossivel: false,
   idContestacao: "CBK-FICTICIO-1",
   idTransacao: null,
@@ -299,7 +301,7 @@ describe("bloco Disputa na ficha da reserva (M8.2e)", () => {
         pagamento={pagamento}
         equipe={[
           equipe({
-            decisao: { linhas: [["Causa", "Fraude"], ["Quem arca", "O proprietário"]], nota: "nota da equipe", explicacao: "", textoParaProprietario: "Texto fictício para o proprietário." },
+            decisao: { linhas: [["Causa", "Fraude"], ["Quem arca", "O proprietário"]], nota: "nota da equipe", notaMudanca: "", explicacao: "", textoParaProprietario: "Texto fictício para o proprietário." },
             avisos: [],
           }),
         ]}
@@ -397,5 +399,53 @@ describe("revisão das telas (11/10/2026)", () => {
     expect((within(form).getByRole("button", { name: "Ver o cancelamento" }) as HTMLButtonElement).formNoValidate).toBe(true);
     expect((within(form).getByLabelText(/Nota/) as HTMLTextAreaElement).required).toBe(true);
     expect(form.textContent).not.toMatch(/cartão/);
+  });
+});
+
+describe("aceite (11/10/2026): o que um corretor deixou para as telas", () => {
+  it("o quadro da equipe mostra a origem da disputa, a nota do débito e o 'por que mudar' ao lado da nota da decisão", () => {
+    render(
+      <ContestacaoSite
+        reservaId="r1"
+        pagamento={pagamento}
+        equipe={[
+          equipe({
+            notaDebito: "Painel do Mercado Pago mostra o débito menor (teste).",
+            decisao: { linhas: [["Causa", "Fraude"]], nota: "nota da decisão (teste)", notaMudanca: "por que mudou (teste)", explicacao: "", textoParaProprietario: null },
+          }),
+        ]}
+        operacao={[]}
+        editarFinanceiro={false}
+        defesa={false}
+        hoje={HOJE}
+      />,
+    );
+    const bloco = screen.getByRole("region", { name: /Disputa: Contestação no cartão/ });
+    expect(within(bloco).getByText(/pode ser uma reclamação no Mercado Pago \(mediação\)/)).toBeTruthy();
+    expect(within(bloco).getByText("Nota do débito (só a equipe)")).toBeTruthy();
+    expect(within(bloco).getByText("Painel do Mercado Pago mostra o débito menor (teste).")).toBeTruthy();
+    expect(within(bloco).getByText("nota da decisão (teste)")).toBeTruthy();
+    expect(within(bloco).getByText("Por que a decisão mudou (só a equipe)")).toBeTruthy();
+    expect(within(bloco).getByText("por que mudou (teste)")).toBeTruthy();
+    // Registrada à mão: o texto da origem é o dela, uma vez só.
+    cleanup();
+    render(<ContestacaoSite reservaId="r1" pagamento={pagamento} equipe={[equipe({ origem: "equipe", registradaAMao: true, origemTexto: "Registrada à mão: o sistema confere pela leitura quando puder." })]} operacao={[]} editarFinanceiro={false} defesa={false} hoje={HOJE} />);
+    expect(screen.getAllByText("Registrada à mão: o sistema confere pela leitura quando puder.")).toHaveLength(1);
+  });
+
+  it("'Perdeu' que pede a liberação antes: o atalho leva a 'Registrar liberação' do pagamento, quando ela cabe", () => {
+    const r: ResultadoNaTela = { ...resultado, proposta: { ...resultado.proposta, liquidoNaoEntrou: null }, liberacaoAntes: "Registre a liberação à mão antes (teste)." };
+    const comLiberacao = { ...pagamento, acoes: { ...sem, registrarLiberacao: true } } as PagamentoDoPainel;
+    render(<ContestacaoSite reservaId="r1" pagamento={comLiberacao} equipe={[equipe({}, { resultado: r })]} operacao={[]} editarFinanceiro={false} defesa={false} hoje={HOJE} />);
+    const form = screen.getByRole("form", { name: "Confirmar o resultado" });
+    fireEvent.click(within(form).getByLabelText(/Perdeu/));
+    expect(within(form).getByRole("link", { name: /Registrar liberação/ }).getAttribute("href")).toBe(`#registrar-liberacao-${pagamento.id}`);
+    // Sem a ação no pagamento (o domínio não a aceitaria), o texto fica e o atalho não aparece.
+    cleanup();
+    render(<ContestacaoSite reservaId="r1" pagamento={pagamento} equipe={[equipe({}, { resultado: r })]} operacao={[]} editarFinanceiro={false} defesa={false} hoje={HOJE} />);
+    const sem2 = screen.getByRole("form", { name: "Confirmar o resultado" });
+    fireEvent.click(within(sem2).getByLabelText(/Perdeu/));
+    expect(within(sem2).getByText("Registre a liberação à mão antes (teste).")).toBeTruthy();
+    expect(within(sem2).queryByRole("link", { name: /Registrar liberação/ })).toBeNull();
   });
 });

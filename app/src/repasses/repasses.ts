@@ -540,7 +540,23 @@ async function fecharNaTransacao(
     const data = hoje < dataFechamento ? hoje : dataFechamento;
     const [r] = await tx
       .insert(repasses)
-      .values({ organizacaoId: org, proprietarioId, tipo: "fechamento", mes: lim.inicio, data, saldo: p.saldo, descontado: p.aDescontar, contestado: p.contestado, valor: p.valor, foraDoFechamento: p.fora, antecipado: p.antecipado, criadoPor: autorId })
+      .values({
+        organizacaoId: org,
+        proprietarioId,
+        tipo: "fechamento",
+        mes: lim.inicio,
+        data,
+        saldo: p.saldo,
+        descontado: p.aDescontar,
+        contestado: p.contestado,
+        valor: p.valor,
+        foraDoFechamento: p.fora,
+        // M8.2e (aceite): o motivo do que ficou fora, daquele instante (o e-mail e o painel do mês fechado leem daqui).
+        foraPresaDisputa: p.foraDividido.presa,
+        foraSeguradoJunto: p.foraDividido.seguradoJunto,
+        antecipado: p.antecipado,
+        criadoPor: autorId,
+      })
       .returning();
     const ids = [...new Set([...[...p.porImovel.keys()].filter((k): k is string => k !== null), ...p.itens.map((x) => x.imovelId)])];
     const codigos = new Map(
@@ -1138,12 +1154,18 @@ export type ForaDoFechamento = { presa: number; seguradoJunto: number; outras: n
  * não duplicada nele (`confirmada_outra_em`); sem decisão nele — a primeira decisão sempre lança uma linha do proprietário ou
  * da SCL (`…:v1`, ou `…:final` na perdida) e grava o evento `decisao`, e `decisao_em` é regravado a cada versão, por isso não
  * basta; ainda correndo nele (o evento `resultado` ou `sem_efeito` veio depois) com valor em risco — o do "sem efeito", que o
- * zera, pelo retido em vigor no fechamento —, ou perdida antes dele com perda a dividir. O repasse guarda só o total; sem
- * coluna para a divisão, o valor em risco de uma disputa ainda aberta é o de agora.
+ * zera, pelo retido em vigor no fechamento —, ou perdida antes dele com perda a dividir. Desde o aceite de 11/10, o fechamento
+ * grava a divisão (`fora_presa_disputa` e `fora_segurado_junto`), e ela vale; a reconstrução fica para os fechamentos de antes
+ * (colunas null), em que o valor em risco de uma disputa ainda aberta é o de agora.
  */
-export async function foraPorDisputaDoFechamento(db: Db, org: string, r: Pick<Repasse, "tipo" | "proprietarioId" | "mes" | "criadoEm" | "foraDoFechamento">): Promise<ForaDoFechamento> {
+export async function foraPorDisputaDoFechamento(
+  db: Db,
+  org: string,
+  r: Pick<Repasse, "tipo" | "proprietarioId" | "mes" | "criadoEm" | "foraDoFechamento"> & Partial<Pick<Repasse, "foraPresaDisputa" | "foraSeguradoJunto">>,
+): Promise<ForaDoFechamento> {
   const lim = limitesDoMes(r.mes.slice(0, 7));
   if (r.tipo !== "fechamento") return { presa: 0, seguradoJunto: 0, outras: 0 };
+  if (r.foraPresaDisputa != null && r.foraSeguradoJunto != null) return { presa: r.foraPresaDisputa, seguradoJunto: r.foraSeguradoJunto, outras: r.foraDoFechamento - r.foraPresaDisputa - r.foraSeguradoJunto };
   if (r.foraDoFechamento === 0 || !lim) return { presa: 0, seguradoJunto: 0, outras: r.foraDoFechamento };
   const corte = sql`${r.criadoEm.toISOString()}::timestamptz`;
   const prefixo = sql`('mercadopago:' || cp.pagamento_id::text || ':contestacao:' || cp.id::text || ':')`;

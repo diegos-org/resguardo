@@ -681,8 +681,14 @@ const AVISOS_RESOLVIDOS_PELA_EQUIPE: readonly AvisoDeContestacao[] = [
   "contestacao_prazo_desconhecido",
 ];
 
+/**
+ * A recusa `nota_reforcada` (a leitura de agora mostra a disputa em andamento) diz a caixa a marcar, com o rótulo do
+ * formulário: "Confirmar o resultado" (`TEXTO_NOTA_REFORCADA`) e "Encerrar sem efeito" (`TEXTO_NOTA_REFORCADA_SEM_EFEITO`).
+ */
 export const TEXTO_NOTA_REFORCADA =
-  "O Mercado Pago ainda mostra esta disputa em andamento: confirme na nota que o painel do Mercado Pago já mostra o resultado.";
+  'O Mercado Pago ainda mostra esta disputa em andamento: se o painel dele já mostra o resultado, marque a caixa "O painel do Mercado Pago já mostra o resultado" e diga na nota o que ele mostra.';
+export const TEXTO_NOTA_REFORCADA_SEM_EFEITO =
+  'O Mercado Pago ainda mostra esta disputa em andamento: se o painel dele já mostra a disputa encerrada, marque a caixa "O painel do Mercado Pago já mostra a disputa encerrada" e diga na nota o que ele mostra.';
 export const TEXTO_DUPLICATA_SEM_CONFIRMAR = "Esta disputa pode ser a mesma de outra do quadro: confirme que é outra disputa (ou encerre sem efeito) antes do resultado.";
 export const TEXTO_SEM_AVISO_A_CONFERIR = "Não há aviso a conferir nesta disputa.";
 export const TEXTO_SO_GANHA_REABRE = "Só uma disputa ganha que o Mercado Pago voltou a mostrar em andamento pode ser reaberta.";
@@ -699,7 +705,7 @@ export function transicaoDaContestacao(linha: LinhaDeContestacao, fato: FatoDaCo
     const para = fato.tipo === "resultado" ? fato.resultado : "sem_efeito";
     if (!situacaoPodeMudar(linha.situacao, para, "equipe")) return { ok: false, codigo: "nao_permitida", erro: TEXTO_DISPUTA_JA_TERMINOU };
     if (fato.tipo === "resultado" && linha.duplicataPossivel) return { ok: false, codigo: "duplicata", erro: TEXTO_DUPLICATA_SEM_CONFIRMAR };
-    if (fato.emDisputaNaLeitura && !fato.notaReforcada) return { ok: false, codigo: "nota_reforcada", erro: TEXTO_NOTA_REFORCADA };
+    if (fato.emDisputaNaLeitura && !fato.notaReforcada) return { ok: false, codigo: "nota_reforcada", erro: fato.tipo === "resultado" ? TEXTO_NOTA_REFORCADA : TEXTO_NOTA_REFORCADA_SEM_EFEITO };
     let avisos = linha.avisos.filter((a) => !(AVISOS_RESOLVIDOS_PELA_EQUIPE as readonly string[]).includes(a));
     if (para === "sem_efeito") avisos = comAviso(avisos, "contestacao_possivel_duplicata", false);
     return {
@@ -915,6 +921,8 @@ export function contestacaoDaLeitura(
 // ---------------------------------------------------------------- em curso e em conferência
 
 export type LinhaEmCurso = Pick<LinhaDeContestacao, "pagamentoId" | "situacao" | "avisos" | "estadoLido">;
+/** A linha segura o "em curso" do pagamento: `aberta`/`a_confirmar`, ou `ganha` que o Mercado Pago voltou a mostrar em andamento. */
+const linhaEmCurso = (x: LinhaEmCurso): boolean => contestacaoNaoFinal(x.situacao) || (x.situacao === "ganha" && x.estadoLido === "in_process" && x.avisos.includes("contestacao_resultado_mudou"));
 
 /**
  * A disputa de um pagamento sobre o retrato travado: `em_curso` (alguma linha `aberta` ou `a_confirmar`, de qualquer
@@ -924,8 +932,17 @@ export type LinhaEmCurso = Pick<LinhaDeContestacao, "pagamentoId" | "situacao" |
  */
 export function disputaDoPagamento(t: { contestacoes: readonly LinhaEmCurso[] }, pagamentoId: string): "em_curso" | "perdida" | null {
   const ls = t.contestacoes.filter((x) => x.pagamentoId === pagamentoId);
-  if (ls.some((x) => contestacaoNaoFinal(x.situacao) || (x.situacao === "ganha" && x.estadoLido === "in_process" && x.avisos.includes("contestacao_resultado_mudou")))) return "em_curso";
+  if (ls.some(linhaEmCurso)) return "em_curso";
   return ls.some((x) => x.situacao === "perdida") ? "perdida" : null;
+}
+
+/**
+ * O tipo da disputa em curso mais antiga do pagamento (o aviso `contestado` do quadro diz o tipo: `textoDoAvisoContestado`);
+ * null sem disputa em curso.
+ */
+export function tipoDaDisputaEmCurso(linhas: readonly (LinhaEmCurso & Pick<LinhaDeContestacao, "tipo" | "abertaEm">)[], pagamentoId: string): TipoContestacao | null {
+  const emCurso = linhas.filter((x) => x.pagamentoId === pagamentoId && linhaEmCurso(x)).sort((a, b) => a.abertaEm.getTime() - b.abertaEm.getTime());
+  return emCurso[0]?.tipo ?? null;
 }
 
 /** Há contestação em curso no pagamento (`disputaDoPagamento` em curso ou perdida): recusa o cancelamento, a alteração e as devoluções. */

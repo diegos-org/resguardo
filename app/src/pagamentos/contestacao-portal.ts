@@ -59,6 +59,8 @@ export function disputaParaOProprietario(l: {
   if (l.situacao === "sem_efeito") return { variante: "sem_efeito", texto: `${inicio}: encerrada sem efeito; nada fica descontado de você.` };
   if (l.decisaoVersao === 0) {
     if (l.situacao === "ganha") return { variante: "devolvido", texto: `${inicio}: a SCL ganhou a disputa${quando}; nada foi descontado de você.` };
+    // Perdida sem nada a dividir (a perda coberta pela devolução que a disputa substituiu): definitiva sem decisão.
+    if (l.situacao === "perdida" && l.definitivoEm !== null) return { variante: "definitivo", texto: `${inicio}: nada descontado de você (a SCL perdeu a disputa${quando}).` };
     return { variante: "em_conferencia", texto: `${inicio}: em conferência. ${MOTIVO_PARTE_EM_CONFERENCIA}` };
   }
   if (l.situacao === "ganha") return { variante: "devolvido", texto: `${inicio}: ${valor > 0 ? `valor segurado devolvido (${formatBRL(valor)})` : "nada descontado de você"} — a SCL ganhou a disputa${quando}.${causa}${explicacao}` };

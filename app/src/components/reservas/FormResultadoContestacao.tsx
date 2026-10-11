@@ -18,10 +18,24 @@ const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } a
  * a SCL perdeu, quanto nunca entrou na conta e o dia do débito. A tarifa do Mercado Pago pela disputa é opcional nos dois.
  * Com a leitura de agora podendo mostrar a disputa em andamento (e sempre depois da recusa `nota_reforcada`), a caixa da
  * nota reforçada ("o painel do Mercado Pago já mostra o resultado") aparece. O "nunca entrou na conta" é obrigatório (em
- * branco, nunca vira zero) e, quando o domínio pede a liberação antes, o texto dele aparece. A pergunta do BotaoConfirmar
- * vem do servidor, com a data e os valores digitados.
+ * branco, nunca vira zero) e, quando o domínio pede a liberação antes, o texto dele aparece, com o atalho para "Registrar
+ * liberação" do pagamento (`atalhoLiberacao`, quando a ação cabe). A pergunta do BotaoConfirmar vem do servidor, com a data
+ * e os valores digitados.
  */
-export function FormResultadoContestacao({ contestacaoId, resultado: r, acao, hoje }: { contestacaoId: string; resultado: ResultadoNaTela; acao: AcaoContestacao; hoje: string }) {
+export function FormResultadoContestacao({
+  contestacaoId,
+  resultado: r,
+  acao,
+  hoje,
+  atalhoLiberacao = null,
+}: {
+  contestacaoId: string;
+  resultado: ResultadoNaTela;
+  acao: AcaoContestacao;
+  hoje: string;
+  /** O endereço ("#…") do formulário "Registrar liberação" do pagamento na ficha; null quando ele não aparece. */
+  atalhoLiberacao?: string | null;
+}) {
   // `pediuReforcada`: a recusa `nota_reforcada` já veio uma vez — a caixa fica na tela dali em diante (uma recusa seguinte por
   // outro motivo não a esconde de novo).
   const [estado, enviar, enviando] = useActionState(async (anterior: EstadoContestacaoPainel & { pediuReforcada?: boolean }, f: FormData) => {
@@ -108,6 +122,12 @@ export function FormResultadoContestacao({ contestacaoId, resultado: r, acao, ho
               {r.liberacaoAntes && (
                 <p role="note" className={styles.alerta} style={{ margin: 0 }}>
                   {r.liberacaoAntes}
+                  {atalhoLiberacao && (
+                    <>
+                      {" "}
+                      <a href={atalhoLiberacao}>Ir para &ldquo;Registrar liberação&rdquo;</a>
+                    </>
+                  )}
                 </p>
               )}
               <label>

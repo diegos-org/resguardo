@@ -452,6 +452,13 @@ describe("situações e transições (matriz de transicaoDaContestacao)", () => 
     const aberta = linha({ idCaso: "1", avisos: ["contestacao_leitura_conflitante", "contestacao_prazo_desconhecido", "contestacao_pix"] });
     expect(transicaoDaContestacao(aberta, { tipo: "resultado", resultado: "perdida", em: em(5), emDisputaNaLeitura: true, notaReforcada: false })).toEqual({ ok: false, codigo: "nota_reforcada", erro: TEXTO_NOTA_REFORCADA });
     expect(transicaoDaContestacao(aberta, { tipo: "sem_efeito", em: em(5), emDisputaNaLeitura: true, notaReforcada: false })).toMatchObject({ ok: false, codigo: "nota_reforcada" });
+    // Aceite (11/10): a recusa diz qual caixa marcar, com o rótulo de cada formulário (resultado e sem efeito).
+    const recusa = (f: Parameters<typeof transicaoDaContestacao>[1]) => {
+      const t = transicaoDaContestacao(aberta, f);
+      return t.ok ? "" : t.erro;
+    };
+    expect(recusa({ tipo: "resultado", resultado: "ganha", em: em(5), emDisputaNaLeitura: true, notaReforcada: false })).toContain('marque a caixa "O painel do Mercado Pago já mostra o resultado"');
+    expect(recusa({ tipo: "sem_efeito", em: em(5), emDisputaNaLeitura: true, notaReforcada: false })).toContain('marque a caixa "O painel do Mercado Pago já mostra a disputa encerrada"');
     const p = aplicada(transicaoDaContestacao(aberta, { tipo: "resultado", resultado: "perdida", em: em(5), emDisputaNaLeitura: true, notaReforcada: true }));
     // Os avisos de leitura saem (a disputa terminou aqui); o fato do Pix contestado fica.
     expect(p).toMatchObject({ situacao: "perdida", avisos: ["contestacao_pix"], eventos: [{ tipo: "resultado", antes: { situacao: "aberta" }, depois: { situacao: "perdida", emDisputaNaLeitura: true } }] });

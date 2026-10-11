@@ -19,9 +19,9 @@ import {
   registrarDisputaAcao,
 } from "@/pagamentos/acoes-contestacao";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
-import { TEXTO_REGISTRADA_A_MAO } from "@/pagamentos/contestacao-regras";
 import type { ContestacaoDaEquipe, ContestacaoNaTela } from "@/pagamentos/contestacao-tela";
 import { comDinheiro } from "@/pagamentos/situacoes";
+import { ancoraDaLiberacao } from "./ancoras";
 import { FormAcaoContestacao } from "./FormAcaoContestacao";
 import { FormCancelarContestada } from "./FormCancelarContestada";
 import { FormDecisaoContestacao } from "./FormDecisaoContestacao";
@@ -128,7 +128,7 @@ function DefesaLink({ reservaId }: { reservaId: string }) {
 }
 
 /** O bloco **Disputa** de uma linha para a equipe que lê o financeiro (desenho "Painel"). */
-function DisputaDaEquipe({ d, reservaId, hoje, defesa }: { d: ContestacaoDaEquipe; reservaId: string; hoje: string; defesa: boolean }) {
+function DisputaDaEquipe({ d, reservaId, hoje, defesa, atalhoLiberacao }: { d: ContestacaoDaEquipe; reservaId: string; hoje: string; defesa: boolean; atalhoLiberacao: string | null }) {
   const a = d.acoes;
   const linhas: [string, ReactNode][] = [
     ["Situação", d.situacaoTexto],
@@ -142,9 +142,11 @@ function DisputaDaEquipe({ d, reservaId, hoje, defesa }: { d: ContestacaoDaEquip
   linhas.push(["Verificação do banco", d.verificacao]);
   if (d.prazo) linhas.push(["Documentos", d.prazo.texto]);
   if (d.notaRegistro) linhas.push(["Nota do registro", d.notaRegistro]);
+  if (d.notaDebito) linhas.push(["Nota do débito (só a equipe)", d.notaDebito]);
   if (d.decisao) {
     linhas.push(...d.decisao.linhas);
     if (d.decisao.nota) linhas.push(["Nota da decisão (só a equipe)", d.decisao.nota]);
+    if (d.decisao.notaMudanca) linhas.push(["Por que a decisão mudou (só a equipe)", d.decisao.notaMudanca]);
     if (d.decisao.explicacao) linhas.push(["Explicação ao proprietário", d.decisao.explicacao]);
   }
   if (d.resultado) {
@@ -158,7 +160,7 @@ function DisputaDaEquipe({ d, reservaId, hoje, defesa }: { d: ContestacaoDaEquip
         <span className={styles.etiqueta}>{d.situacaoTexto.split(" (")[0]}</span>
         {d.duplicataPossivel && <span className={styles.etiqueta}>possível duplicata</span>}
       </div>
-      {d.registradaAMao && <p style={nota}>Registrada à mão: {TEXTO_REGISTRADA_A_MAO.replace(/^registrada à mão: /, "")}.</p>}
+      <p style={nota}>{d.origemTexto}</p>
       <Linhas linhas={linhas} />
       {d.divisaoMudou && (
         <p role="note" className={styles.alerta} style={{ margin: 0 }}>
@@ -257,7 +259,7 @@ function DisputaDaEquipe({ d, reservaId, hoje, defesa }: { d: ContestacaoDaEquip
           </FormAcaoContestacao>
         )}
         {d.podeMarcarDocumentos && <FormDocumentos id={d.id} desde={d.desde} hoje={hoje} />}
-        {a.resultado && <FormResultadoContestacao contestacaoId={d.id} resultado={a.resultado} acao={confirmarResultadoAcao} hoje={hoje} />}
+        {a.resultado && <FormResultadoContestacao contestacaoId={d.id} resultado={a.resultado} acao={confirmarResultadoAcao} hoje={hoje} atalhoLiberacao={atalhoLiberacao} />}
         {a.semEfeito && (
           <FormAcaoContestacao
             acao={encerrarSemEfeitoAcao}
@@ -342,7 +344,7 @@ export function ContestacaoSite({ reservaId, pagamento: p, equipe, operacao, edi
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {equipe
-        ? equipe.map((d) => <DisputaDaEquipe key={d.id} d={d} reservaId={reservaId} hoje={hoje} defesa={defesa} />)
+        ? equipe.map((d) => <DisputaDaEquipe key={d.id} d={d} reservaId={reservaId} hoje={hoje} defesa={defesa} atalhoLiberacao={p.acoes.registrarLiberacao ? `#${ancoraDaLiberacao(p.id)}` : null} />)
         : operacao.map((d) => <DisputaResumida key={d.id} d={d} reservaId={reservaId} hoje={hoje} defesa={defesa} />)}
       {registrar && (
         <FormRegistrarContestacao

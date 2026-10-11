@@ -1120,7 +1120,20 @@ async function gravarDecisao(
   t: Travado,
   p: Pagamento,
   l: Contestacao,
-  d: { causa: CodigoCausaContestacao; quemArca: QuemArcaContestacao; nota: string | null; explicacao: string | null; base: { parteProprietario: number; comissao: number }; valor: number; opcao: OpcaoDaDecisao; proprietarioId: string | null; atualizacao: boolean },
+  d: {
+    causa: CodigoCausaContestacao;
+    quemArca: QuemArcaContestacao;
+    /** A nota da decisão (só "Registrar quem arca"); null = mantém. */
+    nota: string | null;
+    /** O "por que mudar" ("Mudar quem arca"; a nota da decisão fica); null = mantém. */
+    notaMudanca?: string | null;
+    explicacao: string | null;
+    base: { parteProprietario: number; comissao: number };
+    valor: number;
+    opcao: OpcaoDaDecisao;
+    proprietarioId: string | null;
+    atualizacao: boolean;
+  },
   autorId: string | null,
   agora: Date,
 ): Promise<void> {
@@ -1133,6 +1146,7 @@ async function gravarDecisao(
       causa: d.causa,
       quemArca: d.quemArca,
       ...(d.nota !== null ? { decisaoNota: d.nota } : {}),
+      ...(d.notaMudanca != null ? { decisaoMudancaNota: d.notaMudanca } : {}),
       ...(d.explicacao !== null ? { explicacaoProprietario: d.explicacao } : {}),
       decisaoPor: autorId,
       decisaoEm: agora,
@@ -1211,6 +1225,7 @@ export async function registrarDecisao(db: Db, organizacaoId: string, contestaca
  * "Mudar quem arca" (`financeiro:editar`, nota obrigatória "por que mudar"): só antes do resultado e com uma decisão em vigor
  * (a versão da prévia); a divisão nova sobre o valor em risco e as partes de agora (a base é congelada de novo), versão
  * n+1, só a diferença de cada lado no mês corrente. Depois do resultado: "A disputa já terminou: corrija com um ajuste".
+ * O "por que mudar" vai para `decisao_mudanca_nota` (a da mudança mais recente); a nota da decisão não é apagada.
  */
 export async function mudarDecisao(db: Db, organizacaoId: string, contestacaoId: string, e: EntradaDecisao, autorId: string | null, agora: Date = new Date()): Promise<ResultadoContestacao> {
   const alvo = await contestacaoDaOrganizacao(db, organizacaoId, contestacaoId);
@@ -1232,7 +1247,7 @@ export async function mudarDecisao(db: Db, organizacaoId: string, contestacaoId:
       t,
       p,
       l,
-      { causa: entrada.causa, quemArca: entrada.quemArca, nota: entrada.nota, explicacao: entrada.explicacao, base: f.partes, valor: f.valor, opcao: escolhida.opcao, proprietarioId: f.partes.proprietarioId, atualizacao: false },
+      { causa: entrada.causa, quemArca: entrada.quemArca, nota: null, notaMudanca: entrada.nota, explicacao: entrada.explicacao, base: f.partes, valor: f.valor, opcao: escolhida.opcao, proprietarioId: f.partes.proprietarioId, atualizacao: false },
       autorId,
       agora,
     );

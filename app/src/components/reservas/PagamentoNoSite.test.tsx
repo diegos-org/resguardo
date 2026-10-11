@@ -79,6 +79,8 @@ describe("quadro Pagamento no site", () => {
     const h = html([base]);
     expect(h).toContain("Conferir agora");
     expect(h).toContain("Registrar liberação");
+    // M8.2e (aceite): o "Perdeu" da disputa leva até aqui pelo atalho.
+    expect(h).toContain(`id="registrar-liberacao-${base.id}"`);
     expect(h).toContain('max="2026-10-09"');
     expect(h).toContain('value="1805,94"');
     expect(h).not.toContain("Devolver pelo Mercado Pago");

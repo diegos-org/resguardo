@@ -55,6 +55,7 @@ import {
   TEXTO_RESULTADO_SEM_LEITURA,
   TEXTO_SEM_COMO_FUNCIONA,
   TEXTO_VERIFICACAO_TENTADA,
+  textoDaOrigemDaContestacao,
   type TextosDasCausas,
   type TipoContestacao,
   valorSeguradoDesatualizado,
@@ -77,6 +78,8 @@ const dataCompleta = (d: string) => d.slice(0, 10).split("-").reverse().join("/"
 const diasEntre = (de: string, ate: string) => Math.round((Date.parse(`${ate}T00:00:00Z`) - Date.parse(`${de}T00:00:00Z`)) / DIA_MS);
 const nDias = (n: number) => `${n} ${n === 1 ? "dia" : "dias"}`;
 const comSinal = (n: number) => (n > 0 ? `+${formatBRL(n)}` : formatBRL(n));
+/** Um texto de regra ("registrada à mão: …") como frase: inicial maiúscula e ponto final. */
+const emFrase = (t: string) => `${t.charAt(0).toUpperCase()}${t.slice(1)}${/[.!?]$/.test(t) ? "" : "."}`;
 
 // ---------------------------------------------------------------- os resultados das ações (?contestacao=)
 
@@ -432,6 +435,13 @@ export type ResultadoNaTela = {
 export type ContestacaoDaEquipe = ContestacaoNaTela & {
   origem: "leitura" | "equipe";
   registradaAMao: boolean;
+  /**
+   * A origem em palavras (`textoDaOrigemDaContestacao`): registrada à mão, ou lida no Mercado Pago (pode ser uma reclamação
+   * no Mercado Pago: o sistema não tem como separar).
+   */
+  origemTexto: string;
+  /** A nota do "Confirmar o débito do Mercado Pago" (`debito_nota`; só a equipe que lê o financeiro); vazia sem nota. */
+  notaDebito: string;
   duplicataPossivel: boolean;
   idContestacao: string | null;
   idTransacao: string | null;
@@ -442,7 +452,8 @@ export type ContestacaoDaEquipe = ContestacaoNaTela & {
   verificacao: string;
   notaRegistro: string;
   eventos: { em: Date; texto: string; quem: string }[];
-  decisao: { linhas: [string, string][]; nota: string; explicacao: string; textoParaProprietario: string | null } | null;
+  /** `nota`: a da decisão (nunca apagada); `notaMudanca`: o "por que mudar" da mudança mais recente (vazia sem mudança). */
+  decisao: { linhas: [string, string][]; nota: string; notaMudanca: string; explicacao: string; textoParaProprietario: string | null } | null;
   divisaoMudou: boolean;
   /** "Pagamento sem reserva: não há proprietário…" ou "A disputa cobre a devolução…": por que não há decisão. */
   semDecisao: string | null;
@@ -551,7 +562,7 @@ export async function lerContestacoesDaEquipe(db: Db, sessao: Sessao, reservaId:
   const nomeDaCausa = (c: unknown) => (typeof c === "string" && c in causas ? causas[c as CodigoCausaContestacao].nome : "—");
   const [r] = await db.select({ codigo: reservas.codigo, checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado, imovelId: reservas.imovelId }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org)));
   const devs = await db.select().from(devolucoesPagamento).where(and(eq(devolucoesPagamento.organizacaoId, org), inArray(devolucoesPagamento.pagamentoId, ps.map((p) => p.id))));
-  const evs = await db.select().from(eventosContestacao).where(inArray(eventosContestacao.contestacaoId, ls.map((l) => l.id))).orderBy(desc(eventosContestacao.em), desc(eventosContestacao.id));
+  const evs = await db.select().from(eventosContestacao).where(inArray(eventosContestacao.contestacaoId, ls.map((l) => l.id))).orderBy(desc(eventosContestacao.em), desc(eventosContestacao.ordem));
   const ids = [...new Set([...evs.map((e) => e.usuarioId), ...ls.flatMap((l) => [l.decisaoPor, l.resultadoPor])].filter((x): x is string => !!x))];
   const nomes = new Map((ids.length ? await db.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios).where(and(eq(usuarios.organizacaoId, org), inArray(usuarios.id, ids))) : []).map((u) => [u.id, u.nome]));
   const quem = (id: string | null, fonte?: string) => (id ? (nomes.get(id) ?? "a equipe") : fonte === "equipe" ? "a equipe" : FONTE[fonte ?? "sistema"] ?? "o sistema");
@@ -584,6 +595,8 @@ export async function lerContestacoesDaEquipe(db: Db, sessao: Sessao, reservaId:
       ...naTela(l, p, agora, config.diasAvisoDocumentacao, podeDocumentos(sessao)),
       origem: l.origem,
       registradaAMao: l.origem === "equipe",
+      origemTexto: emFrase(textoDaOrigemDaContestacao(l)),
+      notaDebito: l.debitoNota,
       duplicataPossivel: l.duplicataPossivel,
       idContestacao: l.idContestacao,
       idTransacao: l.idTransacao,
@@ -606,6 +619,7 @@ export async function lerContestacoesDaEquipe(db: Db, sessao: Sessao, reservaId:
                 ["Versão", `${l.decisaoVersao}${l.decisaoEm ? `, em ${diaHoraBr(l.decisaoEm)}` : ""} por ${quem(l.decisaoPor, "equipe")}`],
               ],
               nota: l.decisaoNota,
+              notaMudanca: l.decisaoMudancaNota,
               explicacao: l.explicacaoProprietario,
               textoParaProprietario: r
                 ? textoParaOProprietario({

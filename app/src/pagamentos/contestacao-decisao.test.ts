@@ -315,7 +315,15 @@ describe("mudar e atualizar a decisão (item 12)", () => {
     expect((await naChave(x.l, ch.scl(2)))[0]).toMatchObject({ valor: py, montante: -py, competencia: "2026-11-01" });
     // Outubro não muda.
     expect((await naChave(x.l, ch.proprietario(1)))[0]).toMatchObject({ valor: -px, competencia: "2026-10-01" });
-    expect(await linha(x.l.id)).toMatchObject({ decisaoVersao: 2, quemArca: "proprietario", parteProprietario: TOTAL, parteScl: 0, decisaoNota: "Laudo do técnico confirmou o defeito." });
+    // Aceite (11/10): o "por que mudar" fica à parte; a nota da decisão (a do registro) não é apagada.
+    expect(await linha(x.l.id)).toMatchObject({
+      decisaoVersao: 2,
+      quemArca: "proprietario",
+      parteProprietario: TOTAL,
+      parteScl: 0,
+      decisaoNota: "Hóspede relatou problema no ar-condicionado.",
+      decisaoMudancaNota: "Laudo do técnico confirmou o defeito.",
+    });
     const [, a2] = await auditoriaDe("contestacao.decisao");
     expect(a2.mudancas).toMatchObject({ versao: [1, 2], quemArca: ["proporcional", "proprietario"], proprietario: [px, TOTAL], scl: [py, 0] });
     expect(JSON.stringify(a2.mudancas)).not.toContain("Laudo");

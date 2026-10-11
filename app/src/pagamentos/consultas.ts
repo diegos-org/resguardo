@@ -54,6 +54,7 @@ import {
   codigoMotivo,
   textoDevolucaoAguardandoLiberacaoAtrasada,
   textoDevolucaoDevidaDepoisDaDisputa,
+  textoDoAvisoContestado,
   comDinheiro,
   emAndamento,
   motivoDoDetalhe,
@@ -67,7 +68,7 @@ import {
   textoRestanteRecusado,
 } from "./situacoes";
 import { situacaoEfetiva, valorNovo } from "./alteracao-regras";
-import { MOTIVO_CANCELAMENTO_CONTESTACAO, NOMES_SITUACAO_CONTESTACAO, NOMES_TIPO_CONTESTACAO } from "./contestacao-regras";
+import { MOTIVO_CANCELAMENTO_CONTESTACAO, NOMES_SITUACAO_CONTESTACAO, NOMES_TIPO_CONTESTACAO, type TipoContestacao, tipoDaDisputaEmCurso } from "./contestacao-regras";
 import {
   type Alteracao,
   carenciaNoTravado,
@@ -1032,8 +1033,11 @@ type ContextoDoPainel = {
   reserva: { estado: EstadoReserva; valorRetido: number | null } | null;
   cancelamento: { situacao: SituacaoCancelamento; direito: DireitoCancelamento | null } | null;
   alteracoes?: readonly (Pick<Alteracao, "id" | "situacao"> & Partial<Pick<Alteracao, "holdAte">>)[];
-  /** M8.2e: as disputas do pagamento (as ações das devoluções e a liberação à mão as leem; a perdida sem decisão pede atenção). */
-  contestacoes?: readonly Pick<Contestacao, "pagamentoId" | "situacao" | "avisos" | "estadoLido" | "decisaoVersao" | "definitivoEm" | "liquidoNaoEntrou">[];
+  /**
+   * M8.2e: as disputas do pagamento (as ações das devoluções e a liberação à mão as leem; a perdida sem decisão pede atenção;
+   * o aviso `contestado` diz o tipo da em curso mais antiga).
+   */
+  contestacoes?: readonly Pick<Contestacao, "pagamentoId" | "tipo" | "abertaEm" | "situacao" | "avisos" | "estadoLido" | "decisaoVersao" | "definitivoEm" | "liquidoNaoEntrou">[];
 };
 
 /** O aviso de devolução recusada, no quadro do pagamento, quando a recusa veio do painel do Mercado Pago (registrada) ou da leitura. */
@@ -1044,9 +1048,17 @@ export const TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA =
 
 /**
  * Os avisos do pagamento em palavras, com os valores quando o texto precisa deles (os de devolução, pela devolução que os
- * tem). `comValores: false`: os mesmos avisos sem nenhum R$, para quem não lê o financeiro (D26).
+ * tem). `comValores: false`: os mesmos avisos sem nenhum R$, para quem não lê o financeiro (D26). M8.2e: `contestado` diz o
+ * tipo da disputa em curso (`tipoDaDisputa`; sem ele, o texto geral).
  */
-function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined, devs: readonly Devolucao[] = dev ? [dev] : [], agora: Date = new Date(), comValores = true): string[] {
+function textosDoPagamento(
+  p: Pagamento,
+  dev: Devolucao | undefined,
+  devs: readonly Devolucao[] = dev ? [dev] : [],
+  agora: Date = new Date(),
+  comValores = true,
+  tipoDaDisputa: TipoContestacao | null = null,
+): string[] {
   const comAviso = (c: CodigoAviso) => [...devs].reverse().find((d) => d.avisos.includes(c));
   const valor = (v: number) => (comValores ? v : null);
   return p.avisos
@@ -1084,6 +1096,7 @@ function textosDoPagamento(p: Pagamento, dev: Devolucao | undefined, devs: reado
       if (c === "devolucao_falhou" && dev?.situacao === "recusada" && dev.idProvedor !== null && !dev.paradaEm) return TEXTO_DEVOLUCAO_FALHOU_NA_LEITURA;
       // Sem reserva (M8.2a), o devolvido fora do sistema não tem parte de proprietário em conferência.
       if (c === "devolvido_por_fora" && p.desfecho !== "reserva") return "Este pagamento foi devolvido (no todo ou em parte) fora do sistema: confira no painel do Mercado Pago.";
+      if (c === "contestado") return textoDoAvisoContestado(tipoDaDisputa);
       return AVISOS_PAGAMENTO[c];
     });
 }
@@ -1147,8 +1160,8 @@ function paraPainel(p: Pagamento, devs: readonly Devolucao[], temRecebimentoManu
     desfechoEm: p.desfechoEm,
     motivoSemReserva: p.motivoSemReserva,
     motivoSemReservaTexto: textoMotivoSemReserva(p.motivoSemReserva),
-    avisos: textosDoPagamento(p, dev, devs, agora),
-    avisosSemValores: textosDoPagamento(p, dev, devs, agora, false),
+    avisos: textosDoPagamento(p, dev, devs, agora, true, tipoDaDisputaEmCurso(disputasP, p.id)),
+    avisosSemValores: textosDoPagamento(p, dev, devs, agora, false, tipoDaDisputaEmCurso(disputasP, p.id)),
     devolucao: dev
       ? {
           situacao: dev.situacao,
@@ -1304,6 +1317,8 @@ async function montarPainel(db: Db, organizacaoId: string, lista: Pagamento[], a
   const cts = await db
     .select({
       pagamentoId: contestacoesPagamento.pagamentoId,
+      tipo: contestacoesPagamento.tipo,
+      abertaEm: contestacoesPagamento.abertaEm,
       situacao: contestacoesPagamento.situacao,
       avisos: contestacoesPagamento.avisos,
       estadoLido: contestacoesPagamento.estadoLido,

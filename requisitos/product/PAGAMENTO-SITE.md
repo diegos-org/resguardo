@@ -3009,6 +3009,15 @@ Cada ajuste com o motivo. Nenhum muda uma decisão de Diego; os que mudam um tex
   chama `contestacoes_pagamento_caixa_final_fk`: o nome gerado passaria de 63 caracteres.
 - O desfecho `contestacao` aparece como "Voltou ao pagador pela disputa". A base de cancelamento `contestacao` e o valor
   `contestacao` de `confirmada_por` são só tipos (as colunas são texto).
+- **Colunas do aceite (11/10, depois da revisão).** *Antes:* a 0069 não tinha nenhuma delas. *Agora:*
+  - `contestacoes_pagamento.decisao_mudanca_nota` (o "por que mudar" da mudança mais recente; abaixo, "Telas");
+  - `eventos_contestacao.ordem` (identidade, a ordem de gravação: os eventos de uma mesma ação têm o mesmo `em`, e a
+    linha do tempo desempatava pelo id aleatório);
+  - `repasses.fora_presa_disputa` e `repasses.fora_segurado_junto` (a divisão do que ficou fora, gravada no fechamento;
+    null nos fechamentos de antes; abaixo, "Proprietário e repasses").
+  *Motivo:* sem elas, a explicação ao proprietário e a nota da decisão se perdiam na mudança, a linha do tempo trocava de
+  ordem a cada leitura e o motivo do que ficou fora de um fechamento dependia do valor em risco de agora. A 0069 ainda não
+  foi aplicada em nenhum banco (a branch não foi publicada), por isso as colunas entram nela, idempotentes como o resto.
 
 **Leitura, casamento e transições:**
 - `contestacaoDaLeitura` devolve `{ explicada, contestado }`, não a situação; com `contestado` falso, vale a situação
@@ -3067,6 +3076,23 @@ Cada ajuste com o motivo. Nenhum muda uma decisão de Diego; os que mudam um tex
 - O e-mail do fechamento refaz a parte presa por disputa (`foraPorDisputaDoFechamento`) pelo livro como estava no
   instante do fechamento e pelas disputas abertas antes dele e ainda sem decisão nele. *Motivo:* o repasse grava só o
   total `foraDoFechamento`; assim não foi preciso outra coluna.
+  - *Revisão de 11/10 (dinheiro). Antes:* a conta lia `decisao_em` e `valor_em_risco` de agora (`decisao_em` é regravado a
+    cada versão, o "Encerrar sem efeito" zera o valor em risco, e uma disputa ganha sem decisão antes do fechamento
+    continuava contando). Com o total fora negativo, o e-mail mostrava "(reserva em conferência: disputa do pagamento):
+    -R$ …", e o painel do mês fechado dizia sempre "dinheiro ainda não registrado". *Agora:* a divisão `{ presa, seguradoJunto, outras }` é refeita pela linha do tempo
+    daquele instante: decisão tomada antes do corte (as linhas `…:(proprietario|scl):(vN|final)` criadas até ele, o evento
+    `decisao` ou `decisao_em` até ele); disputa encerrada antes do corte (os eventos `resultado` e `sem_efeito`); a
+    duplicata pela `confirmada_outra_em`; o valor em risco de uma encerrada sem efeito pelo retido em vigor no corte; a
+    perdida antes do corte com perda a dividir. O e-mail mostra uma linha por motivo, com o sinal de cada uma, e o valor
+    segurado que espera junto ganha linha própria. O painel do mês fechado dá os mesmos motivos (`foraDividido`). *Limite
+    registrado:* o valor em risco de uma disputa ainda aberta é o de agora; *próximo passo:* uma coluna no repasse.
+  - *Aceite (11/10): o próximo passo, feito.* O fechamento grava a divisão daquele instante (`fora_presa_disputa` e
+    `fora_segurado_junto`, da mesma `foraDividido` da previsão), e `foraPorDisputaDoFechamento` lê daí; a reconstrução pela
+    linha do tempo fica só para os fechamentos de antes (colunas null), com o limite acima. Financeiro → Repasses mostra
+    as três linhas pelo `foraDividido`, cada uma com o sinal ("− Fora do fechamento (dinheiro ainda não com a empresa)",
+    "− Fora do fechamento (reserva em conferência: disputa do pagamento)" e "+ Valor segurado pela disputa do pagamento,
+    fora deste repasse (espera junto com a parte da reserva)"), no mês fechado também. *Antes:* o painel usava
+    `p.repasse ? 0 : p.foraPorDisputa`, e o mês fechado dizia tudo "dinheiro ainda não com a empresa".
 - Estornar um repasse é recusado quando ele levou uma parte da reserva e existe, fora dele, uma linha da disputa do
   mesmo proprietário lançada depois; o repasse que só leva a linha da disputa pode ser estornado.
 - O segurado e a reversão que entram juntos somam zero ("Nada disponível"), sem a mensagem de desconto não coberto.
@@ -3075,6 +3101,25 @@ Cada ajuste com o motivo. Nenhum muda uma decisão de Diego; os que mudam um tex
 - Na tabela de reservas do portal, as linhas da disputa ficam fora da "sua parte" de cada reserva (as de sempre não
   mudam) e aparecem à parte, no extrato e no resumo.
 - A tarifa e a taxa da disputa têm texto próprio na lista de despesas.
+  - *Revisão de 11/10 (dinheiro). Antes:* as duas eram "Tarifa… acompanhe no quadro da disputa". *Agora:* a taxa é "Taxa
+    do pagamento do site perdida na disputa (pagamento sem reserva), definitiva (disputa perdida em dd/mm)", e a tarifa é
+    "Tarifa do Mercado Pago pela disputa do pagamento, já paga (disputa ganha/perdida em dd/mm)", sem "acompanhe" nas já
+    realizadas.
+- **Cada linha da disputa diz o valor dela** (revisão de 11/10, dinheiro). *Antes:* todas as linhas do extrato repetiam
+  `parte_proprietario` (o total em vigor), e a linha positiva (a que devolve) era chamada de "segurados". *Agora:* a linha é
+  identificada pela chave (versão N, reverte, final ou sem efeito), com o valor segurado antes e depois tirado das linhas
+  de versão no livro: a versão 1 diz o valor dela; a versão N diz "com a decisão atualizada, o valor segurado passa de R$ a
+  para R$ b", seguido de "mais R$ d segurados…" ou "R$ d voltam a você", e "Nada fica segurado de você" quando b = 0; a
+  versão que já não vale diz "pela primeira decisão (atualizada depois)"; o definitivo e o devolvido seguem a mesma
+  lógica. A causa, a explicação e a proporção só aparecem na versão em vigor.
+- **Causa e explicação no e-mail e no PDF** (revisão de 11/10, dinheiro). *Antes:* só o extrato e a lista do portal as
+  mostravam. *Agora:* ao lado da linha do item (painel, portal e e-mail do repasse; no e-mail, as linhas da disputa nunca
+  caem no "e mais N reserva(s)") e, no PDF, na nota abaixo da tabela das reservas (a coluna da situação é cortada). A
+  linha devolvida e a versão que já não vale não as levam.
+- **Portal, perdida sem nada a dividir** (aceite de 11/10). *Antes:* sem decisão, tudo que não era ganha aparecia "em
+  conferência", também a perdida definitiva sem perda a dividir (a perda coberta pela devolução substituída). *Agora:*
+  "Disputa do pagamento da reserva SCL-…: nada descontado de você (a SCL perdeu a disputa em dd/mm)." (variante
+  definitivo); a perdida que ainda espera a decisão continua em conferência.
 - `definitivo_em` só é preenchido com os lançamentos definitivos feitos (`recebidoPorReserva` depende disso).
 
 **Telas:**
@@ -3084,6 +3129,49 @@ Cada ajuste com o motivo. Nenhum muda uma decisão de Diego; os que mudam um tex
   `preencherCampos`, `blocosDoDocumento`), sem o módulo do site que só roda no servidor.
 - O e-mail à equipe sai por `avisarEquipeDasContestacoes`, que usa `avisarEquipePorEmail` (o mesmo do pedido de
   cancelamento), na rotina e no registro; o "Conferir agora" de um pagamento é `conferirContestacoesDoPagamento`.
+- **Revisão das telas (11/10/2026).**
+  - **"Para cancelar, fale com a equipe." em Minha reserva** vale também com a disputa perdida (a regra única,
+    `disputaDoPagamento`: em curso ou perdida), também no MED do Pix perdido com o pagamento ainda aprovado; a frase
+    "pagamento em conferência" só aparece enquanto a disputa está em curso.
+  - **"Texto para o proprietário"**: neutro quanto ao tipo e à forma de pagamento ("foi aberta uma disputa de R$ X sobre o
+    pagamento desta reserva no Mercado Pago", como o portal; nunca "titular do cartão") e escrito pela situação (segurado
+    até o resultado; ganha, volta no repasse seguinte; perdida, fica definitivo; sem efeito, nada fica descontado).
+    "Cancelar a reserva contestada" diz "pagador".
+  - **Caixa da nota reforçada**: aparece também com a linha aberta e o caso da Chargebacks API sem estado nem cobertura
+    (`leituraEmDisputa`), e sempre depois da recusa `nota_reforcada`, no resultado e no sem efeito (a ação nunca fica
+    travada sem a caixa que o domínio pede).
+  - **"Mudar quem arca"**: o campo vem com a explicação ao proprietário em vigor; enviar sem mexer a mantém, e apagar o
+    campo apaga a explicação (de propósito).
+  - **"Nunca entrou na conta"**: obrigatório; em branco nunca vira 0 (a ação manda null, e o domínio recusa). O valor
+    digitado entra na pergunta do botão, e o texto de `liberacaoAntesDaPerda` aparece quando o domínio pede a liberação
+    antes.
+  - **"Documentos para a defesa"**: sem o titular da reserva (não está na lista do desenho), e o valor pago só para quem
+    lê o financeiro (`verValores`).
+  - **Ambígua no Início**: contada pelos avisos do pagamento (`pagamentos.avisos` com `contestacao_ambigua`), também sem
+    linha no quadro, o que fecha "a contagem do Início pelos avisos do pagamento é das telas" (revisão do domínio, abaixo).
+  - Também: a prévia da decisão diz o que cada lado fica da reserva com a disputa perdida e com a ganha; o hóspede da
+    reserva cancelada pela disputa lê "em conferência", nunca "não há devolução"; a prévia do cancelamento não exige a
+    nota (só o passo 2); o provedor só é consultado depois de achar a reserva na empresa da sessão.
+- **Aceite (11/10/2026): o que cada corretor deixou para a área de outro.**
+  - **A nota do débito no quadro** (a coluna veio na revisão do domínio): "Nota do débito (só a equipe)", na leitura da
+    equipe que lê o financeiro; a operação não a vê.
+  - **A origem da disputa no quadro**: `textoDaOrigemDaContestacao` em toda linha ("Lida no Mercado Pago como contestação:
+    pode ser uma reclamação no Mercado Pago (mediação)…" ou "Registrada à mão: …"). *Antes:* só a registrada à mão tinha
+    texto.
+  - **"Perdeu" que pede a liberação antes**: o texto de `liberacaoAntesDaPerda` leva o atalho "Ir para 'Registrar
+    liberação'", que desce até o formulário do pagamento, só quando essa ação está no quadro (o domínio a aceitaria).
+  - **"Mudar quem arca" guarda o "por que mudar" à parte** (`decisao_mudanca_nota`). *Antes:* ele substituía a
+    `decisao_nota`, e a nota da decisão se perdia. *Agora:* o quadro mostra as duas ("Nota da decisão" e "Por que a decisão
+    mudou", só a equipe); nenhuma vai ao proprietário, ao evento ou à auditoria. A explicação vazia continua apagando a
+    explicação (acima).
+  - **O aviso "contestado" do quadro do pagamento diz o tipo** da disputa em curso mais antiga (`tipoDaDisputaEmCurso`,
+    `textoDoAvisoContestado`): "Pagamento contestado no cartão…", "Devolução pedida pelo Pix (MED)…" ou "Reclamação no
+    Mercado Pago…". *Antes:* sempre o texto geral "Disputa do pagamento em curso…".
+  - **A recusa da nota reforçada diz a caixa a marcar**, com o rótulo de cada formulário: 'marque a caixa "O painel do
+    Mercado Pago já mostra o resultado"' (resultado) e '… "O painel do Mercado Pago já mostra a disputa encerrada"' (sem
+    efeito). *Antes:* "confirme na nota que o painel do Mercado Pago já mostra o resultado", nos dois.
+  - **A linha do tempo na ordem de gravação** (`eventos_contestacao.ordem`, o mais novo em cima). *Antes:* os eventos de uma
+    mesma ação (a decisão e os lançamentos dela) trocavam de ordem a cada leitura, e um teste das telas falhava às vezes.
 
 **Revisão do domínio (11/10/2026, depois da auditoria do PR).** Cada item com o antes e o motivo; os marcados *(segue o
 desenho)* só fazem o código cumprir o que já estava escrito acima.
@@ -3154,7 +3242,7 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
   próprio (`ERRO_RESTANTE_DA_DISPUTA`) e o quadro oferece só o por fora. As devoluções de um pagamento com disputa em curso
   ou perdida deixam de oferecer "Pedir o restante" e "por fora" que o domínio recusaria.
 - **Nota do débito** (limite resolvido): coluna `debito_nota` na 0069, gravada em "Confirmar o débito". O quadro a mostra
-  a quem lê o financeiro (telas).
+  a quem lê o financeiro (feito no aceite, "Telas").
 - **"Cancelar a reserva contestada".** *Antes:* `valor_retido` = o principal menos as devoluções realizadas e o
   reconhecido. *Agora:* menos também as devoluções substituídas por uma disputa não final, e nunca mais que o valor da
   reserva de agora. *Motivo:* depois de uma redução, a diferença que é do hóspede voltava ao resultado do proprietário e da
@@ -3166,6 +3254,7 @@ desenho)* só fazem o código cumprir o que já estava escrito acima.
 - **Origem da disputa no quadro** *(segue o desenho, "O que é contestação aqui")*: `textoDaOrigemDaContestacao` dá, para a
   linha lida, "lida no Mercado Pago como contestação: pode ser uma reclamação no Mercado Pago (mediação); o sistema não tem
   como separar, confira no painel dele" (`TEXTO_LIDA_PODE_SER_RECLAMACAO`); a registrada à mão continua com o texto dela.
+  O quadro mostra os dois textos desde o aceite ("Telas").
 
 ### Mudanças nas outras seções deste arquivo (no mesmo PR)
 

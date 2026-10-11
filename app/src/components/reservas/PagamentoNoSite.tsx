@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
+import { ancoraDaLiberacao } from "./ancoras";
 import { DOCUMENTOS_LEGAIS, PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import type { SituacaoDevolucao } from "@/db/schema";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
@@ -671,26 +672,29 @@ function Tentativa({ p, verValores, editar, hoje, alteracoes, disputa }: { p: Pa
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {a.conferir && <FormAcaoPagamento acao={conferirAgoraAcao} pagamentoId={p.id} rotulo="Conferir agora" nome="Conferir agora no Mercado Pago" discreto />}
           {a.registrarLiberacao && (
-            <FormAcaoPagamento
-              acao={registrarLiberacaoAcao}
-              pagamentoId={p.id}
-              rotulo="Registrar liberação"
-              nome="Registrar liberação"
-              pergunta={
-                p.cancelada && p.cancelada.estado !== "cancelada_sem_devolucao"
-                  ? "Registrar a liberação deste pagamento com a data e o líquido informados? A reserva foi cancelada com devolução integral: nada entra no financeiro; a taxa do Mercado Pago (valor − líquido) fica no pagamento e a devolução que esperava a liberação é pedida em seguida."
-                  : "Registrar a liberação deste pagamento com a data e o líquido informados? O recebimento entra na reserva (libera a parte do proprietário para repasse) e a taxa do Mercado Pago (valor − líquido) é gravada."
-              }
-            >
-              <label style={{ flex: "0 1 180px" }}>
-                Data em que caiu na conta
-                <input type="date" name="data" defaultValue={hoje} max={hoje} required />
-              </label>
-              <label style={{ flex: "0 1 180px" }}>
-                Líquido que caiu (R$)
-                <input name="liquido" inputMode="decimal" defaultValue={p.liquido !== null ? centavosParaCampo(p.liquido) : ""} required />
-              </label>
-            </FormAcaoPagamento>
+            // M8.2e: o "Perdeu" da disputa que pede a liberação antes leva até aqui (`ancoraDaLiberacao`).
+            <div id={ancoraDaLiberacao(p.id)}>
+              <FormAcaoPagamento
+                acao={registrarLiberacaoAcao}
+                pagamentoId={p.id}
+                rotulo="Registrar liberação"
+                nome="Registrar liberação"
+                pergunta={
+                  p.cancelada && p.cancelada.estado !== "cancelada_sem_devolucao"
+                    ? "Registrar a liberação deste pagamento com a data e o líquido informados? A reserva foi cancelada com devolução integral: nada entra no financeiro; a taxa do Mercado Pago (valor − líquido) fica no pagamento e a devolução que esperava a liberação é pedida em seguida."
+                    : "Registrar a liberação deste pagamento com a data e o líquido informados? O recebimento entra na reserva (libera a parte do proprietário para repasse) e a taxa do Mercado Pago (valor − líquido) é gravada."
+                }
+              >
+                <label style={{ flex: "0 1 180px" }}>
+                  Data em que caiu na conta
+                  <input type="date" name="data" defaultValue={hoje} max={hoje} required />
+                </label>
+                <label style={{ flex: "0 1 180px" }}>
+                  Líquido que caiu (R$)
+                  <input name="liquido" inputMode="decimal" defaultValue={p.liquido !== null ? centavosParaCampo(p.liquido) : ""} required />
+                </label>
+              </FormAcaoPagamento>
+            </div>
           )}
           {a.estornarLiberacao && (
             <FormAcaoPagamento
