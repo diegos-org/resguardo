@@ -37,6 +37,8 @@ Conferir no registro privado qual cópia foi retirada, quem a mantém sob guarda
 
 Até nova decisão, **os áudios ficam com Diego**, sem envio automático de áudio, link privado ou conteúdo a serviços de transcrição. A preferência de 5/10 por transcrição nativa/local e a alternativa então autorizada para áudios específicos ficam como histórico; não acionam esse fluxo nas novas rodadas.
 
+**Motivo documentado e objetivo:** a mudança decorre da decisão operacional explícita de Diego, reafirmada nesta revisão, de assumir os áudios até nova decisão. Não foi informada uma justificativa adicional de privacidade, acesso, qualidade ou falha técnica; não atribuir uma causa por hipótese. O objetivo é manter o tratamento dos áudios com ele enquanto essa decisão vigorar, sem transferência automática a serviços. Retomar transcrição por agente depende de nova decisão que defina escopo e meio, não apenas de um serviço voltar a estar acessível.
+
 Registrar a referência privada mínima da mensagem e a lacuna de compreensão; aguardar conteúdo ou esclarecimento de Diego e continuar o que for independente. Áudio não compreendido não comprova decisão nem resolução. Se vier texto, vinculá-lo à mensagem original e validar datas e trechos ambíguos antes de agir.
 
 ## Portaria: documentos, estados e passagem
@@ -61,7 +63,7 @@ Resposta pública deve respeitar o **conteúdo público** lido. Não revelar rec
 
 ## Roteiro de consulta e fechamento
 
-1. **Antes da passada:** ler o [índice](README.md), estas orientações e os registros privados recentes. Identificar cobertura, data/desfecho das mensagens, vínculo entre interlocutor e reserva, decisões e envios já feitos.
+1. **Antes da passada:** ler o [índice](README.md), incluindo o alerta de atenção reforçada ainda ativa e a identificação do imóvel na fonte indicada, estas orientações e os registros privados recentes. Identificar cobertura, data/desfecho das mensagens, vínculo entre interlocutor e reserva, decisões e envios já feitos.
 2. **Durante o atendimento:** consultar as [dicas já consolidadas](GUIA-LIA-ATENDIMENTO.md#dicas-de-atendimento-e-julgamento), portaria e manutenção pertinentes; separar fato observado, hipótese, proposta, decisão autorizada, execução e resultado. Áudios e anexos inacessíveis seguem a passagem acima. Urgência não cria concessão financeira nova.
 3. **Na última passada:** preparar a edição completa diária do Rio por dia, verificar próximos ocupantes e horários, aplicar o critério de limpeza encaminhada e registrar o estado real do envio. Não cobrar confirmação extra pelo silêncio.
 4. **Ao analisar desempenho:** usar [Performance operacional](PERFORMANCE-OPERACIONAL.md) para snapshots privados comparáveis, ocupação com denominador/período/bloqueios, realizado separado de futuro, propostas separadas de vendas, cancelamentos pendentes destacados e ADR com base explícita. Estratégia nova depende de decisão, não de uma leitura isolada.

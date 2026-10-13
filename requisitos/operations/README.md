@@ -2,6 +2,12 @@
 
 Os documentos registram regras e resultados confirmados; não substituem a leitura atual dos canais nem comprovam execução física.
 
+## Atenção reforçada ainda ativa — consulta obrigatória
+
+Antes de cada passada, consultar a correção de escopo de 7/10 no [complemento vigente](COMPLEMENTO-OPERACIONAL-2026-10-06.md) e o [log de manutenção](MANUTENCAO.md). A atenção reforçada continua **exclusiva do imóvel identificado naquela correção**, por pelo menos 30 dias, mantendo o mínimo original até **5/11/2026, inclusive**, sem reiniciar a contagem. Identificar o imóvel na fonte antes de orientar a equipe; não estender esse cuidado especial aos demais.
+
+Nas passagens pertinentes, preservar o cuidado especial, a conferência de preparo/chaves e o acompanhamento dos problemas concretos previstos na orientação, com relato rápido e registro do resultado confirmado. A regra de limpeza encaminhada não encerra esse acompanhamento nem comprova resolução; também não cria cobrança adicional de limpeza apenas por silêncio. Encerramento do período mínimo não comprova resolução nem autoriza contato com prestadores, contratação ou gastos.
+
 ## Começar por aqui
 
 Antes de cada passada, ler as [orientações operacionais vigentes](ORIENTACOES-OPERACIONAIS.md) e seu [roteiro de consulta e fechamento](ORIENTACOES-OPERACIONAIS.md#roteiro-de-consulta-e-fechamento). A revisão documental de 13/10/2026 incorpora os aprendizados confirmados de agenda, limpeza encaminhada, datas de mensagens, chaves, áudios, portaria e atendimento. Para análise de resultados, consultar [Performance operacional](PERFORMANCE-OPERACIONAL.md).
@@ -16,7 +22,7 @@ Antes de cada passada, ler as [orientações operacionais vigentes](ORIENTACOES-
 | Ocupação, propostas, cancelamentos, diária média e snapshots privados | [Performance operacional](PERFORMANCE-OPERACIONAL.md) |
 | Preços, mínimos e limites de atuação | [Calendário e preços](CALENDARIO-PRECOS-OPERACAO.md) |
 | Comunicação e relatórios de proprietários | [Relatórios e tom](RELATORIOS-E-TOM.md) |
-| Acompanhamento e correção histórica de escopo | [Log de manutenção](MANUTENCAO.md), [complemento corrigido](COMPLEMENTO-OPERACIONAL-2026-10-06.md) |
+| Atenção reforçada vigente e acompanhamento | Alerta obrigatório acima, [log de manutenção](MANUTENCAO.md) e [complemento corrigido](COMPLEMENTO-OPERACIONAL-2026-10-06.md) |
 | Situação do produto | [Guia Diego](../../GUIA-DIEGO.md), [roadmap](../../ROADMAP.md) |
 
 ## Preservação e coerência
