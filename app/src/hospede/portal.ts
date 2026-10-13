@@ -9,16 +9,25 @@
  * - Instruções de chegada (endereço completo) só a partir de 2 dias antes da entrada, às 10h no
  *   fuso do imóvel, até o horário de saída. Estar logado não antecipa a liberação.
  * - Tudo restrito à organização do site: reserva de outra empresa no mesmo banco não conta.
+ * - Alteração da reserva paga pelo site (M8.2d): enquanto uma alteração está com as novas datas seguradas (pela situação
+ *   que vale agora, com a carência de um pagamento da diferença em andamento), a reserva ganha uma linha com o que ela
+ *   espera (o pagamento da diferença ou a confirmação) e o link da página da reserva no site, onde está o resto. Sem
+ *   valores (a regra do M9.1).
  */
-import { and, asc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 import { emitirCodigo, emailValido, type OpcoesCodigo, type ResultadoPedido, verificarCodigo } from "@/acesso/codigo-email";
 import { normalizarEmail } from "@/acesso/entrada";
 import { lerEmpresa } from "@/configuracoes/empresa";
-import { imoveis, imoveisDetalhes, reservas } from "@/db/schema";
+import { alteracoesReserva, cotacoes, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
-import { hojeISO } from "@/lib/datas";
+import { hojeISO, instanteLocal, somarDias } from "@/lib/datas";
+import { situacaoEfetiva } from "@/pagamentos/alteracao-regras";
+import { carenciaNoTravado } from "@/pagamentos/travas";
 import { numeroWhatsapp } from "@/site/site";
+
+// Moram em lib/datas (o cancelamento do M8.2c usa as mesmas); continuam saindo daqui para quem já importava.
+export { instanteLocal, somarDias };
 
 /** Depois da saída, o hóspede ainda vê a reserva por este tempo. */
 export const DIAS_APOS_SAIDA = 30;
@@ -26,36 +35,11 @@ export const DIAS_APOS_SAIDA = 30;
 export const INSTRUCOES_DIAS_ANTES = 2;
 export const INSTRUCOES_HORA = "10:00";
 
-const somarDias = (dataISO: string, dias: number) => {
-  const d = new Date(`${dataISO}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + dias);
-  return d.toISOString().slice(0, 10);
-};
-
-/** Diferença (ms) entre o relógio local do fuso e o UTC naquele instante. */
-function deslocamento(instante: number, fuso: string): number {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: fuso, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      .formatToParts(new Date(instante))
-      .map((x) => [x.type, x.value]),
-  );
-  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - instante;
-}
-
-/** O instante em que é `hora` ("HH:MM") do dia `dataISO` no fuso informado. */
-export function instanteLocal(dataISO: string, hora: string, fuso: string): Date {
-  const [a, m, d] = dataISO.split("-").map(Number);
-  const [h, min] = hora.split(":").map(Number);
-  const relogio = Date.UTC(a, m - 1, d, h, min);
-  const t = relogio - deslocamento(relogio, fuso);
-  return new Date(relogio - deslocamento(t, fuso));
-}
-
 export const liberacaoDasInstrucoes = (checkin: string, fuso: string) => instanteLocal(somarDias(checkin, -INSTRUCOES_DIAS_ANTES), INSTRUCOES_HORA, fuso);
 
-/** Reservas daquele e-mail, só da organização do site (nunca de outra empresa no mesmo banco). */
-const doEmail = (organizacaoId: string, email: string) => and(eq(reservas.organizacaoId, organizacaoId), eq(sql`lower(trim(${reservas.hospedeEmail}))`, email));
-const vigentes = (hoje: string) => and(eq(reservas.estado, "confirmada"), gte(reservas.checkout, somarDias(hoje, -DIAS_APOS_SAIDA)));
+/** Reservas daquele e-mail, só da organização do site (nunca de outra empresa no mesmo banco). O pedido de cancelamento (M8.2c) usa o mesmo filtro. */
+export const doEmail = (organizacaoId: string, email: string) => and(eq(reservas.organizacaoId, organizacaoId), eq(sql`lower(trim(${reservas.hospedeEmail}))`, email));
+export const vigentes = (hoje: string) => and(eq(reservas.estado, "confirmada"), gte(reservas.checkout, somarDias(hoje, -DIAS_APOS_SAIDA)));
 
 /** O e-mail tem alguma reserva que dá acesso ao portal agora? */
 export async function hospedeTemAcesso(db: Db, organizacaoId: string, email: string, agora: Date): Promise<boolean> {
@@ -114,7 +98,40 @@ export type ReservaDoHospede = {
   encerrada: boolean;
   instrucoes: Instrucoes;
   contato: { empresa: string; whatsapp: string | null; email: string };
+  /** M8.2d: a alteração com as novas datas seguradas, quando há (sem valores). */
+  alteracao?: AlteracaoNoPortal | null;
 };
+
+/**
+ * A alteração esperando o hóspede: o pagamento da diferença (aumento) ou a confirmação dele, até quando, e onde ver.
+ * `pagamentoEmAndamento`: o prazo das novas datas acabou, mas um pagamento da diferença em andamento ainda as segura (a
+ * carência).
+ */
+export type AlteracaoNoPortal = { espera: "pagamento" | "confirmacao"; ate: Date; pagamentoEmAndamento: boolean; link: string };
+
+/**
+ * As alterações com as novas datas seguradas, por reserva (desta organização), pela situação que vale agora
+ * (`situacaoEfetiva`, a mesma do painel e da página da reserva): no prazo, ou na carência de um pagamento da diferença em
+ * andamento. Vencida a alteração, a linha some (a página da reserva no site mostra o resto).
+ */
+async function alteracoesSeguradas(db: Db, organizacaoId: string, reservaIds: string[], agora: Date): Promise<Map<string, AlteracaoNoPortal>> {
+  if (!reservaIds.length) return new Map();
+  const linhas = await db
+    .select({ id: alteracoesReserva.id, situacao: alteracoesReserva.situacao, reservaId: alteracoesReserva.reservaId, diferenca: alteracoesReserva.diferenca, holdAte: alteracoesReserva.holdAte, codigo: cotacoes.codigo })
+    .from(alteracoesReserva)
+    .innerJoin(cotacoes, and(eq(cotacoes.id, alteracoesReserva.cotacaoId), eq(cotacoes.organizacaoId, organizacaoId)))
+    .where(and(eq(alteracoesReserva.organizacaoId, organizacaoId), inArray(alteracoesReserva.reservaId, reservaIds), eq(alteracoesReserva.situacao, "segurada")));
+  // As tentativas da diferença das que já passaram do prazo (só elas podem estar na carência).
+  const vencidas = linhas.filter((l) => !l.holdAte || l.holdAte.getTime() <= agora.getTime()).map((l) => l.id);
+  const tentativas = vencidas.length ? await db.select().from(pagamentos).where(and(eq(pagamentos.organizacaoId, organizacaoId), inArray(pagamentos.alteracaoId, vencidas))) : [];
+  const carencia = carenciaNoTravado({ tentativas }, agora);
+  const r = new Map<string, AlteracaoNoPortal>();
+  for (const l of linhas) {
+    if (!l.holdAte || situacaoEfetiva(l, agora, carencia(l)) !== "segurada") continue;
+    r.set(l.reservaId, { espera: l.diferenca > 0 ? "pagamento" : "confirmacao", ate: l.holdAte, pagamentoEmAndamento: l.holdAte.getTime() <= agora.getTime(), link: `/reservar/${encodeURIComponent(l.codigo)}` });
+  }
+  return r;
+}
 
 /** As reservas do hóspede logado, com as instruções de chegada só depois da liberação. */
 export async function reservasDoHospede(db: Db, organizacaoId: string, email: string, agora: Date): Promise<ReservaDoHospede[]> {
@@ -123,6 +140,7 @@ export async function reservasDoHospede(db: Db, organizacaoId: string, email: st
   const hoje = hojeISO(undefined, agora);
   const linhas = await db
     .select({
+      id: reservas.id,
       codigo: reservas.codigo,
       checkin: reservas.checkin,
       checkout: reservas.checkout,
@@ -144,6 +162,7 @@ export async function reservasDoHospede(db: Db, organizacaoId: string, email: st
     .orderBy(asc(reservas.checkin), asc(reservas.codigo));
 
   const empresa = linhas.length ? await lerEmpresa(db, organizacaoId) : null;
+  const alteracoes = await alteracoesSeguradas(db, organizacaoId, linhas.map((l) => l.id), agora);
 
   return linhas.map((l) => {
     const fuso = l.fuso || "America/Sao_Paulo";
@@ -169,6 +188,7 @@ export async function reservasDoHospede(db: Db, organizacaoId: string, email: st
           ? { liberadas: true, endereco: l.endereco, complemento: l.complemento ?? "" }
           : { liberadas: false, liberaEm, dia: somarDias(l.checkin, -INSTRUCOES_DIAS_ANTES) },
       contato: { empresa: empresa!.nome, whatsapp: numeroWhatsapp(empresa!.telefone), email: empresa!.email },
+      alteracao: alteracoes.get(l.id) ?? null,
     };
   });
 }

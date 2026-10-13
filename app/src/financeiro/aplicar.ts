@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { listarContratos } from "@/contratos/repositorio";
-import { lancamentos, type OrigemReserva, proprietarioImoveis, type RecebimentoReserva, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
+import { cancelamentosReserva, lancamentos, type OrigemReserva, proprietarioImoveis, type RecebimentoReserva, recebimentoPorCanal, repasseItens, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { reservaCalculadaSql } from "@/portal/posse";
 import { estornar, lancar, type NovoLancamento } from "./ledger";
 import { travarMotorDaReserva } from "./trava";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
@@ -40,6 +41,9 @@ export async function dadosDoMotor(db: Db, organizacaoId: string, imovelId: stri
   return { contratos, donos: donos.map((x) => x.id), recebimentoDoImovel, regras: regras ?? (await lerRegrasFinanceiras(db, organizacaoId, checkin)) };
 }
 
+/** O motivo dos estornos do motor quando quem chama não diz outro. */
+export const MOTIVO_ESTORNO_PADRAO = "Recalculado pelo motor (reserva ou contrato mudou)";
+
 /** `protegido`: o cálculo mudou, mas a reserva já movimentou dinheiro e nada foi alterado. */
 export type ResultadoAplicacao = { criados: number; estornados: number; mantidos: number; avisos: string[]; protegido?: boolean };
 
@@ -55,8 +59,12 @@ export async function aplicarMotor(
   autorId: string | null,
   /** Sem regras: usa as da organização vigentes na data de entrada (Configurações → Regras financeiras). */
   regras?: RegrasMotor,
-  /** Só confere: marca a divergência com o dinheiro já movimentado, sem mexer no livro (reserva do passado). */
-  o: { soConferir?: boolean } = {},
+  /**
+   * Só confere: marca a divergência com o dinheiro já movimentado, sem mexer no livro (reserva do passado).
+   * `motivoEstorno` (M8.2d): o motivo dos estornos deste recálculo (a alteração de uma reserva paga leva o id dela, para
+   * os estornos serem rastreáveis até a alteração); sem ele, o texto de sempre.
+   */
+  o: { soConferir?: boolean; motivoEstorno?: string } = {},
 ): Promise<ResultadoAplicacao | null> {
   if (!uuidValido(reservaId)) return null;
   return db.transaction(async (tx) => {
@@ -67,6 +75,23 @@ export async function aplicarMotor(
       .from(reservas)
       .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, organizacaoId)));
     if (!r) return null;
+    // M8.2c: cancelada com o acerto lançado no mês do cancelamento (espelhos, a parte já repassada descontada): o
+    // cálculo dela não muda mais — recalcular estornaria o que já foi espelhado. Nem o livro nem a divergência mudam.
+    if (r.estado === "cancelada" && (await canceladaComEspelhos(tx, organizacaoId, r.id))) {
+      const [{ n }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(lancamentos)
+        .where(
+          and(
+            eq(lancamentos.organizacaoId, organizacaoId),
+            eq(lancamentos.reservaId, reservaId),
+            eq(lancamentos.origem, "motor"),
+            isNull(lancamentos.estornoDe),
+            sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`,
+          ),
+        );
+      return { criados: 0, estornados: 0, mantidos: n, avisos: ["Reserva cancelada com o acerto lançado no mês do cancelamento: o cálculo não muda."] };
+    }
 
     const d = await dadosDoMotor(tx, organizacaoId, r.imovelId, r.checkin, regras);
     const { lancamentos: calculados, avisos } = calcularReserva(r, d.contratos, d.donos, d.regras, d.recebimentoDoImovel);
@@ -140,7 +165,7 @@ export async function aplicarMotor(
         mantidas.add(base);
         continue;
       }
-      await estornar(tx, organizacaoId, a.id, "Recalculado pelo motor (reserva ou contrato mudou)", autorId);
+      await estornar(tx, organizacaoId, a.id, o.motivoEstorno?.trim() || MOTIVO_ESTORNO_PADRAO, autorId);
       estornados++;
     }
 
@@ -160,6 +185,16 @@ export async function aplicarMotor(
     if (r.divergenciaEm || r.divergenciaCalculo) await tx.update(reservas).set({ divergenciaEm: null, divergenciaCalculo: null }).where(eq(reservas.id, r.id));
     return { criados: novos.length, estornados, mantidos: mantidas.size, avisos };
   });
+}
+
+/** O cancelamento pela política lançou espelhos no mês do cancelamento (`espelhado`): a reserva fica congelada no motor. */
+async function canceladaComEspelhos(tx: Db, organizacaoId: string, reservaId: string): Promise<boolean> {
+  const [c] = await tx
+    .select({ id: cancelamentosReserva.id })
+    .from(cancelamentosReserva)
+    .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), eq(cancelamentosReserva.reservaId, reservaId), eq(cancelamentosReserva.situacao, "cancelada"), eq(cancelamentosReserva.espelhado, true)))
+    .limit(1);
+  return Boolean(c);
 }
 
 export type ResultadoRecalculo = { reservas: number; criados: number; estornados: number };
@@ -190,6 +225,9 @@ export async function recalcularReservas(
         eq(reservas.organizacaoId, organizacaoId),
         f.imovelId ? eq(reservas.imovelId, f.imovelId) : undefined,
         gte(reservas.checkin, aPartirDe),
+        // As reservas-pedido que seguram as noites de uma alteração (M8.2d, `FONTE_ALTERACAO`) nunca têm lançamentos, e
+        // só a própria alteração trava o motor delas (sempre depois do da reserva alterada): o recálculo não passa por elas.
+        ne(reservas.fonte, "alteracao"),
       ),
     )
     .orderBy(asc(reservas.checkin), asc(reservas.id));
@@ -233,9 +271,9 @@ export async function recalcularPendentes(db: Db, organizacaoId: string, autorId
 }
 
 /**
- * Confirmadas de qualquer data que já movimentaram dinheiro: confere o cálculo atual com o livro e
- * marca em conferência a que diverge (M4.8), sem recalcular nada — o passado não muda, e a
- * divergência vira aviso e ajuste manual. Roda no deploy. Idempotente.
+ * Reservas que o motor calcula (confirmadas e canceladas com valor retido, M8.2c), de qualquer data, que já
+ * movimentaram dinheiro: confere o cálculo atual com o livro e marca em conferência a que diverge (M4.8), sem
+ * recalcular nada — o passado não muda, e a divergência vira aviso e ajuste manual. Roda no deploy. Idempotente.
  */
 export async function conferirMovimentadas(db: Db, organizacaoId: string): Promise<{ reservas: number; divergentes: number }> {
   const ids = await db
@@ -245,7 +283,7 @@ export async function conferirMovimentadas(db: Db, organizacaoId: string): Promi
     .where(
       and(
         eq(reservas.organizacaoId, organizacaoId),
-        eq(reservas.estado, "confirmada"),
+        reservaCalculadaSql(),
         eq(lancamentos.origem, "motor"),
         inArray(lancamentos.estado, ["realizado", "conciliado"]),
         isNull(lancamentos.estornoDe),

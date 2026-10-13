@@ -8,7 +8,8 @@ repassa; depois perguntou se dava para fazer como o Airbnb (split), e este docum
 opções. Taxas tiradas de fontes públicas (setembro e 4/10/2026), **a conferir** na hora de abrir
 a conta (mudam por plano, prazo de recebimento e negociação). Continuam pendentes só as perguntas
 3, 4 e 5 (taxa do pagamento, contestação perdida, política de cancelamento), antes do pagamento de
-verdade.
+verdade. (Depois: as perguntas 4 e 5 foram respondidas em 7/10; a 4 está implementada em teste desde o M8.2e,
+11/10/2026, com detalhes ★ para Diego; a 3 continua pendente.)
 
 ## A pergunta
 
@@ -47,11 +48,75 @@ regra** a decidir — a comparação abaixo vale igual.
 | Quem paga a taxa | Pela regra atual, sai antes da divisão (na proporção, como acima) | A regra atual vale igual; **a conferir** como o MP desconta a taxa no split | O Stripe cobra da SCL (plataforma); a SCL desconta do proprietário na proporção |
 | Dinheiro de terceiros passa pela SCL? | **Sim** (tudo entra na conta da SCL) | **Não** (a parte do proprietário vai direto para ele) | **Sim**, com "destination charges": a cobrança entra na conta da SCL no Stripe e o Stripe transfere, automaticamente, a parte do proprietário para a conta dele |
 | O proprietário precisa de… | Nada (só a chave Pix, que já está no cadastro) | **Conta Mercado Pago** ligada ao sistema (autorização renovada a cada 6 meses) | **Conta Stripe** (cadastro com documentos no Stripe) |
-| Estorno / cancelamento | SCL devolve ao hóspede e desconta do repasse. Hoje, cancelar uma reserva já paga só gera aviso para ajuste manual (o sistema não mexe no que já foi realizado); o M8.2 passa a lançar a devolução no financeiro | Precisa definir no split quanto volta de cada parte; **a conferir** o comportamento em estorno parcial | SCL devolve e recupera do proprietário pela transferência reversa |
+| Estorno / cancelamento | SCL devolve ao hóspede e desconta do repasse. Nas reservas pagas pelo site, desde o M8.2c (10/10/2026) o cancelamento pela política lança a devolução no financeiro por componente (ver "Cancelamento e estorno no M8.2c", abaixo), e desde o M8.2d (10/10/2026) a alteração antes da entrada refaz a divisão e cobra ou devolve a diferença (ver "Alteração e devolução de parte do valor no M8.2d"); nas outras reservas já pagas, cancelar continua gerando aviso para ajuste manual (o sistema não mexe no que já foi realizado) | Precisa definir no split quanto volta de cada parte; **a conferir** o comportamento em estorno parcial | SCL devolve e recupera do proprietário pela transferência reversa |
 | Chargeback (contestação no cartão) | O provedor debita da SCL; **se** ela repassa a perda ao proprietário (pelo repasse) é decisão de Diego, a pôr no contrato | **A conferir** como o MP divide; exige regra no contrato | O Stripe debita da SCL (ela é a responsável perante o Stripe); repassar ao proprietário é a mesma decisão |
-| Trabalho no sistema | **Parte financeira pronta para o fechamento mensal e, desde 4/10, para o extrato e os repasses por periodicidade (M4.10: recebimento registrado na reserva, antecipado, comprovante e e-mail)** (comissão, repasse mensal com Pix para copiar — M4.9, conferência — M4.8; hoje o cancelamento de reserva já paga vira aviso para ajuste manual); o repasse em periodicidade menor que a mensal, o extrato e o e-mail por repasse são o **M4.10** (decisão de 4/10). Falta, como em qualquer opção, o pagamento em si (M8.2): checkout, aviso de pagamento, devolução ao hóspede pelo Mercado Pago com os lançamentos da devolução no financeiro, cobrança ou devolução da diferença quando uma reserva paga muda de valor, conciliação e o fluxo de contestação (chargeback) no financeiro | Tudo do M8.2 **e mais**: ligar a conta de cada proprietário, comissão em cada pagamento, estorno dividido, conciliação por proprietário | Tudo do M8.2 **e mais** a integração Connect; mais cara e menos usada no Brasil |
+| Trabalho no sistema | **Parte financeira pronta para o fechamento mensal e, desde 4/10, para o extrato e os repasses por periodicidade (M4.10: recebimento registrado na reserva, antecipado, comprovante e e-mail)** (comissão, repasse mensal com Pix para copiar — M4.9, conferência — M4.8; o cancelamento de reserva já paga fora do site vira aviso para ajuste manual; o do site, desde o M8.2c, é lançado por componente); o repasse em periodicidade menor que a mensal, o extrato e o e-mail por repasse são o **M4.10** (decisão de 4/10). Falta, como em qualquer opção, o pagamento em si (M8.2): checkout, aviso de pagamento, devolução ao hóspede pelo Mercado Pago com os lançamentos da devolução no financeiro, cobrança ou devolução da diferença quando uma reserva paga muda de valor (em teste desde o M8.2d, 10/10/2026), conciliação e o fluxo de contestação (chargeback) no financeiro | Tudo do M8.2 **e mais**: ligar a conta de cada proprietário, comissão em cada pagamento, estorno dividido, conciliação por proprietário | Tudo do M8.2 **e mais** a integração Connect; mais cara e menos usada no Brasil |
 | Repasse ao proprietário | Decidido em 4/10: mensal no dia 1º por padrão (intervalo máximo), ou quinzenal, semanal ou assim que disponível, à escolha do proprietário no portal (M4.10); reserva do site disponível só depois do check-in e da liberação pelo provedor | Automático, quando o provedor libera | Automático, quando o provedor libera |
 | Quando o dinheiro fica disponível | Pix: no mesmo dia. Cartão: na hora (taxa ~4,98%) ou em 30 dias (~3,98%) | Igual ao lado | Conforme o prazo do Stripe (a conferir) |
+
+## Cancelamento e estorno no M8.2c (10/10/2026)
+
+O cancelamento de reserva paga pelo site, pela política aceita pelo hóspede, ficou pronto em teste no M8.2c
+(desenho em `PAGAMENTO-SITE.md`, seção "Cancelamento pela política (M8.2c)"). Como o dinheiro se divide:
+
+- **Sem devolução (dinheiro retido):** o valor pago fica com a empresa (`reservas.valor_retido`) e o motor o
+  divide **como uma reserva normal**: a taxa do pagamento sai antes da divisão, a comissão fica com a SCL e a
+  parte do proprietário fica disponível depois da **data de entrada original** e da liberação do Mercado Pago,
+  pela regra única do M4.10.
+- **Devolução integral:** reserva, comissão e parte do proprietário saem do financeiro na hora do cancelamento
+  (estorno, ou espelhos no mês do cancelamento quando algum mês já movimentou dinheiro — o mês fechado nunca
+  muda). **A taxa do pagamento que não voltar fica com a SCL (decisão de 7/10, pergunta 5)** e é lançada como
+  despesa da empresa **depois que a devolução se realiza**: com o valor que a equipe informa ("Registrar taxa que
+  não voltou"), ou calculada na devolução feita por fora (o devolvido menos o líquido que entrou). Na mesma hora,
+  sai do caixa o líquido que tinha entrado (lançamento `devolucao`). O proprietário não recebe nada da reserva
+  devolvida.
+- **Parte já repassada:** vira um **desconto** — uma parte negativa no mês do cancelamento, disponível na hora —
+  que o **próximo repasse de qualquer tipo** desconta (antecipado ou fechamento). Se as partes disponíveis não
+  cobrem, o antecipado espera e o fechamento mostra o que o proprietário deve. Parte que está num repasse ainda
+  não pago trava o cancelamento até esse repasse ser estornado. Decisão de Diego pendente sobre o antecipado
+  descontar (`REPASSES-POR-PERIODICIDADE.md`).
+- **SCL que cancela ou exceção dada pela equipe:** devolução integral; o proprietário deixa de receber a parte
+  que teria pela política (a tela mostra o valor antes de confirmar). Quem arca é decisão pendente de Diego
+  (GUIA, seção 7); até lá, a SCL fica com a taxa e o proprietário não recebe nada.
+- **Devolução feita no painel do Mercado Pago, fora do cancelamento pela política:** a reserva fica **em
+  conferência** (a parte do proprietário não é repassada e o fechamento espera) até a equipe cancelar pela
+  política ou registrar um ajuste e dar a conferência por resolvida.
+- **Ainda em aberto:** se o Mercado Pago devolve a taxa (e os juros do cartão) na devolução integral — item 7 de
+  "A conferir no sandbox" (`PAGAMENTO-SITE.md`, com os itens 35 e 36). Até a resposta, a equipe informa a taxa
+  que não voltou e o aviso fica até ela informar.
+
+## Alteração e devolução de parte do valor no M8.2d (10/10/2026)
+
+A alteração de reserva paga pelo site antes da entrada e a devolução de parte do valor ficaram prontas em teste no
+M8.2d (desenho em `PAGAMENTO-SITE.md`, seção "Alteração de reserva paga (M8.2d)"). Como o dinheiro se divide:
+
+- **A divisão é refeita com os valores novos:** antes da entrada nada foi repassado, então o motor recalcula a
+  reserva (os lançamentos de antes são estornados no próprio mês, com a referência da alteração, e os novos são
+  lançados); a diferença por componente e mês fica guardada na alteração. Os meses que a estadia deixa ficam vazios;
+  o contrato e a comissão são os da nova entrada (a prévia avisa quando mudam).
+- **Taxa da parte devolvida (padrão, ★ decisão 5 de Diego, GUIA seção 7):** a taxa do Mercado Pago sobre a parte
+  devolvida sai da reserva na proporção do valor devolvido (só sobre o valor da reserva, nunca sobre os juros do
+  cartão; várias parciais nunca passam da taxa cobrada) e o que o Mercado Pago não devolver dessa taxa é despesa da
+  empresa (estende a decisão de 7/10 do reembolso integral à parte devolvida). Exemplo: R$ 1.500,00 por Pix (taxa
+  R$ 14,85), redução de R$ 300,00 devolvida: a taxa da reserva passa a R$ 11,88, saem do caixa R$ 297,03 e, se a taxa
+  dessa parte não voltar, R$ 2,97 viram despesa da empresa. Alternativa: a taxa ficar na reserva, dividida entre
+  proprietário e SCL.
+- **Aumento:** a diferença é outro pagamento, com taxa própria; a taxa da reserva é a soma das taxas conhecidas dos
+  pagamentos (a que ainda não chegou não apaga as conhecidas: aviso até chegar). A regra do dinheiro continua **uma
+  por reserva**: depois de um aumento, a parte do proprietário da reserva inteira só fica disponível depois do
+  check-in e da liberação do pagamento da diferença ("Libera depois do check-in (dd/mm) e da liberação do pagamento
+  da diferença pelo Mercado Pago (prevista para dd/mm)."), e a data do pagamento (M4.12) passa a ser o dia dessa
+  liberação. Padrão, decisão 7 de Diego (alternativa: só a diferença esperar).
+- **Redução retida pela política:** a reserva fica com o valor de antes nas datas novas, dividido como uma reserva
+  normal; as noites liberadas voltam à venda.
+- **Caixa:** cada devolução tira do caixa o devolvido menos a taxa atribuída a ela (a que completa o pagamento leva
+  tudo o que ainda está dentro); antes de o recebimento do pagamento entrar, a saída espera e é lançada logo depois
+  do recebimento — na liberação do Mercado Pago **e** na liberação registrada à mão. A devolução de parte só é pedida
+  ao Mercado Pago depois da liberação do pagamento, com a taxa conhecida. No fim, o recebido é igual ao devido em
+  todos os caminhos (devolução depois da liberação, por fora antes ou depois, devolução integral de um pagamento
+  não liberado, aumento).
+- **Ainda em aberto:** se o Mercado Pago devolve a taxa e os juros do cartão numa devolução parcial — itens 48 e 49
+  de "A conferir no sandbox" (`PAGAMENTO-SITE.md`). Até a resposta, a equipe informa a taxa que não voltou.
 
 ## Impostos (pergunta levada ao contador; confirmado por Diego em 4/10/2026)
 
@@ -211,7 +276,17 @@ cada vez.
    disputa (problema no imóvel, o proprietário; falha no atendimento ou na cobrança, a SCL; sem
    como separar, cada um na proporção da sua parte), decidido caso a caso pela equipe e
    registrado com o motivo. O sistema registra a disputa e avisa, e nunca escolhe sozinho: o
-   lançamento para quem arca só nasce com a decisão registrada (M8.2).
+   lançamento para quem arca só nasce com a decisão registrada (M8.2). **Implementada em teste em 11/10/2026
+   (M8.2e;** `PAGAMENTO-SITE.md`, seção "Contestação (M8.2e)"): a disputa (contestação no cartão, MED do Pix ou
+   reclamação no Mercado Pago) deixa a reserva em conferência até a decisão de quem arca; com a decisão, o valor do
+   proprietário fica segurado nos próximos repasses até o resultado (devolvido se a SCL ganhar, definitivo se perder) e o
+   da SCL é perda prevista, que vira definitiva na perda; tudo no mês corrente. "Na proporção da sua parte" = parte ÷
+   (parte + comissão), pelas partes efetivas da reserva (com a taxa saindo antes da divisão, 85% e 15% numa comissão de
+   15%). Exemplo: reserva de R$ 1.000,00 (parte R$ 807,67, comissão R$ 142,53, taxa R$ 49,80), disputa perdida de
+   R$ 1.000,00 na proporção: R$ 850,00 do proprietário e R$ 150,00 da SCL; no fim, −R$ 42,33 e −R$ 7,47. O resultado é
+   sempre confirmado pela equipe. Ficam com Diego, antes do pagamento de verdade, as decisões ★ 1 a 6 do GUIA, seção 7
+   (quanto o proprietário perde quando ele arca, a proporção, o que fica segurado, o resultado confirmado pela equipe,
+   o pagamento não reconhecido e a disputa antes da entrada).
 5. Política de cancelamento das reservas do site: reembolso total, parcial ou nenhum conforme
    a antecedência, e quem arca com a taxa do pagamento que não volta. **Base respondida em
    7/10/2026:** reembolso integral até 14 dias antes da entrada; com menos de 14 dias, sem
@@ -227,7 +302,12 @@ cada vez.
    de verdade. Com a base, o sistema calcula o valor a devolver pela antecedência e lança a taxa que
    não voltar como custo da SCL. **Posição escrita em 9/10/2026 no M7.4** (`PAGINAS-LEGAIS.md`,
    seção "Posição sobre o arrependimento de 7 dias"); a conferência pelo contador e pelo advogado
-   continua pendente.
+   continua pendente. **Feito em teste no M8.2c (10/10/2026):** o sistema calcula pela versão da política
+   aceita no pagamento e lança a taxa que não voltou como despesa da SCL quando a devolução se realiza
+   ("Cancelamento e estorno no M8.2c", acima). Se a taxa volta continua a conferir no sandbox (item 7).
+   **Desde o M8.2d (10/10/2026):** a alteração para um valor menor segue a mesma política, contando os prazos da
+   entrada original ou da nova, a que vier primeiro (padrão, a confirmar por Diego), e a taxa da parte devolvida
+   segue a regra de "Alteração e devolução de parte do valor no M8.2d", acima.
 6. **Respondida em 4/10/2026 (opção (a), ver "Decisão de Diego"; fica só como histórico).**
    Cartão com recebimento em 30 dias: uma reserva paga no fim do mês entraria no repasse do
    dia 1º antes de o Mercado Pago liberar o dinheiro. Opções: (a) repassar só quando o

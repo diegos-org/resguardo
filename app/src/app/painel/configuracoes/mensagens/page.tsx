@@ -4,7 +4,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { MensagensAutomaticas } from "@/components/configuracoes/MensagensAutomaticas";
 import { Modelos } from "@/components/configuracoes/Modelos";
 import { editarModeloAcao, novoModeloAcao, salvarMensagensAcao } from "@/configuracoes/acoes";
-import { garantirModelosIniciais, listarModelos, MODELOS_INICIAIS } from "@/configuracoes/modelos";
+import { ehMensagemDeAlteracao, ehMensagemDeCancelamento, garantirModelosIniciais, listarModelos, MODELOS_INICIAIS, TEXTOS_BASE_ALTERACAO, TEXTOS_BASE_CANCELAMENTO } from "@/configuracoes/modelos";
 import { getDb } from "@/db/client";
 import { ORIGENS_RESERVA, TIPOS_MENSAGEM_HOSPEDE } from "@/db/schema";
 import { lerConfigMensagens, NOMES_TIPO, ultimaExecucaoDaOrganizacao, ultimosEnvios } from "@/mensagens/hospede";
@@ -38,7 +38,13 @@ export default async function Mensagens() {
           const id = cfg.modelos[t];
           // Modelo escolhido que foi arquivado ou excluído: avisa (a mensagem não está saindo).
           const sumiu = id && !ativos.some((m) => m.id === id);
-          return { id: t, nome: `${NOMES_TIPO[t]}${sumiu ? " — atenção: o modelo escolhido foi arquivado ou excluído; esta mensagem não está saindo" : ""}`, selecionado: sumiu ? "" : (id ?? sugestao(i)) };
+          return {
+            id: t,
+            nome: `${NOMES_TIPO[t]}${sumiu ? " — atenção: o modelo escolhido foi arquivado ou excluído; esta mensagem não está saindo" : ""}`,
+            selecionado: sumiu ? "" : (id ?? sugestao(i)),
+            // M8.2c e M8.2d: o texto-base das mensagens do cancelamento e da alteração (o que a ficha copia sem modelo escolhido).
+            ...(ehMensagemDeCancelamento(t) ? { textoBase: TEXTOS_BASE_CANCELAMENTO[t] } : ehMensagemDeAlteracao(t) ? { textoBase: TEXTOS_BASE_ALTERACAO[t] } : {}),
+          };
         })}
         modelos={ativos.map(({ id, nome }) => ({ id, nome }))}
         envios={envios.map((e) => ({ ...e, quando: dataHora(e.quando) }))}

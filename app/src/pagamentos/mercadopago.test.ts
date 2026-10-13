@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  centavosParaValorApi, ClienteMercadoPagoHttp, cobrancaDaOrder, codigosDeErro, contaDeTesteDoUsuario, dataRfc3339, detalheDaOrder,
-  EMAIL_PAGADOR_SANDBOX, falhaDeRede, financeiroDoPagamento, normalizarSituacao, primeiroCodigo, valorApiParaCentavos,
+  casoDaContestacao, centavosParaValorApi, ClienteMercadoPagoHttp, cobrancaDaOrder, codigosDeErro, contaDeTesteDoUsuario, dataRfc3339, detalheDaOrder, EMAIL_PAGADOR_SANDBOX,
+  falhaDeRede, financeiroDoPagamento, idDaContaDoUsuario, normalizarSituacao, primeiroCodigo, situacaoDoPagamentoLida, valorApiParaCentavos,
 } from "./mercadopago";
-import { type Cobranca, ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, urlDoDesafio } from "./provedor";
+import { porForaPermitidoNoCartao } from "./devolucao";
+import {
+  type Cobranca, type CodigoDevolucao, type ContestacaoLida, type DevolucaoLida, ErroProvedor, ID_NUMERICO_PROVEDOR, idContestacaoValido, idNumericoLido, type PedidoCartao,
+  type PedidoPix, RECUSA_GENERICA, RECUSAS_DEFINITIVAS, semAcessoContestacao, urlDoDesafio,
+} from "./provedor";
 
 // Tudo fictício. O token tem cara de real para os testes de vazamento.
 const TOKEN = "APP_USR-0000000000000000-000000-ficticio0000000000000000000000-000000000";
@@ -128,11 +132,14 @@ const cobrancaAprovada = (over: Partial<Cobranca> = {}): Cobranca => ({
   pago: 50000,
   devolvido: 0,
   devolucaoEmAndamento: false,
+  devolucoes: [],
   parcelas: 3,
   idTransacao: "PAY01KB0JDVXYPD6HPP2HSMJS11QN",
   aoVivo: null,
   pix: null,
   cartao: { desafioUrl: null, desafio: false, analise: false, tresDSStatus: null, bandeira: "master" },
+  contestacoes: [],
+  transacaoAprovada: true,
   ...over,
 });
 
@@ -244,7 +251,7 @@ describe("situação normalizada", () => {
     expect(detalheDaOrder({ status: "processed", status_detail: "<script>alert(1)</script>" })).toBe("processed/?");
   });
 
-  it("contestações da lista (transactions.chargebacks[]): in_process e settled contestam; reimbursed (devolvida à SCL) não", () => {
+  it("contestações da lista (transactions.chargebacks[]): in_process e settled contestam; reimbursed não (o M8.2e não muda isto: a situação que vale sai de contestacaoDaLeitura)", () => {
     const aprovada = { status: "processed", status_detail: "accredited" };
     expect(normalizarSituacao(aprovada, aprovada, ["in_process"])).toBe("contestado");
     expect(normalizarSituacao(aprovada, aprovada, ["reimbursed", "settled"])).toBe("contestado");
@@ -275,6 +282,7 @@ describe("order → Cobranca", () => {
       pago: null,
       devolvido: 0,
       devolucaoEmAndamento: false,
+      devolucoes: [],
       parcelas: null,
       idTransacao: "PAY01KB00C5QRFKWERZQW5DX6XMMJ",
       aoVivo: false,
@@ -285,6 +293,8 @@ describe("order → Cobranca", () => {
         expiraEm: new Date("2026-10-08T15:45:00.000Z"),
       },
       cartao: null,
+      contestacoes: [],
+      transacaoAprovada: false,
     });
   });
 
@@ -344,14 +354,18 @@ describe("order → Cobranca", () => {
     expect(cartao({ status: "processing", status_detail: "in_process" }, { status: "processing", status_detail: "in_process" })).toMatchObject({ situacao: "em_analise", cartao: { analise: false } });
   });
 
-  it("contestação na order (por transação ou na lista): contestado, lendo só o status da lista", () => {
+  it("contestação na order (por transação ou na lista): contestado; desde o M8.2e os ids da lista são lidos (lista branca)", () => {
     const naTransacao = orderCartao({}, { status: "charged_back", status_detail: "in_process" });
     expect(cobrancaDaOrder(naTransacao)!.situacao).toBe("contestado");
     const naLista = orderCartao();
     (naLista.transactions as Record<string, unknown>).chargebacks = [{ id: "CBK01FICTICIO", transaction_id: "PAY01KB0JDVXYPD6HPP2HSMJS11QN", case_id: "9876543210", status: "in_process", references: [null] }, null, { status: 5 }];
     const c = cobrancaDaOrder(naLista)!;
     expect(c.situacao).toBe("contestado");
-    expect(JSON.stringify(c)).not.toMatch(/9876543210|CBK01FICTICIO/);
+    // Registro de decisão (11/10/2026): os ids da disputa são guardados; o item ilegível vira uma leitura sem nada (aviso, nunca palpite).
+    expect(c.contestacoes).toEqual<ContestacaoLida[]>([
+      { idContestacao: "CBK01FICTICIO", idCaso: "9876543210", idTransacao: "PAY01KB0JDVXYPD6HPP2HSMJS11QN", estadoLido: "in_process", codigo: "in_process", valor: null, daTransacao: false },
+      { idContestacao: null, idCaso: null, idTransacao: null, estadoLido: "desconhecido", codigo: null, valor: null, daTransacao: false },
+    ]);
     (naLista.transactions as Record<string, unknown>).chargebacks = [{ status: "reimbursed" }];
     expect(cobrancaDaOrder(naLista)!.situacao).toBe("aprovado");
   });
@@ -385,6 +399,44 @@ describe("order → Cobranca", () => {
     (o.transactions as Record<string, unknown>).refunds = [{ id: "REF1", amount: "100.00", status: "processed" }, { id: "REF5", amount: "10.00", status: "failed" }];
     delete (o.transactions.payments[0] as Record<string, unknown>).amount;
     expect(cobrancaDaOrder(o)).toMatchObject({ devolucaoEmAndamento: false, devolvido: 10000, valorTransacao: null });
+  });
+
+  it("devoluções lidas (M8.2c): status por lista branca, ids inválidos fora, só id, estado e valor (nunca e2e_id ou reference_id)", () => {
+    const o = orderCartao({ status: "processed", status_detail: "partially_refunded" });
+    (o.transactions as Record<string, unknown>).refunds = [
+      { id: "REF01A", amount: "100.00", status: "processed", e2e_id: "E00000000202610081500ficticio", reference_id: "ref-ficticia" },
+      { id: "REF01B", amount: "50.50", status: "APPROVED" },
+      { id: "REF01C", amount: "70.00", status: "in_process" },
+      { id: "REF01D", amount: "10.00", status: "failed" },
+      { id: "REF01E", amount: "10.00", status: "rejected" },
+      { id: "REF01F", amount: "10.00", status: "canceled" },
+      { id: "REF01G", amount: "10.00", status: "cancelled" },
+      { id: "REF01H", amount: "abc", status: "status_novo" },
+      { id: "../../x", amount: "1.00", status: "processed" },
+      { id: "PAY01NAOEDEVOLUCAO", amount: "1.00", status: "processed" },
+      { amount: "1.00", status: "processed" },
+      null,
+    ];
+    const c = cobrancaDaOrder(o)!;
+    expect(c.devolucoes).toEqual([
+      { id: "REF01A", estado: "confirmada", valor: 10_000 },
+      { id: "REF01B", estado: "confirmada", valor: 5_050 },
+      { id: "REF01C", estado: "andamento", valor: 7_000 },
+      { id: "REF01D", estado: "falhou", valor: 1_000 },
+      { id: "REF01E", estado: "falhou", valor: 1_000 },
+      { id: "REF01F", estado: "falhou", valor: 1_000 },
+      { id: "REF01G", estado: "falhou", valor: 1_000 },
+      { id: "REF01H", estado: "andamento", valor: 0 },
+    ]);
+    expect(JSON.stringify(c)).not.toMatch(/E00000000202610081500ficticio|ref-ficticia/);
+    // No máximo 20; sem a lista, nenhuma (não quer dizer "nenhuma devolução").
+    (o.transactions as Record<string, unknown>).refunds = Array.from({ length: 30 }, (_, i) => ({ id: `REF${i}`, amount: "1.00", status: "processed" }));
+    expect(cobrancaDaOrder(o)!.devolucoes).toHaveLength(20);
+    expect(cobrancaDaOrder(orderPix())!.devolucoes).toEqual([]);
+    // processed/refunded (exemplo da resposta de devolução): situação desconhecida, com a devolução confirmada na lista.
+    const refunded = orderCartao({ status: "processed", status_detail: "refunded" });
+    (refunded.transactions as Record<string, unknown>).refunds = [{ id: "REF01J49MMW3SSBK5PSV3DFR32959", amount: "500.00", status: "processed" }];
+    expect(cobrancaDaOrder(refunded)).toMatchObject({ situacao: "desconhecido", devolvido: 50_000, devolucoes: [{ id: "REF01J49MMW3SSBK5PSV3DFR32959", estado: "confirmada", valor: 50_000 }] });
   });
 
   it("ids com sublinhado (exemplos da documentação) e lista de pagamentos com null", () => {
@@ -477,10 +529,13 @@ describe("financeiro da Payments API", () => {
     expect(financeiroDoPagamento(pagamento({ money_release_status: undefined, money_release_date: "pending" }))).toMatchObject({ liberado: false, liberacaoPrevista: null });
   });
 
-  it("id do pagamento só numérico", () => {
+  it("id do pagamento só numérico, até 20 algarismos (o limite do caso, num lugar só: M8.2e)", () => {
     expect(financeiroDoPagamento(pagamento({ id: "123" })).idPagamento).toBe("123");
     expect(financeiroDoPagamento(pagamento({ id: "PAY01" })).idPagamento).toBeNull();
     expect(financeiroDoPagamento(pagamento({ id: -1 })).idPagamento).toBeNull();
+    expect(financeiroDoPagamento(pagamento({ id: "1".repeat(20) })).idPagamento).toBe("1".repeat(20));
+    expect(financeiroDoPagamento(pagamento({ id: "1".repeat(21) })).idPagamento).toBeNull();
+    expect(financeiroDoPagamento(pagamento({ id: 2 ** 53 })).idPagamento).toBeNull();
     expect(financeiroDoPagamento("lixo")).toEqual(NADA_FINANCEIRO);
   });
 });
@@ -984,7 +1039,7 @@ describe("devolver", () => {
 
   it("integral: corpo vazio, chave no cabeçalho; devolução processed → confirmada", async () => {
     const f = fetchFalso(json(201, { id: "ORD1", status: "refunded", status_detail: "refunded", transactions: { refunds: [refund("processed")] } }));
-    expect(await cliente(f.impl).devolver(cobrancaAprovada(), "devolver-1", null)).toEqual({ situacao: "confirmada", idDevolucao: "REF01J49MMW3SSBK5PSV3DFR32959", mensagem: "Devolução confirmada pelo Mercado Pago." });
+    expect(await cliente(f.impl).devolver(cobrancaAprovada(), "devolver-1", null)).toEqual({ situacao: "confirmada", idDevolucao: "REF01J49MMW3SSBK5PSV3DFR32959", mensagem: "Devolução confirmada pelo Mercado Pago.", codigo: null });
     const [p] = f.pedidos;
     expect(p.url.toString()).toBe("https://api.mercadopago.com/v1/orders/ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG/refund");
     expect(p.headers["x-idempotency-key"]).toBe("devolver-1");
@@ -998,16 +1053,17 @@ describe("devolver", () => {
   });
 
   it("devolução sem status confirmado, ou sem lista → pedida", async () => {
-    expect(await cliente(fetchFalso(json(201, { transactions: { refunds: [refund("processed", { id: "REF_A" }), refund("in_process", { id: "REF_B" })] } })).impl).devolver(cobrancaAprovada(), "d", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REF_B" });
+    // A REF_A já estava na leitura de antes do pedido: a nova (a nossa) é a REF_B.
+    const antes = cobrancaAprovada({ devolucoes: [{ id: "REF_A", estado: "confirmada", valor: 50_000 }] });
+    expect(await cliente(fetchFalso(json(201, { transactions: { refunds: [refund("processed", { id: "REF_A" }), refund("in_process", { id: "REF_B" })] } })).impl).devolver(antes, "d", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REF_B" });
     expect(await cliente(fetchFalso(json(201, { status: "refunded" })).impl).devolver(cobrancaAprovada(), "d", null)).toMatchObject({ situacao: "pedida", idDevolucao: null });
     expect(await cliente(fetchFalso(json(200, { transactions: { refunds: [refund("approved")] } })).impl).devolver(cobrancaAprovada(), "d", null)).toMatchObject({ situacao: "confirmada" });
   });
 
-  it("validação local: parcial sem transação, valor acima do disponível ou inválido → recusada sem rede", async () => {
+  it("validação local: parcial sem transação ou valor inválido → recusada sem rede e sem código", async () => {
     const f = fetchFalso();
     const c = cliente(f.impl);
-    expect(await c.devolver(cobrancaAprovada({ idTransacao: null }), "d", 100)).toMatchObject({ situacao: "recusada", mensagem: "Falta o id da transação para a devolução parcial." });
-    expect(await c.devolver(cobrancaAprovada({ devolvido: 49_000 }), "d", 1_001)).toMatchObject({ situacao: "recusada" });
+    expect(await c.devolver(cobrancaAprovada({ idTransacao: null }), "d", 100)).toMatchObject({ situacao: "recusada", mensagem: "Falta o id da transação para a devolução parcial.", codigo: null });
     expect(await c.devolver(cobrancaAprovada(), "d", 0)).toMatchObject({ situacao: "recusada" });
     expect(await c.devolver(cobrancaAprovada(), "d", 1.5)).toMatchObject({ situacao: "recusada" });
     expect(await c.devolver(cobrancaAprovada({ idProvedor: "a/b" }), "d", null)).toMatchObject({ situacao: "recusada" });
@@ -1016,7 +1072,8 @@ describe("devolver", () => {
   });
 
   it.each([
-    [json(409, { errors: [{ code: "order_refund_already_in_process" }] }), "pedida"],
+    // M8.2c: devolução já em andamento = "aguarde" (nada aceito por esta chave), não "pedida".
+    [json(409, { errors: [{ code: "order_refund_already_in_process" }] }), "aguarde"],
     [json(409, { errors: [{ code: "order_already_refunded" }] }), "confirmada"],
     [json(409, { errors: [{ code: "idempotency_key_already_used" }] }), "incerta"],
     [json(409, { errors: [{ code: "cannot_refund_order" }] }), "recusada"],
@@ -1024,7 +1081,8 @@ describe("devolver", () => {
     [json(400, { errors: [{ code: "refund_amount_exceeds", message: "texto-do-provedor" }] }), "recusada"],
     [json(400, {}), "recusada"],
     [json(404, { errors: [{ code: "transaction_not_found" }] }), "recusada"],
-    [json(423, { errors: [{ code: "resource_locked" }] }), "incerta"],
+    // M8.2c: travado no provedor = "aguarde" (transitório; não conta como falha).
+    [json(423, { errors: [{ code: "resource_locked" }] }), "aguarde"],
     [json(500, { errors: [{ code: "idempotency_validation_failed" }] }), "incerta"],
     [json(502, {}), "incerta"],
     [json(401, {}), "recusada"],
@@ -1034,6 +1092,146 @@ describe("devolver", () => {
     const r = await cliente(fetchFalso(resposta).impl).devolver(cobrancaAprovada(), "devolver-1", null);
     expect(r.situacao).toBe(esperado);
     semSegredos(r.mensagem);
+  });
+
+  it.each([
+    // [resposta, situação, código]
+    [json(400, { errors: [{ code: "order_refund_already_in_process" }] }), "aguarde", "em_andamento"],
+    [json(409, { errors: [{ code: "order_refund_already_in_process" }] }), "aguarde", "em_andamento"],
+    [json(409, { errors: [{ code: "refund_in_progress" }] }), "aguarde", "em_andamento"],
+    [json(422, { errors: [{ code: "refund_in_progress" }] }), "aguarde", "em_andamento"],
+    [json(400, { errors: [{ code: "movement_operations_pending" }] }), "aguarde", "transitorio"],
+    [json(425, { errors: [{ code: "order_payment_not_yet_enabled_for_refund" }] }), "aguarde", "transitorio"],
+    [json(423, {}), "aguarde", "transitorio"],
+    [json(428, { errors: [{ code: "insufficient_money_for_refund" }] }), "recusada", "saldo_insuficiente"],
+    [json(428, {}), "recusada", "saldo_insuficiente"],
+    [json(400, { errors: [{ code: "insufficient_money_for_refund" }] }), "recusada", "saldo_insuficiente"],
+    [json(409, { errors: [{ code: "refund_period_exceeded" }] }), "recusada", "prazo"],
+    [json(400, { errors: [{ code: "refund_period_exceeded" }] }), "recusada", "prazo"],
+    [json(404, {}), "recusada", "nao_encontrado"],
+    [json(409, { errors: [{ code: "cannot_refund_order" }] }), "recusada", "nao_permitido"],
+    [json(409, { errors: [{ code: "operation_not_supported" }] }), "recusada", "nao_permitido"],
+    [json(400, { errors: [{ code: "refund_amount_exceeds" }] }), "recusada", "valor_excede"],
+    [json(400, { errors: [{ code: "outro_codigo" }] }), "recusada", null],
+    [json(409, { errors: [{ code: "order_already_refunded" }] }), "confirmada", null],
+    [json(409, { errors: [{ code: "idempotency_key_already_used" }] }), "incerta", null],
+    [json(500, {}), "incerta", null],
+    [json(429, {}), "incerta", null],
+  ])("%#: código do resultado (M8.2c) → %s / %s", async (resposta, situacao, codigo) => {
+    const r = await cliente(fetchFalso(resposta).impl).devolver(cobrancaAprovada(), "devolver-1", null);
+    expect([r.situacao, r.codigo, r.idDevolucao]).toEqual([situacao, codigo, null]);
+    semSegredos(r.mensagem);
+  });
+
+  it("o código nunca vem do texto livre do provedor: só dos códigos de erro conhecidos", async () => {
+    const r = await cliente(fetchFalso(json(400, { message: "insufficient_money_for_refund refund_period_exceeded", errors: [{ code: "bad_request", message: "order_refund_already_in_process" }] })).impl).devolver(cobrancaAprovada(), "d", null);
+    expect(r).toMatchObject({ situacao: "recusada", codigo: null });
+    // Validação local (antes da rede): sem código.
+    expect(await cliente(fetchFalso().impl).devolver(cobrancaAprovada(), "", null)).toMatchObject({ situacao: "recusada", codigo: null });
+  });
+
+  it("201: a devolução deste pedido é a que não estava na leitura de antes; nenhuma nova ou mais de uma = sem id", async () => {
+    const antiga = { id: "REF01ANTIGA0000000000000000", estado: "falhou" as const, valor: 50_000 };
+    const corpo = (ids: string[]) => ({ transactions: { refunds: ids.map((id) => refund("in_process", { id })) } });
+    const pedir = (ids: string[], devolucoes = [antiga]) => cliente(fetchFalso(json(201, corpo(ids))).impl).devolver(cobrancaAprovada({ devolucoes }), "d", null);
+    // A antiga (que falhou) e a nova: a nova.
+    expect(await pedir([antiga.id, "REF01NOVA00000000000000000"])).toMatchObject({ situacao: "pedida", idDevolucao: "REF01NOVA00000000000000000" });
+    // Só a já conhecida: não dá para saber qual é a nossa.
+    expect(await pedir([antiga.id])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Duas desconhecidas (a leitura de antes não listava nada): também não — nunca "a última da lista".
+    expect(await pedir(["REF01UMA000000000000000000", "REF01OUTRA0000000000000000"], [])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Id inválido ou sem o prefixo de devolução não conta.
+    expect(await pedir(["../x", "PAY01NAOEDEVOLUCAO00000000"], [])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+  });
+
+  it("201 com a chave repetida (depois de uma resposta incerta): sem devolução nova, é a repetição do pedido anterior — uma devolução só na resposta é a nossa", async () => {
+    const nossa = { id: "REF01NOSSA00000000000000000", estado: "falhou" as const, valor: 182_400 };
+    const outra = { id: "REF01OUTRA00000000000000000", estado: "falhou" as const, valor: 50_000 };
+    const corpo = (ids: string[]) => ({ transactions: { refunds: ids.map((id) => refund("in_process", { id })) } });
+    const pedir = (ids: string[], devolucoes: DevolucaoLida[], repetida: boolean) => cliente(fetchFalso(json(201, corpo(ids))).impl).devolver(cobrancaAprovada({ devolucoes }), "devolucao-x-1", null, { repetida, conhecidas: [] });
+    // A leitura de antes já lista a nossa (o pedido anterior saiu e falhou): o Mercado Pago repete a resposta dele.
+    expect(await pedir([nossa.id], [nossa], true)).toMatchObject({ situacao: "pedida", idDevolucao: nossa.id });
+    // A mesma resposta com uma chave nova: não dá para saber (pode ser a lista de antes).
+    expect(await pedir([nossa.id], [nossa], false)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Repetida, mas a resposta lista mais de uma conhecida: não dá para saber qual era a nossa.
+    expect(await pedir([outra.id, nossa.id], [outra, nossa], true)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    // Repetida e com uma nova: a nova (o pedido anterior não tinha chegado).
+    expect(await pedir([outra.id, "REF01NOVA00000000000000000"], [outra], true)).toMatchObject({ situacao: "pedida", idDevolucao: "REF01NOVA00000000000000000" });
+  });
+
+  describe("várias devoluções por pagamento (M8.2d)", () => {
+    const ids = { antiga: "REF01ANTIGA0000000000000000", outra: "REF01OUTRA00000000000000000", nova: "REF01NOVA00000000000000000", nossa: "REF01NOSSA00000000000000000" };
+    const corpo = (itens: [string, string][]) => ({ transactions: { refunds: itens.map(([id, status]) => refund(status, { id })) } });
+    const pedir = (itens: [string, string][], o: { conhecidas?: string[]; repetida?: boolean; devolucoes?: DevolucaoLida[]; valor?: number | null } = {}) =>
+      cliente(fetchFalso(json(201, corpo(itens))).impl).devolver(cobrancaAprovada({ devolucoes: o.devolucoes ?? [] }), "d", o.valor === undefined ? 2_000 : o.valor, { repetida: o.repetida ?? false, conhecidas: o.conhecidas ?? [] });
+
+    it("parcial: corpo com o valor em texto e sem limite local (acima de pago − devolvido também sai; o domínio e o Mercado Pago limitam)", async () => {
+      const f = fetchFalso(json(201, corpo([[ids.nova, "in_process"]])));
+      expect(await cliente(f.impl).devolver(cobrancaAprovada({ devolvido: 49_000 }), "d", 30_000, { repetida: false, conhecidas: [] })).toMatchObject({ situacao: "pedida", idDevolucao: ids.nova });
+      expect(f.pedidos[0].corpo).toEqual({ transactions: [{ id: "PAY01KB0JDVXYPD6HPP2HSMJS11QN", amount: "300.00" }] });
+    });
+
+    it("201 com as antigas e a nova: as conhecidas do banco ficam de fora, mesmo sem estar na leitura de antes", async () => {
+      expect(await pedir([[ids.antiga, "processed"], [ids.nova, "in_process"]], { conhecidas: [ids.antiga] })).toMatchObject({ situacao: "pedida", idDevolucao: ids.nova });
+      // Sem o banco, duas desconhecidas: não dá para saber qual é a nossa.
+      expect(await pedir([[ids.antiga, "processed"], [ids.nova, "in_process"]])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+      // Só conhecidas: nenhuma é a nossa (pedida, a leitura confirma).
+      expect(await pedir([[ids.antiga, "processed"], [ids.outra, "processed"]], { conhecidas: [ids.antiga, ids.outra] })).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    });
+
+    it("chave repetida com três listadas, duas conhecidas do banco: a terceira é a nossa (a do pedido anterior)", async () => {
+      const lidas = [ids.antiga, ids.outra, ids.nossa].map((id) => ({ id, estado: "confirmada" as const, valor: 1_000 }));
+      expect(await pedir([[ids.antiga, "processed"], [ids.outra, "processed"], [ids.nossa, "processed"]], { repetida: true, conhecidas: [ids.antiga, ids.outra], devolucoes: lidas })).toMatchObject({
+        situacao: "confirmada",
+        idDevolucao: ids.nossa,
+      });
+      // Sem a chave repetida, a mesma resposta não identifica nada (pode ser só a lista da order).
+      expect(await pedir([[ids.antiga, "processed"], [ids.outra, "processed"], [ids.nossa, "processed"]], { conhecidas: [ids.antiga, ids.outra], devolucoes: lidas })).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    });
+
+    it("confirmada só com a NOSSA processada: uma antiga que falhou não impede; a nossa em andamento é pedida", async () => {
+      expect(await pedir([[ids.antiga, "failed"], [ids.nova, "processed"]], { conhecidas: [ids.antiga] })).toMatchObject({ situacao: "confirmada", idDevolucao: ids.nova });
+      expect(await pedir([[ids.antiga, "processed"], [ids.nova, "in_process"]], { conhecidas: [ids.antiga] })).toMatchObject({ situacao: "pedida", idDevolucao: ids.nova });
+      // Todas processadas, mas sem saber qual é a nossa: pedida (antes do M8.2d, "todas confirmadas" confirmava).
+      expect(await pedir([[ids.antiga, "processed"], [ids.nova, "processed"]])).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    });
+
+    it("409 order_already_refunded: integral confirmada; parte do valor com a chave repetida incerta; com chave nova recusada/ja_devolvido", async () => {
+      const ja = () => json(409, { errors: [{ code: "order_already_refunded" }] });
+      expect(await cliente(fetchFalso(ja()).impl).devolver(cobrancaAprovada(), "d", null, { repetida: false, conhecidas: [] })).toMatchObject({ situacao: "confirmada", codigo: null });
+      expect(await cliente(fetchFalso(ja()).impl).devolver(cobrancaAprovada(), "d", null, { repetida: true, conhecidas: [] })).toMatchObject({ situacao: "confirmada", codigo: null });
+      expect(await cliente(fetchFalso(ja()).impl).devolver(cobrancaAprovada(), "d", 2_000, { repetida: true, conhecidas: [] })).toMatchObject({ situacao: "incerta", codigo: null, idDevolucao: null });
+      const r = await cliente(fetchFalso(ja()).impl).devolver(cobrancaAprovada(), "d", 2_000, { repetida: false, conhecidas: [] });
+      expect(r).toMatchObject({ situacao: "recusada", codigo: "ja_devolvido", idDevolucao: null });
+      semSegredos(r.mensagem);
+    });
+
+    it.each([
+      [json(422, { errors: [{ code: "amount_not_refundable" }] }), "valor_excede"],
+      [json(422, { errors: [{ code: "payment_not_refundable" }] }), "nao_permitido"],
+      [json(422, { errors: [{ code: "max_refunds_exceeded" }] }), "nao_permitido"],
+      [json(400, { errors: [{ code: "unsupported_partially_refunds" }] }), "nao_permitido"],
+    ])("%#: recusa da devolução de parte do valor → recusada/%s", async (resposta, codigo) => {
+      const r = await cliente(fetchFalso(resposta).impl).devolver(cobrancaAprovada(), "d", 2_000, { repetida: false, conhecidas: [] });
+      expect([r.situacao, r.codigo, r.idDevolucao]).toEqual(["recusada", codigo, null]);
+      semSegredos(r.mensagem);
+    });
+
+    it("um 422 desconhecido continua incerto; os códigos novos nunca vêm do texto livre", async () => {
+      expect(await cliente(fetchFalso(json(422, { errors: [{ code: "outro_codigo" }] })).impl).devolver(cobrancaAprovada(), "d", 2_000, { repetida: false, conhecidas: [] })).toMatchObject({ situacao: "incerta", codigo: null });
+      const texto = json(422, { message: "amount_not_refundable max_refunds_exceeded order_already_refunded", errors: [{ code: "unprocessable", message: "payment_not_refundable" }] });
+      expect(await cliente(fetchFalso(texto).impl).devolver(cobrancaAprovada(), "d", 2_000, { repetida: false, conhecidas: [] })).toMatchObject({ situacao: "incerta", codigo: null });
+      const conflito = json(409, { message: "order_already_refunded", errors: [{ code: "conflict" }] });
+      expect(await cliente(fetchFalso(conflito).impl).devolver(cobrancaAprovada(), "d", 2_000, { repetida: false, conhecidas: [] })).toMatchObject({ situacao: "incerta", codigo: null });
+    });
+
+    it("nenhuma recusa que o Mercado Pago pode reverter abre a devolução por fora no cartão (valor_excede, ja_devolvido, sem código, transitorio)", () => {
+      const p = { forma: "cartao" as const, avisos: [], aprovadoEm: AGORA, criadoEm: AGORA };
+      const dev = (ultimoCodigo: CodigoDevolucao | null) => ({ situacao: "recusada" as const, ultimoCodigo, recusaNoPainelEm: null, idProvedor: null });
+      for (const codigo of ["valor_excede", "ja_devolvido", null, "transitorio", "em_andamento", "saldo_insuficiente"] as const) expect(porForaPermitidoNoCartao(p, dev(codigo), AGORA), String(codigo)).toBe(false);
+      for (const codigo of RECUSAS_DEFINITIVAS) expect(porForaPermitidoNoCartao(p, dev(codigo), AGORA), codigo).toBe(true);
+      expect(RECUSAS_DEFINITIVAS).toEqual(["nao_permitido", "prazo", "nao_encontrado"]);
+    });
   });
 
   it("tempo-limite → incerta", async () => {
@@ -1063,5 +1261,446 @@ describe("conferirContaDeTeste", () => {
       expect(await cliente(fetchFalso(r).impl).conferirContaDeTeste()).toBeNull();
     }
     expect(await cliente(fetchFalso().impl, { accessToken: "" }).conferirContaDeTeste()).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- contestação (M8.2e)
+
+/** Dados pessoais fictícios que o JSON oficial pode trazer em texto livre: nada disso pode sair normalizado. */
+const PESSOAIS = ["Maria Ficticia", "maria.ficticia@example.com", "12345678909", "Rua Ficticia", "doc-ficticio", "+55 21 99999-0000", "Comprovante enviado"];
+
+/** Order contestada no formato dos exemplos oficiais (Orders, 11/10/2026), com texto livre cheio de dados pessoais. */
+const orderContestadaOficial = () => orderCartao({ status: "charged_back", status_detail: "in_process", live_mode: false }, { status: "charged_back", status_detail: "in_process" });
+function comLista(o: ReturnType<typeof orderCartao>, itens: unknown[]) {
+  (o.transactions as Record<string, unknown>).chargebacks = itens;
+  return o;
+}
+const itemOficial = (over: Record<string, unknown> = {}) => ({
+  id: "CBK01JQ4S4KY8HWQ6NA5PXB65B3D3",
+  // De propósito diferente do id do pagamento da order, como no exemplo oficial do aviso.
+  transaction_id: "PAY01JQ4S4KY8HWQ6NA5PXB65B3D4",
+  case_id: "234000062890459000",
+  status: "in_process",
+  amount: "500.00",
+  reason: "Maria Ficticia diz que não reconhece a compra",
+  documentation: [{ type: "application/pdf", url: "https://www.mercadopago.com/files/doc-ficticio.pdf", description: "Contato: maria.ficticia@example.com, CPF 12345678909" }],
+  references: [{ type: "payer", id: "maria.ficticia@example.com", name: "Maria Ficticia", address: "Rua Ficticia, 1", phone: "+55 21 99999-0000" }],
+  ...over,
+});
+
+/** Um caso da Chargebacks API no formato do exemplo oficial (id em texto, payments números, amount número). */
+const casoOficial = (over: Record<string, unknown> = {}) => ({
+  id: "234000062890459000",
+  payments: [104669748043],
+  currency: "BRL",
+  amount: 500,
+  reason: "Maria Ficticia não reconhece a compra",
+  reason_id: "4837",
+  coverage_applied: null,
+  coverage_elegible: true,
+  documentation_required: true,
+  documentation_status: "pending",
+  documentation: [{ type: "image/jpeg", url: "https://www.mercadopago.com/files/doc-ficticio.jpg", description: "Comprovante enviado por maria.ficticia@example.com, Rua Ficticia" }],
+  date_documentation_deadline: "2026-10-21T23:59:59.000-04:00",
+  date_created: "2026-10-11T10:00:00.000-04:00",
+  date_last_updated: "2026-10-11T11:00:00.000-04:00",
+  live_mode: false,
+  references: [{ name: "Maria Ficticia", phone: "+55 21 99999-0000" }],
+  ...over,
+});
+
+const usuarioMe = (over: Record<string, unknown> = {}) =>
+  json(200, { id: 1985141462, nickname: "TESTUSER2054", email: "test_user_1@testuser.com", identification: { type: "CPF", number: "12345678909" }, tags: ["normal", "test_user"], ...over });
+
+const semPessoais = (v: unknown) => {
+  const t = JSON.stringify(v);
+  for (const proibido of PESSOAIS) expect(t).not.toContain(proibido);
+};
+
+describe("contestações da order (M8.2e): transactions.chargebacks[] por lista branca", () => {
+  it("lê CBK, case_id, transaction_id (pista), status e amount; nunca references, reason ou documentation", () => {
+    const c = cobrancaDaOrder(comLista(orderContestadaOficial(), [itemOficial()]))!;
+    expect(c.situacao).toBe("contestado");
+    expect(c.contestacoes).toEqual<ContestacaoLida[]>([
+      { idContestacao: "CBK01JQ4S4KY8HWQ6NA5PXB65B3D3", idCaso: "234000062890459000", idTransacao: "PAY01JQ4S4KY8HWQ6NA5PXB65B3D4", estadoLido: "in_process", codigo: "in_process", valor: 50000, daTransacao: false },
+    ]);
+    expect(c.transacaoAprovada).toBe(false);
+    semPessoais(c);
+    expect(JSON.stringify(c)).not.toMatch(/doc-ficticio|payer/);
+  });
+
+  it("case_id como texto ou número (só inteiro seguro: 18 algarismos como número já chegou arredondado = null); id e transação fora do formato = null", () => {
+    const ler = (item: Record<string, unknown>) => cobrancaDaOrder(comLista(orderContestadaOficial(), [itemOficial(item)]))!.contestacoes[0];
+    expect(ler({ case_id: 123456789 }).idCaso).toBe("123456789");
+    expect(ler({ case_id: "00012" }).idCaso).toBe("00012");
+    expect(ler({ case_id: 234000062890459000 }).idCaso).toBeNull();
+    expect(ler({ case_id: Number.MAX_SAFE_INTEGER }).idCaso).toBe(String(Number.MAX_SAFE_INTEGER));
+    for (const ruim of ["1".repeat(21), "12a", "", -5, 1.5, null, undefined, { id: 1 }]) expect(ler({ case_id: ruim }).idCaso).toBeNull();
+    expect(ler({ id: "REF01FICTICIO" }).idContestacao).toBeNull();
+    expect(ler({ id: "CBK01/../x" }).idContestacao).toBeNull();
+    expect(ler({ id: "cbk_01" }).idContestacao).toBe("cbk_01");
+    expect(ler({ transaction_id: "PAY 1" }).idTransacao).toBeNull();
+  });
+
+  it("status por lista fechada (estranho = desconhecido com o código cru curto); amount como número ou texto, ilegível = null", () => {
+    const ler = (item: Record<string, unknown>) => cobrancaDaOrder(comLista(orderContestadaOficial(), [itemOficial(item)]))!.contestacoes[0];
+    expect(ler({ status: "settled" })).toMatchObject({ estadoLido: "settled", codigo: "settled" });
+    expect(ler({ status: " Reimbursed " })).toMatchObject({ estadoLido: "reimbursed", codigo: "reimbursed" });
+    expect(ler({ status: "in_mediation" })).toMatchObject({ estadoLido: "desconhecido", codigo: "in_mediation" });
+    expect(ler({ status: "Maria Ficticia" })).toMatchObject({ estadoLido: "desconhecido", codigo: null });
+    expect(ler({ status: 3 })).toMatchObject({ estadoLido: "desconhecido", codigo: null });
+    expect(ler({ amount: 123.4 }).valor).toBe(12340);
+    expect(ler({ amount: "99.90" }).valor).toBe(9990);
+    for (const ruim of ["12,00", "1.005", -1, null, undefined]) expect(ler({ amount: ruim }).valor).toBeNull();
+  });
+
+  it("até 20 itens, só objetos; a lista não muda a situação de normalizarSituacao", () => {
+    const itens = [null, "x", ...Array.from({ length: 25 }, (_, i) => itemOficial({ id: `CBK${i}`, case_id: String(i + 1) }))];
+    const c = cobrancaDaOrder(comLista(orderCartao(), itens))!;
+    expect(c.contestacoes).toHaveLength(18); // os 20 primeiros itens, menos os dois que não são objeto
+    expect(c.situacao).toBe("contestado");
+    const reembolsada = cobrancaDaOrder(comLista(orderCartao(), [itemOficial({ status: "reimbursed" })]))!;
+    expect(reembolsada).toMatchObject({ situacao: "aprovado", transacaoAprovada: true, contestacoes: [{ estadoLido: "reimbursed" }] });
+  });
+
+  it("transação charged_back/<detalhe> sem item na lista: uma contestação sem identificação nem valor, com o estado pelo detalhe", () => {
+    const semLista = (status_detail: string, comListaVazia = true) => {
+      const o = orderCartao({}, { status: "charged_back", status_detail });
+      return cobrancaDaOrder(comListaVazia ? comLista(o, []) : o)!;
+    };
+    for (const [detalhe, estado] of [["in_process", "in_process"], ["settled", "settled"], ["reimbursed", "reimbursed"], ["algo_novo", "desconhecido"]] as const) {
+      expect(semLista(detalhe).contestacoes).toEqual([{ idContestacao: null, idCaso: null, idTransacao: null, estadoLido: estado, codigo: detalhe, valor: null, daTransacao: true }]);
+    }
+    expect(semLista("in_process", false).contestacoes).toHaveLength(1);
+    // Lista só com lixo (nenhum objeto) também conta como "sem item".
+    expect(cobrancaDaOrder(comLista(orderCartao({}, { status: "charged_back", status_detail: "settled" }), [null, 7]))!.contestacoes).toMatchObject([{ daTransacao: true, estadoLido: "settled" }]);
+    // Sem a transação, a order charged_back.
+    const soOrder = { id: "ORD1", total_amount: "10.00", status: "charged_back", status_detail: "in_process", transactions: { payments: [] } };
+    expect(cobrancaDaOrder(soOrder)!.contestacoes).toMatchObject([{ daTransacao: true, estadoLido: "in_process" }]);
+    // Com item na lista, a transação contestada não gera outra.
+    expect(cobrancaDaOrder(comLista(orderContestadaOficial(), [itemOficial()]))!.contestacoes).toHaveLength(1);
+    // Nada contestado: lista vazia.
+    expect(cobrancaDaOrder(orderCartao())!.contestacoes).toEqual([]);
+  });
+
+  it("transacaoAprovada: a transação (sem ela, a order) processed/accredited, também com contestação na lista (o fato, nunca o resultado)", () => {
+    expect(cobrancaDaOrder(orderCartao())!.transacaoAprovada).toBe(true);
+    expect(cobrancaDaOrder(comLista(orderCartao(), [itemOficial({ status: "settled" })]))!).toMatchObject({ situacao: "contestado", transacaoAprovada: true });
+    expect(cobrancaDaOrder(orderCartao({}, { status: "charged_back", status_detail: "settled" }))!.transacaoAprovada).toBe(false);
+    expect(cobrancaDaOrder(orderCartao({ status: "processed", status_detail: "partially_refunded" }, { status: "processed", status_detail: "partially_refunded" }))!.transacaoAprovada).toBe(false);
+    expect(cobrancaDaOrder({ id: "ORD1", total_amount: "10.00", status: "processed", status_detail: "accredited" })!.transacaoAprovada).toBe(true);
+    expect(cobrancaDaOrder(orderPix())!.transacaoAprovada).toBe(false);
+  });
+});
+
+describe("caso da Chargebacks API (M8.2e): casoDaContestacao por lista branca", () => {
+  it("o exemplo oficial: id em texto, payments números, amount número, coverage_elegible, prazo e datas", () => {
+    const caso = casoDaContestacao(casoOficial());
+    expect(caso).toEqual({
+      idCaso: "234000062890459000",
+      pagamentos: ["104669748043"],
+      valor: 50000,
+      motivoId: "4837",
+      motivoCodigo: null,
+      coberturaAplicada: null,
+      coberturaElegivel: true,
+      documentacao: "pending",
+      prazoDocumentacao: new Date("2026-10-22T03:59:59.000Z"),
+      criadoEm: new Date("2026-10-11T14:00:00.000Z"),
+      atualizadoEm: new Date("2026-10-11T15:00:00.000Z"),
+      aoVivo: false,
+    });
+    semPessoais(caso);
+  });
+
+  it("id como número (só inteiro seguro) ou texto; sem id legível = null", () => {
+    expect(casoDaContestacao(casoOficial({ id: 1234567 }))?.idCaso).toBe("1234567");
+    for (const ruim of [234000062890459000, "1".repeat(21), "CBK01", "", null, undefined, 1.5, -1]) expect(casoDaContestacao(casoOficial({ id: ruim }))).toBeNull();
+    for (const ruim of [null, "x", [], 7]) expect(casoDaContestacao(ruim)).toBeNull();
+  });
+
+  it("payments: só números legíveis (inteiro seguro ou texto de algarismos), sem repetir, até 20", () => {
+    expect(casoDaContestacao(casoOficial({ payments: [1, "2", 2, 234000062890459000, "PAY01", null, { id: 3 }, -4] }))?.pagamentos).toEqual(["1", "2"]);
+    expect(casoDaContestacao(casoOficial({ payments: Array.from({ length: 30 }, (_, i) => i + 1) }))?.pagamentos).toHaveLength(20);
+    expect(casoDaContestacao(casoOficial({ payments: "104669748043" }))?.pagamentos).toEqual([]);
+  });
+
+  it("reason com espaço (uma frase, com nome ou não) nunca passa; só o código; reason_id só algarismos (até 6)", () => {
+    const motivo = (reason: unknown, reason_id: unknown = "4837") => {
+      const c = casoDaContestacao(casoOficial({ reason, reason_id }))!;
+      return [c.motivoCodigo, c.motivoId];
+    };
+    expect(motivo("fraud")).toEqual(["fraud", "4837"]);
+    expect(motivo("not_received_2")).toEqual(["not_received_2", "4837"]);
+    for (const frase of ["Maria Ficticia não reconhece", "general fraud", "Fraud", " fraud", "fraud ", "_x", "1abc", "a".repeat(41), "maria.ficticia@example.com", 12, null]) {
+      expect(motivo(frase)[0]).toBeNull();
+    }
+    expect(motivo("fraud", 4853)[1]).toBe("4853");
+    for (const ruim of ["48 37", "1234567", "48a", "", -1, 1.5, null]) expect(motivo("fraud", ruim)[1]).toBeNull();
+  });
+
+  it("coberturas só booleanas (null antes da decisão; true/false o resultado); as duas grafias da elegível", () => {
+    const c = (over: Record<string, unknown>) => casoDaContestacao(casoOficial(over))!;
+    expect(c({ coverage_applied: true }).coberturaAplicada).toBe(true);
+    expect(c({ coverage_applied: false }).coberturaAplicada).toBe(false);
+    expect(c({ coverage_applied: "true" }).coberturaAplicada).toBeNull();
+    expect(c({ coverage_elegible: undefined, coverage_eligible: false }).coberturaElegivel).toBe(false);
+    expect(c({ coverage_elegible: false, coverage_eligible: true }).coberturaElegivel).toBe(false);
+    expect(c({ coverage_elegible: undefined }).coberturaElegivel).toBeNull();
+  });
+
+  it("documentation_status da lista fechada (outro = desconhecida; ausente = null); prazo pode vir null; live_mode", () => {
+    const c = (over: Record<string, unknown>) => casoDaContestacao(casoOficial(over))!;
+    for (const d of ["pending", "review_pending", "valid", "invalid", "not_supplied", "not_applicable"]) expect(c({ documentation_status: d }).documentacao).toBe(d);
+    expect(c({ documentation_status: " VALID " }).documentacao).toBe("valid");
+    expect(c({ documentation_status: "algo_novo" }).documentacao).toBe("desconhecida");
+    expect(c({ documentation_status: "Maria Ficticia" }).documentacao).toBe("desconhecida");
+    expect(c({ documentation_status: null }).documentacao).toBeNull();
+    expect(c({ documentation_status: undefined }).documentacao).toBeNull();
+    expect(c({ date_documentation_deadline: null }).prazoDocumentacao).toBeNull();
+    expect(c({ date_documentation_deadline: "amanhã" }).prazoDocumentacao).toBeNull();
+    expect(c({ live_mode: true }).aoVivo).toBe(true);
+    expect(c({ live_mode: undefined }).aoVivo).toBeNull();
+    expect(c({ amount: "123.45" }).valor).toBe(12345);
+    expect(c({ amount: "x" }).valor).toBeNull();
+  });
+
+  it("ids numéricos num lugar só: até 20 algarismos, texto ou inteiro seguro", () => {
+    expect(ID_NUMERICO_PROVEDOR.test("1".repeat(20))).toBe(true);
+    expect(ID_NUMERICO_PROVEDOR.test("1".repeat(21))).toBe(false);
+    expect(idNumericoLido(42)).toBe("42");
+    expect(idNumericoLido(2 ** 53)).toBeNull();
+    expect(idNumericoLido("42 ")).toBeNull();
+    expect(idContestacaoValido("CBK01JQ4S4KY8")).toBe(true);
+    expect(idContestacaoValido("PAY01")).toBe(false);
+    expect(semAcessoContestacao({ semAcesso: true })).toBe(true);
+    expect(semAcessoContestacao([])).toBe(false);
+  });
+
+  it("Payments API pelo número: só status, status_detail e money_release_status, como códigos", () => {
+    const pg = { id: 104669748043, status: "charged_back", status_detail: "Settled", money_release_status: "released", payer: { email: "maria.ficticia@example.com", first_name: "Maria Ficticia" }, transaction_amount: 500 };
+    const s = situacaoDoPagamentoLida(pg);
+    expect(s).toEqual({ status: "charged_back", statusDetail: "settled", moneyReleaseStatus: "released" });
+    semPessoais(s);
+    expect(situacaoDoPagamentoLida({ status: "Maria Ficticia", status_detail: 5 })).toEqual({ status: null, statusDetail: null, moneyReleaseStatus: null });
+    expect(situacaoDoPagamentoLida(null)).toEqual({ status: null, statusDetail: null, moneyReleaseStatus: null });
+  });
+
+  it("id da conta (X-Caller-Id) de GET /users/me: só algarismos e inteiro seguro", () => {
+    expect(idDaContaDoUsuario({ id: 1985141462, email: "test_user_1@testuser.com" })).toBe("1985141462");
+    expect(idDaContaDoUsuario({ id: "1985141462" })).toBe("1985141462");
+    for (const ruim of [234000062890459000, "234000062890459000", "12a", 0, -1, 1.5, null, undefined]) expect(idDaContaDoUsuario({ id: ruim })).toBeNull();
+    expect(idDaContaDoUsuario("x")).toBeNull();
+  });
+});
+
+describe("Chargebacks API no cliente HTTP (M8.2e)", () => {
+  it("consultarContestacao: GET /v1/chargebacks/{id} com o X-Caller-Id de /users/me (fetchImpl espião); o id fica em memória", async () => {
+    const espioes = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+    const f = fetchFalso(usuarioMe(), json(200, casoOficial()), json(200, casoOficial()));
+    const c = cliente(f.impl);
+    const caso = await c.consultarContestacao("234000062890459000");
+    expect(caso).toMatchObject({ idCaso: "234000062890459000", pagamentos: ["104669748043"], valor: 50000, documentacao: "pending", coberturaElegivel: true });
+    semPessoais(caso);
+    const [me, cbk] = f.pedidos;
+    expect(me.url.toString()).toBe("https://api.mercadopago.com/users/me");
+    expect(me.headers["x-caller-id"]).toBeUndefined();
+    expect(cbk.url.toString()).toBe("https://api.mercadopago.com/v1/chargebacks/234000062890459000");
+    expect(cbk.metodo).toBe("GET");
+    expect(cbk.headers["x-caller-id"]).toBe("1985141462");
+    expect(cbk.headers.authorization).toBe(`Bearer ${TOKEN}`);
+    expect(cbk.headers["x-idempotency-key"]).toBeUndefined();
+    expect(cbk.temCorpo).toBe(false);
+    // Lista branca dos cabeçalhos: nada além dos de sempre e do X-Caller-Id.
+    expect(Object.keys(cbk.headers).sort()).toEqual(["accept", "authorization", "content-type", "x-caller-id"]);
+    // Segunda consulta: o id veio da memória, sem novo /users/me.
+    await c.consultarContestacao("234000062890459000");
+    expect(f.pedidos.map((p) => p.url.pathname)).toEqual(["/users/me", "/v1/chargebacks/234000062890459000", "/v1/chargebacks/234000062890459000"]);
+    expect(f.pedidos[2].headers["x-caller-id"]).toBe("1985141462");
+    for (const e of espioes) expect(e).not.toHaveBeenCalled();
+  });
+
+  it("o id lido por conferirContaDeTeste já serve; chamadas simultâneas esperam a mesma leitura de /users/me", async () => {
+    const f = fetchFalso(usuarioMe({ id: "777" }), json(200, casoOficial()));
+    const c = cliente(f.impl);
+    expect(await c.conferirContaDeTeste()).toBe(true);
+    await c.consultarContestacao("234000062890459000");
+    expect(f.pedidos.map((p) => p.url.pathname)).toEqual(["/users/me", "/v1/chargebacks/234000062890459000"]);
+    expect(f.pedidos[1].headers["x-caller-id"]).toBe("777");
+    const g = fetchFalso(usuarioMe(), json(200, { results: [] }), json(200, { results: [] }));
+    const d = cliente(g.impl);
+    await Promise.all([d.buscarContestacoes("104669748043"), d.buscarContestacoes("104669748043")]);
+    expect(g.pedidos.filter((p) => p.url.pathname === "/users/me")).toHaveLength(1);
+  });
+
+  it("consultarContestacao: 404 → null; 403 → sem acesso; 401 → credencial; 5xx, 400, ilegível ou outro id → lança; id que não pode existir → null sem rede", async () => {
+    expect(await cliente(fetchFalso(usuarioMe(), json(404, { message: "not found" })).impl).consultarContestacao("1")).toBeNull();
+    expect(await cliente(fetchFalso(usuarioMe(), json(403, { message: "forbidden" })).impl).consultarContestacao("1")).toEqual({ semAcesso: true });
+    expect((await erroDe(cliente(fetchFalso(usuarioMe(), json(401, { message: TOKEN })).impl).consultarContestacao("1"))).tipo).toBe("credencial");
+    expect((await erroDe(cliente(fetchFalso(usuarioMe(), json(429, {}, { "retry-after": "3" })).impl).consultarContestacao("1")))).toMatchObject({ tipo: "limite", esperarSegundos: 3 });
+    for (const r of [json(500, {}), json(400, { message: "X-Caller-Id faltando" }), json(200, { id: "CBK1" }), new Response("x", { status: 200 }), json(200, casoOficial({ id: "999" }))]) {
+      expect((await erroDe(cliente(fetchFalso(usuarioMe(), r).impl).consultarContestacao("1"))).tipo).toBe("incerto");
+    }
+    const f = fetchFalso();
+    for (const ruim of ["", "../payments", "1/2", "1?x=1", "1".repeat(21), "CBK01", " 1"]) expect(await cliente(f.impl).consultarContestacao(ruim)).toBeNull();
+    expect(f.pedidos).toHaveLength(0);
+  });
+
+  it("buscarContestacoes: GET /v1/chargebacks/search?payment_id= com o X-Caller-Id; lista vazia = nenhuma; 403 → sem acesso", async () => {
+    const f = fetchFalso(usuarioMe(), json(200, { paging: { total: 2 }, results: [casoOficial(), casoOficial({ id: 55, payments: ["104669748043"], coverage_elegible: undefined, coverage_eligible: true, date_documentation_deadline: null })] }));
+    const casos = await cliente(f.impl).buscarContestacoes("104669748043");
+    expect(casos).toMatchObject([{ idCaso: "234000062890459000" }, { idCaso: "55", pagamentos: ["104669748043"], coberturaElegivel: true, prazoDocumentacao: null }]);
+    semPessoais(casos);
+    const busca = f.pedidos[1];
+    expect(busca.url.pathname).toBe("/v1/chargebacks/search");
+    expect(busca.url.searchParams.get("payment_id")).toBe("104669748043");
+    expect(busca.headers["x-caller-id"]).toBe("1985141462");
+    expect(await cliente(fetchFalso(usuarioMe(), json(200, { results: [] })).impl).buscarContestacoes("1")).toEqual([]);
+    expect(await cliente(fetchFalso(usuarioMe(), json(200, { data: [casoOficial()] })).impl).buscarContestacoes("1")).toHaveLength(1);
+    expect(await cliente(fetchFalso(usuarioMe(), json(200, [casoOficial()])).impl).buscarContestacoes("1")).toHaveLength(1);
+    expect(await cliente(fetchFalso(usuarioMe(), json(403, {})).impl).buscarContestacoes("1")).toEqual({ semAcesso: true });
+  });
+
+  it("buscarContestacoes nunca diz 'nenhuma' sem saber: 404 (rota inexistente), 5xx, rede, corpo sem lista e item sem id lançam; 401 → credencial", async () => {
+    for (const r of [json(404, {}), json(500, {}), json(400, {}), json(200, { paging: {} }), json(200, { results: [casoOficial(), { amount: 1 }] }), json(200, { results: [casoOficial({ id: 234000062890459000 })] }), new Response("x", { status: 200 }), Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } })]) {
+      expect((await erroDe(cliente(fetchFalso(usuarioMe(), r).impl).buscarContestacoes("104669748043"))).tipo).toBe("incerto");
+    }
+    expect((await erroDe(cliente(fetchFalso(usuarioMe(), json(401, {})).impl).buscarContestacoes("1"))).tipo).toBe("credencial");
+    const f = fetchFalso();
+    expect(await cliente(f.impl).buscarContestacoes("PAY01")).toEqual([]);
+    expect(f.pedidos).toHaveLength(0);
+  });
+
+  it("sem o id da conta a Chargebacks API não é chamada: /users/me ilegível, sem id ou falhando lança, e a próxima vez tenta de novo", async () => {
+    for (const me of [json(200, { id: "12a" }), json(200, { id: 234000062890459000 }), json(200, { nickname: "x" }), json(404, {}), json(500, {}), new Response("x", { status: 200 })]) {
+      const f = fetchFalso(me);
+      const e = await erroDe(cliente(f.impl).consultarContestacao("1"));
+      expect(e.tipo).toBe("incerto");
+      expect(f.pedidos.map((p) => p.url.pathname)).toEqual(["/users/me"]);
+    }
+    expect((await erroDe(cliente(fetchFalso(json(401, {})).impl).buscarContestacoes("1"))).tipo).toBe("credencial");
+    // A falha não fica guardada: a chamada seguinte lê /users/me de novo.
+    const f = fetchFalso(json(500, {}), usuarioMe(), json(200, { results: [] }));
+    const c = cliente(f.impl);
+    await erroDe(c.buscarContestacoes("1"));
+    expect(await c.buscarContestacoes("1")).toEqual([]);
+    expect(f.pedidos.map((p) => p.url.pathname)).toEqual(["/users/me", "/users/me", "/v1/chargebacks/search"]);
+  });
+
+  it("o 403 só volta como 'sem acesso' na Chargebacks API: nos outros métodos continua credencial", async () => {
+    expect((await erroDe(cliente(fetchFalso(json(403, {})).impl).consultar("ORD1"))).tipo).toBe("credencial");
+    expect((await erroDe(cliente(fetchFalso(json(403, {})).impl).situacaoDoPagamento("1"))).tipo).toBe("credencial");
+    // E o X-Caller-Id só vai na Chargebacks API.
+    const f = fetchFalso(json(200, orderCartao()));
+    await cliente(f.impl).consultar("ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG");
+    expect(f.pedidos[0].headers["x-caller-id"]).toBeUndefined();
+  });
+
+  it("tempo-limite de 8 s nos métodos novos (os outros continuam com 15 s)", async () => {
+    vi.useFakeTimers();
+    try {
+      const pendurado = (_p: Pedido, init?: RequestInit) => new Promise<Response>((_, rejeitar) => {
+        init?.signal?.addEventListener("abort", () => rejeitar(new DOMException("aborted", "AbortError")));
+      });
+      const f = fetchFalso(usuarioMe(), pendurado, pendurado);
+      const c = cliente(f.impl);
+      let erro: unknown = null;
+      const consulta = c.consultarContestacao("1").catch((e) => { erro = e; });
+      await vi.advanceTimersByTimeAsync(7_999);
+      expect(erro).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      await consulta;
+      expect(erro).toMatchObject({ tipo: "incerto" });
+      erro = null;
+      const situacao = c.situacaoDoPagamento("104669748043").catch((e) => { erro = e; });
+      await vi.advanceTimersByTimeAsync(8_000);
+      await situacao;
+      expect(erro).toMatchObject({ tipo: "incerto" });
+      // A leitura da order continua com 15 s.
+      const g = fetchFalso(pendurado);
+      erro = null;
+      const leitura = cliente(g.impl).consultar("ORD1").catch((e) => { erro = e; });
+      await vi.advanceTimersByTimeAsync(8_000);
+      expect(erro).toBeNull();
+      await vi.advanceTimersByTimeAsync(7_000);
+      await leitura;
+      expect(erro).toMatchObject({ tipo: "incerto" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("num cliente novo, a leitura do id da conta (GET /users/me) e o pedido à Chargebacks API cabem juntos nos 8 s (Codex, 11/10)", async () => {
+    vi.useFakeTimers();
+    try {
+      // /users/me responde só depois de 5 s; a Chargebacks API não responde.
+      const meDemorado = (_p: Pedido, init?: RequestInit) =>
+        new Promise<Response>((resolver, rejeitar) => {
+          const t = setTimeout(() => resolver(usuarioMe()), 5_000);
+          init?.signal?.addEventListener("abort", () => {
+            clearTimeout(t);
+            rejeitar(new DOMException("aborted", "AbortError"));
+          });
+        });
+      const pendurado = (_p: Pedido, init?: RequestInit) => new Promise<Response>((_, rejeitar) => {
+        init?.signal?.addEventListener("abort", () => rejeitar(new DOMException("aborted", "AbortError")));
+      });
+      const f = fetchFalso(meDemorado, pendurado);
+      let erro: unknown = null;
+      const consulta = cliente(f.impl).consultarContestacao("1").catch((e) => { erro = e; });
+      await vi.advanceTimersByTimeAsync(7_999);
+      expect(erro).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      await consulta;
+      // A consulta inteira acaba nos 8 s (antes, 5 s do /users/me e mais 8 s da Chargebacks API).
+      expect(erro).toMatchObject({ tipo: "incerto" });
+      expect(f.pedidos.map((p) => p.url.pathname)).toEqual(["/users/me", "/v1/chargebacks/1"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("o JSON oficial cheio de dados pessoais (reason em frase, documentation com e-mail, references) não sai em nada normalizado nem nas mensagens", async () => {
+    const espioes = (["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+    const order = comLista(orderContestadaOficial(), [itemOficial(), itemOficial({ id: "CBK02", case_id: 77, status: "settled", amount: 12.5, reason: { description: "Maria Ficticia" } })]);
+    const f = fetchFalso(json(200, order), usuarioMe(), json(200, casoOficial()), json(200, { results: [casoOficial(), casoOficial({ id: "77" })] }), json(200, { id: 104669748043, status: "charged_back", status_detail: "in_process", money_release_status: "pending", payer: { email: "maria.ficticia@example.com", identification: { number: "12345678909" } }, additional_info: { payer: { first_name: "Maria Ficticia", address: { street_name: "Rua Ficticia" } } } }));
+    const c = cliente(f.impl);
+    const lida = await c.consultar("ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG");
+    const caso = await c.consultarContestacao("234000062890459000");
+    const busca = await c.buscarContestacoes("104669748043");
+    const situacao = await c.situacaoDoPagamento("104669748043");
+    expect(lida?.contestacoes).toMatchObject([{ idCaso: "234000062890459000", valor: 50000 }, { idCaso: "77", estadoLido: "settled", valor: 1250 }]);
+    expect(caso).toMatchObject({ idCaso: "234000062890459000", motivoCodigo: null, motivoId: "4837" });
+    expect(busca).toHaveLength(2);
+    expect(situacao).toEqual({ status: "charged_back", statusDetail: "in_process", moneyReleaseStatus: "pending" });
+    for (const v of [lida, caso, busca, situacao]) semPessoais(v);
+    expect(JSON.stringify([lida, caso, busca])).not.toMatch(/doc-ficticio|description|references|documentation/);
+    // As mensagens de erro também não repetem a resposta.
+    const erro = await erroDe(cliente(fetchFalso(usuarioMe(), json(500, casoOficial())).impl).consultarContestacao("1"));
+    for (const proibido of PESSOAIS) expect(erro.message).not.toContain(proibido);
+    for (const e of espioes) expect(e).not.toHaveBeenCalled();
+  });
+});
+
+describe("situacaoDoPagamento no cliente HTTP (M8.2e)", () => {
+  it("GET /v1/payments/{id}: só os três códigos; sem X-Caller-Id", async () => {
+    const f = fetchFalso(json(200, { id: 104669748043, status: "approved", status_detail: "accredited", money_release_status: "released", transaction_amount: 500 }));
+    expect(await cliente(f.impl).situacaoDoPagamento("104669748043")).toEqual({ status: "approved", statusDetail: "accredited", moneyReleaseStatus: "released" });
+    expect(f.pedidos[0].url.toString()).toBe("https://api.mercadopago.com/v1/payments/104669748043");
+    expect(f.pedidos[0].headers["x-caller-id"]).toBeUndefined();
+    expect(f.pedidos[0].temCorpo).toBe(false);
+  });
+
+  it("404 → null; outro pagamento, ilegível, 5xx ou 400 → lança; 401 → credencial; número que não pode existir → null sem rede", async () => {
+    expect(await cliente(fetchFalso(json(404, {})).impl).situacaoDoPagamento("1")).toBeNull();
+    for (const r of [json(200, { id: 2, status: "approved" }), json(200, { status: "approved" }), new Response("x", { status: 200 }), json(500, {}), json(400, {})]) {
+      expect((await erroDe(cliente(fetchFalso(r).impl).situacaoDoPagamento("1"))).tipo).toBe("incerto");
+    }
+    expect((await erroDe(cliente(fetchFalso(json(401, {})).impl).situacaoDoPagamento("1"))).tipo).toBe("credencial");
+    const f = fetchFalso();
+    for (const ruim of ["", "PAY01", "1/2", "1".repeat(21)]) expect(await cliente(f.impl).situacaoDoPagamento(ruim)).toBeNull();
+    expect(f.pedidos).toHaveLength(0);
+    // O id em texto também confere.
+    expect(await cliente(fetchFalso(json(200, { id: "1", status: "charged_back", status_detail: "reimbursed" })).impl).situacaoDoPagamento("1")).toEqual({ status: "charged_back", statusDetail: "reimbursed", moneyReleaseStatus: null });
   });
 });

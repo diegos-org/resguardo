@@ -14,12 +14,13 @@ import { formatBRL } from "@/lib/money";
 import { nome as nomeDoPeriodo, type SituacaoPeriodo } from "@/portal/periodo";
 import { type ReservaPortal, reservasDoPortal, type SituacaoReserva } from "@/portal/reservas";
 import { type ResumoPortal, resumoDoProprietario } from "@/portal/resumo";
-import { type Rodape, rodapeDoPortal } from "@/portal/rodape";
+import { MOTIVO_PARTE_EM_CONFERENCIA, ROTULO_DISPUTA_PROPRIETARIO } from "@/pagamentos/contestacao-regras";
+import { divisaoDoDeve, nomeDoDescontoQueNaoSeTransfere, type Rodape, rodapeDoPortal, textoForaPorDisputa } from "@/portal/rodape";
 import { nomeMes, type Repasse } from "@/repasses/repasses";
 import { type ContratoDoRelatorio, contratosDoRelatorio, type DespesaDoRelatorio, despesasDoRelatorio, type MetricasDoRelatorio, metricasDoRelatorio, partesDoRelatorio, type RepasseDoRelatorio, repassesDoRelatorio } from "./dados";
 import { DIA_FECHAMENTO_PADRAO, diaDoFechamento } from "@/repasses/periodicidade";
 import { lerRegrasRepasses } from "@/repasses/regras-config";
-import { type AvisoDaLinha, comoChega, conciliacao, conciliacaoFecha, dataCurta, dataDoPix, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
+import { type AvisoDaLinha, comoChega, conciliacao, conciliacaoFecha, dataCurta, dataDoPix, ehEspelhoDoCancelamento, ehLinhaDaDisputa, type Linha, type LinhaConciliacao, nomeDoCanal, type ParteDoRelatorio, primeiroNome } from "./dinheiro";
 import { acumuladoDoAno, mesISO, type MesISO, nomeDoMes, type PontoDaSerie, type PontoOcupacao, type Quadro, quadrosDoMes, serieDe12, serieOcupacaoDe12 } from "./metricas";
 
 export type Dono = { id: string; nome: string };
@@ -266,7 +267,7 @@ export function comPaginas(t: TextosRelatorio, p: PaginasDasSecoes): TextosRelat
   };
 }
 
-const SITUACAO_RESERVA: Record<SituacaoReserva, string> = { definido: "definido", em_conferencia: "em conferência", sem_calculo: "sem cálculo ainda" };
+const SITUACAO_RESERVA: Record<SituacaoReserva, string> = { definido: "definido", em_conferencia: "em conferência", em_conferencia_disputa: "em conferência (disputa do pagamento)", sem_calculo: "sem cálculo ainda" };
 const br = (d: string) => d.split("-").reverse().join("/");
 const ultimoDia = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).getUTCDate();
 const capitalizar = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -285,6 +286,8 @@ export function textoDoSaldo(r: Rodape, empresa: string, diaFechamento: number =
     );
   }
   if (r.emConferencia) depois.push("Há itens deste mês em conferência, lançados depois do fechamento.");
+  // M8.2e (C2): a parte presa por disputa do pagamento fica para o próximo repasse, com o motivo próprio.
+  const fora = textoForaPorDisputa(r) ? [textoForaPorDisputa(r)!] : [];
   switch (r.situacao) {
     case "pago":
       return [`Repasse de ${valor} pago em ${br(r.dataPagamento!)}.`, ...depois];
@@ -293,18 +296,47 @@ export function textoDoSaldo(r: Rodape, empresa: string, diaFechamento: number =
     case "fechado":
       return [`Mês fechado: a ${empresa} vai lhe transferir ${valor}${descontos}${pixDele}`, ...depois];
     case "empresa_deve":
-      return [`Credor: você. A ${empresa} vai lhe transferir ${valor}${descontos}${pixDele}`];
-    case "proprietario_deve":
-      return [`Credor: ${empresa}. Você deve ${valor} à ${empresa}.`, r.chavePix ? `Pix da ${empresa}: ${r.chavePix}` : `Fale com a ${empresa} para combinar o pagamento.`];
+      return [`Credor: você. A ${empresa} vai lhe transferir ${valor}${descontos}${pixDele}`, ...fora];
+    case "proprietario_deve": {
+      // M8.2c: o desconto de reserva cancelada com devolução ao hóspede não se transfere: sai do próximo repasse.
+      // M8.2e: o mesmo com o valor segurado pela disputa do pagamento.
+      const { proximoRepasse, transferir } = divisaoDoDeve(r);
+      const desconto = `${nomeDoDescontoQueNaoSeTransfere(r)} (${formatBRL(proximoRepasse)}), maior que a sua parte deste mês, não se transfere: sai do próximo repasse`;
+      if (!transferir) return [`Credor: ${empresa}. Você deve ${valor} à ${empresa}, mas não precisa transferir: ${desconto}.`, ...fora];
+      return [
+        `Credor: ${empresa}. Você deve ${valor} à ${empresa}.${proximoRepasse ? ` Desse valor, ${desconto}; transfira ${formatBRL(transferir)}.` : ""}`,
+        r.chavePix ? `Pix da ${empresa}: ${r.chavePix}` : `Fale com a ${empresa} para combinar o pagamento.`,
+        ...fora,
+      ];
+    }
     case "parcial":
       return [
         `Saldo parcial até o fim do mês: ${valor}${r.aFavor === "proprietario" ? " a seu favor" : r.aFavor === "empresa" ? ` a favor da ${empresa}` : ""}. O valor final e quem paga saem no fechamento, no dia ${diaFechamento} do mês seguinte.`,
+        ...fora,
       ];
     case "em_conferencia":
       return [`Há itens em conferência: o valor final aparece depois que a ${empresa} resolver.`];
     default:
-      return ["Nada a pagar ou receber neste mês."];
+      return fora.length ? fora : ["Nada a pagar ou receber neste mês."];
   }
+}
+
+/**
+ * M8.2e (revisão de 11/10): a causa registrada e a explicação ao proprietário de cada disputa com linha no mês (desenho,
+ * "Quem arca": "mostrada no extrato, no PDF e no e-mail, ao lado da causa"), uma frase por disputa, só com o código da
+ * reserva. A coluna da situação na tabela é curta (cortada no PDF): a frase vai na nota logo abaixo dela. A linha devolvida
+ * (a SCL ganhou, sem efeito) não leva a causa, como no extrato.
+ */
+function notasDasDisputas(doMes: readonly ParteDoRelatorio[]): string[] {
+  const notas = doMes
+    .filter((p) => ehLinhaDaDisputa(p) && p.contestacao !== "devolvido")
+    .map((p) => {
+      const explicacao = (p.explicacaoDaDisputa ?? "").trim().replace(/([^.!?])$/, "$1.");
+      const causa = p.causaDaDisputa ? `causa registrada: ${p.causaDaDisputa}.` : "";
+      return causa || explicacao ? `${ROTULO_DISPUTA_PROPRIETARIO} da reserva ${p.codigo}: ${[causa, explicacao].filter(Boolean).join(" ")}` : "";
+    })
+    .filter(Boolean);
+  return [...new Set(notas)];
 }
 
 /** "Sua Casa Leblon" → { inicio: "Sua Casa", destaque: "Leblon" } (a última palavra em itálico dourado, como no site). */
@@ -316,6 +348,25 @@ export function marcaDe(empresa: string): { inicio: string; destaque: string } {
 
 /** A situação da parte na tabela de reservas; `hoje` separa o que o canal já pagou do que ainda está previsto. */
 const situacaoDaParte = (p: ParteDoRelatorio, hoje: string): { texto: string; tipo: LinhaReserva["situacaoTipo"] } => {
+  // M8.2c: o desconto da parte já repassada de uma reserva cancelada com devolução ao hóspede (mês do cancelamento), o
+  // estorno da parte que nunca foi paga e essa parte, que o estorno anula.
+  if (p.cancelamento === "desconto")
+    return { texto: `cancelada com devolução ao hóspede (estadia de ${dataCurta(p.checkin)}): ${p.repasse ? `descontada no repasse de ${dataCurta(dataDoPix(p.repasse))}` : "desconto no próximo repasse"}`, tipo: "info" };
+  if (p.cancelamento === "estorno")
+    return { texto: `cancelada com devolução ao hóspede antes do repasse (estadia de ${dataCurta(p.checkin)}): ${p.repasse ? `estorno da parte no repasse de ${dataCurta(dataDoPix(p.repasse))}` : "estorno da parte no próximo repasse"}`, tipo: "info" };
+  if (p.cancelamento === "anulada" && !p.repasse) return { texto: "cancelada com devolução ao hóspede antes do repasse: anulada pelo estorno no mês do cancelamento", tipo: "info" };
+  // M8.2e: a linha da disputa do pagamento (segurado até o resultado, definitivo ou devolvido) e onde ela está.
+  if (ehLinhaDaDisputa(p)) {
+    const nome = p.contestacao === "definitivo" ? "desconto definitivo" : p.contestacao === "devolvido" ? (p.suaParte > 0 ? "valor segurado devolvido" : "segurado, depois devolvido") : "segurado até o resultado";
+    const onde = p.repasse
+      ? `${p.suaParte < 0 ? "descontado" : "devolvido"} no repasse de ${dataCurta(dataDoPix(p.repasse))}`
+      : p.situacao === "a_liberar"
+        ? "junto com a sua parte desta reserva"
+        : p.suaParte < 0
+          ? "sai do próximo repasse"
+          : "volta no próximo repasse";
+    return { texto: `disputa do pagamento: ${nome} (${onde})`, tipo: p.situacao === "a_liberar" ? "aviso" : "info" };
+  }
   if (p.repasse) {
     if (p.repasse.tipo === "por_fora") return { texto: "acertada por fora, antes do início do sistema", tipo: "ok" };
     return p.repasse.situacao === "pago" ? { texto: `repassada em ${dataCurta(dataDoPix(p.repasse))}`, tipo: "ok" } : { texto: `em repasse de ${dataCurta(p.repasse.data)}, a pagar`, tipo: "info" };
@@ -326,9 +377,13 @@ const situacaoDaParte = (p: ParteDoRelatorio, hoje: string): { texto: string; ti
   }
   if (p.situacao === "disponivel") return { texto: "a transferir no fechamento", tipo: "info" };
   if (p.quemRecebe === "a_confirmar") return { texto: "a liberar: quem recebe a confirmar", tipo: "aviso" };
-  const curto = /não registrou o recebimento/i.test(p.motivo)
+  const curto = p.motivo === MOTIVO_PARTE_EM_CONFERENCIA
+    ? "em conferência (disputa do pagamento)"
+    : /não registrou o recebimento/i.test(p.motivo)
     ? "pagamento do canal não registrado"
-    : /depois do check-in/i.test(p.motivo)
+    : p.cancelamento === "retida" && /entrada original/i.test(p.motivo)
+      ? "cancelada sem devolução (valor retido), libera depois da entrada original"
+      : /depois do check-in/i.test(p.motivo)
       ? "libera depois do check-in"
       : /conferência/i.test(p.motivo)
         ? "em conferência"
@@ -373,11 +428,31 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const chega = comoChega(d.partes, mes, d.hoje, d.rodape, e, d.repasses);
   const canaisComTaxa = [...new Set(doMes.filter((p) => p.taxa > 0).map((p) => nomeDoCanal(p.canal, e)))];
   const nDespesas = d.despesas.length;
+  // M8.2c: de onde vem parte do bruto das canceladas pela política (o retido e o desconto depois do repasse).
+  const doBruto = [
+    r.retidoDeCanceladas.n ? `inclui ${formatBRL(r.retidoDeCanceladas.bruto)} retido de ${r.retidoDeCanceladas.n} ${plural(r.retidoDeCanceladas.n, "reserva cancelada", "reservas canceladas")} sem devolução (política de cancelamento)` : "",
+    r.devolvidoDeCanceladas.n ? `inclui −${formatBRL(-r.devolvidoDeCanceladas.bruto)} de ${r.devolvidoDeCanceladas.n} ${plural(r.devolvidoDeCanceladas.n, "reserva cancelada", "reservas canceladas")} com devolução depois do repasse` : "",
+  ].filter(Boolean);
   const brutoAoResultado: LinhaValor[] = [
-    { texto: `Bruto das reservas (${nReservas} ${plural(nReservas, "reserva", "reservas")}, ${noites} ${plural(noites, "noite", "noites")} em ${mesNome})`, valor: formatBRL(r.receitaBruta), tipo: "normal" },
+    {
+      texto: `Bruto das reservas (${nReservas} ${plural(nReservas, "reserva", "reservas")}, ${noites} ${plural(noites, "noite", "noites")} em ${mesNome})`,
+      valor: formatBRL(r.receitaBruta),
+      tipo: "normal",
+      ...(doBruto.length ? { etiqueta: doBruto.join("; ") } : {}),
+    },
     { texto: `− Taxas dos canais${canaisComTaxa.length ? ` (${canaisComTaxa.join(", ")})` : ""}`, valor: `− ${formatBRL(r.taxasCanais)}`, tipo: "sub" },
     { texto: "Líquido depois dos canais", valor: formatBRL(r.receitaBruta - r.taxasCanais), tipo: "normal" },
     { texto: `− Comissão da gestão${comissoes.length === 1 ? ` (${comissoes[0]} do líquido)` : ""}`, valor: `− ${formatBRL(r.comissao)}`, tipo: "sub" },
+    // M8.2e: as linhas da disputa do pagamento, sem bruto, taxa nem comissão: a linha própria até a sua parte.
+    ...(r.disputa?.n
+      ? [
+          {
+            texto: `${r.disputa.valor < 0 ? "−" : "+"} Disputa do pagamento (${r.disputa.n} ${plural(r.disputa.n, "reserva", "reservas")}: valor segurado, definitivo ou devolvido; veja as reservas do mês)`,
+            valor: `${r.disputa.valor < 0 ? "− " : ""}${formatBRL(Math.abs(r.disputa.valor))}`,
+            tipo: "sub" as const,
+          },
+        ]
+      : []),
     { texto: "Sua parte nas reservas", valor: formatBRL(r.suaParte), tipo: "normal" },
     ...(r.despesas > 0 ? [{ texto: `− Despesas do imóvel (${nDespesas || 1} ${plural(nDespesas || 1, "lançamento", "lançamentos")} — ${detalheDasDespesas(PAGINAS_PADRAO)})`, valor: `− ${formatBRL(r.despesas)}`, tipo: "sub" as const }] : []),
     { texto: `Seu resultado em ${mesNome}`, valor: formatBRL(resultado), tipo: "total" },
@@ -391,6 +466,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     a_liberar: "Entra no próximo repasse assim que o canal pagar; você não precisa fazer nada.",
     voce_transfere: `As despesas do mês passaram da sua parte; a chave Pix da ${e} está no portal.`,
     em_conferencia: "Esse valor é provisório e pode mudar; você não precisa fazer nada até a conferência terminar.",
+    disputa: `Espera a decisão da ${e} sobre a disputa do pagamento; você não precisa fazer nada.`,
     sem_prazo_do_canal: `A data aparece aqui quando a ${e} cadastrar o prazo do canal; confira o pagamento na sua conta do canal.`,
   };
   const avisos = [
@@ -409,19 +485,23 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const linhasReservas: LinhaReserva[] = [
     ...doMes.map((p) => {
       const s = situacaoDaParte(p, d.hoje);
-      const atravessa = p.noitesNoMes !== p.noitesTotal;
+      // O espelho de uma cancelada (M8.2c: desconto ou estorno) não tem noites no mês: é o espelho do mês que movimentou dinheiro.
+      // M8.2e: a linha da disputa do pagamento também não (nem canal, nem componentes); só o código da reserva.
+      const disputa = ehLinhaDaDisputa(p);
+      const desconto = ehEspelhoDoCancelamento(p) || disputa;
+      const atravessa = !desconto && p.noitesNoMes !== p.noitesTotal;
       return {
         imovel: nomes.get(d.reservas.find((x) => x.id === p.reservaId)?.imovelId ?? "") ?? "",
-        hospede: primeiroNome(p.hospede) || "não informado",
-        canal: nomeDoCanal(p.canal, e),
-        codigo: p.codigoCanal || p.codigo,
+        hospede: disputa ? ROTULO_DISPUTA_PROPRIETARIO : primeiroNome(p.hospede) || "não informado",
+        canal: disputa ? "—" : nomeDoCanal(p.canal, e),
+        codigo: disputa ? p.codigo : p.codigoCanal || p.codigo,
         situacao: s.texto,
         situacaoTipo: s.tipo,
         datas: `${dataCurta(p.checkin)} → ${dataCurta(p.checkout)}${atravessa ? " *" : ""}`,
-        noites: atravessa ? `${p.noitesNoMes} de ${p.noitesTotal}` : String(p.noitesNoMes),
-        bruto: formatBRL(p.bruto),
-        taxa: formatBRL(p.taxa),
-        gestao: formatBRL(p.comissao),
+        noites: desconto ? "—" : atravessa ? `${p.noitesNoMes} de ${p.noitesTotal}` : String(p.noitesNoMes),
+        bruto: disputa ? "—" : formatBRL(p.bruto),
+        taxa: disputa ? "—" : formatBRL(p.taxa),
+        gestao: disputa ? "—" : formatBRL(p.comissao),
         suaParte: formatBRL(p.suaParte),
         atravessa,
       };
@@ -434,7 +514,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
         hospede: primeiroNome(x.hospede) || "não informado",
         canal: nomeDoCanal(x.canal, e),
         codigo: x.codigo,
-        situacao: SITUACAO_RESERVA[x.situacao],
+        situacao: x.etiqueta ? `${SITUACAO_RESERVA[x.situacao]} · ${x.etiqueta.toLowerCase()}` : SITUACAO_RESERVA[x.situacao],
         situacaoTipo: (x.situacao === "definido" ? "info" : "aviso") as LinhaReserva["situacaoTipo"],
         datas: `${dataCurta(x.checkin)} → ${dataCurta(x.checkout)}`,
         noites: "—",
@@ -485,7 +565,12 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     const linhas: LinhaValor[] = [{ texto: `Saldo do acerto em ${fim}/${d.mes} ${saldoTexto}${quem}`, valor: formatBRL(Math.abs(x.saldo)), tipo: "normal" }];
     if (x.descontado > 0) linhas.push({ texto: `− Adiantamentos descontados${quem}`, valor: `− ${formatBRL(x.descontado)}`, tipo: "sub" });
     if (x.situacao === "pago") linhas.push({ texto: `Transferido em ${br(x.dataPagamento!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
-    else if (x.situacao === "fechado" || x.situacao === "empresa_deve" || x.situacao === "proprietario_deve") linhas.push({ texto: `${x.situacao === "proprietario_deve" ? "Você transfere" : "A transferir"} no fechamento${quem}`, valor: formatBRL(x.valor), tipo: "total" });
+    else if (x.situacao === "proprietario_deve") {
+      // M8.2c: o desconto de reserva cancelada com devolução ao hóspede sai do próximo repasse; só o resto se transfere.
+      const { proximoRepasse, transferir } = divisaoDoDeve(x);
+      if (proximoRepasse) linhas.push({ texto: `${nomeDoDescontoQueNaoSeTransfere(x, true)}: sai do próximo repasse${quem}`, valor: formatBRL(proximoRepasse), tipo: transferir ? "normal" : "total" });
+      if (transferir) linhas.push({ texto: `Você transfere no fechamento${quem}`, valor: formatBRL(transferir), tipo: "total" });
+    } else if (x.situacao === "fechado" || x.situacao === "empresa_deve") linhas.push({ texto: `A transferir no fechamento${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     else if (x.situacao === "no_repasse_posterior") linhas.push({ texto: `Levado pelo repasse de ${nomeMes(x.repassePosterior!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     else if (x.situacao === "parcial") linhas.push({ texto: `Saldo parcial, fecha em ${br(`${d.ano}-${String(d.mes).padStart(2, "0")}-${String(fim).padStart(2, "0")}`)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     return linhas;
@@ -534,7 +619,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     reservasTitulo: `Reservas do mês · ${nReservas} ${plural(nReservas, "reserva", "reservas")} · ${noites} ${plural(noites, "noite", "noites")} em ${mesNome}`,
     reservas: linhasReservas,
     totalReservas,
-    notaReservas: `${atravessam.length ? `* Estadia que atravessa o mês entra só com as noites de ${mesNome}, rateadas por noite (regra de 24/09); as outras noites vão para o relatório do mês delas. ` : ""}A limpeza está dentro do bruto. Do hóspede, só o primeiro nome; o código é o do canal.`,
+    notaReservas: `${atravessam.length ? `* Estadia que atravessa o mês entra só com as noites de ${mesNome}, rateadas por noite (regra de 24/09); as outras noites vão para o relatório do mês delas. ` : ""}A limpeza está dentro do bruto. Do hóspede, só o primeiro nome; o código é o do canal.${notasDasDisputas(doMes).map((n) => ` ${n}`).join("")}`,
     conciliacaoIntro: `O que cada canal pagou em ${mesNome} (pela data do pagamento: Airbnb no dia seguinte ao check-in, direto a você; Booking, site e direta pela data em que a ${e} recebeu), a ponte para o resultado por noite, e como o dinheiro chegou (ou vai chegar) até você.`,
     conciliacao: conc.map((l) => ({ rotulo: l.rotulo, reservas: String(l.reservas), bruto: formatBRL(l.bruto), taxa: formatBRL(l.taxa), quemRecebeu: l.quemRecebeu, suaParte: formatBRL(l.suaParte), tipo: l.tipo })),
     conciliacaoFecha: conciliacaoFecha(conc),

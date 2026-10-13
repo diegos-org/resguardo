@@ -24,6 +24,10 @@ describe("documento 'Como funciona' para o proprietário (M5.6)", () => {
     // O rascunho sugerido cabe nos limites e deixa "contestações" para a decisão de Diego.
     expect(validarSecoes(RASCUNHO_COMO_FUNCIONA)).toMatchObject({ ok: true });
     expect(RASCUNHO_COMO_FUNCIONA.contestacoes).toBe("");
+    // M8.2c: o rascunho explica a reserva paga pelo site cancelada pela política (só vale para quem ainda não publicou).
+    expect(paragrafos(RASCUNHO_COMO_FUNCIONA.cancelamentos).at(-1)).toBe(
+      "Nas reservas pagas pelo site vale a Política de cancelamento do site, na versão que o hóspede aceitou: com devolução integral, não há nada a dividir e a taxa do pagamento que não voltar fica com a {empresa}; sem devolução, o valor pago entra na divisão como uma reserva normal e a sua parte fica disponível depois da data de entrada original. Se a sua parte de uma reserva cancelada com devolução já tiver sido repassada, ela é descontada no repasse seguinte.",
+    );
   });
 
   it("versões gravadas: entradas inválidas são ignoradas; a atual é a de maior número", () => {

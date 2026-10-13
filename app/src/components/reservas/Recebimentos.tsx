@@ -3,6 +3,7 @@ import styles from "@/components/formularios.module.css";
 import type { Lancamento } from "@/financeiro/ledger";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
+import { ehChaveDeContestacao } from "@/pagamentos/contestacao-regras";
 import { estornarRecebimentoAcao, registrarRecebimentoAcao } from "@/repasses/acoes";
 import type { RecebidoDaReserva } from "@/repasses/recebimentos";
 
@@ -23,7 +24,9 @@ const doPagamentoNoSite = (l: Lancamento) => l.chaveOrigem.startsWith("mercadopa
 
 /** Recebimentos da reserva (M4.10): o dinheiro do canal que entrou na empresa; libera a parte do proprietário para repasse. */
 export function Recebimentos({ reservaId, recebimentos, recebido, quemRecebe, editar, hoje, cancelada }: Props) {
-  const falta = Math.max(0, recebido.devido - recebido.recebido);
+  // M8.2e: na disputa perdida com os lançamentos definitivos, o valor perdido cobre o que voltou ao hóspede por ela.
+  const perdaCoberta = recebido.perdaCoberta ?? 0;
+  const falta = Math.max(0, recebido.devido - recebido.recebido - perdaCoberta);
   return (
     <section aria-label="Recebimentos" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
       <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Recebimento do canal</h2>
@@ -34,6 +37,7 @@ export function Recebimentos({ reservaId, recebimentos, recebido, quemRecebe, ed
           <p style={{ margin: 0, color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>
             {quemRecebe === "a_confirmar" ? "Quem recebe ainda está a confirmar: defina no imóvel ou nas regras financeiras. " : ""}
             Líquido do canal a receber: <strong>{formatBRL(recebido.devido)}</strong> · recebido: <strong>{formatBRL(recebido.recebido)}</strong>
+            {perdaCoberta > 0 ? <> · perdido na disputa do pagamento (coberto pela divisão da perda): <strong>{formatBRL(perdaCoberta)}</strong></> : null}
             {falta > 0 ? ` · falta ${formatBRL(falta)}` : recebido.devido > 0 ? " · tudo recebido: a parte do proprietário fica disponível depois do check-in" : ""}. A parte do proprietário só entra em repasse com o dinheiro aqui registrado
             (nunca se repassa o que a empresa ainda não recebeu).
           </p>
@@ -57,7 +61,10 @@ export function Recebimentos({ reservaId, recebimentos, recebido, quemRecebe, ed
                     <td>{l.estado}</td>
                     {editar && (
                       <td>
-                        {doPagamentoNoSite(l) ? (
+                        {ehChaveDeContestacao(l.chaveOrigem) ? (
+                          // M8.2e: o dinheiro que voltou de uma disputa do pagamento só se corrige pelo quadro da disputa.
+                          <span style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>pelo quadro da disputa do pagamento</span>
+                        ) : doPagamentoNoSite(l) ? (
                           // A liberação do pagamento no site só se estorna pelo quadro dele (e só a registrada à mão).
                           <span style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>pelo quadro &ldquo;Pagamento no site&rdquo;</span>
                         ) : (

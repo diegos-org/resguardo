@@ -3,28 +3,40 @@
  * leitura do Beds24 livre, proprietário, contrato de gestão, páginas legais publicadas — M7.4), relógio fixo
  * controlável e o provedor falso. Só testes importam daqui; nada usa rede nem credenciais. Cartão (M8.2b): dados
  * fictícios do formulário (token, aparelho, documento) e a varredura de dados pessoais nas tabelas do pagamento.
+ * Cancelamento (M8.2c): reserva paga e confirmada pelo site, pedido, cancelamento pela prévia (com a assinatura dela),
+ * liberação, repasse da parte e um usuário fictício da equipe. Devolução em partes (M8.2d): a costura de uma alteração já
+ * aplicada (redução com as devoluções dela, aumento com o pagamento da diferença), a liberação pelo provedor e o cartão
+ * parcelado com juros; antes de o domínio da alteração existir, os testes do motor de devoluções partem daqui.
  */
 import { and, eq } from "drizzle-orm";
 import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
 import type { VersoesLegais } from "@/configuracoes/paginas-legais-texto";
 import { publicarPaginasLegaisDeTeste } from "@/configuracoes/paginas-legais-testes";
 import { criarContrato } from "@/contratos/repositorio";
+import { aplicarMotor } from "@/financeiro/aplicar";
 import {
   aceitesSite,
+  alteracoesReserva,
   auditoria,
   beds24Calendario,
+  cancelamentosReserva,
+  contestacoesPagamento,
   cotacoes,
+  devolucoesPagamento,
   disjuntoresCartao,
+  eventosContestacao,
   eventosPagamento,
   idsExternos,
   imoveis,
   imoveisDetalhes,
+  lancamentos,
   organizacoes,
   pagamentos,
   proprietarioImoveis,
   proprietarios,
   reservas,
   tentativasLogin,
+  usuarios,
 } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
@@ -32,10 +44,16 @@ import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { registrarAceiteDoHospede } from "@/site/aceites";
 import { criarCotacao, segurarDatas } from "@/site/cotacoes";
 import { esquecerProvedorDoAmbiente } from "./ambiente";
+import { type EntradaAlteracao, previaDaAlteracao, segurarAlteracao } from "./alteracao";
+import { cancelarReservaPaga, type EntradaCancelamento, previaDoCancelamento, registrarPedidoDeCancelamento } from "./cancelamento";
 import { type DadosCartaoDoHospede, pagarComCartao, type ResultadoCartao } from "./cartao";
 import { ProvedorFalso } from "./falso";
+import type { ProvedorPagamento } from "./provedor";
 import { type PortaoCobranca, podeCobrar } from "./oferta";
+import { chaveCriacao, referenciaDaTentativa } from "./criacao";
+import { gravarTaxaNaReserva } from "./liberacao";
 import { gerarPix } from "./pix";
+import { travarCotacao } from "./travas";
 
 /** 1/10/2026 (quinta), 12:00 em São Paulo. */
 export const AGORA = new Date("2026-10-01T15:00:00Z");
@@ -171,16 +189,446 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
 /**
  * Varre as tabelas do pagamento (pagamentos, eventos, auditoria, aceites, disjuntor, freios de tentativas) atrás de
  * `valores` (token, documento, id do aparelho, e-mails, nome do titular…) e devolve os que apareceram — o esperado é
- * nenhum.
+ * nenhum. `nomes` (M8.2c): o nome do hóspede, procurado nas mesmas tabelas, menos a auditoria da reserva que nasce no
+ * M8.1 (`reserva.importar` guarda os dados dela, nome inclusive, fora das tabelas do pagamento). M8.2e: também as
+ * disputas do pagamento e a linha do tempo delas.
  */
-export async function semDadosPessoais(db: Db, valores: string[]): Promise<string[]> {
-  const tudo = JSON.stringify([
+export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: string[] } = {}): Promise<string[]> {
+  const semAuditoria = [
     await db.select().from(pagamentos),
     await db.select().from(eventosPagamento),
-    await db.select().from(auditoria),
     await db.select().from(aceitesSite),
     await db.select().from(disjuntoresCartao),
     await db.select().from(tentativasLogin),
-  ]);
-  return valores.filter((v) => v && tudo.includes(v));
+    // M8.2c: as devoluções, os cancelamentos e o livro (descrições com o código da reserva, nunca o hóspede).
+    await db.select().from(devolucoesPagamento),
+    await db.select().from(cancelamentosReserva),
+    await db.select().from(lancamentos),
+    // M8.2d: as alterações (notas e retratos, nunca o hóspede) e as reservas-pedido que seguram as datas novas.
+    await db.select().from(alteracoesReserva),
+    await db.select({ id: reservas.id, observacoes: reservas.observacoes, fonte: reservas.fonte }).from(reservas).where(eq(reservas.fonte, "alteracao")),
+    // M8.2e: as disputas (ids do caso, códigos, valores, datas e notas validadas) e a linha do tempo delas.
+    await db.select().from(contestacoesPagamento),
+    await db.select().from(eventosContestacao),
+  ];
+  const registros = await db.select().from(auditoria);
+  const tudo = JSON.stringify([semAuditoria, registros]);
+  const semReservaImportada = JSON.stringify([semAuditoria, registros.filter((a) => a.acao !== "reserva.importar")]);
+  return [...valores.filter((v) => v && tudo.includes(v)), ...(o.nomes ?? []).filter((n) => n && semReservaImportada.includes(n))];
+}
+
+// ---------------------------------------------------------------- cancelamento pela política (M8.2c)
+
+/** Nome e telefone do hóspede fictício do cenário (a varredura de dados pessoais procura por eles, com o e-mail). */
+export const NOME_HOSPEDE = "Visitante Fictício";
+export const TELEFONE_HOSPEDE = "(21) 99999-0000";
+
+/** A varredura dos testes do cancelamento (M8.2c): o e-mail, o telefone e o nome do hóspede fictício do cenário. */
+export const semDadosDoHospede = (db: Db) => semDadosPessoais(db, [EMAIL_HOSPEDE, TELEFONE_HOSPEDE], { nomes: [NOME_HOSPEDE] });
+
+/** Um usuário fictício da equipe (quem registra pedidos, cancela e confirma). */
+export async function usuarioDeTeste(c: Cenario, nome = "Equipe Fictícia"): Promise<string> {
+  const [u] = await c.db.insert(usuarios).values({ organizacaoId: c.org, email: `${nome.toLowerCase().replace(/\W+/g, ".")}.${crypto.randomUUID().slice(0, 8)}@example.com`, nome, papel: "admin" }).returning({ id: usuarios.id });
+  return u.id;
+}
+
+/**
+ * Uma reserva paga e confirmada pelo site (Pix, ou cartão), com o aceite das páginas legais (`semAceite`: o pagamento
+ * fica sem o aceite ligado, como os de antes do M7.4).
+ * `quando`: a hora em que o hóspede pagou (a cotação e o pagamento nascem aí); a aprovação é lida 3 minutos depois.
+ */
+export async function pagarEConfirmar(
+  c: Cenario,
+  o: {
+    forma?: "pix" | "cartao";
+    parcelas?: number;
+    entrada?: string;
+    saida?: string;
+    email?: string;
+    semAceite?: boolean;
+    quando?: Date;
+    financeiro?: Parameters<ProvedorFalso["aprovar"]>[1];
+    /** M8.2d: a liberação registrada à mão logo depois (`liberar`, 5 minutos depois da aprovação lida). */
+    liberar?: boolean;
+    /** M8.2d: cartão em 3 parcelas com estes centavos de juros pagos pelo hóspede (o pago = o valor + os juros). */
+    cartaoComJuros?: number;
+  } = {},
+): Promise<{ cotacaoId: string; reservaId: string; codigo: string; pagamentoId: string; idProvedor: string; reservaCodigo: string }> {
+  const quando = o.quando ?? c.relogio.agora;
+  if (o.cartaoComJuros !== undefined) {
+    c.provedor.jurosCartao = o.cartaoComJuros;
+    c.provedor.jurosPor = "comprador";
+    o = { ...o, forma: "cartao", parcelas: o.parcelas ?? 3 };
+  }
+  const s = await c.segurar({ entrada: o.entrada, saida: o.saida, email: o.email, origemAceite: o.forma === "cartao" ? "cartao" : "pix" }, quando);
+  let pagamentoId: string;
+  let idProvedor: string;
+  if (o.forma === "cartao") {
+    c.provedor.respostaCartao = "processando";
+    const r = await c.cartao(s.cotacaoId, o.parcelas ? { parcelas: o.parcelas } : {}, quando);
+    if (!r.pagamentoId || !r.idProvedor) throw new Error("cartão não criado");
+    c.provedor.concluirAnalise(r.idProvedor, "aprovado");
+    c.provedor.respostaCartao = "aprovado";
+    // A taxa da aprovação (o líquido sai do valor da cotação; os juros do parcelamento são do hóspede).
+    const taxa = o.financeiro?.taxa === undefined ? 1824 : o.financeiro.taxa;
+    if (taxa !== null) c.provedor.atualizarFinanceiro(r.idProvedor, { taxa, liquido: TOTAL - taxa });
+    pagamentoId = r.pagamentoId;
+    idProvedor = r.idProvedor;
+  } else {
+    const p = await c.pix(s.cotacaoId, quando);
+    c.provedor.aprovar(p.idProvedor, o.financeiro ?? { taxa: 1824 });
+    pagamentoId = p.pagamentoId;
+    idProvedor = p.idProvedor;
+  }
+  const { conferirTentativa } = await import("./conferencia");
+  await conferirTentativa(c.db, c.org, pagamentoId, c.provedor, minutos(3, quando), { origem: "rotina", forcar: true });
+  const r = await c.reserva(s.reservaId);
+  if (r.estado !== "confirmada") throw new Error(`reserva não confirmada: ${r.estado}`);
+  // Pagamento de antes do aceite das páginas legais (M7.4): sem aceite ligado, sem política para o cancelamento.
+  if (o.semAceite) await c.db.update(pagamentos).set({ aceiteId: null }).where(eq(pagamentos.id, pagamentoId));
+  if (o.cartaoComJuros !== undefined) c.provedor.jurosCartao = 0;
+  if (o.liberar) await liberar(c, pagamentoId, { quando: minutos(8, quando) });
+  return { ...s, pagamentoId, idProvedor, reservaCodigo: r.codigo };
+}
+
+/** Recua a criação e a aprovação do pagamento (pagamento velho: mais de 78, 85, 90 ou 180 dias). */
+export async function envelhecer(c: Cenario, pagamentoId: string, dias: number): Promise<void> {
+  const p = await c.tentativa(pagamentoId);
+  const menos = (d: Date | null) => (d ? new Date(d.getTime() - dias * 86_400_000) : null);
+  await c.db.update(pagamentos).set({ criadoEm: menos(p.criadoEm)!, aprovadoEm: menos(p.aprovadoEm) }).where(eq(pagamentos.id, pagamentoId));
+}
+
+/** O que o formulário do painel manda por padrão: o hóspede pediu, pela política. */
+export const entradaPadrao = (over: Partial<EntradaCancelamento> = {}): EntradaCancelamento => ({
+  recebidoEm: null,
+  motivoMomento: "",
+  canal: null,
+  quemCancela: "hospede",
+  motivoEmpresa: null,
+  decisao: "politica",
+  motivoExcecao: null,
+  motivoDecisao: "",
+  nota: "",
+  ...over,
+});
+
+/** Registra um pedido da equipe (por WhatsApp, salvo `canal`), recebido em `recebidoEm` (padrão: agora). */
+export async function pedir(c: Cenario, reservaId: string, autorId: string, o: { canal?: "whatsapp" | "email" | "telefone" | "presencial" | "outro"; recebidoEm?: Date; quando?: Date; nota?: string } = {}) {
+  const quando = o.quando ?? c.relogio.agora;
+  return registrarPedidoDeCancelamento(c.db, c.org, reservaId, { recebidoEm: o.recebidoEm ?? quando, canal: o.canal ?? "whatsapp", nota: o.nota ?? "WhatsApp da empresa, 14h10" }, autorId, quando);
+}
+
+/** Calcula a prévia e cancela com a assinatura dela (como o painel: prévia, depois o botão). */
+export async function cancelar(c: Cenario, reservaId: string, entrada: EntradaCancelamento, autorId: string | null, quando: Date = c.relogio.agora, o: { provedor?: ProvedorPagamento | null } = {}) {
+  const provedor = o.provedor === undefined ? c.provedor : o.provedor;
+  const previa = await previaDoCancelamento(c.db, c.org, reservaId, entrada, provedor, quando);
+  if (!previa.ok) return { previa, resultado: previa };
+  const resultado = await cancelarReservaPaga(c.db, c.org, reservaId, entrada, autorId, provedor, quando, previa.previa.assinatura);
+  return { previa, resultado };
+}
+
+/**
+ * A liberação do dinheiro (registrada à mão, no dia `data`): o recebimento do líquido (padrão: o valor menos a taxa do
+ * pagamento, ou de R$ 18,24 sem ela) entra no livro. `manual: false` (M8.2d): o Mercado Pago diz que liberou (o financeiro
+ * da order passa a "liberado") e a leitura lança o recebimento conciliado.
+ */
+export async function liberar(c: Cenario, pagamentoId: string, o: { data?: string; liquido?: number; quando?: Date; manual?: boolean } = {}) {
+  const quando = o.quando ?? c.relogio.agora;
+  const p = await c.tentativa(pagamentoId);
+  if (o.manual === false) {
+    if (!p.idProvedor) throw new Error("pagamento sem order no provedor");
+    c.provedor.atualizarFinanceiro(p.idProvedor, { liberado: true, liberacaoPrevista: new Date(quando.getTime() - 60_000) });
+    const { conferirTentativa } = await import("./conferencia");
+    await conferirTentativa(c.db, c.org, pagamentoId, c.provedor, quando, { origem: "rotina", forcar: true });
+    const depois = await c.tentativa(pagamentoId);
+    if (!depois.liberacaoConfirmadaEm) throw new Error(`liberação não confirmada: ${depois.avisos.join(", ")}`);
+    return;
+  }
+  const { registrarLiberacaoManual } = await import("./liberacao");
+  const r = await registrarLiberacaoManual(c.db, c.org, pagamentoId, { data: o.data ?? "2026-10-01", liquido: o.liquido ?? p.valor - (p.taxa ?? 1824) }, null, quando);
+  if (!r.ok) throw new Error(r.erro);
+}
+
+/** Um repasse da parte da dona (antecipado no dia `hoje`, ou o fechamento do mês), pago no mesmo dia salvo `pago: false`. */
+export async function repassar(c: Cenario, tipo: "antecipado" | "fechamento", o: { hoje: string; mes?: string; pago?: boolean }): Promise<string> {
+  const { fecharMes, gerarAntecipado, marcarRepassePago } = await import("@/repasses/repasses");
+  const agora = new Date(`${o.hoje}T12:00:00-03:00`);
+  const r = tipo === "antecipado" ? await gerarAntecipado(c.db, c.org, c.dono, o.hoje, null, { agora }) : await fecharMes(c.db, c.org, c.dono, o.mes ?? o.hoje.slice(0, 7), o.hoje, null, agora);
+  if (!r.ok || !("id" in r)) throw new Error("erro" in r ? r.erro : "repasse não gerado");
+  if (o.pago !== false) {
+    const pago = await marcarRepassePago(c.db, c.org, r.id, o.hoje, o.hoje, null);
+    if (!pago.ok) throw new Error("erro" in pago ? pago.erro : "repasse não pago");
+  }
+  return r.id;
+}
+
+// ---------------------------------------------------------------- devolução em partes (M8.2d)
+
+type ReservaPaga = { reservaId: string; cotacaoId: string; pagamentoId: string };
+
+/**
+ * Uma alteração que muda só o valor da reserva (as datas e os hóspedes ficam), já aplicada como o "Aplicar" a grava (ou
+ * segurada, com o prazo `holdAte`).
+ */
+async function alteracaoAplicada(
+  c: Cenario,
+  x: ReservaPaga,
+  valorDepois: number,
+  quando: Date,
+  o: { direito?: "integral" | "nenhum"; segurada?: { holdAte: Date } } = {},
+): Promise<{ id: string; valorAntes: number }> {
+  const r = await c.reserva(x.reservaId);
+  const valorAntes = r.valorBruto ?? 0;
+  const diferenca = valorDepois - valorAntes;
+  const reducao = diferenca < 0;
+  const direito = reducao ? (o.direito ?? "integral") : null;
+  const [a] = await c.db
+    .insert(alteracoesReserva)
+    .values({
+      organizacaoId: c.org,
+      reservaId: x.reservaId,
+      cotacaoId: x.cotacaoId,
+      pagamentoId: x.pagamentoId,
+      situacao: o.segurada ? "segurada" : "aplicada",
+      holdAte: o.segurada?.holdAte ?? null,
+      quemPede: "hospede",
+      pedidoRecebidoEm: quando,
+      canal: "whatsapp",
+      nota: "WhatsApp da empresa",
+      checkinAntes: r.checkin,
+      checkoutAntes: r.checkout,
+      hospedesAntes: r.hospedes,
+      valorAntes,
+      checkinDepois: r.checkin,
+      checkoutDepois: r.checkout,
+      hospedesDepois: r.hospedes ?? 2,
+      valorDepois,
+      origemValor: "digitado",
+      motivoValor: "acordo_com_hospede",
+      motivoValorNota: "Acordo por WhatsApp",
+      cotacao: { diarias: null, limpeza: null, hospedeExtra: null, valorCheio: null, desconto: 0, total: valorDepois, situacao: "disponivel", leituraEm: null },
+      diferenca,
+      entradaDaPolitica: r.checkin,
+      calculado: direito,
+      direito,
+      base: reducao ? "prazo" : null,
+      valorADevolver: reducao ? (direito === "integral" ? -diferenca : 0) : null,
+      assinatura: "assinatura-de-teste",
+      aplicadaEm: o.segurada ? null : quando,
+      criadoEm: quando,
+      atualizadoEm: quando,
+    })
+    .returning({ id: alteracoesReserva.id });
+  return { id: a.id, valorAntes };
+}
+
+/** A reserva no valor novo, com a taxa da reserva regravada (`gravarTaxaNaReserva`) e o motor reaplicado. */
+async function reservaNoValor(c: Cenario, x: ReservaPaga, valor: number, quando: Date): Promise<void> {
+  await c.db.update(reservas).set({ valorBruto: valor, atualizadoEm: quando }).where(eq(reservas.id, x.reservaId));
+  await c.db.transaction(async (tx) => {
+    const t = await travarCotacao(tx, c.org, x.cotacaoId);
+    if (!t) throw new Error("cotação não encontrada");
+    await gravarTaxaNaReserva(tx, c.org, t, null, x.pagamentoId, quando);
+  });
+  await aplicarMotor(c.db, c.org, x.reservaId, null);
+}
+
+/**
+ * Redução já aplicada (costura do M8.2d): a alteração, as devoluções dela (origem `alteracao`, pedidas, nunca enviadas;
+ * padrão: a diferença inteira no pagamento que confirmou) e a reserva no valor novo. O envio é do teste (`tentarDevolucao`).
+ */
+export async function reduzirDeTeste(
+  c: Cenario,
+  x: ReservaPaga,
+  valorDepois: number,
+  o: { quando?: Date; devolucoes?: { pagamentoId: string; valor: number }[]; direito?: "integral" | "nenhum" } = {},
+): Promise<{ alteracaoId: string; devolucaoIds: string[] }> {
+  const quando = o.quando ?? c.relogio.agora;
+  const a = await alteracaoAplicada(c, x, valorDepois, quando, { direito: o.direito });
+  const partes = o.devolucoes ?? (o.direito === "nenhum" ? [] : [{ pagamentoId: x.pagamentoId, valor: a.valorAntes - valorDepois }]);
+  const ids: string[] = [];
+  for (const parte of partes) {
+    const [d] = await c.db
+      .insert(devolucoesPagamento)
+      .values({ organizacaoId: c.org, pagamentoId: parte.pagamentoId, motivo: "Redução da reserva", valor: parte.valor, situacao: "pedida", origem: "alteracao", alteracaoId: a.id, proximaTentativaEm: quando, criadoEm: quando, atualizadoEm: quando })
+      .returning({ id: devolucoesPagamento.id });
+    ids.push(d.id);
+  }
+  await reservaNoValor(c, x, valorDepois, quando);
+  return { alteracaoId: a.id, devolucaoIds: ids };
+}
+
+/**
+ * Aumento já aplicado (costura do M8.2d): a alteração e o pagamento da diferença por Pix, aprovado no Mercado Pago falso
+ * (taxa `taxa`, padrão 1% da diferença; null = desconhecida), com desfecho `alteracao`, e a reserva no valor novo.
+ */
+export async function aumentarDeTeste(
+  c: Cenario,
+  x: ReservaPaga,
+  valorDepois: number,
+  o: { quando?: Date; taxa?: number | null; liberacaoPrevista?: Date } = {},
+): Promise<{ alteracaoId: string; pagamentoId: string; idProvedor: string }> {
+  const quando = o.quando ?? c.relogio.agora;
+  const a = await alteracaoAplicada(c, x, valorDepois, quando);
+  const diferenca = valorDepois - a.valorAntes;
+  if (diferenca <= 0) throw new Error("o aumento precisa de valor maior");
+  const p0 = await c.tentativa(x.pagamentoId);
+  const id = crypto.randomUUID();
+  const criada = await c.provedor.criarPix({ referencia: referenciaDaTentativa(id), chaveIdempotencia: chaveCriacao(id), valor: diferenca, email: EMAIL_HOSPEDE, nome: NOME_HOSPEDE, validadeMinutos: 30, descricao: "Diferença da alteração", descricaoFatura: null });
+  if (!criada.ok || !criada.cobranca) throw new Error("Pix da diferença não criado");
+  const idProvedor = criada.cobranca.idProvedor;
+  const taxa = o.taxa === undefined ? Math.round(diferenca / 100) : o.taxa;
+  c.provedor.aprovar(idProvedor, taxa === null ? {} : { taxa, liberacaoPrevista: o.liberacaoPrevista ?? null });
+  await c.db.insert(pagamentos).values({
+    id,
+    organizacaoId: c.org,
+    cotacaoId: x.cotacaoId,
+    reservaId: x.reservaId,
+    imovelId: p0.imovelId,
+    ambiente: "teste",
+    forma: "pix",
+    referencia: referenciaDaTentativa(id),
+    chaveIdempotencia: chaveCriacao(id),
+    situacao: "aprovado",
+    idProvedor,
+    aoVivo: false,
+    detalheProvedor: "processed/accredited",
+    valor: diferenca,
+    valorPago: diferenca,
+    taxa,
+    liquido: taxa === null ? null : diferenca - taxa,
+    liberacaoPrevistaEm: o.liberacaoPrevista ?? null,
+    aprovadoEm: quando,
+    consultadoEm: quando,
+    desfecho: "alteracao",
+    desfechoEm: quando,
+    desfechoMotivo: "Diferença da alteração",
+    alteracaoId: a.id,
+    aceiteId: p0.aceiteId,
+    criadoEm: quando,
+    atualizadoEm: quando,
+  });
+  await reservaNoValor(c, { ...x, pagamentoId: id }, valorDepois, quando);
+  return { alteracaoId: a.id, pagamentoId: id, idProvedor };
+}
+
+/**
+ * Uma alteração com as datas seguradas (costura do M8.2d), sem a reserva-pedido: o valor novo ainda não vale. `tentativa`:
+ * um Pix da diferença pendente (no Mercado Pago falso), como o hóspede pagando agora.
+ */
+export async function alteracaoSeguradaDeTeste(
+  c: Cenario,
+  x: ReservaPaga,
+  valorDepois: number,
+  o: { quando?: Date; holdAte?: Date; tentativa?: boolean } = {},
+): Promise<{ alteracaoId: string; pagamentoId: string | null }> {
+  const quando = o.quando ?? c.relogio.agora;
+  const a = await alteracaoAplicada(c, x, valorDepois, quando, { segurada: { holdAte: o.holdAte ?? new Date(quando.getTime() + 60 * 60_000) } });
+  if (!o.tentativa) return { alteracaoId: a.id, pagamentoId: null };
+  const p0 = await c.tentativa(x.pagamentoId);
+  const id = crypto.randomUUID();
+  const valor = Math.max(1, valorDepois - a.valorAntes);
+  const criada = await c.provedor.criarPix({ referencia: referenciaDaTentativa(id), chaveIdempotencia: chaveCriacao(id), valor, email: EMAIL_HOSPEDE, nome: NOME_HOSPEDE, validadeMinutos: 30, descricao: "Diferença da alteração", descricaoFatura: null });
+  if (!criada.ok || !criada.cobranca) throw new Error("Pix da diferença não criado");
+  await c.db.insert(pagamentos).values({
+    id,
+    organizacaoId: c.org,
+    cotacaoId: x.cotacaoId,
+    reservaId: x.reservaId,
+    imovelId: p0.imovelId,
+    ambiente: "teste",
+    forma: "pix",
+    referencia: referenciaDaTentativa(id),
+    chaveIdempotencia: chaveCriacao(id),
+    situacao: "pendente",
+    idProvedor: criada.cobranca.idProvedor,
+    aoVivo: false,
+    valor,
+    pixExpiraEm: new Date(quando.getTime() + 30 * 60_000),
+    alteracaoId: a.id,
+    criadoEm: quando,
+    atualizadoEm: quando,
+  });
+  return { alteracaoId: a.id, pagamentoId: id };
+}
+
+// ---------------------------------------------------------------- alteração da reserva paga (M8.2d)
+
+/** O que o formulário do painel manda por padrão numa alteração: o hóspede pediu pelo WhatsApp agora, pela cotação do site e pela política. */
+export const entradaAlteracao = (over: Partial<EntradaAlteracao> & Pick<EntradaAlteracao, "checkin" | "checkout" | "hospedes" | "recebidoEm">): EntradaAlteracao => ({
+  valor: { origem: "cotacao" },
+  quemPede: "hospede",
+  motivoEmpresa: null,
+  canal: "whatsapp",
+  nota: "WhatsApp da empresa",
+  decisao: "politica",
+  motivoExcecao: null,
+  motivoDecisao: "",
+  ...over,
+});
+
+/**
+ * Calcula a prévia da alteração e segura (ou, com `aplicar`, segura e aplica) com a assinatura dela, como o painel: as datas
+ * e as pessoas de agora, salvo `over`.
+ */
+export async function alterar(
+  c: Cenario,
+  reservaId: string,
+  over: Partial<EntradaAlteracao> = {},
+  quando: Date = c.relogio.agora,
+  o: { aplicar?: boolean; autorId?: string | null; provedor?: ProvedorPagamento | null } = {},
+) {
+  const r = await c.reserva(reservaId);
+  const provedor = o.provedor === undefined ? c.provedor : o.provedor;
+  const e = entradaAlteracao({ checkin: r.checkin, checkout: r.checkout, hospedes: r.hospedes ?? 4, recebidoEm: quando, ...over });
+  const previa = await previaDaAlteracao(c.db, c.org, reservaId, e, provedor, quando);
+  if (!previa.ok) return { previa, resultado: previa, entrada: e };
+  const resultado = await segurarAlteracao(c.db, c.org, reservaId, e, o.autorId ?? null, provedor, quando, previa.previa.assinatura, { aplicar: o.aplicar === true });
+  return { previa, resultado, entrada: e };
+}
+
+/**
+ * Paga a diferença de uma alteração segurada (Pix, salvo `forma`) na página da reserva e, salvo `aprovar: false`, aprova no
+ * Mercado Pago falso (taxa `taxa`, padrão 1% da diferença) e lê a aprovação 2 minutos depois (`aprovarEm`).
+ */
+export async function pagarDiferenca(
+  c: Cenario,
+  cotacaoId: string,
+  alteracaoId: string,
+  o: { forma?: "pix" | "cartao"; quando?: Date; aprovarEm?: Date; taxa?: number | null; aprovar?: boolean; cartao?: Partial<DadosCartaoDoHospede> } = {},
+): Promise<{ pagamentoId: string; idProvedor: string; resultado: string }> {
+  const quando = o.quando ?? c.relogio.agora;
+  let pagamentoId: string;
+  let idProvedor: string;
+  let resultado: string;
+  if (o.forma === "cartao") {
+    const antes = new Set((await c.db.select({ id: pagamentos.id }).from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId))).map((x) => x.id));
+    const r = await pagarComCartao(c.db, c.org, cotacaoId, quando, c.provedor, { ...CARTAO_FICTICIO, ...o.cartao }, { alteracaoId });
+    const nova = (await c.db.select().from(pagamentos).where(eq(pagamentos.cotacaoId, cotacaoId))).find((x) => !antes.has(x.id));
+    if (!nova?.idProvedor) throw new Error(`cartão da diferença não criado: ${r.ok ? r.situacao : r.codigo}`);
+    pagamentoId = nova.id;
+    idProvedor = nova.idProvedor;
+    resultado = r.ok ? r.situacao : r.codigo;
+    return { pagamentoId, idProvedor, resultado };
+  }
+  const r = await gerarPix(c.db, c.org, cotacaoId, quando, c.provedor, { alteracaoId });
+  if (!r.ok) throw new Error(`${r.codigo}: ${r.erro}`);
+  const p = await c.tentativa(r.pagamentoId);
+  pagamentoId = p.id;
+  idProvedor = p.idProvedor!;
+  resultado = "pendente";
+  if (o.aprovar !== false) {
+    const taxa = o.taxa === undefined ? Math.round(p.valor / 100) : o.taxa;
+    c.provedor.aprovar(idProvedor, taxa === null ? {} : { taxa });
+    const { conferirTentativa } = await import("./conferencia");
+    const lido = await conferirTentativa(c.db, c.org, pagamentoId, c.provedor, o.aprovarEm ?? minutos(2, quando), { origem: "rotina", forcar: true });
+    resultado = lido.ok ? lido.situacao : lido.erro;
+  }
+  return { pagamentoId, idProvedor, resultado };
+}
+
+/** A alteração gravada. */
+export async function alteracaoGravada(c: Cenario, id: string) {
+  const [a] = await c.db.select().from(alteracoesReserva).where(eq(alteracoesReserva.id, id));
+  return a;
 }

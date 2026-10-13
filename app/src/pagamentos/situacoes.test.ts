@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { SITUACOES_PAGAMENTO } from "@/db/schema";
+import { formatBRL } from "@/lib/money";
+import { DESFECHOS_PAGAMENTO, ORIGENS_DEVOLUCAO, SITUACOES_DEVOLUCAO, SITUACOES_PAGAMENTO } from "@/db/schema";
+import { AVISOS_DE_CONTESTACAO } from "./contestacao-regras";
 import {
-  AVISOS_PAGAMENTO, CODIGOS_FALHA_DO_PROVEDOR, CODIGOS_TOKEN, codigoMotivo, MOTIVO_RECUSA_CARTAO_GENERICO, MOTIVOS_RECUSA_CARTAO, MOTIVOS_SEM_RESERVA, motivoDoDetalhe, situacaoLocal,
-  textoMotivoRecusaCartao, textoMotivoSemReserva, textosDosAvisos, transicaoPermitida,
+  AVISOS_DE_DEVOLUCAO, AVISOS_PAGAMENTO, CODIGOS_FALHA_DO_PROVEDOR, CODIGOS_TOKEN, codigoMotivo, MOTIVO_RECUSA_CARTAO_GENERICO, MOTIVOS_RECUSA_CARTAO, MOTIVOS_SEM_RESERVA, motivoDoDetalhe,
+  NOMES_DESFECHO, origemDeDevolucaoConhecida, ORIGENS_DEVOLUCAO_CONHECIDAS, situacaoLocal, textoContestacaoComDevolucao, textoContestacaoValorAcima, textoContestacaoValorMudou,
+  textoDevolucaoAguardandoLiberacaoAtrasada, textoDevolucaoDevidaDepoisDaDisputa, textoDoAvisoContestado, textoMotivoRecusaCartao, textoMotivoSemReserva, textosDosAvisos, transicaoPermitida,
 } from "./situacoes";
 
 describe("situações e transições do pagamento (M8.2a)", () => {
@@ -47,6 +50,42 @@ describe("situações e transições do pagamento (M8.2a)", () => {
   });
 });
 
+describe("alteração de reserva paga (M8.2d): listas fechadas", () => {
+  it("origem `alteracao` conhecida (a do schema e a do domínio são as mesmas); origem de versão mais nova continua ignorada", () => {
+    expect([...ORIGENS_DEVOLUCAO_CONHECIDAS]).toEqual([...ORIGENS_DEVOLUCAO]);
+    expect(origemDeDevolucaoConhecida("alteracao")).toBe(true);
+    expect(origemDeDevolucaoConhecida("de_uma_versao_futura")).toBe(false);
+    expect(SITUACOES_DEVOLUCAO).toContain("substituida");
+  });
+
+  it("desfecho da diferença com nome; os motivos sem reserva da diferença, com o código e a reserva que ocupou", () => {
+    expect(DESFECHOS_PAGAMENTO).toContain("alteracao");
+    expect(NOMES_DESFECHO.alteracao).toBe("Diferença de uma alteração da reserva");
+    for (const m of ["alteracao_noites_ocupadas", "alteracao_sem_leitura", "alteracao_desistida", "alteracao_reserva_mudou", "alteracao_nao_aplicada"] as const) {
+      expect(codigoMotivo(m)).toBe(m);
+      expect(textoMotivoSemReserva(m)).toBe(MOTIVOS_SEM_RESERVA[m]);
+    }
+    expect(codigoMotivo("alteracao_nao_aplicada:estadia_iniciada")).toBe("alteracao_nao_aplicada");
+    expect(textoMotivoSemReserva("alteracao_nao_aplicada:financeiro_movimentado")).toBe(MOTIVOS_SEM_RESERVA.alteracao_nao_aplicada);
+    expect(textoMotivoSemReserva("alteracao_noites_ocupadas:SCL-ABC123")).toBe("Diferença de uma alteração aprovada depois do prazo, com as novas noites já ocupadas pela reserva SCL-ABC123: a reserva continua como estava.");
+    expect(textoMotivoSemReserva("alteracao_noites_ocupadas:agenda_externa")).toContain("pela agenda lida do Beds24");
+  });
+
+  it("aviso da devolução que espera a liberação passada a data prevista, com e sem o valor; os avisos de devolução em lista", () => {
+    expect(textosDosAvisos(["devolucao_aguardando_liberacao_atrasada"])).toEqual([AVISOS_PAGAMENTO.devolucao_aguardando_liberacao_atrasada]);
+    expect(textoDevolucaoAguardandoLiberacaoAtrasada(30_000)).toBe(
+      `A liberação deste pagamento passou da data prevista e a devolução de ${formatBRL(30_000)} continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer.`,
+    );
+    expect(AVISOS_DE_DEVOLUCAO).toEqual(expect.arrayContaining(["devolucao_falhou", "devolucao_a_menor", "taxa_perdida_desconhecida", "devolucao_aguardando_liberacao_atrasada"]));
+    for (const a of AVISOS_DE_DEVOLUCAO) expect(AVISOS_PAGAMENTO[a], a).toBeTruthy();
+    expect(AVISOS_DE_DEVOLUCAO).not.toContain("devolvido_por_fora");
+    // M8.2e: a devolução de volta a devida depois da disputa, com e sem o valor.
+    expect(AVISOS_DE_DEVOLUCAO).toContain("devolucao_devida_depois_da_disputa");
+    expect(textoDevolucaoDevidaDepoisDaDisputa(40_000)).toContain(`a devolução de ${formatBRL(40_000)} que a reserva deve a ele continua devida`);
+    expect(textoDevolucaoDevidaDepoisDaDisputa(null)).not.toContain("R$");
+  });
+});
+
 describe("motivo de recusa do cartão (M8.2b, só para a equipe)", () => {
   it("todos os status_detail documentados da Orders têm texto; nomes da Payments API e códigos desconhecidos caem no genérico", () => {
     for (const c of [
@@ -69,5 +108,31 @@ describe("motivo de recusa do cartão (M8.2b, só para a equipe)", () => {
     expect(motivoDoDetalhe("dados_invalidos/invalid_card_token")).toBe("invalid_card_token");
     expect(motivoDoDetalhe("failed/failed; pagamento failed/3ds_challenge_expired")).toBe("3ds_challenge_expired");
     for (const sem of ["recusado/?", "dados_invalidos/?", "", "failed/<script>", null, undefined]) expect(motivoDoDetalhe(sem)).toBeNull();
+  });
+});
+
+describe("disputa do pagamento (M8.2e): avisos e textos", () => {
+  it("cada aviso de contestação tem texto (sem Beds24 e sem a palavra do hóspede); o aviso contestado por tipo; o desfecho da disputa perdida sem reserva", () => {
+    expect(textosDosAvisos(AVISOS_DE_CONTESTACAO)).toHaveLength(AVISOS_DE_CONTESTACAO.length);
+    for (const c of AVISOS_DE_CONTESTACAO) expect(AVISOS_PAGAMENTO[c]).not.toMatch(/beds24/i);
+    expect(AVISOS_PAGAMENTO.contestacao_prazo_desconhecido).toBe("Prazo dos documentos desconhecido: confira no painel do Mercado Pago e informe aqui.");
+    expect(AVISOS_PAGAMENTO.contestacao_liberacao_lida).toBe("O Mercado Pago mostra a liberação de um pagamento em disputa: registre a liberação à mão com o líquido do pagamento que caiu na conta.");
+    expect(AVISOS_PAGAMENTO.contestacao_caso_de_outro_pagamento).toContain("Este caso é de outro pagamento no Mercado Pago");
+    expect(textoDoAvisoContestado("chargeback")).toBe("Pagamento contestado no cartão: acompanhe no quadro da disputa.");
+    expect(textoDoAvisoContestado("med")).toBe("Devolução pedida pelo Pix (MED): acompanhe no quadro da disputa.");
+    expect(textoDoAvisoContestado("reclamacao")).toBe("Reclamação no Mercado Pago: acompanhe no quadro da disputa.");
+    expect(textoDoAvisoContestado(null)).toBe(AVISOS_PAGAMENTO.contestado);
+    expect(AVISOS_PAGAMENTO.situacao_inesperada).toContain("acompanhe a disputa pelo quadro do pagamento");
+    expect(NOMES_DESFECHO.contestacao).toBe("Voltou ao pagador pela disputa");
+  });
+
+  it("os avisos com valores: acima da reserva, valor mudou depois da decisão e devolução já feita", () => {
+    expect(textoContestacaoValorAcima(104_000, 100_000)).toBe(
+      "O valor contestado (R$ 1.040,00) passa do valor da reserva (R$ 1.000,00): pode incluir os juros do parcelamento; confira no painel do Mercado Pago quanto saiu da conta.",
+    );
+    expect(textoContestacaoValorMudou(100_000, 80_000, 85_000)).toBe("O valor em disputa mudou de R$ 1.000,00 para R$ 800,00: o valor segurado continua R$ 850,00.");
+    expect(textoContestacaoComDevolucao(20_000, "05/12", 100_000)).toBe(
+      "O hóspede pode receber duas vezes: a devolução de R$ 200,00 (05/12) e a disputa de R$ 1.000,00. Envie o comprovante da devolução ao Mercado Pago como defesa e confira quanto ele debitou.",
+    );
   });
 });

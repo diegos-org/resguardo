@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ProvedorFalso } from "./falso";
-import { ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, urlDoDesafio } from "./provedor";
+import { pessimista, ProvedorFalso } from "./falso";
+import { type CasoDeContestacao, ErroProvedor, type PedidoCartao, type PedidoPix, RECUSA_GENERICA, semAcessoContestacao, urlDoDesafio } from "./provedor";
 
 const AGORA = new Date("2026-10-08T15:00:00.000Z");
 const novo = () => new ProvedorFalso(() => AGORA);
@@ -353,7 +353,7 @@ describe("ProvedorFalso: cancelar e devolver", () => {
     const p = novo();
     await p.criarCartao(cartao());
     const c = (await p.consultar("ORDTST0001"))!;
-    expect(await p.devolver(c, "d1", null)).toEqual({ situacao: "confirmada", idDevolucao: "REFTST0001", mensagem: "Devolução confirmada pelo Mercado Pago." });
+    expect(await p.devolver(c, "d1", null)).toEqual({ situacao: "confirmada", idDevolucao: "REFTST0001", mensagem: "Devolução confirmada pelo Mercado Pago.", codigo: null });
     expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", devolvido: 50_000, detalhe: "refunded/refunded" });
     expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "confirmada", idDevolucao: null });
   });
@@ -378,14 +378,14 @@ describe("ProvedorFalso: cancelar e devolver", () => {
     expect(await p.devolver({ ...(await p.consultar("ORDTST0001"))!, idProvedor: "ORDTST0099" }, "d2", null)).toMatchObject({ situacao: "recusada" });
   });
 
-  it("devolução 'pedida' espera a confirmação; nova integral enquanto pende → pedida", async () => {
+  it("devolução 'pedida' espera a confirmação; nova integral enquanto pende → aguarde (M8.2c: não é aceita por esta chave)", async () => {
     const p = novo();
     p.respostaDevolucao = "pedida";
     await p.criarCartao(cartao());
     const c = (await p.consultar("ORDTST0001"))!;
     expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REFTST0001" });
     expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "aprovado", devolvido: 0 });
-    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    expect(await p.devolver(c, "d2", null)).toEqual({ situacao: "aguarde", idDevolucao: null, mensagem: "Já há uma devolução em andamento para este pagamento: aguardar o Mercado Pago concluir.", codigo: "em_andamento" });
     p.confirmarDevolucoes("ORDTST0001");
     expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", devolvido: 50_000 });
   });
@@ -414,6 +414,249 @@ describe("ProvedorFalso: cancelar e devolver", () => {
   });
 });
 
+describe("ProvedorFalso: devoluções do M8.2c (ids, respostas com código e simuladores)", () => {
+  const aprovado = async (p: ProvedorFalso) => {
+    await p.criarCartao(cartao({ parcelas: 1 }));
+    return (await p.consultar("ORDTST0001"))!;
+  };
+
+  it("as devoluções aparecem na leitura com id e estado; a do painel do provedor tem id próprio", async () => {
+    const p = novo();
+    p.respostaDevolucao = "pedida";
+    const c = await aprovado(p);
+    expect(c.devolucoes).toEqual([]);
+    await p.devolver(c, "d1", null);
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ devolucaoEmAndamento: true, devolucoes: [{ id: "REFTST0001", estado: "andamento", valor: 50_000 }] });
+    p.confirmarDevolucoes("ORDTST0001");
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", devolucaoEmAndamento: false, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 50_000 }] });
+    // A cópia é independente: mexer nela não muda a order.
+    const lida = (await p.consultar("ORDTST0001"))!;
+    lida.devolucoes[0].estado = "falhou";
+    expect((await p.consultar("ORDTST0001"))!.devolucoes[0].estado).toBe("confirmada");
+    const outro = novo();
+    await aprovado(outro);
+    outro.devolverNoProvedor("ORDTST0001", 5_000);
+    expect((await outro.consultar("ORDTST0001"))!.devolucoes).toEqual([{ id: "REFPNL0001", estado: "confirmada", valor: 5_000 }]);
+  });
+
+  it.each([
+    ["saldo_insuficiente", "recusada", "saldo_insuficiente"],
+    ["prazo", "recusada", "prazo"],
+    ["em_andamento", "aguarde", "em_andamento"],
+    ["transitorio", "aguarde", "transitorio"],
+  ] as const)("respostaDevolucao %s → %s com o código, sem mexer na order", async (resposta, situacao, codigo) => {
+    const p = novo();
+    const c = await aprovado(p);
+    p.respostaDevolucao = resposta;
+    expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao, codigo, idDevolucao: null });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false, devolucoes: [] });
+    // A espera não guarda a chave (nada foi aceito): a mesma chave vale depois. A recusa guarda (como a API).
+    p.respostaDevolucao = "confirmada";
+    expect((await p.devolver(c, "d1", null)).situacao).toBe(situacao === "aguarde" ? "confirmada" : "incerta");
+  });
+
+  it("toda resposta traz o código: aceitas e validações locais null; recusas do provedor com o código da lista", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    expect((await p.devolver(c, "", null)).codigo).toBeNull();
+    expect(await p.devolver(c, "d1", 60_000)).toMatchObject({ situacao: "recusada", codigo: "valor_excede" });
+    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "confirmada", codigo: null });
+    expect(await p.devolver(c, "d3", null)).toMatchObject({ situacao: "confirmada", idDevolucao: null, codigo: null });
+    const pendente = novo();
+    await pendente.criarPix(pix());
+    expect(await pendente.devolver((await pendente.consultar("ORDTST0001"))!, "d1", null)).toMatchObject({ situacao: "recusada", codigo: "nao_permitido" });
+  });
+
+  it("falharDevolucao: a aceita passa a falhou na leitura; o devolvido e a situação não mudam", async () => {
+    const p = novo();
+    p.respostaDevolucao = "pedida";
+    const c = await aprovado(p);
+    await p.devolver(c, "d1", null);
+    p.falharDevolucao("REFTST0001");
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false, devolucoes: [{ id: "REFTST0001", estado: "falhou" }] });
+    expect(() => p.falharDevolucao("REFTST0099")).toThrow();
+    // Sem devolução em andamento, um pedido novo cria outra.
+    p.respostaDevolucao = "confirmada";
+    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0002" });
+  });
+
+  it("atrasarListagem: a próxima aceita fica fora das próximas leituras (consultar), depois aparece", async () => {
+    const p = novo();
+    p.respostaDevolucao = "pedida";
+    const c = await aprovado(p);
+    await p.devolver(c, "d1", null);
+    p.falharDevolucao("REFTST0001");
+    p.atrasarListagem(2);
+    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REFTST0002" });
+    // Leituras 1 e 2: só a antiga (que falhou); nada em andamento à vista.
+    for (let i = 0; i < 2; i++) expect(await p.consultar("ORDTST0001")).toMatchObject({ devolucaoEmAndamento: false, devolucoes: [{ id: "REFTST0001", estado: "falhou" }] });
+    // O provedor sabe dela: outra integral agora é "aguarde".
+    expect((await p.devolver(c, "d3", null)).situacao).toBe("aguarde");
+    expect((await p.consultar("ORDTST0001"))!.devolucoes.map((d) => [d.id, d.estado])).toEqual([["REFTST0001", "falhou"], ["REFTST0002", "andamento"]]);
+    expect(() => p.atrasarListagem(-1)).toThrow();
+  });
+
+  it("detalheDevolvido processed/refunded: a order inteira devolvida vem desconhecida, com a devolução confirmada; nova devolução = já devolvida", async () => {
+    const p = novo();
+    p.detalheDevolvido = "processed/refunded";
+    const c = await aprovado(p);
+    expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0001" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "desconhecido", detalhe: "processed/refunded", devolvido: 50_000, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 50_000 }] });
+    expect(await p.devolver(c, "d2", null)).toMatchObject({ situacao: "confirmada", idDevolucao: null });
+  });
+
+  it("devolverAMenos: a próxima aceita conclui por menos (devolvida em parte), na hora ou ao confirmar", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    p.devolverAMenos(30_000);
+    expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0001" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido_parcial", devolvido: 30_000, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 30_000 }] });
+    const q = novo();
+    q.respostaDevolucao = "pedida";
+    const d = await aprovado(q);
+    q.devolverAMenos(10_000);
+    await q.devolver(d, "d1", null);
+    expect((await q.consultar("ORDTST0001"))!.devolucoes).toEqual([{ id: "REFTST0001", estado: "andamento", valor: 50_000 }]);
+    q.confirmarDevolucoes("ORDTST0001");
+    expect(await q.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido_parcial", devolvido: 10_000, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 10_000 }] });
+    // Só a próxima: a seguinte devolve o que pedir.
+    expect(await q.devolver(d, "d2", null)).toMatchObject({ situacao: "pedida", idDevolucao: "REFTST0002" });
+    expect(() => q.devolverAMenos(0)).toThrow();
+  });
+
+  it("esquecerOrder: a leitura não acha mais a order e a devolução é recusada como não encontrada", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    p.esquecerOrder("ORDTST0001");
+    expect(await p.consultar("ORDTST0001")).toBeNull();
+    expect(await p.buscarPorReferencia("scl-2", new Date(AGORA.getTime() - 60_000))).toBeNull();
+    expect(await p.devolver(c, "d1", null)).toMatchObject({ situacao: "recusada", codigo: "nao_encontrado" });
+  });
+});
+
+describe("ProvedorFalso: devoluções de parte do valor (M8.2d) e o que a documentação não garante", () => {
+  const SEM = { repetida: false, conhecidas: [] };
+  const aprovado = async (p: ProvedorFalso) => {
+    await p.criarPix(pix({ valor: 150_000 }));
+    p.aprovar("ORDTST0001");
+    return (await p.consultar("ORDTST0001"))!;
+  };
+
+  it("parcial termina devolvido em parte (processed/partially_refunded); somando o pago, a order fica devolvida (refunded/refunded)", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    expect(await p.devolver(c, "d1", 30_000, SEM)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0001", codigo: null });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido_parcial", detalhe: "processed/partially_refunded", devolvido: 30_000, pago: 150_000 });
+    expect(await p.devolver(c, "d2", 120_000, { repetida: false, conhecidas: ["REFTST0001"] })).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0002" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", detalhe: "refunded/refunded", devolvido: 150_000 });
+    // As conhecidas chegam ao provedor (para os testes conferirem o que o domínio mandou).
+    expect(p.chamadas.filter((x) => x.metodo === "devolver").map((x) => x.conhecidas)).toEqual([[], ["REFTST0001"]]);
+  });
+
+  it("parcial enquanto outra devolução está em andamento → aguarde/em_andamento (não só a integral), sem guardar a chave", async () => {
+    const p = novo();
+    p.respostaDevolucao = "pedida";
+    const c = await aprovado(p);
+    expect(await p.devolver(c, "d1", 30_000, SEM)).toMatchObject({ situacao: "pedida", idDevolucao: "REFTST0001" });
+    expect(await p.devolver(c, "d2", 10_000, SEM)).toMatchObject({ situacao: "aguarde", codigo: "em_andamento", idDevolucao: null });
+    p.confirmarDevolucoes("ORDTST0001");
+    expect(await p.devolver(c, "d2", 10_000, SEM)).toMatchObject({ situacao: "pedida", idDevolucao: "REFTST0002" });
+  });
+
+  it("parte do valor numa order já devolvida inteira: recusada/ja_devolvido; com a chave repetida, incerta; a integral continua confirmada", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    p.devolverNoProvedor("ORDTST0001", 150_000);
+    expect(await p.devolver(c, "d1", 30_000, SEM)).toMatchObject({ situacao: "recusada", codigo: "ja_devolvido", idDevolucao: null });
+    expect(await p.devolver(c, "d2", 30_000, { repetida: true, conhecidas: [] })).toMatchObject({ situacao: "incerta", codigo: null, idDevolucao: null });
+    expect(await p.devolver(c, "d3", null, SEM)).toMatchObject({ situacao: "confirmada", idDevolucao: null, codigo: null });
+  });
+
+  it("devolverAMenos: aquela devolução conclui por menos e mantém o id; devolverNoProvedor é a devolução fora do sistema", async () => {
+    const p = novo();
+    const c = await aprovado(p);
+    p.devolverAMenos(29_000);
+    expect(await p.devolver(c, "d1", 30_000, SEM)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0001" });
+    p.devolverNoProvedor("ORDTST0001", 5_000);
+    expect(await p.consultar("ORDTST0001")).toMatchObject({
+      situacao: "devolvido_parcial",
+      devolvido: 34_000,
+      devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 29_000 }, { id: "REFPNL0001", estado: "confirmada", valor: 5_000 }],
+    });
+  });
+
+  it("idDaDevolucao ausente: a resposta aceita não diz qual é a nossa (pedida, sem id); a leitura mostra a devolução com id", async () => {
+    const p = novo();
+    p.idDaDevolucao = "ausente";
+    const c = await aprovado(p);
+    expect(await p.devolver(c, "d1", 30_000, SEM)).toEqual({ situacao: "pedida", idDevolucao: null, mensagem: "Devolução pedida; aguardando confirmação do Mercado Pago.", codigo: null });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido_parcial", devolvido: 30_000, devolucoes: [{ id: "REFTST0001", estado: "confirmada", valor: 30_000 }] });
+    // A mesma chave, na "mesma resposta": de novo sem id.
+    p.chaveRepetida = "mesma_resposta";
+    expect(await p.devolver(c, "d1", 30_000, { repetida: true, conhecidas: [] })).toMatchObject({ situacao: "pedida", idDevolucao: null });
+  });
+
+  it("listaNaLeitura desligada: a leitura vem sem a lista, com devolvido 0 e nada em andamento; o provedor continua limitando pelo real", async () => {
+    const p = novo();
+    p.listaNaLeitura = false;
+    p.respostaDevolucao = "pedida";
+    const c = await aprovado(p);
+    await p.devolver(c, "d1", 30_000, SEM);
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "aprovado", devolvido: 0, devolucaoEmAndamento: false, devolucoes: [] });
+    p.confirmarDevolucoes("ORDTST0001");
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido_parcial", devolvido: 0, devolucaoEmAndamento: false, devolucoes: [] });
+    expect(await p.buscarPorReferencia("scl-1", AGORA)).toMatchObject({ devolvido: 0, devolucoes: [] });
+    // O provedor sabe dos 30.000 devolvidos: 120.001 passa do que falta.
+    p.respostaDevolucao = "confirmada";
+    expect(await p.devolver(c, "d2", 120_001, SEM)).toMatchObject({ situacao: "recusada", codigo: "valor_excede" });
+    expect(await p.devolver(c, "d3", 120_000, SEM)).toMatchObject({ situacao: "confirmada" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", devolvido: 0 });
+  });
+
+  it("detalheParcial processed/refunded: a parcial vem desconhecida (como o exemplo da documentação), e a order ainda aceita o restante", async () => {
+    const p = novo();
+    p.detalheParcial = "processed/refunded";
+    const c = await aprovado(p);
+    expect(await p.devolver(c, "d1", 30_000, SEM)).toMatchObject({ situacao: "confirmada" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "desconhecido", detalhe: "processed/refunded", devolvido: 30_000 });
+    expect(await p.devolver(c, "d2", 20_000, SEM)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0002" });
+    expect(await p.devolver(c, "d3", null, SEM)).toMatchObject({ situacao: "confirmada", idDevolucao: "REFTST0003" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", detalhe: "refunded/refunded", devolvido: 150_000 });
+  });
+
+  it("pagoLiquidoDeDevolucoes: o pago da leitura cai pelo devolvido; o limite do provedor continua o pago real", async () => {
+    const p = novo();
+    p.pagoLiquidoDeDevolucoes = true;
+    const c = await aprovado(p);
+    expect((await p.consultar("ORDTST0001"))!.pago).toBe(150_000);
+    await p.devolver(c, "d1", 30_000, SEM);
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ pago: 120_000, valor: 150_000, devolvido: 30_000 });
+    expect(await p.devolver(c, "d2", 120_000, SEM)).toMatchObject({ situacao: "confirmada" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", pago: 0 });
+  });
+
+  it.each(["unsupported_partially_refunds", "max_refunds_exceeded"] as const)("parcialRecusada %s: a primeira parcial sai; a segunda é recusada/nao_permitido; a integral do restante sai", async (codigo) => {
+    const p = novo();
+    p.parcialRecusada = codigo;
+    const c = await aprovado(p);
+    expect(await p.devolver(c, "d1", 30_000, SEM)).toMatchObject({ situacao: "confirmada" });
+    expect(await p.devolver(c, "d2", 10_000, SEM)).toMatchObject({ situacao: "recusada", codigo: "nao_permitido", idDevolucao: null });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ devolvido: 30_000 });
+    expect(await p.devolver(c, "d3", null, SEM)).toMatchObject({ situacao: "confirmada" });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", devolvido: 150_000 });
+  });
+
+  it("o conjunto pessimista junto (sem id, sem lista, processed/refunded, pago líquido): nada trava, o provedor devolve o certo", async () => {
+    const p = pessimista(novo());
+    expect(p).toMatchObject({ idDaDevolucao: "ausente", listaNaLeitura: false, detalheParcial: "processed/refunded", pagoLiquidoDeDevolucoes: true, parcialRecusada: null });
+    const c = await aprovado(p);
+    expect(await p.devolver(c, "d1", 30_000, SEM)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "desconhecido", detalhe: "processed/refunded", pago: 120_000, devolvido: 0, devolucoes: [] });
+    expect(await p.devolver(c, "d2", 120_000, SEM)).toMatchObject({ situacao: "pedida", idDevolucao: null });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "devolvido", pago: 0, devolvido: 0 });
+  });
+});
+
 describe("ProvedorFalso: conta de teste", () => {
   it("resposta ajustável (padrão true)", async () => {
     const p = novo();
@@ -423,5 +666,211 @@ describe("ProvedorFalso: conta de teste", () => {
     p.contaDeTeste = null;
     expect(await p.conferirContaDeTeste()).toBeNull();
     expect(p.chamadas.filter((c) => c.metodo === "conferirContaDeTeste")).toHaveLength(3);
+  });
+});
+
+describe("ProvedorFalso: contestações (M8.2e)", () => {
+  /** Um cartão aprovado (ORDTST0001, pagamento 9000000001) e, se pedido, um Pix aprovado (ORDTST0002, 9000000002). */
+  async function comCartao(n = 1) {
+    const p = novo();
+    for (let i = 1; i <= n; i++) await p.criarCartao(cartao({ referencia: `scl-c${i}`, chaveIdempotencia: `kc${i}` }));
+    return p;
+  }
+  const casoDe = (r: CasoDeContestacao | CasoDeContestacao[] | null | { semAcesso: true }): CasoDeContestacao => {
+    if (!r || semAcessoContestacao(r)) throw new Error("sem caso");
+    return Array.isArray(r) ? r[0] : r;
+  };
+
+  it("contestar: o item na lista da order (CBK, caso, valor; transaction_id diferente do pagamento) e o caso na Chargebacks API com o número do pagamento", async () => {
+    const p = await comCartao();
+    const ids = p.contestar("ORDTST0001", "transacao");
+    expect(ids).toEqual({ idCaso: "7000000001", idCbk: "CBKTST0001" });
+    const c = (await p.consultar("ORDTST0001"))!;
+    expect(c).toMatchObject({ situacao: "contestado", detalhe: "processed/accredited; pagamento charged_back/in_process", transacaoAprovada: false });
+    expect(c.contestacoes).toEqual([{ idContestacao: "CBKTST0001", idCaso: "7000000001", idTransacao: "PAYCBK0001", estadoLido: "in_process", codigo: "in_process", valor: 50_000, daTransacao: false }]);
+    expect(c.contestacoes[0].idTransacao).not.toBe(c.idTransacao);
+    const caso = casoDe(await p.consultarContestacao("7000000001"));
+    expect(caso).toEqual({
+      idCaso: "7000000001", pagamentos: ["9000000001"], valor: 50_000, motivoId: null, motivoCodigo: null, coberturaAplicada: null, coberturaElegivel: true, documentacao: "pending",
+      prazoDocumentacao: new Date("2026-10-18T15:00:00.000Z"), criadoEm: AGORA, atualizadoEm: AGORA, aoVivo: false,
+    });
+    expect(await p.buscarContestacoes("9000000001")).toEqual([caso]);
+    expect(await p.buscarContestacoes("9000000099")).toEqual([]);
+    expect(await p.consultarContestacao("7000000099")).toBeNull();
+    expect(p.chamadas.slice(-4).map((x) => [x.metodo, x.id])).toEqual([["consultarContestacao", "7000000001"], ["buscarContestacoes", "9000000001"], ["buscarContestacoes", "9000000099"], ["consultarContestacao", "7000000099"]]);
+  });
+
+  it("opções: valor, ids, documentação, prazo, cobertura e motivo (uma frase nunca passa, como no cliente real)", async () => {
+    const p = await comCartao();
+    p.contestar("ORDTST0001", "order", { valor: 20_000, idCaso: "234000", idCbk: "CBK01FICTICIO", documentacao: "review_pending", prazo: null, cobertura: false, elegivel: null, motivoId: "4837", motivoCodigo: "Maria Ficticia diz que não reconhece" });
+    expect((await p.consultar("ORDTST0001"))!.contestacoes).toMatchObject([{ idContestacao: "CBK01FICTICIO", idCaso: "234000", valor: 20_000 }]);
+    expect(casoDe(await p.consultarContestacao("234000"))).toMatchObject({ valor: 20_000, documentacao: "review_pending", prazoDocumentacao: null, coberturaAplicada: false, coberturaElegivel: null, motivoId: "4837", motivoCodigo: null });
+    expect(() => p.contestar("ORDTST0001", "order", { idCaso: "234000" })).toThrow();
+    expect(() => p.contestar("ORDTST0001", "order", { idCaso: "12a" })).toThrow();
+    expect(() => p.contestar("ORDTST0001", "order", { idCbk: "REF01" })).toThrow();
+    expect(() => p.contestar("ORDTST0001", "order", { valor: 0 })).toThrow();
+    expect(() => p.contestar("ORDTST0001", "lista", { naLista: false })).toThrow();
+  });
+
+  it("resolverContestacao: settled e reimbursed (com cobertura false) na order e na transação; só na lista, reimbursed volta a aprovado (como normalizarSituacao)", async () => {
+    const p = await comCartao(3);
+    p.contestar("ORDTST0001");
+    p.contestar("ORDTST0002", "transacao");
+    p.contestar("ORDTST0003", "lista");
+    p.resolverContestacao("ORDTST0001", { estado: "settled" });
+    p.resolverContestacao("CBKTST0002", { estado: "reimbursed", cobertura: false });
+    p.resolverContestacao("7000000003", { estado: "reimbursed", cobertura: false });
+    const [a, b, c] = p.todas();
+    expect([a.situacao, a.detalhe, a.contestacoes[0].estadoLido]).toEqual(["contestado", "charged_back/settled", "settled"]);
+    expect([b.situacao, b.detalhe, b.contestacoes[0].estadoLido]).toEqual(["contestado", "processed/accredited; pagamento charged_back/reimbursed", "reimbursed"]);
+    expect([c.situacao, c.detalhe, c.contestacoes[0].estadoLido, c.transacaoAprovada]).toEqual(["aprovado", "processed/accredited", "reimbursed", true]);
+    expect(casoDe(await p.consultarContestacao("7000000002")).coberturaAplicada).toBe(false);
+  });
+
+  it("cobertura null → true/false sem mudar o estado; a transação de volta a aprovada (o fato) com a contestação ainda na lista", async () => {
+    const p = await comCartao();
+    p.contestar("ORDTST0001", "order");
+    expect(casoDe(await p.consultarContestacao("7000000001")).coberturaAplicada).toBeNull();
+    p.resolverContestacao("7000000001", { cobertura: true });
+    expect(casoDe(await p.consultarContestacao("7000000001"))).toMatchObject({ coberturaAplicada: true });
+    expect((await p.consultar("ORDTST0001"))!.contestacoes[0].estadoLido).toBe("in_process");
+    p.resolverContestacao("7000000001", { estado: "settled", transacaoAprovada: true });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "contestado", detalhe: "processed/accredited", transacaoAprovada: true, contestacoes: [{ estadoLido: "settled" }] });
+    p.resolverContestacao("7000000001", { cobertura: false });
+    expect(casoDe(await p.consultarContestacao("7000000001")).coberturaAplicada).toBe(false);
+    // Volta a in_process (reapresentação): a transação contestada de novo.
+    p.resolverContestacao("7000000001", { estado: "in_process", transacaoAprovada: false });
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ situacao: "contestado", detalhe: "charged_back/in_process", transacaoAprovada: false });
+  });
+
+  it("status estranho: a leitura vem desconhecida, com o código cru", async () => {
+    const p = await comCartao();
+    p.contestar("ORDTST0001", "order", { estado: "in_mediation" });
+    expect((await p.consultar("ORDTST0001"))!.contestacoes).toMatchObject([{ estadoLido: "desconhecido", codigo: "in_mediation" }]);
+    expect(() => p.resolverContestacao("ORDTST0001", { estado: "Maria Ficticia" })).toThrow();
+  });
+
+  it("transação contestada sem a lista: uma leitura sem identificação nem valor; depois a lista traz o item com os ids", async () => {
+    const p = await comCartao();
+    p.contestar("ORDTST0001", "transacao", { naLista: false });
+    expect((await p.consultar("ORDTST0001"))!.contestacoes).toEqual([{ idContestacao: null, idCaso: null, idTransacao: null, estadoLido: "in_process", codigo: "in_process", valor: null, daTransacao: true }]);
+    // A Chargebacks API já conhece o caso.
+    expect(await p.buscarContestacoes("9000000001")).toHaveLength(1);
+    p.resolverContestacao("ORDTST0001", { estado: "settled" });
+    expect((await p.consultar("ORDTST0001"))!.contestacoes).toMatchObject([{ daTransacao: true, estadoLido: "settled" }]);
+    p.mostrarNaLista("ORDTST0001");
+    expect((await p.consultar("ORDTST0001"))!.contestacoes).toMatchObject([{ idContestacao: "CBKTST0001", idCaso: "7000000001", estadoLido: "settled", daTransacao: false }]);
+  });
+
+  it("documentacaoDoCaso: situação e prazo (null = sem prazo); fora da lista vira desconhecida", async () => {
+    const p = await comCartao();
+    p.contestar("ORDTST0001");
+    p.documentacaoDoCaso("7000000001", "valid", null);
+    expect(casoDe(await p.consultarContestacao("7000000001"))).toMatchObject({ documentacao: "valid", prazoDocumentacao: null });
+    p.documentacaoDoCaso("7000000001", "algo_novo");
+    expect(casoDe(await p.consultarContestacao("7000000001"))).toMatchObject({ documentacao: "desconhecida", prazoDocumentacao: null });
+    p.documentacaoDoCaso("7000000001", "pending", new Date("2026-10-20T00:00:00.000Z"));
+    expect(casoDe(await p.consultarContestacao("7000000001")).prazoDocumentacao).toEqual(new Date("2026-10-20T00:00:00.000Z"));
+  });
+
+  it("casoDeOutroPagamento: o caso mostra outro número em payments[] (a busca deste pagamento não o acha)", async () => {
+    const p = await comCartao();
+    p.contestar("ORDTST0001");
+    p.casoDeOutroPagamento("7000000001");
+    expect(casoDe(await p.consultarContestacao("7000000001")).pagamentos).toEqual(["8999999999"]);
+    expect(await p.buscarContestacoes("9000000001")).toEqual([]);
+    expect(await p.buscarContestacoes("8999999999")).toHaveLength(1);
+    expect(() => p.casoDeOutroPagamento("7000000001", "x")).toThrow();
+  });
+
+  it("contestarTarde: só pela Chargebacks API, com a order apagada; sem order conhecida, só com o número (e o valor)", async () => {
+    const p = await comCartao();
+    p.aprovar("ORDTST0001", { liberado: true });
+    expect(p.contestarTarde("9000000001")).toEqual({ idCaso: "7000000001", idCbk: "CBKTST0001" });
+    expect(await p.consultar("ORDTST0001")).toBeNull();
+    expect(casoDe(await p.buscarContestacoes("9000000001"))).toMatchObject({ idCaso: "7000000001", pagamentos: ["9000000001"], valor: 50_000 });
+    expect(await p.situacaoDoPagamento("9000000001")).toEqual({ status: "charged_back", statusDetail: "in_process", moneyReleaseStatus: "released" });
+    p.resolverContestacao("9000000001", { estado: "settled", cobertura: true });
+    expect(await p.situacaoDoPagamento("9000000001")).toMatchObject({ status: "charged_back", statusDetail: "settled" });
+    expect(() => p.contestarTarde("1234")).toThrow();
+    p.contestarTarde("1234", { valor: 1_000 });
+    expect(casoDe(await p.buscarContestacoes("1234"))).toMatchObject({ pagamentos: ["1234"], valor: 1_000 });
+    expect(await p.situacaoDoPagamento("1234")).toEqual({ status: "charged_back", statusDetail: "in_process", moneyReleaseStatus: null });
+    expect(() => p.contestarTarde("PAY01")).toThrow();
+  });
+
+  it("id como número: um id seguro é lido igual; com 18 algarismos chega arredondado (a order fica sem o caso, a Chargebacks API ilegível)", async () => {
+    const p = await comCartao(2);
+    p.contestar("ORDTST0001", "order", { idComo: "numero", idCaso: "123456789" });
+    p.contestar("ORDTST0002", "order", { idComo: "numero", idCaso: "234000062890459000" });
+    expect((await p.consultar("ORDTST0001"))!.contestacoes[0].idCaso).toBe("123456789");
+    expect(casoDe(await p.consultarContestacao("123456789")).idCaso).toBe("123456789");
+    expect((await p.consultar("ORDTST0002"))!.contestacoes[0]).toMatchObject({ idContestacao: "CBKTST0002", idCaso: null });
+    await expect(p.consultarContestacao("234000062890459000")).rejects.toBeInstanceOf(ErroProvedor);
+    await expect(p.buscarContestacoes("9000000002")).rejects.toBeInstanceOf(ErroProvedor);
+    // Como texto (o exemplo oficial), o mesmo número é lido.
+    const q = await comCartao();
+    q.contestar("ORDTST0001", "order", { idCaso: "234000062890459000" });
+    expect((await q.consultar("ORDTST0001"))!.contestacoes[0].idCaso).toBe("234000062890459000");
+    expect(casoDe(await q.consultarContestacao("234000062890459000")).idCaso).toBe("234000062890459000");
+  });
+
+  it("segunda disputa no mesmo pagamento: dois itens e dois casos; a order mostra o estado da mais nova", async () => {
+    const p = await comCartao();
+    p.contestar("ORDTST0001");
+    p.resolverContestacao("7000000001", { estado: "settled" });
+    p.contestar("ORDTST0001", "order", { valor: 10_000 });
+    const c = (await p.consultar("ORDTST0001"))!;
+    expect(c.detalhe).toBe("charged_back/in_process");
+    expect(c.contestacoes.map((x) => [x.idCaso, x.estadoLido, x.valor])).toEqual([["7000000001", "settled", 50_000], ["7000000002", "in_process", 10_000]]);
+    expect(await p.buscarContestacoes("9000000001")).toHaveLength(2);
+  });
+
+  it("respostaChargebacks por método: 403 = sem acesso; 404 = consulta null e busca lança; falha lança; falhas[metodo] também", async () => {
+    const p = await comCartao();
+    p.contestar("ORDTST0001");
+    p.respostaChargebacks = { consultarContestacao: "403", buscarContestacoes: "403" };
+    expect(await p.consultarContestacao("7000000001")).toEqual({ semAcesso: true });
+    expect(await p.buscarContestacoes("9000000001")).toEqual({ semAcesso: true });
+    p.respostaChargebacks = { consultarContestacao: "404", buscarContestacoes: "404" };
+    expect(await p.consultarContestacao("7000000001")).toBeNull();
+    await expect(p.buscarContestacoes("9000000001")).rejects.toMatchObject({ tipo: "incerto" });
+    p.respostaChargebacks = { consultarContestacao: "falha" };
+    await expect(p.consultarContestacao("7000000001")).rejects.toMatchObject({ tipo: "incerto" });
+    expect(await p.buscarContestacoes("9000000001")).toHaveLength(1);
+    p.respostaChargebacks = { buscarContestacoes: "falha" };
+    await expect(p.buscarContestacoes("9000000001")).rejects.toBeInstanceOf(ErroProvedor);
+    p.respostaChargebacks = {};
+    p.falhas.situacaoDoPagamento = new ErroProvedor("indisponivel", "x");
+    await expect(p.situacaoDoPagamento("9000000001")).rejects.toMatchObject({ tipo: "indisponivel" });
+    // Id que não pode existir: como o cliente real, sem resposta forçada.
+    p.respostaChargebacks = { consultarContestacao: "falha", buscarContestacoes: "falha" };
+    expect(await p.consultarContestacao("CBK1")).toBeNull();
+    expect(await p.buscarContestacoes("PAY1")).toEqual([]);
+  });
+
+  it("situacaoDoPagamento: pela situação da order, com a liberação do financeiro; desconhecido ou situacaoAusente = null", async () => {
+    const p = novo();
+    await p.criarPix(pix());
+    expect(await p.situacaoDoPagamento("9000000001")).toEqual({ status: "pending", statusDetail: "pending_waiting_payment", moneyReleaseStatus: null });
+    p.aprovar("ORDTST0001", { liberado: false });
+    expect(await p.situacaoDoPagamento("9000000001")).toEqual({ status: "approved", statusDetail: "accredited", moneyReleaseStatus: "pending" });
+    p.contestar("ORDTST0001", "lista");
+    expect(await p.situacaoDoPagamento("9000000001")).toMatchObject({ status: "charged_back", statusDetail: "in_process" });
+    p.resolverContestacao("ORDTST0001", { estado: "settled", cobertura: true, transacaoAprovada: true });
+    expect(await p.situacaoDoPagamento("9000000001")).toMatchObject({ status: "approved", statusDetail: "accredited" });
+    expect(await p.situacaoDoPagamento("9000000099")).toBeNull();
+    expect(await p.situacaoDoPagamento("x")).toBeNull();
+    p.situacaoAusente = true;
+    expect(await p.situacaoDoPagamento("9000000001")).toBeNull();
+  });
+
+  it("Pix contestado: o mesmo caminho (o número do pagamento existe também no Pix)", async () => {
+    const p = novo();
+    await p.criarPix(pix());
+    p.aprovar("ORDTST0001");
+    p.contestar("ORDTST0001");
+    expect(await p.consultar("ORDTST0001")).toMatchObject({ forma: "pix", situacao: "contestado", contestacoes: [{ idCaso: "7000000001", valor: 100_000 }] });
+    expect(await p.buscarContestacoes("9000000001")).toHaveLength(1);
   });
 });

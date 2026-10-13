@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { conferirAgoraAcao } from "@/pagamentos/acoes-painel";
-import { type LinhaPagamento, listarPagamentos } from "@/pagamentos/consultas";
+import { canceladaEmPalavras, type LinhaPagamento, listarPagamentos } from "@/pagamentos/consultas";
 import { NOMES_DESFECHO, NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes";
 import { dataValida } from "@/reservas/regras";
 
@@ -24,17 +24,27 @@ function periodoPadrao(hoje: string): { de: string; ate: string } {
 }
 
 /** O que foi feito do dinheiro (ou o que falta fazer), em palavras simples. */
-function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "motivoSemReservaTexto" | "situacao">): string {
+function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "motivoSemReservaTexto" | "situacao" | "cancelada"> & Partial<Pick<LinhaPagamento, "alteracaoEm" | "emDisputa">>): string {
+  // M8.2c: a reserva que o pagamento confirmou foi cancelada pela política (a mesma situação da página do hóspede).
+  if (p.desfecho === "reserva" && p.cancelada) return canceladaEmPalavras(p.cancelada);
+  // M8.2e: a reserva confirmada com o pagamento em disputa (a disputa se acompanha no quadro da reserva).
+  if (p.desfecho === "reserva" && p.emDisputa) return "Reserva (pagamento em disputa)";
+  // M8.2d: a diferença paga de uma alteração aplicada (de qual alteração: o dia em que foi preparada).
+  if (p.desfecho === "alteracao") return p.alteracaoEm ? `Diferença da alteração de ${dataBr(hojeISO(FUSO, p.alteracaoEm))}` : NOMES_DESFECHO.alteracao;
   if (p.desfecho) return NOMES_DESFECHO[p.desfecho];
   if (p.devolucao?.situacao === "pedida") return "Devolução pedida ao Mercado Pago";
   if (p.devolucao?.situacao === "recusada") return "Devolução parada: o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora";
   if (p.situacao === "aprovado" && p.motivoSemReservaTexto) return `Sem reserva, a devolver: ${p.motivoSemReservaTexto}`;
-  if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto) return `Sem reserva: ${p.motivoSemReservaTexto} O resto se resolve pelo Mercado Pago até o M8.2c.`;
+  if ((p.situacao === "devolvido_parcial" || p.situacao === "contestado") && p.motivoSemReservaTexto)
+    return `Sem reserva: ${p.motivoSemReservaTexto} ${p.situacao === "devolvido_parcial" ? "Devolva o restante pelo quadro do pagamento." : "Acompanhe a disputa no quadro do pagamento."}`;
   if (p.situacao === "aprovado") return "Confirmando a reserva";
   return "—";
 }
 
-/** Financeiro → Pagamentos do site (M8.2a): por período (padrão os últimos 30 dias), com o filtro "pede atenção". */
+/**
+ * Financeiro → Pagamentos do site (M8.2a): por período (padrão os últimos 30 dias), com o filtro "pede atenção". M8.2e: o
+ * filtro "Com disputa" (aberta, a confirmar, perdida sem decisão; de qualquer data) e a coluna "Disputa".
+ */
 export default async function PagamentosDoSite({ searchParams }: PageProps<"/painel/financeiro/pagamentos-site">) {
   const sessao = await exigirSessaoPainel();
   // Lista da empresa toda: só a equipe interna (o proprietário vê o que é dele no portal).
@@ -44,14 +54,15 @@ export default async function PagamentosDoSite({ searchParams }: PageProps<"/pai
   const de = dataValida(umValor(params.de)) ? umValor(params.de) : padrao.de;
   const ate = dataValida(umValor(params.ate)) ? umValor(params.ate) : padrao.ate;
   const atencao = umValor(params.atencao) === "1";
-  const linhas = await listarPagamentos(getDb(), sessao.organizacaoId, { de, ate, atencao });
+  const disputa = umValor(params.disputa) === "1";
+  const linhas = await listarPagamentos(getDb(), sessao.organizacaoId, { de, ate, atencao, disputa });
   const editar = podeFazer(sessao.papel, "financeiro:editar");
 
   return (
     <>
       <h1>Pagamentos do site</h1>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
-        Cada Pix gerado no site, com o que foi feito do dinheiro. Os pagamentos desta fase são de teste (nenhuma cobrança real). As ações — conferir, registrar
+        Cada pagamento feito no site (Pix ou cartão, inclusive a diferença de uma alteração da reserva), com o que foi feito do dinheiro. Os pagamentos desta fase são de teste (nenhuma cobrança real). As ações — conferir, registrar
         a liberação, devolver — ficam no quadro &ldquo;Pagamento no site&rdquo; de cada reserva.
       </p>
       <form method="get" className={styles.linha} style={{ alignItems: "flex-end" }} aria-label="Filtro dos pagamentos">
@@ -66,13 +77,18 @@ export default async function PagamentosDoSite({ searchParams }: PageProps<"/pai
         <label className={styles.check}>
           <input type="checkbox" name="atencao" value="1" defaultChecked={atencao} /> Só os que pedem atenção (de qualquer data)
         </label>
+        <label className={styles.check}>
+          <input type="checkbox" name="disputa" value="1" defaultChecked={disputa} /> Com disputa (aberta, a confirmar ou perdida sem decisão; de qualquer data)
+        </label>
         <div className={styles.acoes}>
           <button type="submit">Filtrar</button>
         </div>
       </form>
       {editar && <FormAcaoPagamento acao={conferirAgoraAcao} rotulo="Conferir agora" nome="Conferir agora todos os pendentes" discreto />}
       {linhas.length === 0 ? (
-        <p style={{ color: "var(--scl-texto-2)" }}>{atencao ? "Nenhum pagamento do site pedindo atenção." : `Nenhum pagamento do site entre ${dataBr(de)} e ${dataBr(ate)}.`}</p>
+        <p style={{ color: "var(--scl-texto-2)" }}>
+          {disputa ? "Nenhum pagamento do site com disputa pedindo a equipe." : atencao ? "Nenhum pagamento do site pedindo atenção." : `Nenhum pagamento do site entre ${dataBr(de)} e ${dataBr(ate)}.`}
+        </p>
       ) : (
         <div className={styles.rolagem}>
           <table className={styles.tabela}>
@@ -85,6 +101,7 @@ export default async function PagamentosDoSite({ searchParams }: PageProps<"/pai
                 <th>Situação</th>
                 <th>Valor</th>
                 <th>Desfecho</th>
+                <th>Disputa</th>
               </tr>
             </thead>
             <tbody>
@@ -127,6 +144,7 @@ export default async function PagamentosDoSite({ searchParams }: PageProps<"/pai
                       </div>
                     ))}
                   </td>
+                  <td style={{ fontSize: "0.875rem" }}>{p.disputa ? <Link href={`/painel/reservas/${p.reservaId}`}>{p.disputa}</Link> : "—"}</td>
                 </tr>
               ))}
             </tbody>

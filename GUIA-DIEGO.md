@@ -3,7 +3,7 @@
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
 > **Regras de preservação (9/10/2026):** Claude e Codex trabalham em cópias e branches novas, preservando originais, acervos e o histórico. Cada PR explica o que mudou, por quê, com qual objetivo e onde retomar. Decisões substituídas continuam registradas; voltar atrás acontece por uma nova mudança, sem apagar o passado. O visual continua tomando o acervo do Sage como referência, depois das entregas funcionais.
 > **Conferência da equipe (9/10/2026):** protegido também o caso de um cadastro ligado por engano a uma conta de outro perfil ou outra empresa. O sistema recusa alterar esse acesso, preserva a conta e não usa seu e-mail nos avisos da equipe. Os testes usam dados fictícios; isso não afirma que os cadastros reais foram inspecionados.
-> **Última atualização:** 10/10/2026. **Conferências com dados fictícios:** equipe (senha provisória, troca da própria senha, cidades e avisos) e cartão (liberação imediata, em 14 e em 30 dias). A previsão não vira dinheiro recebido: precisa da confirmação do provedor, e o proprietário espera também o check-in. Não houve criação de contas reais, envio de avisos reais nem cobrança. **Visual:** componentes atuais renderizados localmente em computador (1512 px) e celular (390 px), comparados com o acervo do Sage; sem estouro horizontal, imagens carregadas e campos de no mínimo 44 px. Essa conferência de aparência não valida navegação, autenticação ou pagamentos no site publicado.
+> **Última atualização:** 11/10/2026, **disputa do pagamento (contestação), em teste (M8.2e):** quando alguém pede ao banco para desfazer a cobrança de uma reserva paga pelo site (a contestação no cartão), pede a devolução de um Pix pelo mecanismo do Banco Central (o MED) ou abre uma reclamação no Mercado Pago, o sistema registra a disputa, avisa a equipe no Início e por e-mail e segura a parte do proprietário dessa reserva que ainda não foi repassada, sem descontar nada de ninguém, até você registrar quem arca: o proprietário, a SCL ou cada um na proporção da sua parte (o sistema nunca escolhe). Com a decisão, o valor do proprietário fica segurado nos próximos repasses até o resultado: se a SCL ganhar, volta; se perder, fica definitivo. O resultado é sempre você quem confirma: o sistema mostra o que o Mercado Pago diz, mas não decide sozinho, porque as páginas do Mercado Pago já deram sentidos opostos ao mesmo código. Antes da entrada, dá para "Cancelar a reserva contestada" sem devolução pelo sistema (o dinheiro volta a quem pagou, pela disputa, se ele ganhar). O proprietário vê a disputa no extrato, no portal e no e-mail do repasse; o hóspede só vê "pagamento em conferência", e nenhuma mensagem automática sai. O Mercado Pago de teste não cria disputas: no teste, você registra uma à mão num pagamento de teste (seção 2; o que fazer no item 46 da seção 6, o texto do "Como funciona" no item 42 e o evento novo dos avisos no item 37; 14 decisões novas na seção 7). **Com isso, as cinco partes do pagamento pelo site estão prontas no teste**; o pagamento de verdade continua desligado e espera as suas decisões marcadas com ★ (seção 7). Antes, em 10/10, **alteração de reserva paga pelo site, em teste (M8.2d):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) muda as datas, o número de pessoas ou o valor **antes da entrada**: o sistema mostra antes o valor novo, a diferença e o que acontece com o dinheiro, e segura as noites novas por um tempo que você escolhe. Se o valor sobe, o hóspede paga a diferença por Pix ou cartão na página da reserva e a alteração vale sozinha; se desce, a diferença segue a Política de cancelamento que ele aceitou, contando da entrada original ou da nova, a que vier primeiro: dentro do prazo, volta; fora, fica e é dividida como uma reserva normal. O financeiro é refeito sozinho, e a devolução de parte do valor só é pedida ao Mercado Pago depois que ele libera o pagamento (no teste, registre a liberação à mão). Também ficou pronto o que faltava das devoluções: mais de uma devolução no mesmo pagamento, o restante de um pagamento já devolvido em parte e a devolução que o Mercado Pago fez a menos. Nada é escrito no Beds24: o Início avisa quando mudar o bloqueio nas OTAs, mesmo com o envio ao Beds24 ligado (o envio manda só os bloqueios do SCL, nunca as datas das reservas; o mesmo vale para os avisos de reserva paga e cancelada). Como o Pix, o cartão e o cancelamento, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 44 e 45 da seção 6 e as frases novas da política no item 42; decisões novas na seção 7). Antes, também em 10/10, **cancelamento de reserva paga pelo site, em teste (M8.2c):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) calcula o cancelamento pela Política de cancelamento que o hóspede aceitou, vê o resultado antes (devolução integral ou nada, e por quê) e cancela; o sistema pede a devolução ao Mercado Pago, acompanha até ela sair e acerta o financeiro sozinho: reserva, comissão, parte do proprietário, a taxa que não voltar (despesa da empresa) e, se a parte do proprietário já tinha sido paga, o desconto no próximo repasse dele. Sem devolução, o valor fica e é dividido como uma reserva normal. O hóspede pode pedir o cancelamento em Minha reserva (ele só pede, e a hora fica registrada; quem cancela é a equipe), a página da reserva mostra a situação e há três mensagens novas ao hóspede, prontas para copiar, que saem sozinhas quando você ligar as mensagens. Como o Pix e o cartão, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 41 a 43 da seção 6; decisões novas na seção 7). Também em 10/10, **conferências com dados fictícios:** equipe (senha provisória, troca da própria senha, cidades e avisos) e cartão (liberação imediata, em 14 e em 30 dias). A previsão não vira dinheiro recebido: precisa da confirmação do provedor, e o proprietário espera também o check-in. Não houve criação de contas reais, envio de avisos reais nem cobrança. **Visual:** componentes atuais renderizados localmente em computador (1512 px) e celular (390 px), comparados com o acervo do Sage; sem estouro horizontal, imagens carregadas e campos de no mínimo 44 px. Essa conferência de aparência não valida navegação, autenticação ou pagamentos no site publicado.
 > **Entregas de 9/10/2026:** **pagamento com cartão no site, em teste (M8.2b):** depois de segurar as datas, o hóspede escolhe entre o Pix (recomendado, já marcado) e o cartão de crédito; o formulário do cartão é do Mercado Pago (os dados do cartão nunca passam pelo nosso sistema), aceita só crédito e parcela com os juros pagos pelo hóspede; quando o banco pede, a verificação do banco aparece na própria página. A reserva confirma sozinha quando o cartão é aprovado, e um cartão em análise no Mercado Pago segura as datas por mais um tempo que você escolhe. Contra quem testa cartões roubados, toda recusa mostra a mesma mensagem e, com muitas recusas, o cartão desliga sozinho (o Pix continua). O cartão vem **desligado**: você liga em Configurações → Pagamento no site. Como o Pix, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago: nada é cobrado de verdade (seção 2; o que fazer no item 40 da seção 6; decisões novas na seção 7: verificação do banco, prazo de liberação do cartão, e-mail do formulário e devolução por fora). Também em 9/10, **páginas legais do site prontas (M7.4):** o site ganhou as três páginas que a lei pede para vender pela internet — Termos de uso, Política de privacidade e Política de cancelamento —, com links no rodapé de todas as páginas. Você revisa e publica cada uma em Configurações → Páginas legais do site, com prévia, versão datada e histórico; os dados da empresa entram sozinhos (preencha antes o novo campo "encarregado" em Configurações → Empresa). Antes de gerar o Pix, o hóspede lê o resumo da política de cancelamento, vê até que dia tem o reembolso integral daquela reserva e marca que aceita; na ficha da reserva você vê o que ele aceitou. Os textos são um texto-base que eu escrevi a partir da lei: leve ao contador e, de preferência, a um advogado antes de publicar. **Atenção: enquanto as três não estiverem publicadas, o site não oferece o Pix — nem nas prévias da Vercel**, que usam outro banco e precisam ter as três publicadas lá também para o teste do pagamento continuar (seção 2; o que fazer no item 39 da seção 6). Também em 9/10, **sobras de feriado e evento com reserva (M3.10):** quando um feriadão ou evento já tem uma reserva confirmada, as noites livres dele passam a pedir o mínimo normal da semana (1 noite de domingo a quinta, 2 na sexta e no sábado), sem baixar o preço do evento, como você decidiu em 6/10. A regra vem ligada; desligue, evento por evento, em Configurações → Calendário e preços, nas temporadas longas como a alta temporada (seção 2; o que fazer no item 38 da seção 6). Também em 9/10, **pagamento por Pix no site, em teste (M8.2a):** depois de segurar as datas, a página da cotação mostra o Pix (copia e cola, QR e prazo) e confirma a reserva sozinha quando o pagamento é aprovado; no painel, a ficha da reserva ganha o quadro "Pagamento no site", há a lista em Financeiro → Pagamentos do site e a aba Configurações → Pagamento no site, onde você liga e desliga. Tudo roda só nas prévias da Vercel e só com a conta de teste do Mercado Pago: nada é cobrado de verdade (seção 2; o que fazer no item 37 da seção 6). Em 8/10, **página para proprietários pronta (M7.7):** "Anuncie seu imóvel" no site virou uma página completa, no visual do estudo: as duas formas de trabalhar (gestão completa e marketplace), como gerimos, a vitrine dos imóveis, o "Como funciona" publicado e um pedido de contato para a gestão completa, que chega em Proprietários → Pedidos de contato, com aviso no Início do painel e por e-mail; o cadastro do marketplace continua igual. Os textos começam com um texto-base para você revisar em Configurações → Página para proprietários, e os números de mercado só aparecem quando você digitar dados reais (seção 2; o que fazer no item 36 da seção 6). Em 7/10, **a equipe entra sem e-mail (M6.8):** em Limpezas → Profissionais você cria para cada pessoa um usuário e uma senha provisória (o sistema pode criar a senha), copia a mensagem pronta e manda pelo WhatsApp; ela entra em "Entrar com usuário e senha" e troca a senha no acesso dela. Na mesma tela você escolhe a cidade da agenda de cada uma: quem é de Búzios vê só Búzios, quem é do Rio vê só o Rio (seção 2; o que fazer no item 7 da seção 6). Também em 7/10, **site do hóspede no visual do estudo (M7.6):** a página inicial ganhou a foto de capa que você escolher em Configurações → Site (sem foto, fica o fundo verde), a legenda vertical, a vitrine "Seu endereço no Leblon" em carrossel com setas e botão de pausa, cartões com selo e ícones das comodidades, e "Por que reservar direto" com um texto-base para você revisar; a página do imóvel ganhou "O bairro à sua porta" (lugares que você cadastra no painel, com foto opcional); as datas são escolhidas num calendário próprio, com as noites ocupadas marcadas; a consulta ficou em duas colunas com o "Resumo da viagem"; a marca do logotipo aparece no topo e no rodapé (seção 2; o que fazer no item 35 da seção 6). Também em 7/10, **pesos do marketplace no padrão 6/3/3 (M12.5):** quem nunca salvou a aba Marketplace e desconto do site já usa hóspede 1, proprietário 1 e SCL 2 (desconto do site de cerca de 3%); se o que está salvo é o 1/1/1 antigo, a aba avisa e oferece o botão "Usar o padrão novo" (seção 6, item 24). Também em 7/10, **fotos reais dos imóveis prontas (M7.3):** na ficha de cada imóvel, no painel, há a parte **Fotos**: você sobe várias de uma vez (pode ser a original do celular, o sistema reduz antes de subir), escolhe a capa, muda a ordem e escreve a legenda; o site mostra a capa nos cartões e a galeria na página do imóvel, e a capa do relatório mensal usa a mesma foto (seção 2; o que fazer no item 34 da seção 6). Também em 7/10, **Beds24 fora do que o proprietário e o hóspede leem (M5.9, pronto):** o portal passa a falar de "nosso sistema", "os canais" e "sua ferramenta de preços"; o site, quando o preço de uma data ainda não foi lido, diz só que o preço é confirmado na conversa; o painel continua dizendo Beds24 (seção 2). Também em 7/10, **sua segunda rodada de respostas de 7/10 no plano** (seção 7): a equipe entra de vários jeitos (conta Google, e-mail com senha ou usuário e senha criados por você), sem verificação em duas etapas, e cada pessoa vê só a agenda da cidade dela (M6.8 sai de "bloqueado"); no reembolso integral do site, a taxa que o Mercado Pago não devolver fica com a empresa; a posição sobre o arrependimento de 7 dias eu escrevo e você confere com o contador; dois itens novos para o site: o site do hóspede pronto pelas referências do Sage (M7.6) e a página para proprietários (M7.7). Antes, **suas respostas de 7/10 registradas no plano** (seção 7): no marketplace, relatório e extrato mostram só o que passa pela SCL (as reservas do site e o dinheiro que a empresa receber); o Beds24 fica nos bastidores, sem aparecer para proprietário e hóspede (item novo M5.9); contestação perdida fica com quem deu causa ao motivo, decidido caso a caso; cancelamento do site com a base de 14 dias; pesos 6/3/3 confirmados (item novo M12.5); fotos liberadas (M7.3 sai de "bloqueado"); só o Leblon no site público no começo; e-mail não serve para a equipe (item novo M6.8, espera você decidir como a equipe entra); ideia de serviços à parte com valor mensal fixo (item novo M4.14, espera a sua lista). **O que depende de você agora fica na página "Pendências do Diego"** (https://claude.ai/artifact/PVim3wJVrYgsRVvzabUv6K), onde você marca o que fez e pergunta; esta seção 6 continua como referência completa. Você fez em 7/10: início do sistema e acerto por fora, recebimentos de outubro, chaves Pix, "Como funciona" versão 1 publicada e o remetente do e-mail. Antes, em 5/10: **relatório mensal com os ajustes que você pediu (M5.8):** o quadro diz "noites ocupadas", entraram "receita por noite disponível" (o RevPAN do setor) e "reservas e estadia média", e o segundo gráfico é a ocupação por mês com a diária média sobre cada barra — a opção 1, que você escolheu em 5/10 (seção 2); **dia do fechamento passou para o dia 2 (M4.13, sua decisão de 5/10):** o fechamento mensal, o repasse mensal e o e-mail do relatório saem sozinhos no dia 2 do mês seguinte (o Airbnb só paga no dia 1º a reserva com check-in no último dia do mês); dá para mudar de 1 a 5 em Configurações → Repasses, valendo do fechamento do mês atual em diante; no dia 1º você ainda pode fechar e enviar à mão, e o proprietário baixa o PDF no portal a qualquer hora (seção 2; item 33 da seção 6); **relatório mensal no modelo oficial pronto (M5.7):** o PDF do portal, do painel e do e-mail do fechamento saiu em quatro páginas (capa com o resultado e "como chega até você", números e reservas do mês com o gráfico de 12 meses, conciliação e repasses, extratos dos canais no fim), com os ajustes que você pediu (quadros dois a dois, nada com rolagem lateral no celular); **antes do fechamento de outubro, guarde os extratos dos canais em Financeiro → Repasses → "Extratos dos canais"** para irem no e-mail (item 32 da seção 6); os e-mails do fechamento e do repasse ganharam a versão bonita (HTML) na mesma ordem do texto; **documento "Como funciona" para o proprietário pronto (M5.6):** texto por seção em Configurações → Como funciona (proprietário), versão datada a cada publicação, aceite registrado no convite e no portal (quem, quando, qual versão) — **nada aparece no portal até você revisar o rascunho e publicar a versão 1** (seção 6, item 31); **reserva paga antes do início é acertada inteira por fora (M4.12):** o corte do início do sistema passou a ser pela data em que o canal pagou a reserva, não por noite — a reserva de 29/9 a 2/10 paga em 30/9 é toda de antes, com a noite de outubro; a paga a partir de 1/10 entra inteira; Booking, site e direta que atravessam 30/9→1/10 precisam do recebimento registrado **com a data em que o canal pagou** antes da marcação (item 29 da seção 6); Configurações → Regras financeiras ganhou "em quantos dias depois do check-in o canal paga" (Airbnb: 1) — seção 2; **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
@@ -38,11 +38,350 @@
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto e com a versão 1 publicada por você em 7/10 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail; ajustes de 5/10 no relatório prontos (M5.8: noites ocupadas, receita por noite disponível, estadia média, gráfico de ocupação); Beds24 fora dos textos do portal e do site (M5.9, 7/10) pronto |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento; a equipe entra sem e-mail e vê só a agenda da cidade dela (M6.8, 7/10); aviso pelo WhatsApp depende do M10 |
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais prontas (M7.4, 9/10): você revisa e publica; fotos reais prontas (M7.3, 7/10: você sobe na ficha do imóvel); site do hóspede no visual do estudo pronto (M7.6, 7/10); página para proprietários pronta (M7.7, 8/10) |
-| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, testado nas prévias com as suas chaves de teste; **cartão em teste pronto (M8.2b, 9/10)**, desligado até você ligar; cancelamento, alteração e contestação a seguir |
-| M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto |
+| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, testado nas prévias com as suas chaves de teste; **cartão em teste pronto (M8.2b, 9/10)**, desligado até você ligar; **cancelamento de reserva paga pelo site em teste pronto (M8.2c, 10/10)**, pela política que o hóspede aceitou; **alteração de reserva paga pelo site em teste pronta (M8.2d, 10/10)**, antes da entrada, com a diferença paga pelo site ou devolvida pela política, e a devolução de parte do valor; **disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10)**: as cinco partes estão prontas no teste, e o pagamento de verdade espera as suas decisões ★ (seção 7) |
+| M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto; desde 10/10, o hóspede pede o cancelamento da reserva paga pelo site em Minha reserva, e há três mensagens novas do cancelamento (M8.2c); também em 10/10, Minha reserva avisa a alteração que espera o hóspede, e há duas mensagens novas da alteração (M8.2d) |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10); pesos 6/3/3 no padrão do sistema (M12.5, 7/10) |
+
+### Disputa do pagamento (contestação), em teste — M8.2e (11/10)
+
+Esta é a quinta e última parte do pagamento pelo site: **o que acontece quando alguém pede ao banco para desfazer a
+cobrança de uma reserva paga pelo site** (a contestação no cartão, ou "chargeback"), pede a devolução de um Pix pelo
+mecanismo do Banco Central (o MED) ou abre uma reclamação no Mercado Pago. Com ela, **as cinco partes estão prontas no
+teste**; o pagamento de verdade continua desligado e espera as suas decisões marcadas com ★ (seção 7). Como o resto, está
+em **modo de teste**: só nas prévias da Vercel e com a conta de teste do Mercado Pago, que **não cria disputas** — no teste,
+você registra uma à mão num pagamento de teste (item 46 da seção 6).
+
+- **Como o sistema fica sabendo:** sozinho, na conferência de sempre do pagamento (nos primeiros 85 dias) e, depois,
+  numa consulta diária às disputas abertas e numa busca semanal por disputas que aparecem tarde (até um ano e meio
+  depois do pagamento). Você também registra a disputa que viu no painel do Mercado Pago: **"Registrar disputa vista no
+  painel do Mercado Pago"**, no quadro do pagamento (o MED e a reclamação só entram assim). Se aparecer uma segunda
+  disputa no mesmo pagamento, ela fica marcada como "possível duplicata" até você confirmar que é outra.
+- **Quem cuida:** quem cuida do financeiro (hoje, só você) decide e confirma. A operação vê na ficha "O pagamento desta
+  reserva está em disputa: quem cuida do financeiro acompanha", com a situação e o prazo dos documentos, sem valores, e
+  pode marcar os documentos enviados e imprimir a página da defesa.
+- **Enquanto você não decide quem arca, a reserva fica em conferência:** a parte do proprietário dessa reserva que ainda
+  não foi repassada espera; a que já foi repassada não é descontada; nada é descontado de ninguém. O fechamento do
+  proprietário segue com as outras reservas, e a parte presa vai para o repasse seguinte, com o motivo "reserva em
+  conferência: disputa do pagamento". Depois de 15 dias sem decisão, o Início sobe o tom. As datas continuam ocupadas e
+  nada vai ao Beds24.
+- **"Registrar quem arca":** você escolhe a causa (problema do imóvel, falha da SCL, falha na cobrança, pagamento não
+  reconhecido, outro) e quem arca: **o proprietário**, **a SCL** ou **cada um na proporção da sua parte**. O formulário
+  começa sem nada marcado e mostra, ao lado de cada causa, a frase da regra que você decidiu em 7/10 (problema do imóvel,
+  o proprietário; falha da SCL ou na cobrança, a SCL); você pode escolher outra coisa, e a pergunta de confirmação repete.
+  Ao lado ficam os fatos: o valor em disputa, a estadia, o que o proprietário já recebeu, a verificação do banco e o que
+  o Mercado Pago mostra. Uma nota interna é obrigatória (o proprietário nunca vê); uma explicação ao proprietário é
+  opcional (ele vê no extrato, no PDF e no e-mail do repasse).
+- **Com a decisão**, o valor do proprietário fica **segurado nos próximos repasses até o resultado** (junto com a parte
+  dessa reserva, se ela ainda está esperando) e o da SCL vira uma perda prevista. **Se a SCL ganhar**, o valor volta ao
+  proprietário no repasse seguinte e a perda da SCL sai. **Se perder**, os dois ficam definitivos. Tudo entra no mês em
+  que acontece: um mês já fechado e um relatório já enviado nunca mudam.
+- **O resultado é sempre você quem confirma ("Confirmar o resultado")**, com o formulário sem nada marcado: o sistema
+  mostra o que o Mercado Pago diz, mas não decide sozinho, porque as páginas do Mercado Pago já deram sentidos opostos ao
+  mesmo código. No "Perdeu", você confere o valor que a SCL perdeu, quanto desse pagamento nunca entrou na conta e o dia
+  em que o Mercado Pago debitou; uma tarifa do Mercado Pago pela disputa, se houver, é despesa da SCL.
+- **O dinheiro, em exemplos** (cartão, comissão de 15%, a taxa do Mercado Pago saindo antes da divisão, como hoje):
+  - **Disputa perdida, dividida na proporção:** reserva de R$ 1.000,00, taxa de R$ 49,80, parte do proprietário
+    R$ 807,67 (já repassada) e comissão da SCL R$ 142,53. Em 15/12 abre uma disputa de R$ 1.000,00: nada é descontado. Em
+    18/12 você decide "cada um na proporção": R$ 850,00 do proprietário ficam segurados (saem do próximo repasse) e
+    R$ 150,00 viram perda prevista da SCL. Em 10/03 a SCL perde: no fim, o proprietário fica com −R$ 42,33 (807,67 −
+    850,00) e a SCL com −R$ 7,47 (142,53 − 150,00). Os dois somam −R$ 49,80: a taxa que o Mercado Pago ficou. Dezembro não
+    muda.
+  - **A mesma disputa, ganha:** em março, os R$ 850,00 voltam ao proprietário no próximo repasse e a perda prevista de
+    R$ 150,00 da SCL sai. Fica tudo como antes da disputa.
+  - **Problema do imóvel, o proprietário arca:** com o cartão liberado em 30 dias (taxa de R$ 39,80, parte R$ 816,17),
+    a disputa de R$ 1.000,00 abre antes da liberação; o Mercado Pago nunca libera; a SCL perde. O próximo repasse leva
+    −R$ 183,83 (816,17 − 1.000,00): o proprietário cobre também a comissão e a taxa (decisão 1 da seção 7).
+  - **Falha na cobrança, a SCL arca:** o proprietário mantém os R$ 807,67; a SCL fica com 142,53 − 1.000,00 =
+    −R$ 857,47.
+  - **Uma disputa pequena prende uma parte grande:** numa estadia de R$ 6.000,00 (parte de R$ 4.846,02) com uma disputa
+    de R$ 200,00 por um item extra, os R$ 4.846,02 ficam presos até você registrar quem arca, se ainda não tinham sido
+    repassados (decisão 3 da seção 7).
+  - **Cancelada antes, disputada depois:** a reserva foi cancelada com devolução integral e, antes de a devolução sair,
+    o hóspede abre a disputa. A devolução para e fica "substituída pela disputa" (o hóspede nunca recebe duas vezes):
+    nada a dividir. Perdida, a devolução conta como feita pela disputa; o proprietário fica só com o desconto do
+    cancelamento e a SCL com a taxa que não voltou. Ganha, a devolução volta a ser devida.
+- **Outras ações no quadro da disputa**, cada uma com confirmação: "Confirmar o débito do Mercado Pago" (o dia e o
+  valor que ele tirou da conta, com uma nota que fica no quadro); "Mudar quem arca" (a explicação ao proprietário em
+  vigor já vem no campo; a nota da decisão fica, e o "por que mudar" aparece ao lado) e "Atualizar o valor segurado"
+  (só a diferença, no mês corrente);
+  "Documentos enviados no painel do Mercado Pago", com o prazo e a página para imprimir **"Documentos para a defesa"**
+  (a reserva, o pagamento, a política aceita e a lista do que juntar por fora: a conversa com o hóspede, a entrada e a
+  saída do prédio, fotos); "Encerrar sem efeito" (registrada por engano, duplicata, reclamação resolvida sem dinheiro);
+  e "Conferir o aviso", quando o Mercado Pago mostra algo diferente do resultado que você confirmou (uma ganha reaberta
+  vira a "rodada 2").
+- **Disputa antes da entrada:** pode ser fraude (alguém pagou com um cartão que não era dele). O Início avisa "não libere
+  a entrada antes de falar com quem cuida do financeiro", e você pode **"Cancelar a reserva contestada"**: a reserva é
+  cancelada **sem devolução pelo sistema**, porque o dinheiro volta a quem pagou, pela disputa, se ele ganhar
+  (decisão 6 da seção 7).
+- **O proprietário vê**, no portal, no extrato, no PDF e no e-mail do repasse, a linha "Disputa do pagamento" da reserva
+  (o valor segurado, o desconto definitivo ou o valor devolvido), com a causa e a explicação que você escreveu. Nunca vê a
+  sua nota interna, o número do caso nem dados do hóspede. Um proprietário nunca vê a disputa de um imóvel que não é dele.
+- **O hóspede vê** só "o pagamento desta reserva está em conferência com o Mercado Pago" (frase que você edita em
+  Configurações → Textos do site, e pode deixar vazia), e só no aparelho em que pagou e em Minha reserva, onde o botão de
+  cancelar dá lugar a "Para cancelar, fale com a equipe". A palavra "contestação" nunca aparece para ele, e nenhuma
+  mensagem automática sai: a equipe fala com ele caso a caso. Numa reserva cancelada por "Cancelar a reserva contestada",
+  a página diz "estamos conferindo a devolução" enquanto a disputa não termina; perdida, diz que o dinheiro voltou a ele
+  pelo banco ou pelo Mercado Pago (frase nova em Textos do site, "Cancelamento da reserva contestada"), mas só quando a
+  disputa perdida cobre todo o valor que ficou retido; se ela era de parte do valor, a página continua em "estamos
+  conferindo a devolução" e a equipe fala com ele sobre o resto. Ganha, a reserva fica como cancelada sem devolução.
+- **No Início e por e-mail:** a disputa sem decisão (e a escalada depois de 15 dias), o prazo dos documentos, a disputa
+  encerrada no Mercado Pago com o resultado a conferir, a perdida sem decisão, a estadia por vir, o repasse a pagar com a
+  parte de uma reserva em disputa ("estorne o repasse antes de pagar, se quiser segurar a parte dela") e o valor segurado
+  que não foi descontado há mais de 7 dias. A equipe recebe um e-mail (só com o código da reserva e o apartamento) na
+  abertura, perto do prazo dos documentos e no dia do prazo. Em Financeiro → Pagamentos do site, o filtro "Com disputa".
+- **Configurações → Pagamento no site** ganhou o quadro "Disputa do pagamento": a categoria da perda (criada no primeiro
+  uso), quantos dias antes do prazo dos documentos avisar (padrão 5) e os nomes e as frases das causas.
+- **Notas sem dados pessoais:** como no cancelamento e na alteração, toda nota é recusada se tiver CPF, e-mail,
+  telefone, chave Pix ou número de cartão. O sistema nunca guarda o motivo escrito pelo banco nem os documentos do caso.
+- **O que ainda não faz:** aplicar o resultado sozinho pela leitura (fica para quando a conta de teste ou o primeiro
+  caso conferirem os códigos); enviar os documentos ao Mercado Pago pelo sistema (você envia pelo painel dele e marca
+  aqui); ver o MED e a reclamação sozinho (você registra); pedir ao Mercado Pago o restante de uma devolução que a
+  disputa perdida cobriu a menos (esse restante sai por fora, e você registra no quadro com "Registrar o restante
+  devolvido por fora").
+
+### Alteração de reserva paga pelo site, em teste — M8.2d (10/10)
+
+Esta é a quarta das cinco partes do pagamento pelo site: **mudar uma reserva que o hóspede já pagou pelo site** —
+as datas, o número de pessoas ou o valor — e cobrar ou devolver a diferença. Junto, ficou pronto o que faltava das
+devoluções: **devolver só uma parte do valor**. Como o Pix, o cartão e o cancelamento, está em **modo de teste**: só
+nas prévias da Vercel e com a conta de teste do Mercado Pago (item 44 da seção 6).
+
+- **Quem faz:** quem cuida do financeiro (hoje, só você). Na ficha da reserva paga pelo site, dentro do quadro
+  "Pagamento no site", fica o bloco **Alteração da reserva**. Quem é da operação vê "a alteração é feita por quem
+  cuida do financeiro" e as datas seguradas, sem valores. O hóspede não pede a alteração pelo site: ele pede pelo
+  WhatsApp ou pelo e-mail, e a equipe prepara.
+- **Só antes da entrada:** a alteração vale até o horário de entrada (a nova entrada pode ser hoje, mas só antes do
+  horário de entrada). Depois que a estadia começa, nada muda pelo sistema: mais noites viram uma reserva nova (no
+  painel, com o pagamento registrado, ou pelo site); sair antes não tem devolução e a reserva fica como está (as
+  noites continuam ocupadas e a limpeza de saída fica na data original). Acrescentar noites antes e depois ao mesmo
+  tempo se faz em duas alterações; trocar de apartamento é cancelar e reservar de novo.
+- **Em dois passos:** primeiro **"Calcular a alteração"**: as novas datas e o número de pessoas; quem pede ("O
+  hóspede pediu" ou "A SCL propõe" — apartamento sem condições, força maior ou outro); o valor ("Pela cotação do site
+  (preços de hoje)", "Manter o valor atual" ou "Outro valor", os dois últimos com o motivo e uma nota); e, se o
+  hóspede pediu, quando e por onde o pedido chegou. A prévia mostra hoje e depois, a diferença, a política que o
+  hóspede aceitou, como a devolução sai, o financeiro antes e depois (valor, taxa, comissão e parte do proprietário,
+  mês a mês), as noites novas seguradas e os avisos, com o botão "Copiar a proposta para o hóspede". Depois, o botão
+  do caso, sempre com uma pergunta de confirmação que repete tudo:
+  - **o valor sobe:** "Segurar as novas datas e liberar o pagamento da diferença". Você manda a proposta ao hóspede;
+    ele paga a diferença por Pix ou cartão na página da reserva, e a alteração vale sozinha quando o pagamento é
+    aprovado. Até lá, a reserva continua como está;
+  - **o valor desce ou fica igual:** "Aplicar a alteração", quando o hóspede já aceitou por escrito (a pergunta
+    começa por "Confirme que o hóspede aceitou por escrito"). Se ele ainda vai decidir, use "Só segurar as datas (o
+    hóspede ainda decide)" e, quando ele aceitar, "Conferir para aplicar (o hóspede aceitou)" e "Aplicar a
+    alteração".
+
+  Se algo mudar entre a prévia e o clique (o pagamento, a leitura do Mercado Pago, a agenda), o sistema pede para
+  calcular de novo. Uma alteração aplicada não se desfaz por aqui.
+- **As noites novas ficam seguradas** por 60 minutos (você muda em Configurações → Calendário e preços, de 5 minutos a
+  48 horas; não muda o tempo do visitante do site). O Pix da diferença estende esse prazo, mas nunca além do horário
+  de entrada. Se o prazo passar sem pagamento e sem você aplicar, a alteração deixa de valer e as noites voltam à
+  venda. Você também pode **"Desistir da alteração"**, com o motivo; o Pix da diferença ainda não pago é cancelado.
+- **O valor novo:** pela cotação, é o preço de hoje da estadia inteira nova, não só das noites a mais. Quando **a SCL
+  propõe** a alteração (o apartamento teve um problema, por exemplo), o formulário começa em "Manter o valor atual":
+  o hóspede não paga pelo problema da SCL, e cobrar a mais pede que você escolha e confirme. Se a cotação der menos
+  noites com valor maior (ou o contrário), a prévia avisa.
+- **Quando o valor desce, a diferença segue a Política de cancelamento que o hóspede aceitou**, como se fosse o
+  cancelamento daquela parte naquele momento: pedido dentro do prazo do reembolso integral (ou nos 7 dias do
+  arrependimento) → a diferença volta; fora do prazo → a diferença fica, o valor da reserva continua o mesmo e é
+  dividido como uma reserva normal, e as noites liberadas voltam à venda. Os prazos contam da **entrada original ou
+  da nova, a que vier primeiro** (decisão sua, seção 7); com mais de uma alteração, vale a entrada mais cedo que a
+  reserva já teve, então adiar depois de adiantar não devolve o prazo perdido. Você pode devolver por exceção (com o
+  motivo e uma nota); e,
+  quando a SCL propõe, a diferença sempre volta.
+- **A ordem é sempre a mesma:** primeiro a alteração vale (as novas datas e o valor novo na reserva), depois a
+  devolução é pedida. Nunca há devolução sem alteração.
+- **A devolução de parte do valor espera o Mercado Pago liberar o pagamento.** Só depois disso (e com a taxa dele
+  conhecida) o sistema pede a devolução. Até lá, a ficha mostra "aguardando a liberação do pagamento (prevista para
+  dd/mm)" e o hóspede vê que ela "será pedida quando o Mercado Pago liberar o seu pagamento", nunca "já pedimos". Se a
+  liberação atrasar, o Início avisa. **No teste, o Mercado Pago nunca avisa a liberação: registre a liberação à mão no
+  quadro do pagamento** para a devolução sair. Uma nova alteração da mesma reserva espera essa devolução sair.
+- **O dinheiro, em exemplos** (Pix, com a taxa do Mercado Pago de 0,99% e comissão de 15%, como no exemplo do
+  cancelamento):
+  - **Uma noite a mais (o valor sobe):** reserva de 10/11 a 14/11 por R$ 1.500. O hóspede pede para sair em 15/11;
+    pela cotação de hoje, a estadia nova custa R$ 1.900, então a diferença é de R$ 400. O sistema segura a noite de
+    14 para 15/11, e o hóspede paga os R$ 400 por Pix (o Mercado Pago fica com R$ 3,96). Quando o pagamento é
+    aprovado, a reserva passa a R$ 1.900: a comissão da SCL sobe R$ 59,41 e a parte do proprietário sobe R$ 336,63.
+    A parte do proprietário só fica disponível depois do check-in e da liberação do pagamento da diferença pelo
+    Mercado Pago.
+  - **Uma noite a menos, no prazo (a diferença volta):** reserva de 28/11 a 03/12 (5 noites) por R$ 1.500. Em 01/11,
+    o hóspede pede para ir de 05/12 a 09/12 (4 noites), e a cotação dá R$ 1.200. O prazo do reembolso integral conta
+    de 28/11 e vai até 14/11: os R$ 300 da diferença voltam. A parte da taxa do Mercado Pago que corresponde à
+    devolução (R$ 2,97) sai da reserva, que fica com taxa de R$ 11,88; a SCL fica com R$ 178,22 de comissão e o
+    proprietário com R$ 1.009,90, tudo em dezembro (novembro sai do financeiro). Quando o Mercado Pago confirma a
+    devolução, saem do caixa R$ 297,03; se a taxa dessa parte não voltar, você informa os R$ 2,97 em "Registrar taxa
+    que não voltou", eles viram despesa da empresa, e a SCL fica no fim com R$ 175,25.
+  - **A mesma mudança fora do prazo (a diferença fica):** pedida em 20/11 (depois de 14/11 e passados os 7 dias do
+    arrependimento), a diferença não volta: a reserva continua valendo R$ 1.500 nas datas de dezembro, dividida como
+    uma reserva normal, e as noites de 28/11 a 03/12 voltam à venda.
+  - **Adiantar e depois cancelar:** reserva para 15/01. Em 20/11, o hóspede adianta para 28/11 a 03/12, pelo mesmo
+    valor. Em 01/12, já hospedado, pede para cancelar. Como os prazos contam da entrada que vier primeiro (28/11), o
+    prazo do integral acabou em 14/11 e a estadia já começou: sem devolução. Se contasse só da entrada original
+    (15/01), ele teria devolução integral no meio da estadia; por isso o ajuste.
+  - **Redução no cartão e depois cancelamento:** o pagamento no cartão ainda não foi liberado pelo Mercado Pago; uma
+    redução de R$ 300 é aplicada e a devolução fica esperando a liberação. Antes disso, o hóspede cancela dentro do
+    prazo: a devolução de R$ 300, que nunca chegou ao Mercado Pago, entra no cancelamento ("substituída pela
+    devolução do cancelamento"), e o hóspede recebe o valor inteiro de volta de uma vez, na hora, como num
+    cancelamento normal.
+- **O financeiro é refeito sozinho**, antes da entrada: os lançamentos de antes saem (cada um no próprio mês, com a
+  referência da alteração) e os novos entram; a ficha mostra o antes, o depois e a diferença de cada item, mês a mês.
+  Como antes da entrada nada foi repassado, nenhum mês fechado muda. O plano falava em lançar só "a diferença" de
+  cada item; o resultado é o mesmo, e os lançamentos de diferença separados ficam para uma alteração depois da
+  entrada, que ainda não existe (decisão sua, seção 7).
+- **Cancelar depois de alterar:** vale a mesma política, contando da mesma entrada; o hóspede recebe de volta o que
+  pagou (a reserva e a diferença, uma devolução de cada pagamento), menos o que já voltou numa redução. Se houver uma
+  alteração com as datas seguradas, o cancelamento desiste dela (ou pede para esperar, se o pagamento da diferença
+  estiver em andamento).
+- **Devolver só uma parte do valor (o que faltava desde o Pix e o cancelamento):**
+  - um pagamento pode ter **mais de uma devolução**, uma de cada vez; o quadro do pagamento mostra uma linha por
+    devolução, cada uma com as ações dela;
+  - **o Mercado Pago devolveu menos do que o pedido:** o que voltou entra no financeiro, e você escolhe **"Pedir o
+    restante ao Mercado Pago"** ou **"Registrar o restante devolvido por fora"** (no cartão, só quando a regra do
+    cartão deixa: o botão só aparece quando funciona);
+  - **um pagamento sem reserva que chegou já devolvido em parte** ganha **"Devolver o restante ao hóspede"**; se o
+    Mercado Pago não disser quanto já devolveu, o sistema pede o valor que aparece no painel dele;
+  - **a devolução por fora** registra exatamente o que aquela devolução ainda deve, e só se ela nunca foi pedida ao
+    Mercado Pago (ou foi recusada sem dúvida), para o hóspede não receber duas vezes;
+  - uma reserva confirmada com parte devolvida no painel do Mercado Pago pode ser cancelada pela política (devolve o
+    restante), informando o valor que aparece lá quando ele não diz. Se a reserva tem mais de um pagamento (a
+    diferença de um aumento, por exemplo), o sistema pede o valor de cada um, com um campo para cada pagamento.
+- **O que o hóspede vê:** na página da reserva, a alteração preparada (com o pagamento da diferença, quando o valor
+  sobe), a alteração confirmada com a devolução (esperando a liberação, pedida ou feita), "A alteração não pôde ser
+  feita" (a diferença foi paga, mas as novas datas não puderam ser seguradas: o valor volta) e "Alteração que não vale
+  mais". No pagamento da diferença, a caixa de aceite diz que a reserva continua na Política de cancelamento que ele
+  aceitou. Em Minha reserva, uma linha avisa a alteração esperando o pagamento ou a confirmação dele, sem valores.
+  Quando a devolução sai de mais de um pagamento (a reserva no Pix e a diferença no cartão, por exemplo) ou uma parte
+  foi devolvida por fora, a página explica cada caminho, e o cancelamento faz igual. Nunca o nome do Beds24 nem
+  dados pessoais. As frases você edita em Configurações → Textos do site.
+- **Avise o hóspede:** duas mensagens novas — a proposta (com as datas, o valor e até quando as datas ficam
+  seguradas) e a alteração confirmada — e "Devolução feita", que agora serve ao cancelamento e à alteração. Enquanto as
+  mensagens automáticas estiverem desligadas, a ficha mostra cada uma pronta para copiar, com "Mensagem enviada ao
+  hóspede". Só quem vê o financeiro copia (elas levam valores). Depois de uma alteração, a mensagem de confirmação da
+  reserva não sai de novo. Se a reserva for cancelada depois de uma redução, o "Devolução feita" da diferença
+  ainda sai se o hóspede não tinha sido avisado: a que já voltou, ou a que continua no cancelamento sem devolução,
+  quando o dinheiro voltar (a confirmação da alteração, não).
+- **OTAs:** nada é escrito no Beds24. Quando uma alteração muda as datas, o Início avisa "mude o bloqueio nas OTAs (no
+  Beds24, feche as novas datas e reabra as antigas)" e, depois de mudar, você marca **"Datas atualizadas nas OTAs"** na
+  ficha. O aviso aparece mesmo com o envio ao Beds24 ligado, porque o envio manda só os bloqueios que você cria no
+  SCL e nunca mexe nas datas das reservas (isso fica para o M8.3). Mudar só o número de pessoas ou o valor não mexe
+  no bloqueio.
+- **No Início:** as alterações com as datas seguradas (até que horas e esperando o quê), o bloqueio a mudar nas OTAs,
+  as mensagens a mandar, as devoluções de parte esperando a liberação (e as atrasadas), as devoluções feitas a menos e
+  o pagamento da diferença aprovado sem a alteração (para devolver).
+- **Notas sem dados pessoais:** como no cancelamento, toda nota da alteração é recusada se tiver CPF, e-mail,
+  telefone, chave Pix ou número de cartão; as observações da reserva ganham só as datas e as pessoas, nunca valores.
+- **O que ainda não faz:** alterar depois da entrada; transformar depois em devolução por exceção um cancelamento
+  que ficou sem devolução (continua por fora mais um ajuste); o hóspede pedir a alteração pelo site; contestação
+  (M8.2e, pronta em 11/10, acima); e-mail automático enquanto as mensagens estiverem desligadas.
+
+### Cancelamento de reserva paga pelo site, em teste — M8.2c (10/10)
+
+Esta é a terceira das cinco partes do pagamento pelo site: **cancelar uma reserva que o hóspede pagou pelo
+site, com a devolução pela Política de cancelamento que ele aceitou ao pagar**. Como o Pix e o cartão, está em
+**modo de teste**: só nas prévias da Vercel e com a conta de teste do Mercado Pago (item 41 da seção 6).
+
+- **Quem faz:** quem cuida do financeiro (hoje, só você). Na ficha de uma reserva paga pelo site, o botão
+  "Cancelar reserva" de sempre some: o cancelamento fica dentro do quadro "Pagamento no site", em
+  **Cancelamento pela política**. Quem é da operação vê "o cancelamento com devolução é feito por quem cuida
+  do financeiro" e pode registrar um pedido do hóspede que chegou pelo WhatsApp, e-mail, telefone ou
+  pessoalmente (dar mais que isso à operação é uma decisão sua, seção 7).
+- **Em dois passos:** primeiro **"Calcular o cancelamento pela política"**: você diz quem cancela ("O hóspede
+  pediu", "A SCL cancela" — apartamento sem condições ou força maior — ou "Não comparecimento") e, se o
+  hóspede pediu por outro canal, quando o pedido chegou e por onde. O sistema confere o pagamento no Mercado
+  Pago e mostra a prévia: a versão da política que o hóspede aceitou, o resultado (devolução integral ou
+  nada) e por quê, a parte do proprietário, a comissão, a taxa, quanto já foi repassado ao proprietário, como a
+  devolução vai sair e os avisos. Depois, **"Cancelar a reserva"**, com uma pergunta de confirmação que repete o
+  valor, o motivo, como a devolução sai e, quando for o caso, quanto o proprietário deixa de receber. Não dá
+  para desfazer. Se algo mudar entre a prévia e o clique (o pagamento, um pedido, um repasse), o sistema pede
+  para calcular de novo.
+- **A regra é a da política que o hóspede aceitou, no momento em que recebemos o pedido:**
+  - pedido até as 23h59 do último dia do prazo (14 dias antes da entrada, na versão 1): devolução integral;
+  - arrependimento: até 7 dias depois do pagamento, devolução integral mesmo com menos de 14 dias, mas só
+    até o horário de entrada;
+  - a SCL cancela: devolução integral, sempre;
+  - não comparecimento (o hóspede não chegou e não avisou): sem devolução, e só depois de 21 horas do horário
+    de entrada (com entrada às 15:00, a partir das 12:00 do dia seguinte; você muda as horas em Configurações
+    → Pagamento no site). Se o hóspede já tiver um pedido de cancelamento registrado, não vale como não
+    comparecimento: vale o pedido;
+  - pedido depois desses prazos: sem devolução;
+  - pedido que chega depois de a estadia começar, sem direito a devolução: o sistema não cancela, porque sair
+    antes não é cancelar (as noites não usadas não voltam, como diz a política). A reserva continua como está.
+- **O que a equipe decide, e o que não:** quando a política não dá devolução, você pode **devolver tudo por
+  exceção**, escolhendo o motivo (erro da SCL, força maior, cortesia, saúde ou família, outro) e escrevendo uma
+  nota. Num pagamento de antes de 9/10, que não tem a política aceita, você escolhe "Devolver tudo" ou "Não
+  devolver", com o motivo (se for a SCL que cancela, é sempre tudo). Quando a política dá devolução integral,
+  ninguém troca por "nada".
+- **O momento que vale é o do pedido.** Pelo site (Minha reserva), é a hora do sistema, e ninguém muda. Pedido
+  por outro canal: registre na ficha ("Registrar pedido de cancelamento") assim que ele chegar, com a data e a
+  hora da mensagem; quem cuida do financeiro pode corrigir esse horário depois, escrevendo o motivo (fica
+  registrado). Com o pedido registrado, a demora da equipe nunca tira o direito do hóspede, nem depois da data de
+  saída. Se o hóspede desistir, use "Descartar pedido", com o motivo (o pedido feito pelo site só quem cuida do
+  financeiro descarta, como desistência do hóspede). Nada é apagado: os pedidos descartados continuam na ficha.
+- **A devolução:** é pedida ao Mercado Pago na hora, e a ficha mostra "devolução pedida" até ele confirmar (no
+  teste, use **Conferir agora**). Se o Mercado Pago pedir para esperar, o sistema espera e tenta de novo, sem
+  contar como falha; se ele recusar, a ficha explica o motivo (por exemplo, falta de saldo na conta). Pagamento
+  com **mais de 78 dias**: o sistema não pede mais ao Mercado Pago, porque não daria tempo de conferir. No cartão,
+  você devolve pelo painel do Mercado Pago e confirma na ficha ("Confirmar devolução feita no painel do Mercado
+  Pago"); no Pix, faz a devolução por fora, da conta da empresa. Se o painel do Mercado Pago recusar a devolução,
+  registre isso na ficha, e a devolução por fora fica liberada. Uma devolução pedida que ficou sem resposta
+  depois de 85 dias pode ser parada ("Parar a devolução pedida").
+- **O dinheiro, num exemplo.** Uma reserva de R$ 1.500 paga por Pix: o Mercado Pago fica com R$ 14,85 de taxa e
+  entram R$ 1.485,15; com comissão de 15%, a SCL fica com R$ 222,77 e o proprietário com R$ 1.262,38.
+  - **Cancelada no prazo (devolução integral):** o hóspede recebe R$ 1.500 de volta. A reserva, a comissão e a
+    parte do proprietário saem do financeiro na hora. Quando o Mercado Pago confirma, sai do caixa o que tinha
+    entrado (R$ 1.485,15); se a taxa não voltar, você informa os R$ 14,85 em "Registrar taxa que não voltou" e
+    eles viram despesa da empresa. No fim, a SCL perde R$ 14,85 e o proprietário fica com zero.
+  - **Cancelada fora do prazo (sem devolução):** os R$ 1.500 ficam e são divididos como uma reserva normal: o
+    proprietário recebe R$ 1.262,38, disponível depois da data de entrada original e da liberação do Mercado
+    Pago, e a SCL fica com R$ 222,77.
+  - **A SCL cancela em 2/11 uma estadia de outubro a novembro, e a parte de outubro (R$ 631,19) já foi paga ao
+    proprietário:** o hóspede recebe tudo de volta. Outubro fica exatamente como foi enviado ao proprietário; em
+    novembro aparece "Reserva … cancelada com devolução ao hóspede: −R$ 631,19", que sai do próximo repasse
+    dele, seja ele qual for. Se as partes dele não cobrirem, o repasse antecipado espera e o fechamento mostra
+    que ele está devendo, sem pedir transferência. Novembro, que ainda não tinha sido pago, só sai do
+    financeiro. A prévia avisa que o proprietário deixa de receber a parte dele (R$ 1.262,38), que teria se não
+    houvesse devolução: quem arca nesse caso é decisão sua (seção 7).
+  - Se a parte do proprietário estiver num repasse que ainda não foi pago, o sistema pede para estornar esse
+    repasse antes de cancelar (ou para marcá-lo como pago, se já pagou de fato). E um repasse cuja parte já foi
+    descontada por um cancelamento não pode mais ser estornado (corrija com um ajuste).
+- **Devolvido direto no painel do Mercado Pago:** se alguém devolver pelo painel do Mercado Pago sem passar pelo
+  sistema, a reserva fica em conferência: a parte do proprietário não é repassada e o fechamento dele espera, até
+  você cancelar pela política ou registrar um ajuste e dar a conferência por resolvida. O Início avisa.
+- **O que o hóspede vê:** na página da reserva, "Reserva cancelada", com a data e a hora em que recebemos o pedido,
+  a decisão (por exemplo, "Pela Política de cancelamento que você aceitou (versão 1), devolvemos o valor integral
+  pago, R$ 1.500,00, sem desconto de taxas."), se a devolução foi pedida ou feita e como o dinheiro volta. Sem
+  devolução, ele vê os prazos da política e o motivo. Nunca o nome do Beds24 nem dados pessoais. As frases você
+  edita em **Configurações → Textos do site**.
+- **Minha reserva:** o hóspede vê o quadro "Cancelar a reserva", com os prazos da política dele e o botão
+  **"Pedir o cancelamento"** (só antes do horário de entrada, com confirmação, sem valores). Ele só pede: a data
+  e a hora ficam registradas na hora e aparecem na tela, a empresa recebe um e-mail (só com o código da reserva,
+  o apartamento e a hora) e o pedido aparece no Início. Você desliga o botão em Configurações → Pagamento no site.
+- **Avise o hóspede:** são três mensagens novas — pedido recebido, decisão e devolução feita. Enquanto as
+  mensagens automáticas estiverem desligadas, a ficha mostra cada uma pronta para copiar (para o WhatsApp ou o
+  e-mail) e o botão "Mensagem enviada ao hóspede". A de pedido recebido a operação também copia (ela não tem
+  valor); as outras duas, só quem vê o financeiro. Quando você ligar as mensagens ao hóspede e escolher um
+  modelo para cada uma, elas saem sozinhas por e-mail.
+- **OTAs:** as datas voltam à venda no site na hora. O Início avisa "reabra as datas nas OTAs (no Beds24,
+  apague o bloqueio)" e, depois de reabrir, você marca "Datas reabertas nas OTAs" na ficha. Nada é escrito no
+  Beds24 por esta parte. **Mudança de 10/10:** antes, esse aviso sumia com o envio automático ao Beds24 ligado;
+  agora ele aparece sempre, até o M8.3, porque o envio manda só os bloqueios que você cria no SCL e nunca reabre
+  as datas de uma reserva. O mesmo vale para os avisos de reserva paga e de reserva alterada.
+- **No Início:** os pedidos de cancelamento esperando (com a data do pedido e da entrada; ficam em destaque
+  depois de 24 horas ou a 3 dias da entrada), as datas a reabrir nas OTAs, as mensagens a mandar ao hóspede, as
+  devoluções que o Mercado Pago fez a menos, as reservas devolvidas fora do sistema e o desconto de proprietário
+  esperando há mais de 7 dias. Na lista de reservas, o filtro "Pedido de cancelamento → Só com pedido esperando a
+  equipe".
+- **Notas sem dados pessoais:** qualquer nota (onde está o pedido, motivo da exceção, devolução por fora…) é
+  recusada se tiver CPF, e-mail, telefone, chave Pix ou número de cartão.
+- **O que ainda não faz:** devolver só uma parte do valor (vai para o M8.2d, junto com a alteração de reserva
+  paga); cancelar pela política um pagamento que o Mercado Pago mostra devolvido em parte, contestado ou com
+  devolução em andamento (o sistema espera isso se resolver); desfazer um cancelamento; contestação (M8.2e);
+  e-mail automático ao hóspede enquanto as mensagens estiverem desligadas. **Desde 10/10 (M8.2d, acima):** a
+  devolução de parte do valor ficou pronta, e o pagamento devolvido em parte no painel do Mercado Pago já se cancela
+  pela política (devolve o restante); contestado ou com devolução em andamento, continua esperando. **Desde 11/10
+  (M8.2e, acima):** a contestação ficou pronta; com uma disputa em curso, o cancelamento pela política espera o
+  resultado, e antes da entrada há "Cancelar a reserva contestada".
 
 ### Pagamento com cartão no site, em teste — M8.2b (9/10)
 
@@ -108,12 +447,15 @@ Pago. Ele vem **desligado**: você liga quando quiser testar (item 40 da seção
 - **Devolução:** devolva pela ficha da reserva (**Devolver pelo Mercado Pago**). No cartão, **Registrar
   devolução feita por fora** só é aceito quando o Mercado Pago não conseguiu devolver ou o pagamento tem
   mais de 180 dias: senão a cobrança continuaria no cartão e o hóspede poderia contestar e receber duas
-  vezes (decisão na seção 7).
+  vezes (decisão na seção 7). Desde 10/10 (M8.2c), "não conseguiu" ficou mais estrito: uma recusa
+  definitiva do Mercado Pago, a recusa que você registra depois de ver no painel dele ("Registrar que o
+  Mercado Pago recusou a devolução no painel") ou a nossa devolução que ele mostra como falhada; falta de
+  saldo e "espere" não liberam.
 - **O que fica guardado:** só a bandeira, o número de parcelas, o valor pago com os juros e o resultado da
   verificação do banco; nunca o número do cartão, o CPF ou o nome do titular. O texto-base da Política de
   privacidade já diz isso; publique uma versão nova antes de ligar o cartão (item 40).
-- **O que ainda não faz:** cancelar reserva paga (M8.2c), alterar reserva paga (M8.2d) e contestação
-  (M8.2e; o sistema já guarda o que ela vai precisar). Antes do dinheiro de verdade faltam também a
+- **O que ainda não faz:** cancelar reserva paga (M8.2c, pronto em 10/10, acima), alterar reserva paga (M8.2d, pronto em
+  10/10, acima) e contestação (M8.2e, pronta em 11/10, acima; o sistema já guardava o que ela precisou). Antes do dinheiro de verdade faltam também a
   decisão sobre o campo de e-mail do formulário do cartão (seção 7) e uma proteção a mais da página do
   pagamento, que eu faço antes de ligar a produção.
 
@@ -144,7 +486,7 @@ O site agora tem as três páginas que a lei pede para vender pela internet: **T
   da empresa depois, o site continua com o da versão publicada e o painel avisa para publicar de novo.
 - **Os 14 dias são um campo da política:** "Reembolso integral até quantos dias antes da entrada"
   fica no formulário da Política de cancelamento e entra no texto sozinho. O texto e a devolução
-  (quando o cancelamento pelo site existir) usam sempre o mesmo número.
+  (do cancelamento pelo site, desde 10/10) usam sempre o mesmo número.
 - **Versão nova vale para os próximos pagamentos:** quem já aceitou fica com a versão que aceitou. Um
   Pix ainda válido continua valendo; um Pix novo pede o aceite da versão nova. Um pagamento aprovado
   nunca é recusado por causa de versão.
@@ -199,9 +541,10 @@ contestação de cartão (M8.2e). O dinheiro de verdade só liga com as cinco pa
   minutos, então gerar um Pix segura as datas por pelo menos esse tempo (até 3 Pix por cotação, um
   de cada vez). Um Pix pago no último minuto não perde a reserva.
 - **A reserva confirma sozinha** quando o pagamento é aprovado com as datas ainda seguradas. Pedido
-  que você ou a equipe cancelaram nunca volta sozinho. Até o envio ao Beds24 ser ligado, o Início
+  que você ou a equipe cancelaram nunca volta sozinho. Até o M8.3, o Início
   avisa "reserva do site paga: feche as datas nas OTAs" (feche como **bloqueio** no Beds24, nunca
-  como reserva, senão a importação cria uma segunda reserva).
+  como reserva, senão a importação cria uma segunda reserva). Desde 10/10 o aviso aparece mesmo com o
+  envio ao Beds24 ligado: o envio manda só os bloqueios que você cria no SCL, não as datas das reservas.
 - **O dinheiro:** a taxa real do Mercado Pago entra na reserva. A parte do proprietário só fica
   disponível depois do check-in **e** de o Mercado Pago liberar o dinheiro. A data de liberação que
   o Mercado Pago mostra é só uma previsão; a liberação conta quando ele disser que liberou (o
@@ -223,8 +566,8 @@ contestação de cartão (M8.2e). O dinheiro de verdade só liga com as cinco pa
 - **Travas:** o sistema só cobra se o Mercado Pago confirmar que a conta das chaves é **de teste** e se
   você ligar **Oferecer pagamento no site** (vem desligado). Chave de produção, mesmo por engano, não
   cobra nada nesta parte.
-- **O que ainda não faz:** cartão (M8.2b, pronto em 9/10, acima); cancelar uma reserva já paga (o painel recusa e explica;
-  chega no M8.2c); alterar reserva paga (M8.2d); contestação (M8.2e). Nenhum e-mail novo vai ao
+- **O que ainda não faz:** cartão (M8.2b, pronto em 9/10, acima); cancelar uma reserva já paga (M8.2c, pronto em 10/10,
+  acima); alterar reserva paga (M8.2d, pronto em 10/10, acima); contestação (M8.2e, pronta em 11/10, acima). Nenhum e-mail novo vai ao
   hóspede: a confirmação do M9.2 passa a valer para as reservas pagas quando você ligar as mensagens.
 
 ### Página para proprietários — M7.7 (8/10)
@@ -429,7 +772,7 @@ pronto, e funciona assim:
   contestações; dúvidas). Enquanto você não publica nada, o formulário traz um **rascunho sugerido**
   a partir das regras que já valem no sistema — revise, mude o que quiser e clique em "Publicar a
   versão 1". A seção "Contestações" veio em branco de propósito (decisão pendente, seção 7): seção
-  vazia não aparece para o proprietário. Escreva `{empresa}` para o nome da empresa entrar sozinho (o nome fica gravado na versão: se um dia o cadastro mudar, o texto já aceito não muda, e publicar de novo cria uma versão nova).
+  vazia não aparece para o proprietário. Desde 11/10 (M8.2e), o texto proposto para ela está no item 42 da seção 6. Escreva `{empresa}` para o nome da empresa entrar sozinho (o nome fica gravado na versão: se um dia o cadastro mudar, o texto já aceito não muda, e publicar de novo cria uma versão nova).
 - **Versões:** cada publicação com texto diferente vira a versão seguinte, numerada e datada; texto
   igual não cria versão. Versão nova pede **aceite novo** de todos os proprietários; os aceites antigos
   ficam guardados. A mesma aba mostra quem já aceitou qual versão e quando, e a página de cada
@@ -836,7 +1179,8 @@ peço na hora.
 - **Ainda em aberto, antes de ligar o pagamento de verdade:** quem arca com a taxa do
   pagamento (hoje: sai antes da divisão, cada um na proporção), quem arca com uma
   contestação de cartão perdida, e a política de cancelamento do site. Nada disso impede o
-  M8.2 em teste.
+  M8.2 em teste. (Depois: a contestação foi decidida por você em 7/10 e ficou pronta em teste em 11/10, M8.2e; os
+  detalhes que faltam estão na seção 7.)
 - **Marketplace e gestão total na mesma régua (4/10):** o marketplace também recebe pela
   empresa, sem split do Mercado Pago, com o extrato. E vale **um modelo por contrato, nunca
   por reserva**: imóvel de gestão total que vender pelo site continua com a comissão do
@@ -1887,7 +2231,7 @@ e escreva normalmente.
 | **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
 | **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador. Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
-| **Mercado Pago** | Pagamentos da reserva direta | 🟡 Conta Negócio no CNPJ aberta por você (8/10); Pix em teste pronto (M8.2a); cartão em teste pronto (M8.2b, 9/10) | Criar a aplicação, pôr as chaves de teste só no ambiente Preview da Vercel e testar um Pix (seção 6, item 37); depois, o cartão (item 40) e os ajustes da conta logo abaixo |
+| **Mercado Pago** | Pagamentos da reserva direta | 🟡 Conta Negócio no CNPJ aberta por você (8/10); Pix em teste pronto (M8.2a); cartão em teste pronto (M8.2b, 9/10); cancelamento com devolução em teste pronto (M8.2c, 10/10); alteração e devolução de parte do valor em teste prontas (M8.2d, 10/10); disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10) | Criar a aplicação, pôr as chaves de teste só no ambiente Preview da Vercel e testar um Pix (seção 6, item 37); depois, o cartão (item 40), o cancelamento (item 41), a alteração (item 44), a disputa (item 46), o evento "Contestações" nos avisos (item 37) e os ajustes da conta logo abaixo |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Entrar no Meta (o login voltava para a tela de entrada, 8/10) e decidir qual número o sistema vai usar; a verificação da empresa pode esperar o site no ar (seção 6, item 4) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
@@ -1908,6 +2252,42 @@ guio tela a tela):
   liberação (seção 7);
 - uma devolução no cartão **antes** da liberação pode precisar de saldo disponível na conta do Mercado
   Pago; se o sistema disser que a devolução não deu, confira o saldo lá.
+
+**Mercado Pago e as devoluções do cancelamento (M8.2c):**
+- devolver pode pedir **saldo disponível** na conta do Mercado Pago (principalmente no cartão ainda não
+  liberado): se a ficha disser que o Mercado Pago pediu saldo, ponha saldo e use "Pedir a devolução de novo";
+- **Pix com mais de 90 dias** provavelmente não volta pelo Mercado Pago (regra do Banco Central): a devolução é
+  por fora, da conta da empresa;
+- **cartão:** o Mercado Pago devolve até 180 dias depois do pagamento; depois disso, só por fora;
+- **78 dias:** o sistema para de pedir devoluções ao Mercado Pago (não daria tempo de conferir); com 85 dias,
+  para de conferir. Daí em diante, no cartão, devolva pelo painel do Mercado Pago e confirme na ficha;
+- ainda não sabemos se a taxa do Mercado Pago volta numa devolução integral: confira no primeiro teste (item 41).
+
+**Mercado Pago e as devoluções de parte do valor (M8.2d):**
+- a devolução de **parte** do valor (a diferença de uma alteração, o restante de um pagamento) só é pedida ao Mercado
+  Pago **depois que ele libera o pagamento** e informa a taxa: no cartão, devolver parte antes da liberação muda as
+  parcelas que ele ainda vai liberar, e o caixa deixaria de bater. A devolução do valor inteiro de um pagamento
+  continua saindo na hora;
+- **no teste, o Mercado Pago nunca avisa a liberação:** registre a liberação à mão no quadro do pagamento antes de
+  esperar uma devolução de parte (item 44);
+- um mesmo pagamento pode ter **várias devoluções de parte**, uma de cada vez; ainda vamos conferir na conta de teste
+  como o Mercado Pago responde à segunda;
+- **a taxa da parte devolvida** sai da reserva na proporção do que foi devolvido, e o que o Mercado Pago não devolver
+  dessa taxa fica com a empresa (decisão sua, seção 7). Ainda não sabemos se ele devolve a taxa (e os juros do cartão)
+  numa devolução de parte: confira no primeiro teste e informe em "Registrar taxa que não voltou";
+- devolver parte também pode pedir **saldo disponível** na conta, como no cancelamento.
+
+**Mercado Pago e as disputas do pagamento (M8.2e):**
+- a conta de teste **não cria disputas**: o teste é com uma disputa registrada à mão (item 46);
+- nos avisos (Webhooks), marque também o evento **"Contestações"**, além de "Order (Mercado Pago)" (item 37);
+- os documentos da defesa são enviados **pelo painel do Mercado Pago**; o sistema só marca "Documentos enviados" e
+  monta a página para imprimir (não guarda arquivos com dados do hóspede);
+- o sistema lê as disputas sozinho pela consulta de contestações do Mercado Pago, que pede o número da conta (lido da
+  própria conta, sem você fazer nada); se o Mercado Pago recusar essa consulta, o Início avisa e você confere no painel
+  dele;
+- ainda não sabemos, e vamos conferir no primeiro caso (ou com o suporte do Mercado Pago): se na abertura ele debita ou
+  só bloqueia o valor, se a taxa volta numa disputa perdida, se há tarifa por disputa e em que dia o dinheiro volta
+  numa ganha. Por isso você confirma o débito, o resultado e o valor perdido.
 
 **Conector do Claude × chave do sistema:** os "conectores" que você liga no Claude (ex.: o
 do Resend) deixam **o Claude** usar aquele serviço nas conversas. O **sistema SCL**, rodando
@@ -2298,7 +2678,8 @@ ambiente).
    ajuste o que quiser e clique em "Publicar a versão 1". Até isso, o portal não mostra o documento
    nem pede aceite a ninguém. Depois: cada proprietário vê a faixa no portal e aceita; quem entrar por
    convite novo aceita no próprio link. Quando decidir quem arca com contestação de cartão (seção 7),
-   preencha a seção "Contestações" e publique a versão 2 — todos vão aceitar de novo, e é assim mesmo.
+   preencha a seção "Contestações" e publique a versão 2 — todos vão aceitar de novo, e é assim mesmo. Desde 11/10
+   (M8.2e), o texto para essa seção está no item 42, passo 5.
    Não escreva no texto a comissão nem a periodicidade: elas aparecem sozinhas, do cadastro.
 
 32. **Guarde os extratos dos canais antes do fechamento (M5.7), entre 1/11 e 2/11 para outubro:** em **Financeiro → Repasses**, abra
@@ -2366,15 +2747,18 @@ ambiente).
       registre a liberação à mão na mesma ficha (no teste o Mercado Pago não informa liberação).
     - **Aviso de pagamento (webhook), depois:** quando eu avisar, em Suas integrações → a aplicação →
       Webhooks → Configurar notificações, use o endereço que aparece em **Integrações**, marque só
-      o evento "Order (Mercado Pago)", salve, copie a assinatura secreta para a Vercel como
+      o evento "Order (Mercado Pago)" (desde 11/10, marque também **"Contestações"**: o aviso de uma disputa chega
+      como aviso do pagamento, e o sistema relê o pagamento e vê a disputa), salve, copie a assinatura secreta para a Vercel como
       `MERCADOPAGO_WEBHOOK_SECRET` (marque **Preview** e **Production**: o aviso chega no endereço
       de produção, que só confere a assinatura e registra que chegou) e use o botão **Simular**. As
-      outras duas chaves continuam só em Preview.
+      outras duas chaves continuam só em Preview. Quando simular um evento "Contestações", me conte o que chegou (o
+      número que aparece no endereço e o tipo): ainda não sabemos o formato dele no teste.
     - **Na conta do Mercado Pago:** deixe **desligado** o "parcelamento sem acréscimo" (o hóspede paga
       os juros) e não use cupons do Mercado Pago (o desconto do site já vem no preço).
     - **Devolva pela ficha da reserva**, para o sistema saber. No cartão, só se o sistema disser que não
       deu, devolva pelo painel do Mercado Pago e depois use **Conferir agora** (ou registre a devolução
-      por fora). Antes de registrar uma devolução **feita por fora**, o sistema confere no Mercado Pago
+      por fora; desde 10/10, no cartão, só depois de o Mercado Pago recusar de vez, de você registrar a recusa
+      que viu no painel dele, ou depois de 180 dias). Antes de registrar uma devolução **feita por fora**, o sistema confere no Mercado Pago
       se o dinheiro já não voltou por lá (se não der para conferir, ele não registra).
     - **Depois de uma devolução pelo Mercado Pago:** veja no Mercado Pago quanto da taxa ficou com ele
       e informe em **Registrar taxa que não voltou**, na ficha (em reais, com vírgula, ex.: 18,06; zero se
@@ -2382,7 +2766,9 @@ ambiente).
       recusado). O Mercado Pago não
       informa isso sozinho; até você informar, fica um aviso. A regra de a empresa ficar com a taxa que
       não volta, quando o pagamento ficou sem reserva por falha do sistema, é minha sugestão: confirme
-      se concorda.
+      se concorda. Desde 10/10, numa devolução **por fora** o sistema calcula sozinho a taxa que não voltou (o
+      que foi devolvido menos o que tinha entrado); se um valor estiver errado, use **Corrigir taxa que não
+      voltou** na ficha (essa despesa não se estorna mais em Despesas).
     - **No teste, nada confere sozinho:** a página do hóspede confere o Pix dela; o resto (devolução
       pedida, Pix que sobrou, um pagamento que ficou sem resposta) você confere com **Conferir agora**.
 38. **Sobras de feriado e evento com reserva (M3.10, pronto em 9/10):** em **Configurações →
@@ -2419,8 +2805,10 @@ ambiente).
       das noites que forem alugadas de novo.
     - **A taxa do Mercado Pago:** conferir no primeiro reembolso em teste se ela volta.
     - **O que a lei do comércio eletrônico pede antes de vender:** o e-mail de confirmação da reserva
-      ligado antes do pagamento de verdade; um jeito de desistir pelo próprio site (sugerido para o
-      cancelamento pelo site, M8.2c); e uma resposta automática no e-mail fora do horário da equipe.
+      ligado antes do pagamento de verdade; um jeito de desistir pelo próprio site (feito em 10/10, M8.2c: o
+      botão "Pedir o cancelamento" em Minha reserva; confira com o advogado se um pedido, que a equipe executa,
+      basta); a confirmação por escrito do pedido de cancelamento (o e-mail está pronto e sai quando você ligar
+      as mensagens ao hóspede, item 43); e uma resposta automática no e-mail fora do horário da equipe.
     - **Encarregado** pelo nome, ou a dispensa para pequeno porte.
     - **Por quanto tempo guardar os dados dos hóspedes** (hoje ficam para sempre): uma regra, por
       exemplo tantos anos depois da saída.
@@ -2438,7 +2826,10 @@ ambiente).
     - **Encerrar a estadia por violação grave** (festa, mais pessoas que o reservado): hoje não está no
       texto.
     - **Reservas diretas fechadas pelo WhatsApp:** se seguem a mesma política.
-    - **Alteração para um valor menor:** a diferença seguir as regras de cancelamento (M8.2d).
+    - **Alteração para um valor menor:** a diferença seguir as regras de cancelamento (M8.2d). Feito em 10/10 com o
+      padrão: contando da entrada original ou da nova, a que vier primeiro. Leve também: o pagamento da diferença não
+      abre outro arrependimento de 7 dias, e a devolução de parte do valor espera a liberação do pagamento (decisões 1,
+      9 e 11 da alteração, seção 7).
 40. **Pagamento com cartão em teste (M8.2b, pronto em 9/10):** tudo numa prévia da Vercel, com as mesmas
     chaves de teste do item 37 (a do Pix já precisa estar funcionando).
     1. **No Mercado Pago:** faça os ajustes da conta da seção 5 ("Mercado Pago e o cartão":
@@ -2475,12 +2866,314 @@ ambiente).
        cartão ou o Pix.
     9. **Me conte o que viu:** o tamanho do quadro da verificação do banco, se o formulário mostrou os
        juros em cada parcela e se algum passo não bateu com este roteiro. Eu ajusto antes da produção.
+41. **Cancelamento de reserva paga pelo site, em teste (M8.2c, pronto em 10/10):** tudo numa prévia da Vercel,
+    com as chaves de teste do item 37.
+    1. **Só na prévia mais nova:** use o link da prévia deste PR (ou de um mais recente). As prévias antigas usam
+       o mesmo banco e não sabem tratar estas devoluções.
+    2. **Cancelamento no prazo (devolução integral):** faça um Pix de teste como no item 37 (nome **APRO**). Na
+       ficha da reserva, em "Pagamento no site" → **Cancelamento pela política**, escolha "O hóspede pediu",
+       informe quando e por onde o pedido chegou (por exemplo, agora, WhatsApp), clique **Calcular o
+       cancelamento pela política**, leia a prévia e clique **Cancelar a reserva**. Use **Conferir agora** até a
+       devolução aparecer como confirmada. Depois, veja no Mercado Pago quanto da taxa ficou com ele e informe em
+       **Registrar taxa que não voltou** (zero se voltou toda).
+    3. **Pedido pelo hóspede:** faça outra reserva de teste com um e-mail seu, entre em **Minha reserva** com o
+       código que chega nesse e-mail e clique **Pedir o cancelamento**. Confira o e-mail que chega na empresa, o
+       aviso no Início e, na ficha, que o horário do pedido aparece travado. Depois, cancele pela ficha.
+    4. **Sem devolução:** um pagamento feito agora está sempre dentro dos 7 dias do arrependimento, então "O
+       hóspede pediu" sempre dá devolução integral no teste. Para ver o caso sem devolução, use o não
+       comparecimento: faça uma reserva de teste com a entrada o mais perto que o imóvel aceitar e, depois do
+       horário de entrada mais a tolerância, cancele como **Não comparecimento** (sem pedido registrado). Para não
+       esperar até o meio-dia seguinte, na prévia você pode pôr 0 em "Não comparecimento: horas depois do horário
+       de entrada" (Configurações → Pagamento no site) e voltar para 21 depois. O valor fica e é dividido como
+       uma reserva normal.
+    5. **Mensagens e página do hóspede:** na ficha, copie as mensagens prontas e use **Mensagem enviada ao
+       hóspede**; abra a página da reserva no site para ver o que o hóspede vê.
+    6. **Me conte o que viu:** quanto tempo o Mercado Pago levou para confirmar, se a taxa voltou e qualquer passo
+       que não bateu com este roteiro. Eu ajusto antes da produção.
+42. **Publique a versão 2 da Política de cancelamento e do "Como funciona" (M8.2c e, desde 10/10, M8.2d; desde 11/10, M8.2e):** os formulários mostram o
+    texto publicado, então as frases novas não aparecem sozinhas. Cole-as assim:
+    1. Em **Configurações → Páginas legais do site → Política de cancelamento**, na seção "Como pedir o
+       cancelamento", depois do primeiro parágrafo (o do e-mail e do WhatsApp), cole:
+       > Se preferir, use o botão "Pedir o cancelamento" em Minha reserva, no site: o horário do pedido fica registrado na hora.
+
+       Confira que a caixa **"O arrependimento vale só até o horário de entrada"** está marcada (ela vem marcada)
+       e publique a versão 2: numa prévia, para o teste; e no painel de produção antes de ligar o pagamento de
+       verdade. Se o advogado tirar o limite do arrependimento, desmarque a caixa e ajuste o texto da seção
+       "Direito de arrependimento" junto: o sistema recusa a caixa desmarcada com o texto ainda falando do limite.
+    2. Em **Configurações → Como funciona (proprietário)**, na seção "Cancelamentos", depois do parágrafo que já
+       existe, cole (deixe o {empresa} assim: o sistema troca pelo nome da empresa):
+       > Nas reservas pagas pelo site vale a Política de cancelamento do site, na versão que o hóspede aceitou: com devolução integral, não há nada a dividir e a taxa do pagamento que não voltar fica com a {empresa}; sem devolução, o valor pago entra na divisão como uma reserva normal e a sua parte fica disponível depois da data de entrada original. Se a sua parte de uma reserva cancelada com devolução já tiver sido repassada, ela é descontada no repasse seguinte.
+
+       Publique a versão 2 antes de ligar o pagamento de verdade. Cada proprietário vai precisar aceitar de novo no
+       portal; se tiver outras mudanças no "Como funciona", junte numa publicação só.
+    3. **Alteração (M8.2d), na mesma publicação da Política de cancelamento:** na seção "Alteração de datas", no item
+       "se for menor…", troque "contando os dias a partir da data de entrada original" por "contando os dias a partir
+       da data de entrada original ou da nova, a que vier primeiro". Depois da lista, cole:
+       > Depois de uma alteração, os prazos contam da data de entrada original ou da nova, a que vier primeiro. A devolução de parte do valor (numa alteração) é pedida ao Mercado Pago quando ele liberar o pagamento.
+
+       Confirme antes as decisões 1 e 11 da alteração (seção 7): se mudar alguma, eu mudo as frases junto.
+    4. **Alteração (M8.2d), na mesma publicação do "Como funciona":** na seção "Cancelamentos", depois do parágrafo do
+       passo 2, cole:
+       > Se o hóspede de uma reserva paga pelo site alterar as datas ou o valor antes da entrada, a divisão é refeita com os valores novos; se a política reter parte da diferença, ela entra na divisão como uma reserva normal.
+    5. **Disputa do pagamento (M8.2e), na mesma publicação do "Como funciona":** a seção "Contestações de pagamento" está
+       vazia (por isso o proprietário ainda não a vê). Cole nela:
+       > Quando um hóspede contesta no banco uma cobrança de reserva paga pelo site, o Mercado Pago segura o valor até a decisão do banco, o que pode levar alguns meses. Enquanto isso, a reserva fica em conferência: se a sua parte dela ainda não foi repassada, ela espera; se já foi, nada é descontado até a equipe registrar quem arca. Arca quem deu causa ao motivo da disputa: um problema do imóvel fica com você; uma falha da SCL ou na cobrança fica com a SCL; sem como separar, cada um arca na proporção da sua parte. Com a decisão, o seu valor fica segurado nos próximos repasses (de qualquer reserva sua) até o resultado: se a SCL ganhar, ele volta no repasse seguinte; se perder, o desconto fica definitivo. Exemplo: numa reserva de R$ 1.000,00 em que a sua parte é R$ 807,67 e a da SCL R$ 142,53, uma disputa perdida dividida na proporção desconta R$ 850,00 de você e R$ 150,00 da SCL; se o problema foi do imóvel, R$ 1.000,00 de você. Cada passo aparece no seu extrato.
+
+       Confirme antes as decisões 1, 2, 3 e 14 da disputa (seção 7): se mudar alguma, eu mudo o texto junto. Enquanto o
+       proprietário não aceitar uma versão com esta seção, o quadro da disputa avisa (sem impedir a decisão).
+    6. **Opcional, nos Termos de uso (versão 2):** no fim da seção "Preço e pagamento", cole:
+       > Se não reconhecer uma cobrança ou tiver um problema com a reserva, fale com a gente antes de pedir ao seu banco para desfazer a cobrança: resolvemos mais rápido. Um pedido ao banco deixa o pagamento em conferência com o Mercado Pago até a decisão dele.
+
+       É uma escolha sua (decisão 10 da disputa). A Política de privacidade já fala de "contestações de pagamento":
+       nada muda nela.
+43. **Revise as mensagens e os textos novos do cancelamento (M8.2c):**
+    - Em **Configurações → Modelos de mensagem**, no quadro das mensagens automáticas ao hóspede, leia o texto-base
+      de "Cancelamento: pedido recebido", "Cancelamento: decisão" e "Cancelamento: devolução feita" (cada um tem
+      o botão "Copiar o texto-base"). Para mudar, crie um modelo (pode começar pelo texto-base) e escolha-o para a
+      mensagem. As palavras entre chaves o sistema preenche: {recebido} (data e hora do pedido), {decisao} (a
+      decisão em frases prontas, só na decisão), {valor}, {data} e {comovolta} (só na devolução feita) e {link} (a
+      página da reserva). A de pedido recebido não pode ter {valor}: quem copia pode ser da operação, que não vê
+      valores.
+    - Em **Configurações → Textos do site**, leia as frases que começam com "Cancelamento:": elas aparecem na
+      página da reserva, em Minha reserva e nas mensagens.
+    - Quando ligar as mensagens ao hóspede (item 17), escolha um modelo para cada uma das três: aí o recibo do
+      pedido, a decisão e a devolução saem sozinhos por e-mail. **Isso precisa estar ligado antes do pagamento de
+      verdade:** a lei do comércio eletrônico pede a confirmação do pedido de cancelamento por escrito.
+44. **Alteração de reserva paga pelo site, em teste (M8.2d, pronto em 10/10):** tudo numa prévia da Vercel, com as
+    chaves de teste do item 37.
+    1. **Só na prévia mais nova:** use o link da prévia deste PR (ou de um mais recente). As prévias antigas usam o
+       mesmo banco e não conhecem as alterações nem as devoluções de parte (uma prévia antiga poderia até oferecer
+       "Confirmar" nas datas seguradas de uma alteração). Nas prévias, a rotina automática não roda: as datas
+       seguradas vencem na próxima ação na ficha, no "Conferir agora", num novo pedido do site ou num bloqueio do
+       mesmo apartamento.
+    2. **Aumento:** faça um Pix de teste como no item 37 (nome **APRO**) para uma estadia daqui a alguns dias. Na
+       ficha, em "Pagamento no site" → **Alteração da reserva**, ponha um dia a mais na "Nova saída", deixe "O hóspede
+       pediu" e "Pela cotação do site (preços de hoje)", informe quando e por onde o pedido chegou, clique **Calcular
+       a alteração**, leia a prévia e clique **Segurar as novas datas e liberar o pagamento da diferença**. Copie a
+       proposta e abra a página da reserva no site: pague a diferença por Pix e veja "Alteração confirmada". Na ficha,
+       confira o financeiro antes e depois, mês a mês.
+    3. **Redução (a diferença volta):** em outra reserva de teste paga por Pix, tire uma noite e clique **Aplicar a
+       alteração** (como o pagamento foi feito agora, os 7 dias do arrependimento garantem a devolução). A devolução
+       aparece "aguardando a liberação do pagamento": **registre a liberação à mão no quadro do pagamento** (no teste
+       o Mercado Pago nunca avisa a liberação). Depois, use **Conferir agora** até a devolução aparecer confirmada,
+       veja no Mercado Pago quanto da taxa da parte devolvida ficou com ele e informe em **Registrar taxa que não
+       voltou** (zero se voltou toda). **Este primeiro teste é também uma conferência:** me conte o que a ficha mostrou
+       (confirmada, pedida ou algum aviso), porque ainda não sabemos como o Mercado Pago responde a uma devolução de
+       parte; se não bater, eu ajusto antes de você seguir.
+    4. **Só segurar e aplicar depois:** numa redução ou no mesmo valor, use **Só segurar as datas (o hóspede ainda
+       decide)**, copie a proposta e, quando o "hóspede" aceitar, clique **Conferir para aplicar (o hóspede aceitou)**
+       e **Aplicar a alteração**.
+    5. **Prazo e desistência:** prepare outra alteração e deixe o prazo passar (na prévia, você pode pôr 5 em
+       "Minutos que as novas datas de uma alteração de reserva paga pelo site ficam seguradas", em Configurações →
+       Calendário e preços, e voltar para 60 depois): na próxima ação na ficha, ela aparece vencida e as noites voltam
+       à venda. Em outra, use **Desistir da alteração**, com o motivo.
+    6. **A SCL propõe:** escolha "A SCL propõe" e veja que o valor começa em "Manter o valor atual".
+    7. **Sem devolução (opcional, leva dias):** a diferença só fica quando já passaram os 7 dias do arrependimento e o
+       pedido chega depois do prazo de 14 dias. Faça uma reserva de teste para daqui a uns 20 dias e, 8 dias depois,
+       tire uma noite: a prévia diz que a diferença não é devolvida e que as noites liberadas voltam à venda.
+    8. **Cancelar uma reserva alterada:** cancele pela política (item 41) a reserva do passo 2: a ficha mostra uma
+       devolução de cada pagamento (a da reserva e a da diferença). Para ver a devolução de uma redução entrar no
+       cancelamento, aplique uma redução e cancele **antes** de registrar a liberação: ela aparece "substituída pela
+       devolução do cancelamento", e o valor inteiro volta de uma vez.
+    9. **OTAs, mensagens e página do hóspede:** veja no Início "mude o bloqueio nas OTAs" e marque **Datas atualizadas
+       nas OTAs** na ficha; copie as mensagens e use **Mensagem enviada ao hóspede**; abra a página da reserva e Minha
+       reserva para ver o que o hóspede vê.
+    10. **Me conte o que viu:** quanto tempo o Mercado Pago levou para confirmar a devolução de parte, se a taxa dessa
+        parte voltou e qualquer passo que não bateu com este roteiro. Eu ajusto antes da produção.
+45. **Revise as mensagens, os textos e o prazo novos da alteração (M8.2d):**
+    - Em **Configurações → Modelos de mensagem**, leia o texto-base de "Alteração: proposta (e pagamento da diferença,
+      se houver)" e "Alteração: confirmada" (cada um com o botão "Copiar o texto-base"). A mensagem que se chamava
+      "Cancelamento: devolução feita" agora se chama **"Devolução feita (cancelamento ou alteração)"** e serve às duas:
+      se você já escolheu um modelo para ela, confira se o texto serve também para a devolução da diferença. A palavra
+      nova entre chaves é {alteracao} (as frases prontas da alteração: datas, valor, diferença e até quando as datas
+      ficam seguradas), que só vale nas mensagens da alteração; a proposta precisa de {alteracao} e {link}, e a
+      confirmada, de {alteracao}.
+    - Em **Configurações → Textos do site**, leia as frases que começam com "Alteração" e a "Devolução de parte do
+      valor esperando o Mercado Pago liberar o pagamento": elas aparecem na página da reserva e nas mensagens.
+    - Em **Configurações → Calendário e preços**, confira "Minutos que as novas datas de uma alteração de reserva paga
+      pelo site ficam seguradas" (padrão 60, de 5 a 2.880, isto é, até 48 horas).
+    - Quando ligar as mensagens ao hóspede (item 17), escolha um modelo para as duas mensagens da alteração: aí a
+      proposta, a confirmação e a devolução saem sozinhas por e-mail.
+46. **Disputa do pagamento (contestação), em teste (M8.2e, pronto em 11/10):** tudo numa prévia da Vercel, com as chaves
+    de teste do item 37. O Mercado Pago de teste não cria disputas: você registra uma à mão, como se tivesse visto no
+    painel dele.
+    1. **Só na prévia mais nova:** use o link da prévia deste PR (ou de um mais recente). As prévias antigas usam o mesmo
+       banco e não conhecem as disputas (mostrariam só "Contestado"). Nas prévias, a rotina automática não roda: o
+       **Conferir agora** da ficha faz o papel dela.
+    2. **Um pagamento de teste:** pague com cartão de teste (item 40) uma estadia daqui a uns 15 dias e registre a
+       liberação à mão no quadro do pagamento (no teste, o Mercado Pago não avisa a liberação). Se quiser ver o caso da
+       parte já repassada, faça um repasse de teste dessa reserva antes.
+    3. **Registrar a disputa:** na ficha, no quadro "Pagamento no site", clique **Registrar disputa vista no painel do
+       Mercado Pago**: tipo "Contestação no cartão", aberta hoje, o valor pago, um prazo dos documentos daqui a alguns
+       dias, o número do caso em branco e uma nota (por exemplo, "teste"). Confirme. Veja o bloco **Disputa** na ficha,
+       o aviso no Início ("sem decisão de quem arca") e o e-mail da equipe. Abra o portal do proprietário de teste: a
+       reserva aparece "Em conferência (disputa do pagamento)".
+    4. **Confirmar o débito:** **Confirmar o débito do Mercado Pago**, com a data de hoje e o mesmo valor.
+    5. **Documentos:** abra **Documentos para a defesa** (veja o que dá para imprimir) e marque **Documentos enviados no
+       painel do Mercado Pago**.
+    6. **Decidir quem arca:** **Registrar quem arca**: escolha a causa e quem arca (o formulário começa sem nada marcado),
+       leia a prévia de cada opção e confirme. Copie o "Texto para o proprietário", se quiser. No portal do proprietário,
+       o extrato ganha a linha "Disputa do pagamento … segurados dos seus próximos repasses". Faça um repasse de teste e
+       veja o desconto.
+    7. **Confirmar o resultado:** **Confirmar o resultado** → **Perdeu** (ou **Ganhou**) com a data de hoje; no "Perdeu",
+       confira o valor perdido, quanto nunca entrou na conta e o dia do débito. O extrato do proprietário passa a
+       "desconto definitivo" (ou "valor segurado devolvido", na ganha).
+    8. **Os outros caminhos (opcionais):** em outra reserva de teste com a entrada daqui a alguns dias, registre uma
+       disputa e use **Cancelar a reserva contestada** (a página da reserva mostra "em conferência", sem devolução); em
+       outra, registre e use **Encerrar sem efeito**; num Pix de teste, registre um "MED do Pix".
+    9. **O que o hóspede vê:** abra a página da reserva no mesmo navegador em que pagou: "O pagamento desta reserva está em
+       conferência com o Mercado Pago…"; em outro navegador, só "Reserva confirmada". Em Minha reserva, no lugar do botão
+       de cancelar, "Para cancelar, fale com a equipe."
+    10. **Me conte o que viu** e qualquer passo que não bateu com este roteiro. Se um dia aparecer uma disputa real na
+        conta de teste ou na de verdade, me mande o que o painel do Mercado Pago mostra (o estado, os valores e as
+        datas): é isso que vai permitir o sistema sugerir o resultado sozinho.
 
 ---
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
+- **Disputa do pagamento — contestação (M8.2e, 11/10) — decisões suas** (o teste está no item 46 da seção 6). Em cada
+  uma deixei um padrão, e o sistema já funciona assim; as marcadas com ★ preciso antes do pagamento de verdade:
+  1. ★ **Quanto o proprietário perde quando "o proprietário arca".** Numa reserva de R$ 1.000,00 (parte dele R$ 807,67,
+     comissão R$ 142,53, taxa R$ 49,80) e uma disputa perdida de R$ 1.000,00:
+     - **padrão, o valor perdido inteiro:** o proprietário fica com −R$ 192,33 (paga também a comissão e a taxa) e a SCL
+       com +R$ 142,53;
+     - **alternativa, o valor perdido menos a comissão da SCL:** o proprietário fica com −R$ 49,80 e a SCL com R$ 0,00;
+     - para comparar, **na proporção** o proprietário fica com −R$ 42,33 e a SCL com −R$ 7,47.
+     Numa disputa antes da liberação em que o dinheiro nunca entrou (o exemplo "o proprietário arca" da seção 2), o
+     padrão faz o proprietário pagar a comissão (R$ 144,03) e a taxa; a alternativa dá zero para os dois.
+  2. ★ **"A proporção da sua parte".** Padrão: a parte do proprietário dividida pela soma da parte com a comissão, nas
+     partes da reserva como estão no financeiro. Com a taxa saindo antes da divisão, como hoje, dá 85% e 15% numa
+     comissão de 15%. Ligada à sua pergunta sobre a taxa do pagamento.
+  3. ★ **O que fica segurado.** Padrão: antes da decisão, a parte da reserva ainda não repassada espera e nada é
+     descontado do que já foi pago; depois da decisão, só o valor do proprietário fica segurado (junto com a parte da
+     reserva enquanto ela espera, ou no próximo repasse de qualquer tipo quando ela já foi paga); se a SCL ganhar, volta
+     no repasse seguinte. O efeito: numa estadia de R$ 6.000,00 (parte R$ 4.846,02) com uma disputa de R$ 200,00 por um
+     item extra, os R$ 4.846,02 ficam presos até a decisão; num caso igual cuja parte foi repassada um dia antes, nada
+     fica preso. Com o padrão, o Início sobe o tom depois de 15 dias. Alternativa: a parte segue normalmente e, com a
+     decisão, o débito sai do próximo repasse, como quando ela já foi repassada.
+  4. ★ **O resultado e o valor perdido confirmados por você**, com o formulário sem resultado marcado e o que o Mercado
+     Pago mostra em palavras, até a conta de teste ou o primeiro caso conferirem os códigos. Alternativa: aplicar pela
+     leitura (arriscado: as páginas do Mercado Pago já deram sentidos opostos ao mesmo código).
+  5. ★ **Pagamento não reconhecido (fraude ou cartão de outra pessoa).** A tela de Configurações e este guia já disseram:
+     "quando o hóspede passa pela verificação do banco, a contestação por cartão roubado fica com a bandeira; nos outros
+     pagamentos, continua com a SCL". Padrão: a frase da causa segue isso (com a verificação, "espere o resultado"; sem
+     ela, "a SCL"), e escolher o proprietário pede uma confirmação reforçada. Confirma? Se a regra mudar, eu registro o
+     antes, o depois e o motivo.
+  6. ★ **Disputa antes da entrada.** Padrão: a reserva continua confirmada, o Início avisa ("não libere a entrada…") e
+     você pode "Cancelar a reserva contestada" sem devolução pelo sistema: o valor fica retido até o resultado (perdida,
+     vale a decisão de quem arca; ganha, é dividido como uma reserva cancelada sem devolução). Alternativa: cancelar com
+     devolução integral e a devolução substituída pela disputa, pedida só se a SCL ganhar.
+  7. **O hóspede vê "pagamento em conferência"** só no aparelho em que pagou e em Minha reserva, numa frase que você
+     edita e pode deixar vazia. Padrão: sim, sem nenhuma mensagem automática.
+  8. **O MED do Pix e as reclamações no Mercado Pago** entram pelo registro à mão, com o mesmo caminho. Padrão: sim.
+  9. **Quem decide:** só quem cuida do financeiro (hoje, você), como no cancelamento e na alteração; a marca "Documentos
+     enviados" e a página da defesa também para a operação. Padrão: sim.
+  10. **Os textos:** a seção "Contestações de pagamento" do "Como funciona" (versão 2, com o exemplo) e a frase opcional
+      dos Termos, no item 42 (passos 5 e 6); os nomes e as frases das causas (texto-base, editáveis em Configurações →
+      Pagamento no site). Padrão: os textos-base que eu escrevi.
+  11. **Marcar o evento "Contestações"** no painel de avisos (Webhooks) do Mercado Pago, além de "Order (Mercado Pago)"
+      (item 37). Padrão: sim.
+  12. **Pagamento sem reserva disputado e perdido:** a taxa que não voltar fica com a SCL (a sua decisão de 7/10,
+      estendida). Padrão: sim.
+  13. **Tarifa do Mercado Pago pela disputa** (se existir; ainda não sabemos): despesa da SCL, ganhe ou perca. Padrão:
+      sim.
+  14. **"Em conferência até a decisão"** quer dizer até a decisão de quem arca; depois, só o valor de quem arca fica
+      segurado até o resultado. Padrão: sim. Alternativa: a parte inteira presa até o resultado da disputa, o que pode
+      levar meses.
+- **Alteração de reserva paga pelo site (M8.2d, 10/10) — decisões suas** (o teste está no item 44 da seção 6). Em
+  cada uma deixei um padrão, e o sistema já funciona assim; as marcadas com ★ preciso antes do pagamento de verdade:
+  1. ★ **A redução segue a política de cancelamento, contando da entrada original ou da nova, a que vier primeiro.**
+     É a sua pergunta de 9/10 (logo abaixo, em "Páginas legais"), com um ajuste, e vai também ao advogado. Padrão:
+     sim — dentro do prazo do reembolso integral (ou do arrependimento), a diferença volta; depois, fica. O ajuste:
+     contar só da entrada original deixaria um hóspede que adiantou a estadia cancelar com devolução integral no meio
+     dela (exemplo "Adiantar e depois cancelar", na seção 2); com "a que vier primeiro", adiar nunca reabre o prazo e
+     adiantar o fecha. Vale também para um cancelamento depois da alteração. A frase para a política está no item 42.
+  2. **Alteração só antes da entrada.** Padrão: sim. Durante a estadia, mais noites viram uma reserva nova; sair antes
+     não tem devolução, a reserva fica como está, as noites continuam ocupadas e a limpeza de saída fica na data
+     original (um item futuro pode liberar as noites).
+  3. **O valor novo.** Padrão: a cotação do site da estadia inteira, com os preços de hoje; a equipe pode manter o
+     valor atual ou digitar outro, com o motivo. **Quando a SCL propõe, o padrão é manter o valor atual** (a SCL
+     absorve uma cotação maior); cobrar do hóspede pede uma escolha explícita.
+  4. **Tempo para pagar ou aceitar a alteração.** Padrão: 60 minutos, numa configuração separada (de 5 minutos a 48
+     horas, em Configurações → Calendário e preços), estendido pelo Pix da diferença e nunca além do horário de
+     entrada. Não muda o tempo do visitante do site.
+  5. ★ **A taxa do Mercado Pago sobre a parte devolvida.** Padrão: sai da reserva na proporção do valor devolvido, e o
+     que o Mercado Pago não devolver dela fica com a SCL (é a sua decisão de 7/10, estendida à parte devolvida).
+     Alternativa: a taxa fica na reserva, dividida entre o proprietário e a SCL.
+  6. **A diferença retida é dividida como uma reserva normal, e as noites liberadas voltam à venda.** Padrão: sim
+     (como a decisão 6 do cancelamento). Ligada à pergunta "com menos de 14 dias, ficar com tudo ou devolver o valor
+     das noites que forem alugadas de novo?" (em "Páginas legais", abaixo) e à lista do advogado.
+  7. **Depois de um aumento, a parte do proprietário da reserva inteira espera a liberação do pagamento da diferença**
+     (uma regra do dinheiro por reserva). Padrão: sim; a data do pagamento da reserva passa a ser o dia dessa
+     liberação. Alternativa: só a diferença espera.
+  8. **Contrato e comissão quando a entrada muda.** Padrão: os que valem na nova entrada, com aviso na prévia quando
+     mudam.
+  9. ★ **Que política vale depois de uma alteração.** Padrão: a versão aceita no pagamento da reserva, para a
+     alteração e para um cancelamento depois. No pagamento da diferença, a caixa diz "Li e aceito os Termos (versão T)
+     e li a Privacidade (versão P). A sua reserva continua na Política de cancelamento versão N, aceita em dd/mm.", e
+     esse pagamento **não abre outro prazo de arrependimento de 7 dias** (conta do primeiro pagamento). As duas coisas
+     vão ao advogado.
+  10. **Quem prepara alterações e mexe nas devoluções.** Padrão: só quem cuida do financeiro (hoje, só você), como no
+      cancelamento.
+  11. ★ **A devolução de parte do valor espera o Mercado Pago liberar o pagamento.** Padrão: sim, com o hóspede avisado
+      ("será pedida quando o Mercado Pago liberar o pagamento, previsto para dd/mm") e um aviso no Início quando a data
+      prevista passa. Isso se afasta do texto publicado ("Pedimos a devolução ao Mercado Pago logo depois de confirmar"
+      e, no arrependimento, "pedimos a devolução imediatamente"): a frase nova da política está no item 42, e o caso do
+      arrependimento vai ao advogado. Se a conta de teste mostrar que dá para afrouxar, eu proponho.
+  12. ★ **Mensagens automáticas da alteração.** Padrão: desligadas até você ligar as mensagens ao hóspede; copiar à mão
+      funciona enquanto isso (item 45).
+  13. **O número de pessoas entra na alteração.** Padrão: sim, até a capacidade do apartamento (sem a capacidade
+      cadastrada, o número de pessoas não muda).
+  14. **Um cancelamento sem devolução que depois vira devolução por exceção.** Padrão: fica fora desta parte; por fora
+      mais um ajuste.
+  15. **Pagamento devolvido em parte no painel do Mercado Pago numa reserva confirmada.** Padrão: o cancelamento pela
+      política devolve só o restante; quando o Mercado Pago não diz quanto devolveu, a equipe informa o valor que
+      aparece no painel dele; uma decisão "sem devolução" com dinheiro já devolvido fora do sistema fica com a equipe
+      (exceção ou ajuste).
+  16. **Revisar as duas mensagens novas, a "Devolução feita (cancelamento ou alteração)", as frases novas do site e o
+      tempo das datas seguradas** (item 45). Padrão: os textos-base que eu escrevi.
+  17. **Como o financeiro mostra a diferença.** Padrão: antes da entrada, a diferença é o recálculo (os lançamentos de
+      antes saem com a referência da alteração e os novos entram), mostrado item a item e mês a mês na alteração, em
+      vez de lançamentos separados "de diferença", como dizia o texto do plano. Os lançamentos separados vêm com a
+      alteração depois da entrada.
+  18. **O cancelamento absorve a devolução de uma redução que ainda não chegou ao Mercado Pago.** Padrão: sim — num
+      cancelamento com devolução integral, ela entra na devolução única do cancelamento (que sai na hora quando o
+      pagamento não teve outra devolução); num cancelamento sem devolução, a devolução da redução continua.
+- **Cancelamento de reserva paga pelo site (M8.2c, 10/10) — decisões suas** (o teste está no item 41 da seção
+  6). Em cada uma deixei um padrão, e o sistema já funciona assim; as marcadas com ★ preciso antes do pagamento
+  de verdade:
+  1. ★ **Taxa e parte do proprietário quando a SCL cancela ou dá uma exceção:** padrão: a SCL fica com a taxa do
+     Mercado Pago que não voltar e o proprietário não recebe nada. A prévia e a confirmação sempre mostram "o
+     proprietário deixa de receber R$ X que receberia pela política". Concorda?
+  2. ★ **Exceção por conta do proprietário?** Padrão: sim, como acima, com o motivo escolhido numa lista
+     (erro da SCL, força maior, cortesia, saúde ou família, outro) e uma nota. Alternativa, para depois: a SCL
+     paga ao proprietário a parte que ele teria.
+  3. **Desconto da parte que já foi repassada:** padrão: sai do próximo repasse de qualquer tipo, inclusive o
+     antecipado (é o "desconto no repasse seguinte" do plano). Se as partes dele não cobrem, o antecipado espera
+     e o fechamento mostra que ele está devendo. Alternativa: só o fechamento mensal desconta (como os
+     adiantamentos e as despesas no M4.10), mas aí quem recebe toda semana nunca tem o desconto feito.
+  4. **Botão "Pedir o cancelamento" em Minha reserva:** padrão: ligado (o hóspede só pede; a equipe cancela).
+     Desliga em Configurações → Pagamento no site.
+  5. ★ **Arrependimento só até o horário de entrada** (confira com o advogado): padrão: mantido, como no texto
+     da versão 1 da política.
+  6. **Dinheiro retido dividido como uma reserva normal**, com a parte do proprietário disponível depois da data
+     de entrada original e da liberação do Mercado Pago. Padrão: sim.
+  7. **Quando o Mercado Pago pede saldo para devolver:** padrão: o sistema pede de novo (até três vezes, de 10
+     em 10 minutos); depois, no Pix, a devolução por fora fica liberada; no cartão, ponha saldo na conta e use
+     "Pedir a devolução de novo", ou registre a recusa que você viu no painel do Mercado Pago.
+  8. **Tolerância do não comparecimento:** padrão: 21 horas depois do horário de entrada (12:00 do dia
+     seguinte), editável em Configurações → Pagamento no site.
+  9. **Quem cancela reservas pagas pelo site e mexe nas devoluções:** padrão: só quem cuida do financeiro (hoje,
+     só você). Alternativa: dar à operação a permissão de editar o financeiro.
+  10. ★ **E-mails automáticos ao hóspede no cancelamento** (recibo do pedido, decisão, devolução): padrão:
+      desligados até você ligar as mensagens ao hóspede; os modelos estão prontos e copiar à mão funciona
+      enquanto isso (item 43 da seção 6).
+  11. **Publicar a versão 2 da Política de cancelamento e do "Como funciona"** com as frases novas (item 42 da
+      seção 6). Padrão: nada muda até você publicar.
+  12. **Revisar as três mensagens e os textos novos do site** (item 43 da seção 6). Padrão: os textos-base que
+      eu escrevi.
 - **Pagamento com cartão (M8.2b, 9/10) — decisões suas, antes do cartão de verdade** (o teste está no
   item 40 da seção 6):
   - **Verificação do banco (3DS):** deixei **"quando houver risco"** como padrão: o banco pede a
@@ -2499,7 +3192,9 @@ ambiente).
     dá para desligá-lo; no teste isso não aparece. Decidimos com a resposta.
   - **Devolução por fora no cartão:** deixei só quando o Mercado Pago não consegue devolver ou depois de
     180 dias, porque no cartão a cobrança continuaria na fatura e o hóspede poderia contestar e receber
-    duas vezes. Concorda, ou prefere permitir sempre, com o aviso?
+    duas vezes. Desde 10/10 (M8.2c), "não consegue" é uma recusa definitiva do Mercado Pago, a recusa que você
+    registra depois de ver no painel dele ou a nossa devolução que ele mostra como falhada (falta de saldo e
+    "espere" não liberam). Concorda, ou prefere permitir sempre, com o aviso?
   - **Taxa do pagamento (pergunta 3, ainda pendente):** no cartão a taxa é de cerca de 4% a 5% (no Pix,
     cerca de 1%). Hoje ela sai antes da divisão, cada um na proporção. Continua assim também no cartão?
 - **Páginas legais (M7.4, 9/10) — decisões suas, antes de ligar o pagamento de verdade** (o
@@ -2510,8 +3205,11 @@ ambiente).
   - reservas diretas fechadas pelo WhatsApp seguem a mesma política de cancelamento (mandando o link
     na conversa) ou não?
   - alteração para um valor menor: a diferença segue as regras de cancelamento, contando da entrada
-    original, para a alteração não virar um cancelamento sem perda (é o M8.2d). Confirma?
-  - com menos de 14 dias, ficar com tudo ou devolver o valor das noites que forem alugadas de novo?
+    original, para a alteração não virar um cancelamento sem perda (é o M8.2d). Confirma? **Respondida pelo
+    padrão em 10/10 (M8.2d), falta você confirmar:** sim, com um ajuste — contando da entrada original ou da nova,
+    a que vier primeiro (decisão 1 da alteração, acima). A pergunta de 9/10 fica aqui como histórico.
+  - com menos de 14 dias, ficar com tudo ou devolver o valor das noites que forem alugadas de novo? (Ligada à
+    decisão 6 da alteração, acima: na redução fora do prazo, a diferença fica e as noites liberadas voltam à venda.)
   - por quanto tempo guardar os dados dos hóspedes depois da saída (hoje, para sempre)?
   - guardar um resumo do endereço de internet (IP) de quem aceitou, como prova a mais? Hoje não
     guardo: a prova é a reserva e o link que só quem tem o e-mail abre. Decida com o advogado.
@@ -2521,7 +3219,7 @@ ambiente).
   só antes de ligar o pagamento de verdade:** se a taxa do cartão/Pix segue a regra de hoje
   (sai antes da divisão, cada um na proporção) ou muda; contestação de cartão perdida
   (decidido em 7/10: arca quem deu causa ao motivo, caso a caso, registrado); e a política de
-  cancelamento do site (base decidida em 7/10: reembolso integral até 14 dias antes da entrada,
+  cancelamento do site (implementada em teste em 10/10, M8.2c; base decidida em 7/10: reembolso integral até 14 dias antes da entrada,
   nenhum com menos de 14 dias; no reembolso integral, a taxa que o Mercado Pago não devolver fica
   com a empresa, decidido por você em 7/10; falta só você conferir com o contador a posição sobre o
   arrependimento de 7 dias da compra pela internet, do Código de Defesa do Consumidor, que eu escrevi
@@ -2550,7 +3248,8 @@ ambiente).
   plano, e em que ordem. Nenhuma entra sem a sua decisão.
 - **Repasses (M4.10):** três escolhas minhas que você pode mudar — o fechamento mensal
   continua manual (você clica, depois de conferir); o repasse antecipado não desconta
-  adiantamentos nem despesas (ficam para o fechamento); e o adiantamento das noites de meses
+  adiantamentos nem despesas (ficam para o fechamento; desde 10/10, o desconto de um cancelamento com
+  devolução entra também no antecipado — decisão 3 do cancelamento, acima); e o adiantamento das noites de meses
   seguintes é lançado no mês das noites, para o mês seguinte fechar zerado. Se preferir
   fechamento automático no dia do fechamento ou desconto de adiantamentos no antecipado, é um PR pequeno.
 - **Pesos do modelo B (6/3/3):** você propôs SCL 6%, hóspede 3% e proprietário 3% da margem

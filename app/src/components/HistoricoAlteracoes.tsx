@@ -32,6 +32,9 @@ const ROTULOS: Record<string, string> = {
   taxaCanal: "Taxa do canal (centavos)",
   valorLiquido: "Líquido (centavos)",
   recebimento: "Quem recebe do canal",
+  // M8.2d: a alteração de reserva paga pelo site.
+  alteracao: "Alteração",
+  diferenca: "Diferença (centavos)",
 };
 
 const ACOES: Record<string, string> = {
@@ -50,6 +53,7 @@ const ACOES: Record<string, string> = {
   "reserva.importar": "importou a reserva",
   "reserva.sincronizar": "atualizou pela sincronização",
   "reserva.cancelar": "cancelou a reserva",
+  "reserva.alterar": "alterou a reserva (alteração da reserva paga pelo site)",
   "bloqueio.criar": "bloqueou datas",
   "bloqueio.remover": "removeu o bloqueio",
   "configuracao.calendario_regras": "alterou calendário e preços",

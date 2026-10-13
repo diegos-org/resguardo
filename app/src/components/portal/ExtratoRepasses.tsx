@@ -1,7 +1,8 @@
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { formatBRL } from "@/lib/money";
 import { NOMES_SITUACAO_EMAIL } from "@/repasses/email";
-import { NOMES_SITUACAO_PARTE, type Parte, resumirPartes } from "@/repasses/extrato";
+import { ROTULO_DISPUTA_PROPRIETARIO } from "@/pagamentos/contestacao-regras";
+import { ehDescontoDeCancelamento, ehLinhaDeContestacao, NOMES_SITUACAO_PARTE, type Parte, resumirPartes, varianteDaDisputa } from "@/repasses/extrato";
 import { ehDiaDeFechamento, NOMES_PERIODICIDADE, PERIODICIDADES, type PeriodicidadeRepasse, proximoFechamento, type RegrasRepasses } from "@/repasses/periodicidade";
 import type { PeriodicidadeDoDono } from "@/repasses/proprietario";
 import { type ItemDoRepasse, nomeMes, type Repasse, descricaoDoItem } from "@/repasses/repasses";
@@ -31,6 +32,15 @@ export function nomeDoRepasseNoPortal(r: Pick<Repasse, "tipo" | "mes" | "data" |
   if (r.tipo === "fechamento") return `Fechamento de ${nomeMes(r.mes.slice(0, 7))}`;
   if (r.tipo === "por_fora") return `Acertado por fora, antes do sistema (até ${dataBr(r.data)})`;
   return `Repasse de ${dataBr(r.data)}${r.pedidoEm ? " (pedido por você)" : ""}`;
+}
+
+/** M8.2e: a situação de uma linha da disputa no extrato (o valor segurado, definitivo ou devolvido, e onde ele está). */
+function situacaoDaDisputa(p: Parte): string {
+  const v = varianteDaDisputa(p.disputa?.situacao);
+  const nome = v === "definitivo" ? "definitivo" : v === "devolvido" ? (p.valor > 0 ? "devolvido" : "segurado, depois devolvido") : "segurado";
+  if (p.situacao === "repassado") return `${nome} · ${p.valor < 0 ? "descontado" : "devolvido"}`;
+  if (p.situacao === "a_liberar") return `${nome} · junto com a sua parte desta reserva`;
+  return `${nome} · ${p.valor < 0 ? "a descontar" : "a devolver no próximo repasse"}`;
 }
 
 export function situacaoNoPortal(r: Pick<Repasse, "tipo" | "situacao" | "dataPagamento" | "estornadoEm">): string {
@@ -162,7 +172,19 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
                 <td style={celula}>{nomeMes(p.competencia.slice(0, 7))}</td>
                 <td style={{ ...celula, fontVariantNumeric: "tabular-nums" }}>{formatBRL(p.valor)}</td>
                 <td style={celula}>
-                  <strong>{NOMES_SITUACAO_PARTE[p.situacao]}</strong>
+                  {/* M8.2c: a parte já repassada de uma reserva cancelada com devolução integral volta como desconto. */}
+                  {ehDescontoDeCancelamento(p) ? (
+                    <>
+                      <strong>Desconto</strong> · {p.situacao === "repassado" ? "descontado" : "a descontar"}
+                    </>
+                  ) : ehLinhaDeContestacao(p) ? (
+                    // M8.2e: a linha da disputa do pagamento (segurado, definitivo ou devolvido), com a situação no repasse.
+                    <>
+                      <strong>{ROTULO_DISPUTA_PROPRIETARIO}</strong> · {situacaoDaDisputa(p)}
+                    </>
+                  ) : (
+                    <strong>{NOMES_SITUACAO_PARTE[p.situacao]}</strong>
+                  )}
                 </td>
                 <td style={{ ...celula, whiteSpace: "normal", minWidth: 220 }}>{p.motivo}</td>
               </tr>
@@ -232,6 +254,9 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
       </div>
       <p style={{ ...rotulo, margin: 0 }}>
         &ldquo;Paga pelo canal&rdquo; é a reserva em que o canal transfere sua parte direto a você (ex.: Airbnb): aparece só como informação. &ldquo;A liberar&rdquo; traz o motivo. &ldquo;Acertada por fora&rdquo; é a parte de antes do início do sistema, já paga fora dele. O fechamento do dia {dia} continua acertando despesas e adiantamentos do mês.
+        {partes.some((p) => ehDescontoDeCancelamento(p)) && " “Desconto” é a sua parte já repassada de uma reserva paga pelo site e cancelada com devolução integral ao hóspede: sai do próximo repasse."}
+        {partes.some(ehLinhaDeContestacao) &&
+          " “Disputa do pagamento” é o valor que fica segurado dos seus repasses quando o hóspede contesta no banco o pagamento de uma reserva paga pelo site: se a SCL ganhar a disputa, volta no repasse seguinte; se perder, o desconto fica definitivo."}
       </p>
     </section>
   );

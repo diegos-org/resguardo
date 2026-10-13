@@ -46,6 +46,9 @@ export default async function PainelInicio({ searchParams }: PageProps<"/painel"
     verRotinas: podeFazer(sessao.papel, "rotina:ler"),
     verProprietarios: podeFazer(sessao.papel, "proprietario:editar"),
     verPagamentos: verFinanceiro,
+    // M8.2c: pedidos de cancelamento, datas a reabrir nas OTAs e hóspede a avisar (sem valores) para quem edita reservas.
+    // M8.2d: as alterações com as datas seguradas e as reservas alteradas com o bloqueio a mudar nas OTAs, pelas mesmas regras.
+    verCancelamentos: podeFazer(sessao.papel, "reserva:editar"),
     contaDeTesteMercadoPago: verFinanceiro ? await contaDeTesteParaInicio() : null,
   });
   const porId = new Map(imoveis.map((i) => [i.id, i]));

@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import type { EstadoForm } from "@/configuracoes/acoes";
-import { EXEMPLO, type ErrosModelo, preencherModelo, VARIAVEIS } from "@/configuracoes/modelos-texto";
+import { EXEMPLO, type ErrosModelo, NOMES_TIPO, ONDE_VALE, preencherModelo, type Variavel, VARIAVEIS } from "@/configuracoes/modelos-texto";
 import styles from "../formularios.module.css";
 
 type Acao = (a: EstadoForm<ErrosModelo>, f: FormData) => Promise<EstadoForm<ErrosModelo>>;
@@ -89,12 +89,17 @@ export function Modelos({ lista, criar, editar }: { lista: Modelo[]; criar: Acao
     <>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", maxWidth: 820, margin: 0 }}>
         Variáveis disponíveis (escreva entre chaves):{" "}
-        {Object.entries(VARIAVEIS).map(([v, d], i) => (
-          <span key={v}>
-            {i > 0 && ", "}
-            <code>{`{${v}}`}</code> {d.toLowerCase()}
-          </span>
-        ))}
+        {Object.entries(VARIAVEIS).map(([v, d], i) => {
+          // M8.2c: as variáveis do cancelamento só valem nas mensagens dele (ao escolher o modelo, o sistema confere).
+          const onde = ONDE_VALE[v as Variavel];
+          return (
+            <span key={v}>
+              {i > 0 && ", "}
+              <code>{`{${v}}`}</code> {d.toLowerCase()}
+              {onde ? ` (só em ${onde.map((t) => `“${NOMES_TIPO[t]}”`).join(", ")})` : ""}
+            </span>
+          );
+        })}
         . As mensagens automáticas por e-mail usam estes modelos (acima); o WhatsApp chega no M10.
       </p>
       {lista.map((m) => (

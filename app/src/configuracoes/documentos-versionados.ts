@@ -96,7 +96,8 @@ export function mensagemVersaoMudou(atual: { numero: number; data: string } | nu
  * cria versão. `versaoBase`: a versão que o formulário mostrava (0 = nenhuma); se outra pessoa publicou no meio, a
  * publicação é recusada em vez de passar por cima do texto dela (quem edita recarrega, confere e publica de novo).
  * `extraAoPublicar` lê, dentro da transação e sob a trava, os campos próprios que a versão congela — ou recusa a
- * publicação (nada é gravado). As versões anteriores são regravadas como estão: nenhuma é alterada.
+ * publicação (nada é gravado). As versões anteriores são regravadas como estão no banco, e não como a leitura tolerante
+ * as mostra (que completa padrões e descarta o desconhecido): nenhuma é alterada, nem no JSON gravado.
  */
 export async function publicarVersao<S extends string, E extends object>(
   db: Db,
@@ -111,7 +112,8 @@ export async function publicarVersao<S extends string, E extends object>(
   if (!dataValida(hoje)) throw new Error("Data inválida.");
   return db.transaction(async (tx) => {
     await travarConfig(tx, organizacaoId, def.chave);
-    const versoes = await lerVersoes(tx, def, organizacaoId);
+    const gravado = await lerConfig(tx, organizacaoId, def.chave);
+    const versoes = versoesDe(def, gravado);
     const atual = versaoAtual(versoes);
     if (versaoBase !== undefined && (atual?.numero ?? 0) !== versaoBase) return { ok: false as const, erro: mensagemVersaoMudou(atual), atual };
     const e = await extraAoPublicar(tx);
@@ -120,7 +122,9 @@ export async function publicarVersao<S extends string, E extends object>(
     if (atual && secoesIguais(def, atual.secoes, secoes) && !Object.keys(mudancasExtra).length) return { ok: true as const, mudou: false, versao: atual };
     const texto = Object.fromEntries(def.secoes.map((s) => [s.chave, typeof secoes[s.chave] === "string" ? secoes[s.chave] : ""])) as Record<S, string>;
     const nova = { numero: (atual?.numero ?? 0) + 1, data: hoje, autorId, secoes: texto, ...e.extra } as VersaoDocumento<S, E>;
-    await gravarConfig(tx, organizacaoId, def.chave, { versoes: [...versoes, nova] }, autorId, false);
+    // As publicadas voltam exatamente como estavam gravadas; só a nova entra.
+    const gravadas = Array.isArray(gravado?.versoes) ? (gravado!.versoes as unknown[]) : [];
+    await gravarConfig(tx, organizacaoId, def.chave, { versoes: [...gravadas, nova] }, autorId, false);
     const mudancas: Record<string, [unknown, unknown]> = { versao: [atual?.numero ?? null, nova.numero], ...mudancasExtra };
     for (const s of def.secoes) if ((atual?.secoes[s.chave] ?? "") !== texto[s.chave]) mudancas[`secao.${s.chave}`] = [atual?.secoes[s.chave] ?? null, texto[s.chave]];
     await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: def.acaoAuditoria, entidade: "configuracao", entidadeId: organizacaoId, mudancas });

@@ -43,3 +43,33 @@ it("links dos alertas com os filtros do Início continuam válidos (link que já
   expect(h).toContain('href="/painel/financeiro/pagamentos-site?atencao=1&amp;imovel=403&amp;ano=2026&amp;mes=10"');
   expect(h).toContain('href="/painel/rotinas?imovel=403&amp;ano=2026&amp;mes=10"');
 });
+
+it("M8.2c: quem edita reservas recebe os avisos do cancelamento pela política (sem valores), mesmo sem o financeiro", async () => {
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  await html();
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true, verPagamentos: false }));
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  await html();
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true, verPagamentos: true }));
+  // Sem reserva:editar (ex.: limpeza), nenhum.
+  m.sessao.mockResolvedValue({ papel: "limpeza", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  await html();
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: false }));
+});
+
+it("M8.2d: os avisos da alteração (datas seguradas, bloqueio a mudar nas OTAs) aparecem com o link da ficha, sem valores", async () => {
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.dashboard.mockResolvedValue({
+    ...vazio,
+    alertas: [
+      { nivel: "info", texto: "Alteração da reserva SCL-TESTE1: datas seguradas até 13:00, esperando o pagamento da diferença.", link: "/painel/reservas/r1" },
+      { nivel: "info", texto: "1 reserva(s) do site alterada(s) (SCL-TESTE1): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).", link: "/painel/reservas/r1" },
+    ],
+  });
+  const h = await html();
+  expect(h).toContain("Alteração da reserva SCL-TESTE1: datas seguradas até 13:00, esperando o pagamento da diferença.");
+  expect(h).toContain("mude o bloqueio nas OTAs");
+  expect(h).toContain('href="/painel/reservas/r1"');
+  expect(h).not.toContain("R$");
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true }));
+});

@@ -47,6 +47,35 @@
   site com o prazo vencido **não confirma**: vence na hora (reserva cancelada, cotação expirada) e a equipe
   pede uma cotação nova ao hóspede — a rotina de 10 minutos não é pré-requisito.
 
+## Datas seguradas de uma alteração (M8.2d, 10/10/2026)
+
+A alteração de uma reserva **já paga pelo site** (`PAGAMENTO-SITE.md`, seção "Alteração de reserva paga (M8.2d)")
+reaproveita a ideia do hold, com as diferenças abaixo. O hold do visitante do site não mudou.
+
+- **Reserva-pedido da alteração:** as noites que a alteração acrescenta (um intervalo só) ficam ocupadas por uma
+  reserva `pedido` de fonte `alteracao` (`idFonte` = id da alteração, origem `site`, nome "Alteração SCL-…", sem
+  e-mail nem telefone, sem valores), criada pela mesma porta (`sincronizarReserva`) sob a trava do imóvel. Ocupa o
+  inventário pela regra de sempre; nunca é confirmada, nunca vai ao Beds24 e nunca entra no financeiro; a
+  importação do Beds24 e da planilha nunca a casam. Confirmar ou cancelar pela ficha é recusado; ela some sozinha
+  (cancelada por `cancelarPortador`) quando a alteração é aplicada, desistida ou vence. Sem noite nova, não há
+  reserva-pedido.
+- **Prazo próprio:** `regras.site.minutosHoldAlteracao` (padrão 60, entre 5 e 2880), editável em Configurações →
+  Calendário e preços → Site público ("Minutos que as novas datas de uma alteração de reserva paga pelo site ficam
+  seguradas"), separado de `minutosHold`: o hóspede de uma alteração combina pelo WhatsApp, não está na página da
+  cotação, e mudar um prazo não muda o outro. O prazo fica em `alteracoes_reserva.hold_ate`, é estendido pelo
+  pagamento da diferença (Pix, desafio do banco, cartão em análise uma vez por alteração) e nunca passa do horário de
+  entrada; a carência de 15 minutos com um pagamento da diferença em andamento vale como no pedido do site.
+- **Vencimento:** uma alteração com o prazo e a carência vencidos vale como vencida em toda conferência
+  (`noitesLivres` não conta a reserva-pedido dela), antes de alguém gravar. `segurarDatas` e `criarBloqueio` vencem
+  as alterações vencidas **do mesmo imóvel** antes de conferir as noites, cada uma num savepoint: se a trava da
+  reserva alterada estiver ocupada, aquela alteração é pulada e o pedido do visitante segue (sem chamada ao Mercado
+  Pago). A rotina `/api/cron/cotacoes` vence as alterações antes dos holds; o "Conferir agora" e toda ação da
+  alteração vencem as da reserva.
+- **Cotação da alteração:** `consultarDisponibilidade(…, { propria })` cota a estadia nova sem contar a própria
+  reserva (nem o bloqueio de fonte Beds24 nas noites dela); as noites novas passam pela conferência de sempre.
+- A cotação original continua `convertida`: o pagamento da diferença vive nela, com `alteracao_id`, e a rotina dos
+  holds (que só fecha cotações `segurada`) não volta a ela.
+
 ## Limites conhecidos
 
 - Até o M8.3, as OTAs não sabem do hold: um visitante do Airbnb pode reservar as mesmas noites durante o

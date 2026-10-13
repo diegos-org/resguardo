@@ -3,6 +3,7 @@ import { imoveis, organizacoes, reservas, beds24Execucoes, beds24ExecucaoReserva
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { lerFiltrosLista, linkLista, listarReservasPaginadas, resumoImportacao } from "./listagem";
+import { cancelar, entradaPadrao, minutos, montarCenario, pagarEConfirmar, pedir, usuarioDeTeste } from "@/pagamentos/testes";
 import { listarReservas } from "./repositorio";
 
 let db: Db, close: () => Promise<void>, org: string, im: string;
@@ -71,4 +72,27 @@ it("links mantêm filtros e trocar filtro reinicia página", () => {
   const p = new URL(url, "https://example.com").searchParams;
   expect(p.getAll("imovel")).toEqual(["A", "B"]); expect(p.get("busca")).toBe("café"); expect(p.get("pagina")).toBe("2");
   expect(linkLista({ pagina: "8" }, { situacao: "consulta" })).not.toContain("pagina");
+});
+
+it("filtro de pedidos de cancelamento (M8.2c): ?cancelamento=pedido mostra só as reservas com pedido esperando a equipe", async () => {
+  const c = await montarCenario(db);
+  const equipe = await usuarioDeTeste(c);
+  const comPedido = await pagarEConfirmar(c);
+  const semPedido = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23", email: "outro@example.com" });
+  expect(await pedir(c, comPedido.reservaId, equipe, { recebidoEm: minutos(30), quando: minutos(40) })).toEqual({ ok: true });
+  const filtros = (p: Record<string, string>) => lerFiltrosLista({ escopo: "historico", ...p });
+  expect(filtros({ cancelamento: "pedido" }).cancelamento).toBe("pedido");
+  expect(filtros({ cancelamento: "qualquer" }).cancelamento).toBe("todas");
+  const listarDe = (p: Record<string, string>) => listarReservasPaginadas(db, c.org, filtros(p), { imovelIds: [c.imovel], periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, agora: minutos(50) });
+  expect((await listarDe({})).itens.map((r) => r.id).sort()).toEqual([comPedido.reservaId, semPedido.reservaId].sort());
+  expect((await listarDe({ cancelamento: "pedido" })).itens.map((r) => r.id)).toEqual([comPedido.reservaId]);
+  expect(linkLista({ cancelamento: "pedido" })).toBe("/painel/reservas?cancelamento=pedido");
+  // O pedido aparece de qualquer período (um pedido nunca some da lista por causa do filtro de mês).
+  const noPeriodo = (p: Record<string, string>, periodo: { inicio: string; fim: string }) => listarReservasPaginadas(db, c.org, lerFiltrosLista(p), { imovelIds: [c.imovel], periodo, agora: minutos(50) });
+  const outroMes = { inicio: "2027-01-01", fim: "2027-02-01" };
+  expect((await noPeriodo({ cancelamento: "pedido" }, outroMes)).itens.map((r) => r.id)).toEqual([comPedido.reservaId]);
+  expect((await noPeriodo({}, outroMes)).itens).toEqual([]);
+  // Decidido o cancelamento, sai do filtro (não é mais um pedido esperando).
+  await cancelar(c, comPedido.reservaId, entradaPadrao(), equipe, minutos(60));
+  expect((await listarDe({ cancelamento: "pedido" })).itens).toEqual([]);
 });

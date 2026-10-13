@@ -6,32 +6,43 @@ import styles from "@/components/formularios.module.css";
 import { HistoricoAlteracoes } from "@/components/HistoricoAlteracoes";
 import { getDb } from "@/db/client";
 import { listarLancamentos } from "@/financeiro/ledger";
+import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { obterImovel } from "@/imoveis/repositorio";
 import { formatBRL } from "@/lib/money";
 import { cancelar, confirmar, resolverConferenciaAcao, salvarEmailHospedeAcao } from "@/reservas/acoes";
 import { NOMES_ESTADO, NOMES_ORIGEM, NOMES_RECEBIMENTO, noites } from "@/reservas/regras";
-import { obterReserva } from "@/reservas/repositorio";
+import { devolvidaNoProvedorDaReserva, obterReserva } from "@/reservas/repositorio";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { lerRecebimento } from "@/imoveis/recebimento";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { AlteracaoSite } from "@/components/reservas/AlteracaoSite";
+import { CancelamentoSite } from "@/components/reservas/CancelamentoSite";
+import { CancelarContestada, ContestacaoSite } from "@/components/reservas/ContestacaoSite";
 import { Horarios } from "@/components/reservas/Horarios";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas";
 import { Recebimentos } from "@/components/reservas/Recebimentos";
 import { hojeISO } from "@/lib/datas";
+import { alteracaoDoPortador, alteracoesDaReserva } from "@/pagamentos/alteracao-painel";
+import { textoDoResultadoDaAlteracao } from "@/pagamentos/alteracao-tela";
+import { cancelamentoDaReserva, momentosDoCancelamento } from "@/pagamentos/cancelamento-painel";
+import { textoDoResultado } from "@/pagamentos/cancelamento-tela";
 import { pagamentosDaReserva } from "@/pagamentos/consultas";
+import { lerContestacoesDaEquipe, lerContestacoesDaOperacao, textoDoResultadoDaContestacao } from "@/pagamentos/contestacao-tela";
 import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebimentos";
 import { aceitesDaReserva } from "@/site/aceites";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
 
-const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento"];
+// M8.2d: a diferença de uma alteração também é valor (o histórico da reserva nunca leva o valor a quem não lê o financeiro).
+const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento", "diferenca"];
+const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d).replace(", ", " às ");
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c));
 
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
   const sessao = await exigirSessaoPainel();
   const { id } = await params;
-  const { salvo, erro } = await searchParams;
+  const { salvo, erro, cancelamento: resultadoCancelamento, alteracao: resultadoAlteracao, contestacao: resultadoContestacao } = await searchParams;
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
@@ -39,9 +50,12 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const [imovel, historico] = await Promise.all([obterImovel(db, sessao.organizacaoId, r.imovelId), historicoDe(db, sessao.organizacaoId, "reserva", r.id)]);
   const verValores = podeFazer(sessao.papel, "financeiro:ler");
   const lancs = verValores ? await listarLancamentos(db, sessao.organizacaoId, { reservaId: r.id }) : [];
-  // Não confirmada com lançamento do motor ainda em vigor: já movimentou dinheiro, em conferência (M4.8).
+  // Não calculada pelo motor (a cancelada com valor retido, M8.2c, é calculada), divergente, ou com o pagamento do site
+  // devolvido no Mercado Pago fora da política (D21, M8.2c), com lançamento do motor ainda em vigor: já movimentou
+  // dinheiro, em conferência (M4.8) — a mesma regra de `lancamentoEmConferencia`. Este quadro é o caminho para dar por resolvida.
   const emVigor = lancs.filter((l) => l.origem === "motor" && !l.estornoDe && !lancs.some((e) => e.estornoDe === l.id));
-  const emConferencia = (r.estado !== "confirmada" || r.divergenciaEm !== null) && !r.conferenciaResolvidaEm && emVigor.length > 0;
+  const devolvidaNoProvedor = emVigor.length > 0 && !r.conferenciaResolvidaEm && reservaCalculadaPeloMotor(r) && !r.divergenciaEm ? await devolvidaNoProvedorDaReserva(db, sessao.organizacaoId, r.id) : false;
+  const emConferencia = (!reservaCalculadaPeloMotor(r) || r.divergenciaEm !== null || devolvidaNoProvedor) && !r.conferenciaResolvidaEm && emVigor.length > 0;
 
   // Mesma ordem do motor: reserva > configuração do imóvel para o canal > padrão do sistema.
   const doImovel = verValores ? (await lerRecebimento(db, sessao.organizacaoId, r.imovelId))[r.origem] : undefined;
@@ -52,6 +66,55 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const [recebimentos, recebidos] = verValores ? await Promise.all([recebimentosDaReserva(db, sessao.organizacaoId, r.id), recebidoPorReserva(db, sessao.organizacaoId, [r.id])]) : [[], new Map()];
   // M8.2a: tentativas de pagamento no site desta reserva (situação para quem lê reservas; valores e ações pelo financeiro).
   const pagamentosSite = podeFazer(sessao.papel, "reserva:ler") ? await pagamentosDaReserva(db, sessao.organizacaoId, r.id) : [];
+  // M8.2c: a reserva paga pelo site cancela pela política (o botão de sempre some); o pedido e o cancelamento dela.
+  const pagamentoQueConfirmou = pagamentosSite.find((p) => p.desfecho === "reserva") ?? null;
+  const editarReserva = podeFazer(sessao.papel, "reserva:editar");
+  const editarFinanceiro = podeFazer(sessao.papel, "financeiro:editar");
+  const agora = new Date();
+  const cancelamentoSite = pagamentoQueConfirmou ? await cancelamentoDaReserva(db, sessao.organizacaoId, r.id, agora) : null;
+  const momentos = pagamentoQueConfirmou && editarReserva && editarFinanceiro && r.estado === "confirmada" ? await momentosDoCancelamento(db, sessao.organizacaoId, r.id) : null;
+  const capacidade = imovel?.capacidade ?? null;
+  const textoCancelamento = textoDoResultado(resultadoCancelamento);
+  // M8.2d: as alterações da reserva paga pelo site (a segurada, as aplicadas, o histórico) e, numa reserva-pedido que segura
+  // as novas noites de uma alteração, a reserva alterada (a ficha dela não confirma, não cancela nem guarda horários).
+  const alteracoes = pagamentoQueConfirmou ? await alteracoesDaReserva(db, sessao.organizacaoId, r.id, agora) : [];
+  const portador = await alteracaoDoPortador(db, sessao.organizacaoId, r, agora);
+  const ultimaAplicada = alteracoes.find((a) => a.situacao === "aplicada") ?? null;
+  const textoAlteracao = textoDoResultadoDaAlteracao(resultadoAlteracao, {
+    holdAte: alteracoes.find((a) => a.situacao === "segurada")?.holdAte ?? null,
+    valorADevolver: verValores ? (ultimaAplicada?.valorADevolver ?? null) : null,
+    previstaEm: ultimaAplicada?.devolucao?.previstaEm ?? null,
+    agora,
+  });
+  // M8.2e: as disputas dos pagamentos da reserva — tudo para a equipe que lê o financeiro (nunca o papel proprietário);
+  // sem o financeiro, só o tipo, a situação e o prazo dos documentos. O resultado de cada ação volta por `?contestacao=`.
+  const disputasEquipe = pagamentosSite.length && verValores && sessao.papel !== "proprietario" ? await lerContestacoesDaEquipe(db, sessao, r.id, agora) : null;
+  const disputasOperacao = pagamentosSite.length && !disputasEquipe ? await lerContestacoesDaOperacao(db, sessao, r.id, agora) : [];
+  const textoContestacao = textoDoResultadoDaContestacao(resultadoContestacao);
+  const defesa = editarReserva || editarFinanceiro;
+  const disputas = Object.fromEntries(
+    pagamentosSite.map((p) => [
+      p.id,
+      <ContestacaoSite
+        key={p.id}
+        reservaId={r.id}
+        pagamento={p}
+        equipe={disputasEquipe ? disputasEquipe.filter((d) => d.pagamentoId === p.id) : null}
+        operacao={disputasOperacao.filter((d) => d.pagamentoId === p.id)}
+        editarFinanceiro={editarFinanceiro}
+        defesa={defesa}
+        hoje={hojeISO()}
+      />,
+    ]),
+  );
+  // "Cancelar a reserva contestada": antes da entrada, com uma disputa que segura valor num pagamento da reserva confirmada.
+  const contestada =
+    pagamentoQueConfirmou &&
+    editarReserva &&
+    editarFinanceiro &&
+    r.estado === "confirmada" &&
+    (!momentos || agora.getTime() < momentos.entradaEm.getTime()) &&
+    (disputasEquipe ?? disputasOperacao).some((d) => d.seguraValor && pagamentosSite.some((p) => p.id === d.pagamentoId && (p.desfecho === "reserva" || p.desfecho === "alteracao")));
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
 
@@ -81,7 +144,16 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     <>
       <h1>Reserva {r.codigo}</h1>
       {r.estado === "consulta" && <p role="note">Consulta: não é uma reserva confirmada, não ocupa o calendário e não entra como receita. A situação será atualizada na próxima importação do Beds24.</p>}
-      {r.estado === "pedido" && <p role="note">Pedido de reserva: ainda aguarda confirmação na origem e não entra como receita. Confira a situação no canal antes de tratar como reserva confirmada.</p>}
+      {portador ? (
+        <p role="note">
+          Datas seguradas para a alteração da reserva <a href={`/painel/reservas/${portador.reservaId}`}>{portador.reservaCodigo}</a>
+          {portador.holdAte ? ` até ${horaSP(portador.holdAte)}` : ""}
+          {portador.situacao === "segurada" ? "." : ": a alteração não está mais com as datas seguradas (as noites voltaram à venda)."} Elas somem sozinhas quando a alteração é aplicada, desistida
+          ou vence; não se confirmam nem se cancelam por aqui.
+        </p>
+      ) : (
+        r.estado === "pedido" && <p role="note">Pedido de reserva: ainda aguarda confirmação na origem e não entra como receita. Confira a situação no canal antes de tratar como reserva confirmada.</p>
+      )}
       {typeof erro === "string" && (
         <p role="alert" className={styles.alerta}>
           {erro}
@@ -92,6 +164,21 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           {salvo === "recebimento" ? "Recebimento registrado." : "Reserva salva."}
         </p>
       )}
+      {textoCancelamento && (
+        <p role="status" className={styles.sucesso}>
+          {textoCancelamento}
+        </p>
+      )}
+      {textoAlteracao && (
+        <p role="status" className={styles.sucesso}>
+          {textoAlteracao}
+        </p>
+      )}
+      {textoContestacao && (
+        <p role="status" className={styles.sucesso}>
+          {textoContestacao}
+        </p>
+      )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
         {linhas.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>
@@ -100,12 +187,12 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </div>
         ))}
       </dl>
-      {r.estado !== "cancelada" && !r.hospedeEmail && (
+      {!portador && r.estado !== "cancelada" && !r.hospedeEmail && (
         <p role="note" className={styles.alerta} style={{ maxWidth: 820 }}>
           Sem e-mail do hóspede: ele não consegue entrar em &ldquo;Minha reserva&rdquo; no site. Cadastre o e-mail abaixo.
         </p>
       )}
-      {podeFazer(sessao.papel, "reserva:editar") && (
+      {!portador && podeFazer(sessao.papel, "reserva:editar") && (
         <form action={salvarEmailHospedeAcao} className={styles.form} aria-label="E-mail do hóspede" style={{ maxWidth: 480 }}>
           <input type="hidden" name="id" value={r.id} />
           <label>
@@ -117,7 +204,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </button>
         </form>
       )}
-      {(r.estado === "pendente" || r.estado === "pedido") && podeFazer(sessao.papel, "reserva:editar") && (
+      {!portador && (r.estado === "pendente" || r.estado === "pedido") && podeFazer(sessao.papel, "reserva:editar") && (
         <form action={confirmar}>
           <input type="hidden" name="id" value={r.id} />
           <p style={{ margin: "0 0 8px", color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>
@@ -133,7 +220,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </BotaoConfirmar>
         </form>
       )}
-      {r.estado !== "cancelada" && podeFazer(sessao.papel, "reserva:editar") && (
+      {!portador && r.estado !== "cancelada" && editarReserva && !pagamentoQueConfirmou && (
         <form action={cancelar}>
           <input type="hidden" name="id" value={r.id} />
           <BotaoConfirmar
@@ -144,14 +231,54 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           </BotaoConfirmar>
         </form>
       )}
-      <PagamentoNoSite pagamentos={pagamentosSite} verValores={verValores} editar={podeFazer(sessao.papel, "financeiro:editar")} hoje={hojeISO()} />
+      <PagamentoNoSite
+        pagamentos={pagamentosSite}
+        verValores={verValores}
+        editar={editarFinanceiro}
+        hoje={hojeISO()}
+        alteracoes={alteracoes.map((a) => ({ id: a.id, criadaEm: a.criadaEm }))}
+        disputas={disputas}
+        contestada={<CancelarContestada reservaId={r.id} mostrar={!!contestada} />}
+        alteracao={
+          pagamentoQueConfirmou ? (
+            <AlteracaoSite
+              reserva={{ id: r.id, codigo: r.codigo, estado: r.estado, checkin: r.checkin, checkout: r.checkout, hospedes: r.hospedes, valorBruto: verValores ? r.valorBruto : null }}
+              capacidade={capacidade}
+              alteracoes={alteracoes}
+              comCancelamento={!!cancelamentoSite}
+              entradaEm={momentos?.entradaEm ?? null}
+              editarReserva={editarReserva}
+              editarFinanceiro={editarFinanceiro}
+              verValores={verValores}
+              agora={agora}
+            />
+          ) : null
+        }
+        cancelamento={
+          pagamentoQueConfirmou ? (
+            <CancelamentoSite
+              reserva={{ id: r.id, codigo: r.codigo, estado: r.estado, checkin: r.checkin }}
+              pagamento={pagamentoQueConfirmou}
+              pagamentos={pagamentosSite}
+              cancelamento={cancelamentoSite}
+              momentos={momentos}
+              editarReserva={editarReserva}
+              editarFinanceiro={editarFinanceiro}
+              verValores={verValores}
+              agora={agora}
+            />
+          ) : null
+        }
+      />
       <PaginasLegaisAceitas aceites={aceitesSite} />
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>
           <p style={{ margin: 0 }}>
-            {r.estado !== "confirmada"
-              ? "Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida."
-              : "Os valores atuais desta reserva não batem com o que já movimentou dinheiro no financeiro: em conferência, e o fechamento do mês do proprietário espera. Faça o ajuste manual e depois dê a conferência por resolvida."}
+            {devolvidaNoProvedor
+              ? "O Mercado Pago mostra o pagamento desta reserva devolvido fora do sistema: a parte do proprietário não é repassada. Cancele pela política (devolução integral) ou registre um ajuste e dê a conferência por resolvida."
+              : !reservaCalculadaPeloMotor(r)
+                ? "Esta reserva não está confirmada, mas já movimentou dinheiro: os valores continuam no financeiro, em conferência, e o fechamento do mês do proprietário espera. Confirme a reserva de novo ou faça o ajuste manual e depois dê a conferência por resolvida."
+                : "Os valores atuais desta reserva não batem com o que já movimentou dinheiro no financeiro: em conferência, e o fechamento do mês do proprietário espera. Faça o ajuste manual e depois dê a conferência por resolvida."}
           </p>
           {podeFazer(sessao.papel, "financeiro:editar") && (
             <form action={resolverConferenciaAcao} style={{ marginTop: 8 }}>
@@ -209,7 +336,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           cancelada={r.estado === "cancelada"}
         />
       )}
-      <Horarios id={r.id} horarios={horarios} vigentes={{ entrada: acordoVigente(horarios, "entrada", r), saida: acordoVigente(horarios, "saida", r) }} editar={r.estado === "confirmada" && podeFazer(sessao.papel, "reserva:editar")} />
+      {!portador && <Horarios id={r.id} horarios={horarios} vigentes={{ entrada: acordoVigente(horarios, "entrada", r), saida: acordoVigente(horarios, "saida", r) }} editar={r.estado === "confirmada" && podeFazer(sessao.papel, "reserva:editar")} />}
       <HistoricoAlteracoes linhas={verValores ? historico : ocultarCampos(historico, CAMPOS_FINANCEIROS)} />
     </>
   );

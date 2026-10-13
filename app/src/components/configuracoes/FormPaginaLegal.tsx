@@ -17,10 +17,12 @@ import {
   DIAS_REEMBOLSO_MAX,
   DIAS_REEMBOLSO_MIN,
   type DocumentoLegal as Documento,
+  MENSAGEM_ARREPENDIMENTO_SEM_LIMITE,
   MENSAGEM_SEM_PRAZO,
   mensagemDosCampos,
   PAGINAS_LEGAIS,
   preencherCampos,
+  textoLimitaArrependimento,
 } from "@/configuracoes/paginas-legais-texto";
 import styles from "../formularios.module.css";
 
@@ -32,6 +34,11 @@ type Props = {
   valores: Record<string, string>;
   /** Prazo do reembolso integral em dias (só na Política de cancelamento). */
   dias: number | null;
+  /**
+   * O arrependimento vale só até o horário de entrada (só na Política de cancelamento): o da versão em vigor, com o padrão
+   * (a versão 1, sem o campo, abre marcada), ou o do texto-base. null fora da política.
+   */
+  arrependimentoAteEntrada?: boolean | null;
   /** Dados de Configurações → Empresa que o texto pode usar, com o valor de agora ("" = não preenchido). */
   campos: { chave: CampoLegal; rotulo: string; valor: string }[];
   salvar: (a: EstadoForm, f: FormData) => Promise<EstadoForm>;
@@ -70,16 +77,20 @@ function diasDoCampo(t: string): number | null {
  * cria a versão seguinte datada de hoje. Nada é guardado antes de publicar: sair da tela com o texto mudado (link do
  * painel, Voltar do navegador, fechar ou recarregar) pede confirmação.
  */
-export function FormPaginaLegal({ documento, atual, valores, dias, campos, salvar }: Props) {
+export function FormPaginaLegal({ documento, atual, valores, dias, arrependimentoAteEntrada = null, campos, salvar }: Props) {
   const [estado, enviar, enviando] = useActionState(salvar, {});
   const def = PAGINAS_LEGAIS[documento];
   const cancelamento = documento === "cancelamento";
   const diasIniciais = cancelamento ? String(dias ?? PRAZO_PADRAO) : "";
+  // Sem valor vindo do servidor, vale o padrão da regra (com o limite).
+  const limiteInicial = arrependimentoAteEntrada ?? true;
   const [secoes, setSecoes] = useState<Record<string, string>>(() => Object.fromEntries(def.secoes.map((s) => [s.chave, valores[s.chave] ?? ""])));
   const [diasTexto, setDiasTexto] = useState(diasIniciais);
+  const [limiteArrependimento, setLimiteArrependimento] = useState(limiteInicial);
   // Diego já confirmou sair sem publicar (não pergunta de novo no caminho); volta a proteger quando ele edita outra vez.
   const saidaConfirmada = useRef(false);
-  const alterado = def.secoes.some((s) => (secoes[s.chave] ?? "").trim() !== (valores[s.chave] ?? "").trim()) || diasTexto.trim() !== diasIniciais;
+  const alterado =
+    def.secoes.some((s) => (secoes[s.chave] ?? "").trim() !== (valores[s.chave] ?? "").trim()) || diasTexto.trim() !== diasIniciais || (cancelamento && limiteArrependimento !== limiteInicial);
 
   // Sem rascunho guardado: sair com o texto mudado pede confirmação. Fechar ou recarregar passa pelo aviso do navegador;
   // os links do painel (<Link>, que trocam de tela sem recarregar) e o Voltar/Avançar do navegador não passam, e por isso
@@ -128,6 +139,10 @@ export function FormPaginaLegal({ documento, atual, valores, dias, campos, salva
     saidaConfirmada.current = false;
     setDiasTexto(valor);
   };
+  const editarLimite = (valor: boolean) => {
+    saidaConfirmada.current = false;
+    setLimiteArrependimento(valor);
+  };
 
   // Valores que a publicação usaria agora: os da empresa e, no cancelamento, o prazo digitado.
   const prazo = cancelamento ? diasDoCampo(diasTexto) : null;
@@ -139,6 +154,7 @@ export function FormPaginaLegal({ documento, atual, valores, dias, campos, salva
     cancelamento && prazo === null ? `Informe um número de dias entre ${DIAS_REEMBOLSO_MIN} e ${DIAS_REEMBOLSO_MAX} para o reembolso integral.` : null,
     mensagemDosCampos(cancelamento ? { ...conferencia, vazios: conferencia.vazios.filter((k) => k !== "dias_reembolso_integral") } : conferencia),
     cancelamento && !conferencia.usados.includes("dias_reembolso_integral") ? MENSAGEM_SEM_PRAZO : null,
+    cancelamento && !limiteArrependimento && textoLimitaArrependimento(secoes) ? MENSAGEM_ARREPENDIMENTO_SEM_LIMITE : null,
   ].filter((x): x is string => Boolean(x));
   const citaOBeds24 = def.secoes.some((s) => citaBeds24(secoes[s.chave] ?? ""));
 
@@ -206,6 +222,21 @@ export function FormPaginaLegal({ documento, atual, valores, dias, campos, salva
             Entra no texto pelo campo {"{{dias_reembolso_integral}}"} e é o mesmo número que a devolução usa. Mudou? Publique: vale para os pagamentos de hoje em diante.
           </span>
           {erro("diasReembolsoIntegral")}
+        </label>
+      )}
+      {cancelamento && (
+        <label className={styles.check}>
+          {/* Sem `checked` controlado: o formulário volta ao `defaultChecked` depois de cada envio, e ele é o que foi enviado. */}
+          <input
+            type="checkbox"
+            name="arrependimentoAteEntrada"
+            defaultChecked={estado.valores ? estado.valores.arrependimentoAteEntrada === "on" : limiteInicial}
+            onChange={(e) => editarLimite(e.target.checked)}
+            aria-invalid={estado.erros?.arrependimentoAteEntrada ? true : undefined}
+            aria-describedby={estado.erros?.arrependimentoAteEntrada ? "erro-arrependimentoAteEntrada" : undefined}
+          />{" "}
+          O arrependimento vale só até o horário de entrada (como no texto-base). Desmarque só se o advogado tirar esse limite do texto — e ajuste o texto junto.
+          {erro("arrependimentoAteEntrada")}
         </label>
       )}
       {def.secoes.map((s) => (

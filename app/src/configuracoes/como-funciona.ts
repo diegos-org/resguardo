@@ -33,7 +33,7 @@ export const SECOES_COMO_FUNCIONA = [
   { chave: "quandoRecebe", titulo: "Quando e como você recebe", dica: "Quando a parte de uma reserva fica disponível e como o repasse é feito. A periodicidade escolhida pelo proprietário aparece junto, automaticamente.", limite: 3000 },
   { chave: "relatorios", titulo: "Relatórios e extrato", dica: "O que o proprietário recebe por e-mail e vê no portal.", limite: 3000 },
   { chave: "cancelamentos", titulo: "Cancelamentos", dica: "O que acontece com a reserva e com a parte do proprietário quando o hóspede cancela.", limite: 3000 },
-  { chave: "contestacoes", titulo: "Contestações de pagamento", dica: "Quem arca com uma contestação de cartão perdida — decisão ainda pendente (seção 7 do guia). Vazio = a seção não aparece no portal.", limite: 3000 },
+  { chave: "contestacoes", titulo: "Contestações de pagamento", dica: "O que acontece quando um hóspede contesta no banco a cobrança de uma reserva paga pelo site: a reserva em conferência, quem arca (pela causa da disputa), o valor segurado nos próximos repasses até o resultado e o desconto definitivo ou devolvido. Texto-base no guia (item 42). Vazio = a seção não aparece no portal.", limite: 3000 },
   { chave: "duvidas", titulo: "Dúvidas", dica: "Como falar com a empresa.", limite: 1000 },
 ] as const;
 export type ChaveSecao = (typeof SECOES_COMO_FUNCIONA)[number]["chave"];
@@ -60,7 +60,7 @@ export const RASCUNHO_COMO_FUNCIONA: SecoesComoFunciona = {
   relatorios:
     "Todo mês você recebe por e-mail o relatório do mês anterior, com as reservas, os números, a sua parte e o acerto, e pode baixar o PDF no portal a qualquer momento. O extrato do portal mostra a sua parte em cada reserva (a liberar, disponível ou já repassada), os repasses feitos e o que ainda está em conferência.",
   cancelamentos:
-    "Quando o hóspede cancela, vale a política do canal em que a reserva foi feita (Airbnb, Booking ou o site). Se o canal pagar alguma coisa pela reserva cancelada, esse valor entra na divisão como uma reserva normal; se não pagar nada, não há nada a dividir. O calendário é liberado para novas reservas na hora.",
+    "Quando o hóspede cancela, vale a política do canal em que a reserva foi feita (Airbnb, Booking ou o site). Se o canal pagar alguma coisa pela reserva cancelada, esse valor entra na divisão como uma reserva normal; se não pagar nada, não há nada a dividir. O calendário é liberado para novas reservas na hora.\n\nNas reservas pagas pelo site vale a Política de cancelamento do site, na versão que o hóspede aceitou: com devolução integral, não há nada a dividir e a taxa do pagamento que não voltar fica com a {empresa}; sem devolução, o valor pago entra na divisão como uma reserva normal e a sua parte fica disponível depois da data de entrada original. Se a sua parte de uma reserva cancelada com devolução já tiver sido repassada, ela é descontada no repasse seguinte.",
   contestacoes: "",
   duvidas: "Qualquer dúvida sobre uma reserva, um valor ou um repasse: fale com a {empresa} pelo WhatsApp ou pelo e-mail de sempre. Se algo no extrato não bater, avise — o item fica em conferência até a resposta.",
 };

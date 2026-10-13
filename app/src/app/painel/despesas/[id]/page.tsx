@@ -5,7 +5,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { estornarDespesa, marcarPaga } from "@/despesas/acoes";
-import { obterDespesa } from "@/despesas/despesas";
+import { ERRO_DESPESA_DA_CONTESTACAO, ERRO_DESPESA_DO_SITE, obterDespesa, textoDaDespesaDaDisputa } from "@/despesas/despesas";
 import { obterImovel } from "@/imoveis/repositorio";
 import { hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
@@ -47,8 +47,9 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
     d.proprietarioId ? obterProprietario(db, sessao.organizacaoId, d.proprietarioId) : null,
     d.tipo === "despesa_proprietario" && d.estado !== "previsto" && !d.estornada ? adiantamentoDaDespesa(db, sessao.organizacaoId, d.id) : null,
   ]);
-  const editar = podeFazer(sessao.papel, "despesa:editar") && !d.estornada;
-  const situacao = d.estornada ? "Estornada" : d.estado === "previsto" ? "A pagar" : `Paga em ${dataBr(d.dataCaixa)}`;
+  // M8.2e: a despesa da disputa do pagamento só se corrige pelo quadro da disputa: sem "Marcar como paga" nem "Estornar".
+  const editar = podeFazer(sessao.papel, "despesa:editar") && !d.estornada && !d.disputa;
+  const situacao = d.estornada ? "Estornada" : d.disputa ? textoDaDespesaDaDisputa(d.disputa) : d.estado === "previsto" ? "A pagar" : `Paga em ${dataBr(d.dataCaixa)}`;
 
   const linhas: [string, React.ReactNode][] = [
     ["Descrição", d.descricao],
@@ -104,6 +105,10 @@ export default async function DetalheDespesa({ params, searchParams }: PageProps
               ? "Não dá para estornar: o adiantamento desta despesa já teve reembolso ou foi assumido pela empresa. Desfaça a quitação em Adiantamentos antes."
               : erro === "compensacao"
                 ? "Não dá para estornar: o valor desta despesa já foi descontado num repasse ao proprietário. Estorne o repasse antes."
+              : erro === "do_site"
+                ? ERRO_DESPESA_DO_SITE
+              : erro === "da_contestacao"
+                ? ERRO_DESPESA_DA_CONTESTACAO(d)
               : "Não foi possível marcar como paga: confira a data."}
         </p>
       )}

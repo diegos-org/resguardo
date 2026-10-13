@@ -90,7 +90,7 @@ const base: DadosRelatorio = {
   mes: 10,
   situacao: "fechado",
   ate: null,
-  resumo: { reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 0, acerto: 72250, acertoPendente: 0, emConferencia: false },
+  resumo: { reservas: 1, receitaBruta: 100000, taxasCanais: 15000, comissao: 12750, suaParte: 72250, despesas: 0, acerto: 72250, acertoPendente: 0, emConferencia: false, retidoDeCanceladas: { n: 0, bruto: 0 }, devolvidoDeCanceladas: { n: 0, bruto: 0 } },
   reservas: [
     {
       id: "r1",
@@ -106,6 +106,8 @@ const base: DadosRelatorio = {
       suaParte: 72250,
       situacao: "definido",
       confirmada: true,
+      cancelada: false,
+      etiqueta: null,
     },
   ],
   rodape: [],
@@ -183,6 +185,29 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
       { texto: "12/10 — Troca do chuveiro", valor: "R$ 50,00", tipo: "normal" },
       { texto: "Total descontado no fechamento", valor: "R$ 50,00", tipo: "total" },
     ]);
+  });
+
+  it("M8.2c: o bruto diz o que vem de canceladas pela política; o desconto vira linha própria na tabela, sem noites", () => {
+    const t = textosDoRelatorio({
+      ...base,
+      resumo: { ...base.resumo, retidoDeCanceladas: { n: 1, bruto: 50000 }, devolvidoDeCanceladas: { n: 2, bruto: -80000 } },
+      partes: [
+        parte(),
+        parte({ reservaId: "r9", codigo: "SCL-9", checkin: "2026-09-10", checkout: "2026-09-12", noitesNoMes: 0, noitesTotal: 2, bruto: -50000, taxa: -500, comissao: -7425, suaParte: -42075, cancelamento: "desconto", pagamento: null }),
+        parte({ reservaId: "r8", codigo: "SCL-8", checkin: "2026-09-20", checkout: "2026-09-22", noitesNoMes: 0, noitesTotal: 2, bruto: -30000, taxa: 0, comissao: -4500, suaParte: -25500, cancelamento: "desconto", situacao: "repassado", pagamento: null, repasse: { id: "x", tipo: "antecipado", data: "2026-10-20", situacao: "pago", dataPagamento: "2026-10-21", valor: -25500 } }),
+      ],
+    });
+    expect(t.brutoAoResultado[0]).toMatchObject({
+      texto: "Bruto das reservas (1 reserva, 3 noites em outubro de 2026)",
+      etiqueta: "inclui R$ 500,00 retido de 1 reserva cancelada sem devolução (política de cancelamento); inclui −R$ 800,00 de 2 reservas canceladas com devolução depois do repasse",
+    });
+    expect(t.reservas.map((l) => [l.codigo, l.situacao, l.noites, l.atravessa])).toEqual([
+      ["R1", "a transferir no fechamento", "3", false],
+      ["SCL-9", "cancelada com devolução ao hóspede (estadia de 10/9): desconto no próximo repasse", "—", false],
+      ["SCL-8", "cancelada com devolução ao hóspede (estadia de 20/9): descontada no repasse de 21/10", "—", false],
+    ]);
+    // Sem canceladas, nenhuma nota no bruto.
+    expect(textosDoRelatorio(base).brutoAoResultado[0].etiqueta).toBeUndefined();
   });
 
   it("como chega até você e avisos: o fechamento pelo rodapé, a parte a liberar vira aviso; em conferência também", () => {
@@ -297,6 +322,21 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(t.posicao).toBe('Nenhum valor é estimado: o que o sistema ainda não tem aparece como "a receber" ou "a liberar". Um repasse "enviado" não confirma o crédito na sua conta: confira o comprovante no portal.');
     // Mesmos dados, horas diferentes: textos idênticos (o e-mail do fechamento versiona o conteúdo por eles).
     expect(JSON.stringify(textosDoRelatorio(base))).toBe(JSON.stringify(textosDoRelatorio({ ...base })));
+  });
+
+  it("M8.2c — saldo com desconto de reserva cancelada que passa da parte: sai do próximo repasse; o Pix só para o resto", () => {
+    const e = "SCL";
+    expect(textoDoSaldo(rodape({ situacao: "proprietario_deve", valor: 30000, chavePix: "pix-da-empresa", descontoCancelamento: 30000 }), e)).toEqual([
+      "Credor: SCL. Você deve R$ 300,00 à SCL, mas não precisa transferir: o desconto de reserva cancelada com devolução ao hóspede (R$ 300,00), maior que a sua parte deste mês, não se transfere: sai do próximo repasse.",
+    ]);
+    expect(textoDoSaldo(rodape({ situacao: "proprietario_deve", valor: 30000, chavePix: "pix-da-empresa", descontoCancelamento: 20000 }), e)).toEqual([
+      "Credor: SCL. Você deve R$ 300,00 à SCL. Desse valor, o desconto de reserva cancelada com devolução ao hóspede (R$ 200,00), maior que a sua parte deste mês, não se transfere: sai do próximo repasse; transfira R$ 100,00.",
+      "Pix da SCL: pix-da-empresa",
+    ]);
+    const so = textosDoRelatorio({ ...base, rodape: [rodape({ nome: "Dona Fictícia", situacao: "proprietario_deve", valor: 5000, saldo: -5000, aFavor: "empresa", descontoCancelamento: 5000 })] });
+    expect(so.acerto.at(-1)).toEqual({ texto: "Desconto de reserva cancelada com devolução ao hóspede: sai do próximo repasse", valor: "R$ 50,00", tipo: "total" });
+    expect(JSON.stringify(so)).not.toContain("Você transfere");
+    expect(so.avisos.join(" ")).not.toContain("As despesas do mês passaram da sua parte");
   });
 
   it("saldo: mesma leitura do rodapé do portal; Pix do proprietário nunca impresso", () => {
@@ -463,9 +503,11 @@ describe("dados e acesso", () => {
         { organizacaoId: org, nome: "Outro Fictício" },
       ])
       .returning();
+    // Vínculos de 1/10 (dia fixo, antes das estadias de outubro): com o dia de hoje, as estadias de antes dele ficariam fora
+    // da posse e os números mudariam com o calendário.
     await db.insert(proprietarioImoveis).values([
-      { proprietarioId: dona, imovelId: a },
-      { proprietarioId: outro, imovelId: b },
+      { proprietarioId: dona, imovelId: a, criadoEm: new Date("2026-10-01T12:00:00-03:00") },
+      { proprietarioId: outro, imovelId: b, criadoEm: new Date("2026-10-01T12:00:00-03:00") },
     ]);
     await db.insert(representantes).values([
       { proprietarioId: dona, nome: "Rep Autorizado", recebeRelatorios: true },

@@ -10,7 +10,7 @@ const parte = (over: Partial<ParteBruta> = {}): ParteBruta => ({
   checkin: "2026-10-10", checkout: "2026-10-13", hospede: "Hóspede Fictício", origem: "booking", hoje: "2026-10-12", recebido: { recebido: 85000, devido: 85000 }, pagamento: null, emConferencia: false, repasse: null, ...over,
 });
 const repasse = (over: Partial<Repasse> = {}): Repasse => ({
-  id: "rep1", organizacaoId: "org", proprietarioId: "d1", tipo: "antecipado", mes: "2026-10-01", data: "2026-10-11", saldo: 72250, descontado: 0, contestado: 0, valor: 72250, foraDoFechamento: 0, antecipado: 72250, situacao: "pago", dataPagamento: "2026-10-11",
+  id: "rep1", organizacaoId: "org", proprietarioId: "d1", tipo: "antecipado", mes: "2026-10-01", data: "2026-10-11", saldo: 72250, descontado: 0, contestado: 0, valor: 72250, foraDoFechamento: 0, foraPresaDisputa: null, foraSeguradoJunto: null, antecipado: 72250, situacao: "pago", dataPagamento: "2026-10-11",
   comprovante: "E2E-1", comprovanteArquivoId: "arq", emailSituacao: "enviado", emailEm: new Date("2026-10-11T15:00:00Z"), emailPara: "dona@example.com", emailChave: "", emailTentativaEm: null, emailPedido: null, chavePixPaga: "", pedidoEm: new Date("2026-10-11T10:00:00Z"), motivoEstorno: "", criadoPor: null, criadoEm: new Date("2026-10-11T10:00:00Z"), estornadoEm: null, ...over,
 });
 const item = (over: Partial<ItemDoRepasse> = {}): ItemDoRepasse => ({
@@ -101,5 +101,36 @@ describe("extrato e repasses no portal (M4.10)", () => {
     expect(h).toContain("Pedir repasse agora (R$ 722,50 · Dona)");
     expect(h).not.toContain("Empresa Dela)");
     expect(h.match(/Pedir repasse agora/g)).toHaveLength(1);
+  });
+
+  it("M8.2e: a linha da disputa do pagamento aparece como 'Disputa do pagamento' (segurado, junto com a parte ou descontado), só com o código da reserva, com a explicação", () => {
+    const disputa = { contestacaoId: "c1", situacao: "aberta" as const, resultadoEm: null, quemArca: "proporcional" as const, causa: "Problema do imóvel", exposicao: 100000, parteProprietario: 85000, explicacao: "" };
+    const linha = parte({ lancamentoId: "d1", reservaId: "r9", codigoReserva: "SCL-DISP", valor: -85000, efeitoSaldo: -85000, hospede: "", origemLancamento: "contestacao_pagamento", disputa });
+    const h = render({ partes: [classificarParte(linha)] });
+    expect(h).toContain("<strong>Disputa do pagamento</strong> · segurado · a descontar");
+    expect(h).toContain("Disputa do pagamento da reserva SCL-DISP: R$ 850,00 segurados dos seus próximos repasses até o resultado — 85% do valor em disputa (R$ 1.000,00), a proporção da sua parte.");
+    expect(h).toContain("SCL-DISP");
+    expect(h).toContain("“Disputa do pagamento” é o valor que fica segurado dos seus repasses");
+    expect(render({ partes: [classificarParte({ ...linha, seguradoJunto: true })] })).toContain("segurado · junto com a sua parte desta reserva");
+    const descontada = classificarParte({ ...linha, repasse: { id: "rep2", tipo: "antecipado", data: "2026-10-20", situacao: "pago", dataPagamento: "2026-10-20", valor: -85000 } });
+    expect(render({ partes: [descontada] })).toContain("segurado · descontado");
+    const perdida = classificarParte({ ...linha, disputa: { ...disputa, situacao: "perdida", resultadoEm: "2027-03-10" } });
+    expect(render({ partes: [perdida] })).toContain("definitivo · a descontar");
+    expect(render()).not.toContain("“Disputa do pagamento” é");
+  });
+
+  it("M8.2c: o desconto da parte já repassada de uma reserva cancelada com devolução aparece como 'Desconto', a descontar ou descontado, com a explicação", () => {
+    const desconto = parte({ lancamentoId: "d1", reservaId: "r9", codigoReserva: "SCL-CANC", valor: -63119, efeitoSaldo: -63119, origemLancamento: "cancelamento" });
+    const h = render({ partes: [classificarParte(desconto)] });
+    expect(h).toContain("<strong>Desconto</strong> · a descontar");
+    expect(h).toContain("Desconto da sua parte já repassada da reserva SCL-CANC (cancelada com devolução integral ao hóspede): sai do próximo repasse.");
+    expect(h).toContain("“Desconto” é a sua parte já repassada de uma reserva paga pelo site e cancelada com devolução integral ao hóspede: sai do próximo repasse.");
+    // Descontado num repasse: a situação e o repasse.
+    const descontado = classificarParte({ ...desconto, repasse: { id: "rep2", tipo: "antecipado", data: "2026-10-20", situacao: "pago", dataPagamento: "2026-10-20", valor: -63119 } });
+    const h2 = render({ partes: [descontado] });
+    expect(h2).toContain("<strong>Desconto</strong> · descontado");
+    expect(h2).toContain("descontado no repasse de 20/10/2026");
+    // Sem desconto, sem a explicação.
+    expect(render()).not.toContain("“Desconto” é a sua parte");
   });
 });

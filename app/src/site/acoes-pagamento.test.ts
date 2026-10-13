@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { eq, like } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { CONFIG_PAGAMENTO_SITE_PADRAO, salvarConfigPagamentoSite } from "@/configuracoes/pagamento-site";
@@ -7,7 +8,7 @@ import type { Db } from "@/db/types";
 import { autorizacaoValida, CAMINHO_COOKIE_CHECKOUT, emitirAutorizacao, validadeDaAutorizacao } from "@/pagamentos/autorizacao";
 import { ERRO_EMAIL_DO_PEDIDO, ERROS_LIMITE, LIMITES_PAGAMENTO } from "@/pagamentos/limites";
 import { ErroProvedor } from "@/pagamentos/provedor";
-import { AGORA, type Cenario, DISPOSITIVO_FICTICIO, DOCUMENTO_FICTICIO, EMAIL_HOSPEDE, minutos, montarCenario, semDadosPessoais, TOKEN_FICTICIO, TOTAL } from "@/pagamentos/testes";
+import { AGORA, alterar, type Cenario, DISPOSITIVO_FICTICIO, DOCUMENTO_FICTICIO, EMAIL_HOSPEDE, minutos, montarCenario, pagarEConfirmar, semDadosPessoais, TOKEN_FICTICIO, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
 import { nomeDoCookieDoPedido } from "./checkout";
 import { criarCotacao } from "./cotacoes";
 import { MENSAGEM_SEM_AUTORIZACAO, MENSAGENS_CARTAO_HOSPEDE, MENSAGENS_PIX_HOSPEDE } from "./pagamento";
@@ -388,5 +389,47 @@ describe("Pagar com cartão (M8.2b)", () => {
     expect(await pagarComCartaoAcao(terceira.codigo, formCartao())).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.provedor });
     expect(erro).toHaveBeenCalledWith("[site] falha no pagamento com cartão", "TypeError");
     expect(JSON.stringify(erro.mock.calls)).not.toContain(TOKEN_FICTICIO);
+  });
+});
+
+describe("o pagamento da diferença de uma alteração (M8.2d)", () => {
+  /** Reserva paga e confirmada, com uma alteração segurada de 12/10–15/10 para 12/10–16/10 (diferença de R$ 528,00). */
+  async function comAlteracao() {
+    const x = await pagarEConfirmar(c, { liberar: true });
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20), { autorId: await usuarioDeTeste(c) });
+    if (!resultado.ok) throw new Error(resultado.erro);
+    vi.setSystemTime(minutos(21));
+    comCookie(x.cotacaoId);
+    return { ...x, alteracaoId: resultado.alteracaoId };
+  }
+  const cartaoDaDiferenca = (alteracao: string) =>
+    form({ token: TOKEN_FICTICIO, bandeira: "master", tipo: "credit_card", parcelas: "1", documentoTipo: "CPF", documentoNumero: DOCUMENTO_FICTICIO, dispositivo: DISPOSITIVO_FICTICIO, alteracao });
+
+  it("Gerar Pix com a alteração: o Pix da diferença (o valor dela, ligado à alteração); fora do formato ou de outra alteração, a página mudou e nada é criado", async () => {
+    const x = await comAlteracao();
+    const antes = await tentativasDa(x.cotacaoId);
+    expect(await gerarPixAcao(x.codigo, {}, form({ alteracao: "nao-e-um-id" }))).toEqual({ erro: MENSAGENS_PIX_HOSPEDE.alteracao_mudou });
+    expect(await gerarPixAcao(x.codigo, {}, form({ alteracao: randomUUID() }))).toEqual({ erro: MENSAGENS_PIX_HOSPEDE.alteracao_mudou });
+    expect(await tentativasDa(x.cotacaoId)).toHaveLength(antes.length);
+    expect(await gerarPixAcao(x.codigo, {}, form({ alteracao: x.alteracaoId }))).toEqual({ ok: true });
+    const novas = (await tentativasDa(x.cotacaoId)).filter((t) => !antes.some((a) => a.id === t.id));
+    expect(novas).toHaveLength(1);
+    expect(novas[0]).toMatchObject({ forma: "pix", situacao: "pendente", valor: 52800, alteracaoId: x.alteracaoId });
+    expect(m.revalidar).toHaveBeenCalledWith(`/reservar/${x.codigo}`);
+    // Sem o campo, é o Pix da cotação: a reserva já está paga, nada novo é oferecido.
+    expect((await gerarPixAcao(x.codigo, {}, form({}))).erro).toBeTruthy();
+    expect((await tentativasDa(x.cotacaoId)).length).toBe(antes.length + 1);
+  });
+
+  it("Pagar com cartão com a alteração: o cartão da diferença (o valor dela); id fora do formato: a página recarrega, nada chega ao Mercado Pago", async () => {
+    const x = await comAlteracao();
+    const criados = () => c.provedor.chamadas.filter((y) => y.metodo === "criarCartao").length;
+    const antes = criados();
+    expect(await pagarComCartaoAcao(x.codigo, cartaoDaDiferenca("nao-e-um-id"))).toEqual({ erro: MENSAGENS_CARTAO_HOSPEDE.alteracao_mudou, recarregar: true });
+    expect(criados()).toBe(antes);
+    expect(await pagarComCartaoAcao(x.codigo, cartaoDaDiferenca(x.alteracaoId))).toEqual({ ok: true, situacao: "aprovado" });
+    expect(c.provedor.ultimoPedidoCartao).toMatchObject({ valor: 52800 });
+    const cartao = (await tentativasDa(x.cotacaoId)).find((t) => t.forma === "cartao");
+    expect(cartao).toMatchObject({ valor: 52800, alteracaoId: x.alteracaoId });
   });
 });

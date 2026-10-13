@@ -17,8 +17,9 @@ import { lerVersoesRegras, prazoDoCanalNaData, type VersaoRegras } from "@/confi
 import { lancamentos, type OrigemReserva, repasses, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { ORIGEM_LANCAMENTO_CONTESTACAO } from "@/pagamentos/contestacao-regras";
 import { lancamentoEmVigor } from "@/portal/posse";
-import { dinheiroComAEmpresa, type RecebidoDaReserva, recebidoPorReserva } from "./recebimentos";
+import { type RecebidoDaReserva, recebidoPorReserva } from "./recebimentos";
 
 export type QuemRecebeReserva = "empresa" | "split" | "a_confirmar";
 /** `canal`: pela regra do canal (check-in + prazo), uma previsão; `recebimento`: a data registrada do dinheiro com a empresa. */
@@ -33,10 +34,14 @@ export function somarDias(data: string, dias: number): string {
 
 export const dataBr = (d: string) => d.split("-").reverse().join("/");
 
-/** Data em que o canal pagou a reserva (pura): split pela regra do canal; empresa pela data do recebimento completo. */
+/**
+ * Data em que o canal pagou a reserva (pura): split pela regra do canal; empresa pela data do recebimento completo. É um
+ * fato do passado: o dinheiro que voltou ao hóspede depois (devolução, M8.2c) tira o dinheiro da empresa, não a data em
+ * que ele pagou — por isso vale o recebimento completo (`dataCompleto`, pelos recebimentos brutos), não o saldo líquido.
+ */
 export function dataDoPagamento(r: { quemRecebe: QuemRecebeReserva; checkin: string; recebido: RecebidoDaReserva }, prazo: number | null): PagamentoDaReserva | null {
   if (r.quemRecebe === "split") return prazo === null ? null : { data: somarDias(r.checkin, prazo), fonte: "canal", prazo };
-  if (r.quemRecebe === "empresa") return dinheiroComAEmpresa(r.recebido) && r.recebido.dataCompleto ? { data: r.recebido.dataCompleto, fonte: "recebimento" } : null;
+  if (r.quemRecebe === "empresa") return r.recebido.devido > 0 && r.recebido.dataCompleto ? { data: r.recebido.dataCompleto, fonte: "recebimento" } : null;
   return null;
 }
 
@@ -72,6 +77,8 @@ export async function reservasDoInicio(db: Db, organizacaoId: string, inicio: st
         eq(lancamentos.organizacaoId, organizacaoId),
         eq(lancamentos.tipo, "direito_proprietario"),
         isNotNull(lancamentos.proprietarioId),
+        // M8.2e: a linha da disputa do pagamento não diz quem recebe o dinheiro da reserva (é o acerto da disputa).
+        ne(lancamentos.origem, ORIGEM_LANCAMENTO_CONTESTACAO),
         o.proprietarioId ? eq(lancamentos.proprietarioId, o.proprietarioId) : undefined,
         ids ? inArray(lancamentos.reservaId, ids) : undefined,
         lancamentoEmVigor(db),

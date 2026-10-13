@@ -470,6 +470,27 @@
       "when": 1791572770269,
       "tag": "0066_m8_2b_cartao",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791595870834,
+      "tag": "0067_m8_2c_cancelamento",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1791635796514,
+      "tag": "0068_m8_2d_alteracao",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1791691693911,
+      "tag": "0069_m8_2e_contestacao",
+      "breakpoints": true
     }
   ]
 }

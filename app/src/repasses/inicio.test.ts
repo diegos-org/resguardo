@@ -23,6 +23,15 @@ describe("data do pagamento e lado do início do sistema (M4.12, regras puras)",
     expect(quemRecebeDe({ estado: "previsto", efeitoSaldo: 100 })).toBe("empresa");
   });
 
+  it("M8.2c: o dinheiro que voltou ao hóspede (devolução) não apaga a data em que ele pagou — vale o recebimento completo", () => {
+    const devolvido = { recebido: 0, devido: 85000, dataCompleto: "2026-10-03" };
+    expect(dataDoPagamento({ quemRecebe: "empresa", checkin: "2026-09-29", recebido: devolvido }, null)).toEqual({ data: "2026-10-03", fonte: "recebimento" });
+    expect(dataDoPagamento({ quemRecebe: "empresa", checkin: "2026-09-29", recebido: { recebido: -1000, devido: 85000, dataCompleto: "2026-10-03" } }, null)).toEqual({ data: "2026-10-03", fonte: "recebimento" });
+    // Sem o recebimento completo (ou sem nada a receber), continua sem data.
+    expect(dataDoPagamento({ quemRecebe: "empresa", checkin: "2026-09-29", recebido: { recebido: 0, devido: 85000, dataCompleto: null } }, null)).toBeNull();
+    expect(dataDoPagamento({ quemRecebe: "empresa", checkin: "2026-09-29", recebido: { recebido: 0, devido: 0, dataCompleto: "2026-10-03" } }, null)).toBeNull();
+  });
+
   it("lado do início: a data do pagamento decide; sem data, só a reserva que atravessa fica indefinida; sem início, nenhum lado", () => {
     const atravessa = { checkin: "2026-09-29", checkout: "2026-10-02" };
     expect(ladoDoInicio({ ...atravessa, pagamento: { data: "2026-09-30", fonte: "canal", prazo: 1 } }, "2026-10-01")).toBe("antes");

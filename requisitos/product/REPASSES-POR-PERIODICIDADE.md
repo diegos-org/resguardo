@@ -51,6 +51,15 @@ Fora disso: `split` é informação; `a_confirmar` fica a liberar, com aviso, fo
 repasse; sem recebimento registrado fica a liberar, com aviso ("nunca se repassa o que a
 empresa ainda não recebeu").
 
+Cancelamento de reserva paga pelo site (M8.2c, 10/10/2026), na mesma regra:
+- **Cancelada sem devolução (valor retido):** a parte segue as quatro condições acima, contando o check-in
+  da **data de entrada original**, com o motivo "Reserva cancelada sem devolução ao hóspede (política de
+  cancelamento): o valor retido é dividido como uma reserva normal. Libera depois da data de entrada original
+  (dd/mm), com o dinheiro já com a empresa."
+- **Desconto de cancelamento** (parte negativa, abaixo): **disponível na hora**, nunca "fora".
+- **Devolvida no Mercado Pago fora da política** (o pagamento aparece devolvido e a reserva não tem
+  cancelamento integral): em conferência, fora de qualquer repasse, até a equipe resolver.
+
 ## Repasses
 
 - **Antecipado** (programado ou avulso): reúne tudo o que está disponível até o dia anterior e
@@ -60,7 +69,9 @@ empresa ainda não recebeu").
   fecha zerado e a reserva que atravessa o mês não vira "dívida" no fechamento do primeiro mês;
   o ROADMAP descrevia o saldo negativo, o efeito final é o mesmo e mais legível). O fechamento
   mensal o desconta naturalmente, porque soma o acerto acumulado. O antecipado não desconta
-  adiantamentos nem despesas: isso continua no fechamento (decisão de Diego).
+  adiantamentos nem despesas: isso continua no fechamento (decisão de Diego). **Exceção desde o M8.2c:** o
+  desconto de cancelamento (parte negativa) entra no antecipado e sai do valor (seção "Desconto de
+  cancelamento"; decisão pendente de Diego).
 - **Programado:** a rotina diária (8h) gera, para cada proprietário, o repasse do dia quando a
   data bate com a periodicidade efetiva dele (segunda-feira no semanal; dias 1 e 16 no
   quinzenal; todo dia no "assim que disponível"). No **dia do fechamento** a rotina não gera
@@ -83,6 +94,53 @@ empresa ainda não recebeu").
 - **Pagamento:** o sistema gera o repasse "a pagar" na data; o Pix sai pela equipe (manual) e,
   depois, por lote diário automático (API do banco ou do Mercado Pago), com o comprovante vindo do
   provedor.
+
+## Desconto de cancelamento (M8.2c, 10/10/2026)
+
+Quando uma reserva paga pelo site é cancelada com **devolução integral** ao hóspede **depois** de a parte do
+proprietário ter sido repassada e paga, o dinheiro já saiu para ele. O ROADMAP diz "desconto no repasse
+seguinte", e é isso, ao pé da letra (código em `app/src/repasses/descontos.ts`, `repasses.ts` e `extrato.ts`):
+
+- **Uma parte negativa:** o cancelamento lança, no **mês corrente** (em São Paulo; nunca num mês que já pode ter
+  sido fechado), um `direito_proprietario` com valor e efeito no acerto negativos, origem `cancelamento`, para o
+  proprietário que recebeu (`lancarDescontoDoProprietario`; é o espelho da parte do mês que já tinha
+  movimentado dinheiro). O mês da estadia e o relatório já enviado não mudam.
+- **Disponível na hora**, com o texto "Desconto da sua parte já repassada da reserva X (cancelada com devolução
+  integral ao hóspede): sai do próximo repasse."
+- **O próximo repasse de qualquer tipo** o vincula como item negativo e o desconta:
+  - **antecipado** (programado, avulso ou pedido no portal): valor = partes disponíveis − desconto, e o
+    lançamento do antecipado deixa o mês do desconto fechado em zero. Se as partes não cobrem, o antecipado é
+    recusado ("As partes disponíveis (R$ P) não cobrem o desconto de R$ D (reserva X cancelada com devolução):
+    ficam para o próximo repasse."); a rotina diária pula esse proprietário em silêncio;
+  - **fechamento:** o desconto entra como as outras partes disponíveis (da competência, ou adiantada quando é de
+    mês seguinte) e se desconta sozinho. Sem partes que o cubram, nada é repassado e o proprietário fica devendo
+    ("o proprietário fica devendo e o desconto passa para o próximo repasse"); o portal, o PDF e "como chega até
+    você" dizem que o desconto sai do próximo repasse, sem pedir Pix (só despesas que passaram da parte pedem a
+    transferência). O e-mail e os números do painel mostram, cada um na sua linha, as noites de meses
+    seguintes, o desconto de cancelamento e o estorno de parte nunca paga (`separarAntecipado`).
+- **Parte que não chegou a ser paga:** quando o mês movimentou dinheiro sem a parte ter sido paga ao
+  proprietário, o espelho **anula** a parte em vez de ser desconto: as duas ficam disponíveis juntas, entram
+  juntas no próximo repasse e somam zero (fora da lista de descontos e do aviso do Início).
+- **Parte num repasse ainda não pago:** o cancelamento integral é recusado até esse repasse ser estornado (ou
+  marcado como pago, se foi pago de fato): pagar uma parte que está para voltar ao hóspede e depois descontar
+  seria pior.
+- **Estorno de repasse:** recusado quando a parte de um item já foi descontada por um cancelamento ("A parte da
+  reserva X deste repasse já foi descontada pelo cancelamento da reserva (devolução integral ao hóspede):
+  estornar o repasse deixaria o desconto sem o pagamento. Corrija com um ajuste."). O repasse que só leva o
+  desconto pode ser estornado: o desconto volta a esperar.
+- **Travas:** a trava do proprietário em `travarDono` e no estorno de repasse passou a `FOR NO KEY UPDATE`
+  (antes `FOR UPDATE`): fechamentos e antecipados do mesmo proprietário continuam em fila, e o lançamento do
+  desconto (que confere a chave estrangeira do proprietário) não entra mais em impasse com um fechamento. As
+  reservas das partes negativas entram em `lerComReservasTravadas` como qualquer parte.
+- **Onde aparece:** `descontosDoProprietario` (a descontar, ou descontado no repasse de dd/mm) é a regra única do
+  painel, do portal e do Início; extrato do portal com o rótulo "Desconto" ("descontada no repasse de dd/mm");
+  item do repasse "desconto da parte já repassada (reserva cancelada com devolução ao hóspede)"; relatório do mês
+  do cancelamento com a linha "Reserva SCL-… cancelada com devolução ao hóspede"; Início (financeiro): "Proprietário
+  X tem R$ D de desconto de cancelamento a descontar desde dd/mm (as partes disponíveis não cobriram)", depois de
+  7 dias.
+- **Decisão pendente de Diego:** o antecipado descontar (a escolha do M4.10 era não descontar adiantamentos nem
+  despesas no antecipado). A alternativa é só o fechamento mensal descontar, o que nunca recupera o desconto de
+  quem recebe toda semana ou assim que disponível.
 
 ## Comprovante e e-mail
 

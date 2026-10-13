@@ -4,7 +4,7 @@ import { bloqueios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import type { DadosReserva } from "./regras";
-import { cancelarReserva, criarReserva, listarBloqueios, listarReservas, obterReserva, salvarEmailHospede, sincronizarReserva } from "./repositorio";
+import { cancelarPortador, cancelarReserva, confirmarReserva, criarReserva, dadosDoSite, FONTE_ALTERACAO, listarBloqueios, listarReservas, obterReserva, salvarEmailHospede, sincronizarReserva, tentarCancelarReserva } from "./repositorio";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -145,3 +145,68 @@ describe("reservas", () => {
   });
 });
 
+
+describe("reserva do site e a reserva-pedido de uma alteração (M8.2d)", () => {
+  it("dadosDoSite: os dados da própria reserva, confirmada, com quem recebe = a empresa", async () => {
+    const s = await sincronizarReserva(db, org, "site", "cot-1", dados({ origem: "site", estado: "pedido", hospedeTelefone: "(21) 90000-0000", observacoes: "Pedido pelo site" }));
+    if (!s.ok) throw new Error("falhou");
+    const r = (await obterReserva(db, org, s.reserva.id))!;
+    expect(dadosDoSite(r)).toMatchObject({
+      imovelId: im,
+      origem: "site",
+      estado: "confirmada",
+      recebimento: "empresa",
+      checkin: r.checkin,
+      checkout: r.checkout,
+      hospedes: r.hospedes,
+      hospedeNome: r.hospedeNome,
+      hospedeEmail: r.hospedeEmail,
+      hospedeTelefone: "(21) 90000-0000",
+      valorBruto: r.valorBruto,
+      taxaCanal: r.taxaCanal,
+      valorLiquido: r.valorLiquido,
+      observacoes: "Pedido pelo site",
+    });
+  });
+
+  it("a reserva-pedido não se confirma nem se cancela pela ficha; cancelarPortador só cancela a da própria alteração, uma vez", async () => {
+    const alterada = await sincronizarReserva(db, org, "site", "cot-2", dados({ origem: "site", codigoCanal: "" }));
+    if (!alterada.ok) throw new Error("falhou");
+    const alteracaoId = crypto.randomUUID();
+    const portador = await sincronizarReserva(db, org, FONTE_ALTERACAO, alteracaoId, dados({ origem: "site", estado: "pedido", checkin: "2026-10-13", checkout: "2026-10-14", hospedeNome: `Alteração ${alterada.reserva.codigo}`, hospedeEmail: "", valorBruto: null, taxaCanal: null, valorLiquido: null, codigoCanal: "" }));
+    if (!portador.ok) throw new Error("falhou");
+    const conf = await confirmarReserva(db, org, portador.reserva.id, null);
+    expect(conf).toEqual({ ok: false, aviso: `Estas são as datas seguradas de uma alteração da reserva ${alterada.reserva.codigo}: elas não se confirmam por aqui.` });
+    expect(await tentarCancelarReserva(db, org, portador.reserva.id, null)).toEqual({ ok: false, aviso: `Estas são as datas seguradas de uma alteração da reserva ${alterada.reserva.codigo}: elas somem sozinhas quando a alteração é aplicada, desistida ou vence.` });
+    // Outra alteração (id diferente) não cancela esta; a própria cancela, uma vez.
+    const agora = new Date("2026-10-01T15:00:00Z");
+    expect(await db.transaction((tx) => cancelarPortador(tx, org, { id: crypto.randomUUID(), reservaId: alterada.reserva.id, holdReservaId: portador.reserva.id }, null, agora, "teste"))).toBe(false);
+    expect(await db.transaction((tx) => cancelarPortador(tx, org, { id: alteracaoId, reservaId: alterada.reserva.id, holdReservaId: alterada.reserva.id }, null, agora, "teste"))).toBe(false);
+    expect(await db.transaction((tx) => cancelarPortador(tx, org, { id: alteracaoId, reservaId: alterada.reserva.id, holdReservaId: portador.reserva.id }, null, agora, "teste"))).toBe(true);
+    expect(await db.transaction((tx) => cancelarPortador(tx, org, { id: alteracaoId, reservaId: alterada.reserva.id, holdReservaId: portador.reserva.id }, null, agora, "teste"))).toBe(false);
+    expect((await obterReserva(db, org, portador.reserva.id))?.estado).toBe("cancelada");
+    expect((await obterReserva(db, org, alterada.reserva.id))?.estado).toBe("confirmada");
+    // De outra empresa: nada.
+    expect(await db.transaction((tx) => cancelarPortador(tx, outra, { id: alteracaoId, reservaId: alterada.reserva.id, holdReservaId: portador.reserva.id }, null, agora, "teste"))).toBe(false);
+  });
+});
+
+describe("a importação do Beds24 e a reserva-pedido de uma alteração (M8.2d)", () => {
+  it("nunca acha a reserva-pedido: nem pelo id da fonte (o da alteração), nem pelo canal e código; cria a dela e a reserva-pedido fica como estava", async () => {
+    const alterada = await sincronizarReserva(db, org, "site", "cot-3", dados({ origem: "site", codigoCanal: "" }));
+    if (!alterada.ok) throw new Error("falhou");
+    const alteracaoId = crypto.randomUUID();
+    const portador = await sincronizarReserva(db, org, FONTE_ALTERACAO, alteracaoId, dados({ origem: "site", estado: "pedido", checkin: "2026-10-13", checkout: "2026-10-14", hospedeNome: `Alteração ${alterada.reserva.codigo}`, hospedeEmail: "", valorBruto: null, taxaCanal: null, valorLiquido: null, codigoCanal: "" }));
+    if (!portador.ok) throw new Error("falhou");
+    // O pior caso: o Beds24 manda uma reserva com o mesmo id da alteração, nas mesmas noites (e outra pelo canal e código vazio).
+    const mesmoId = await sincronizarReserva(db, org, "beds24", alteracaoId, dados({ checkin: "2026-10-13", checkout: "2026-10-14", codigoCanal: "HM999" }));
+    const semCodigo = await sincronizarReserva(db, org, "beds24", "555", dados({ origem: "booking", checkin: "2026-10-13", checkout: "2026-10-14", codigoCanal: "" }));
+    for (const s of [mesmoId, semCodigo]) {
+      if (!s.ok) throw new Error("falhou");
+      expect(s).toMatchObject({ criada: true });
+      expect(s.reserva.id).not.toBe(portador.reserva.id);
+      expect(s.reserva.fonte).toBe("beds24");
+    }
+    expect(await obterReserva(db, org, portador.reserva.id)).toMatchObject({ fonte: FONTE_ALTERACAO, idFonte: alteracaoId, estado: "pedido", hospedeNome: `Alteração ${alterada.reserva.codigo}`, beds24Id: null, valorBruto: null });
+  });
+});

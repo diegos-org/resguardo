@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularReserva, comissao, noitesPorMes, ratear, REGRAS_PADRAO, type ReservaParaMotor } from "./motor";
+import { calcularReserva, comissao, noitesPorMes, ratear, REGRAS_PADRAO, reservaCalculadaPeloMotor, type ReservaParaMotor } from "./motor";
 
 const reserva = (over: Partial<ReservaParaMotor> = {}): ReservaParaMotor => ({
   id: "r1",
@@ -145,4 +145,39 @@ describe("calcularReserva", () => {
 
 it.each(["consulta", "pedido"] as const)("%s não gera receita, comissão ou repasse", estado => {
   expect(calcularReserva(reserva({ estado }), quinzePorCento, ["p1"]).lancamentos).toEqual([]);
+});
+
+describe("cancelada com valor retido pela política (M8.2c)", () => {
+  it("valor retido igual ao bruto: os mesmos lançamentos e chaves de uma confirmada, com o aviso", () => {
+    const confirmada = calcularReserva(reserva({ origem: "site" }), quinzePorCento, ["p1"]);
+    const retida = calcularReserva(reserva({ origem: "site", estado: "cancelada", valorRetido: 150000 }), quinzePorCento, ["p1"]);
+    expect(retida.lancamentos).toEqual(confirmada.lancamentos);
+    expect(retida.avisos).toEqual(["Reserva cancelada com valor retido pela política: dividido como uma reserva normal.", ...confirmada.avisos]);
+  });
+
+  it("o valor retido é a base, não o valor da reserva", () => {
+    const { lancamentos } = calcularReserva(reserva({ estado: "cancelada", valorBruto: 999999, valorRetido: 150000 }), quinzePorCento, ["p1"]);
+    expect(lancamentos.find((l) => l.tipo === "receita_bruta")!.valor).toBe(150000);
+    expect(lancamentos.find((l) => l.tipo === "direito_proprietario")!.valor).toBe(108375);
+  });
+
+  it("sem valor retido (nulo ou zero): nenhum lançamento", () => {
+    for (const valorRetido of [null, 0, undefined])
+      expect(calcularReserva(reserva({ estado: "cancelada", valorRetido }), quinzePorCento, ["p1"])).toEqual({ lancamentos: [], avisos: ["Reserva cancelada: sem lançamentos."] });
+  });
+
+  it("taxa do Mercado Pago ainda desconhecida: taxa zero e o aviso, como numa confirmada", () => {
+    const { lancamentos, avisos } = calcularReserva(reserva({ origem: "site", estado: "cancelada", taxaCanal: null, valorRetido: 150000 }), quinzePorCento, ["p1"]);
+    expect(lancamentos.some((l) => l.tipo === "taxa_canal")).toBe(false);
+    expect(lancamentos.find((l) => l.tipo === "comissao")!.valor).toBe(22500);
+    expect(avisos).toContain("Taxa do canal não informada: considerada zero.");
+  });
+
+  it("reservaCalculadaPeloMotor: confirmada e cancelada com valor retido; o resto não", () => {
+    expect(reservaCalculadaPeloMotor({ estado: "confirmada", valorRetido: null })).toBe(true);
+    expect(reservaCalculadaPeloMotor({ estado: "cancelada", valorRetido: 150000 })).toBe(true);
+    expect(reservaCalculadaPeloMotor({ estado: "cancelada", valorRetido: null })).toBe(false);
+    expect(reservaCalculadaPeloMotor({ estado: "cancelada", valorRetido: 0 })).toBe(false);
+    for (const estado of ["pendente", "pedido", "consulta"] as const) expect(reservaCalculadaPeloMotor({ estado, valorRetido: 150000 })).toBe(false);
+  });
 });

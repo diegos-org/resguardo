@@ -8,6 +8,7 @@ import styles from "@/components/formularios.module.css";
 import { AcertoPorFora } from "@/components/repasses/AcertoPorFora";
 import { ExtratosCanal } from "@/components/repasses/ExtratosCanal";
 import { CartaoRepasse } from "@/components/repasses/CartaoRepasse";
+import { NumerosDoRepasse } from "@/components/repasses/NumerosDoRepasse";
 import { type DonoAntecipavel, RepassesAntecipados } from "@/components/repasses/RepassesAntecipados";
 import { getDb } from "@/db/client";
 import { imoveis, proprietarios } from "@/db/schema";
@@ -22,7 +23,7 @@ import { situacaoAntesDoInicio } from "@/repasses/por-fora";
 import { ehDiaDeFechamento, proximoFechamento } from "@/repasses/periodicidade";
 import { periodicidadeDoProprietario } from "@/repasses/proprietario";
 import { lerInicioDoSistema, lerRegrasRepasses } from "@/repasses/regras-config";
-import { itensDoRepasse, limitesDoMes, listarRepassesDaOrganizacao, meioDiaDe, mesAFechar, nomeMes, type PrevisaoRepasse, somarMes } from "@/repasses/repasses";
+import { itensDoRepasse, limitesDoMes, listarRepassesDaOrganizacao, meioDiaDe, mesAFechar, nomeMes, somarMes } from "@/repasses/repasses";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 const SUCESSO: Record<string, string> = {
@@ -32,28 +33,6 @@ const SUCESSO: Record<string, string> = {
   antecipado: "Repasse antecipado gerado: a pagar.",
   comprovante: "Comprovante registrado.",
 };
-
-function Numeros({ p }: { p: PrevisaoRepasse }) {
-  // Os adiantamentos já estão no saldo do acerto: "a receber" os soma de volta para mostrar a conta.
-  const [saldo, descontado, contestado, fora, antecipado] = p.repasse ? [p.repasse.saldo, p.repasse.descontado, p.repasse.contestado, p.repasse.foraDoFechamento, p.repasse.antecipado] : [p.saldo, p.aDescontar, p.contestado, p.fora, p.antecipado];
-  const itens: [string, string][] = [
-    ["Crédito do proprietário até o fim do mês (antes dos descontos)", formatBRL(saldo + descontado + contestado)],
-    ["− Adiantamentos descontados", formatBRL(descontado)],
-    ["Contestados (não descontados)", formatBRL(contestado)],
-    ...(fora ? ([["− Fora do fechamento (dinheiro ainda não com a empresa)", formatBRL(fora)]] as [string, string][]) : []),
-    ...(antecipado ? ([["+ Noites de meses seguintes já disponíveis (adiantamento)", formatBRL(antecipado)]] as [string, string][]) : []),
-  ];
-  return (
-    <dl style={{ display: "flex", gap: "8px 24px", flexWrap: "wrap", margin: 0 }}>
-      {itens.map(([k, v]) => (
-        <div key={k}>
-          <dt style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>{k}</dt>
-          <dd style={{ margin: 0 }}>{v}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
 
 export default async function Repasses({ searchParams }: PageProps<"/painel/financeiro/repasses">) {
   const sessao = await exigirSessaoPainel();
@@ -190,7 +169,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
                 {r ? (r.situacao === "pago" ? `Pago em ${dataBr(r.dataPagamento!)}` : "Fechado · a pagar") : p.valor > 0 ? "A fechar" : p.deve > 0 ? "Proprietário deve" : "Nada a repassar"}
               </span>
             </div>
-            <Numeros p={p} />
+            <NumerosDoRepasse p={p} itensDoFechamento={r ? (itensFechamento.get(r.id) ?? []) : []} />
             <p style={{ margin: 0, fontSize: "1.25rem" }}>
               {r || p.valor > 0 ? (
                 <>

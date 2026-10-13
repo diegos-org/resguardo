@@ -5,6 +5,7 @@ import styles from "./site.module.css";
 
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const dataBr = (d: string) => d.split("-").reverse().join("/");
+const noitesEntre = (entrada: string, saida: string) => Math.round((Date.parse(`${saida}T00:00:00Z`) - Date.parse(`${entrada}T00:00:00Z`)) / 86_400_000);
 const quando = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
 
 export const TITULO_COTACAO: Record<CotacaoVista["estado"], string> = {
@@ -60,6 +61,7 @@ export function Cotacao({
   pagamento,
   pagamentoNoSite = false,
   comCartao = false,
+  reservaAtual = null,
 }: {
   vista: CotacaoVista;
   whatsapp: string | null;
@@ -68,6 +70,11 @@ export function Cotacao({
   pagamento?: { titulo: string; conteudo: ReactNode };
   pagamentoNoSite?: boolean;
   comCartao?: boolean;
+  /**
+   * M8.2d: a reserva desta cotação já alterada, como ela está agora: a linha diz as datas, as pessoas e o valor de agora e
+   * que o resumo é o da cotação original (a alteração aplicada sai do quadro dela depois de um tempo).
+   */
+  reservaAtual?: { codigo: string; checkin: string; checkout: string; hospedes: number | null; valor: number | null } | null;
 }) {
   const c = vista.cotacao;
   const novaConsulta = `/consulta?${new URLSearchParams({ imovel: c.imovelCodigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) })}`;
@@ -85,6 +92,14 @@ export function Cotacao({
         {dataBr(c.checkin)} a {dataBr(c.checkout)} · {c.noites} {c.noites === 1 ? "noite" : "noites"} · {c.hospedes} {c.hospedes === 1 ? "pessoa" : "pessoas"}
         {c.situacao === "a_confirmar" ? " · disponibilidade a confirmar pela equipe" : ""}
       </p>
+      {reservaAtual && (
+        <p className={styles.texto} role="note">
+          A sua reserva <strong>{reservaAtual.codigo}</strong> foi alterada depois desta cotação: agora é de {dataBr(reservaAtual.checkin)} a {dataBr(reservaAtual.checkout)} · {noitesEntre(reservaAtual.checkin, reservaAtual.checkout)}{" "}
+          {noitesEntre(reservaAtual.checkin, reservaAtual.checkout) === 1 ? "noite" : "noites"}
+          {reservaAtual.hospedes !== null ? ` · ${reservaAtual.hospedes} ${reservaAtual.hospedes === 1 ? "pessoa" : "pessoas"}` : ""}
+          {reservaAtual.valor !== null ? ` · valor da reserva ${brl(reservaAtual.valor)}` : ""}. O resumo abaixo é o da cotação original.
+        </p>
+      )}
       {pagamento?.conteudo}
       <dl className={styles.resumo}>
         <dt>Diárias</dt>

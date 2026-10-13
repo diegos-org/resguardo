@@ -13,7 +13,7 @@ import { type CodigoFalhaPix, gerarPix } from "@/pagamentos/pix";
 import { ProvedorFalso } from "@/pagamentos/falso";
 import { ErroProvedor } from "@/pagamentos/provedor";
 import { AGORA, type Cenario, CHAVE_PUBLICA_FICTICIA, EMAIL_HOSPEDE, env, minutos, montarCenario, TOTAL } from "@/pagamentos/testes";
-import { CACHE_PAGAMENTO, cartaoNoSite, MENSAGENS_CARTAO_HOSPEDE, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, pixPossivel, portaoDoSite, responderPagamento, vistaDoPagamento } from "./pagamento";
+import { CACHE_PAGAMENTO, cartaoNoSite, MENSAGENS_CARTAO_HOSPEDE, MENSAGENS_PIX_HOSPEDE, mensagemSemPix, mensagemSemPixDaAlteracao, pixPossivel, portaoDoSite, responderPagamento, vistaDoPagamento } from "./pagamento";
 
 let db: Db, close: () => Promise<void>, c: Cenario;
 beforeAll(async () => { ({ db, close } = await createTestDb()); });
@@ -165,13 +165,22 @@ describe("o que a página da cotação mostra do pagamento (M8.2a)", () => {
   });
 
   it("mensagens ao hóspede: uma para cada falha do Pix, sem texto do provedor nem motivo interno", () => {
-    // M8.2b: `em_analise` (um cartão desta cotação em análise impede o Pix).
-    const codigos: CodigoFalhaPix[] = ["nao_encontrada", "nao_oferecido", "em_andamento", "em_analise", "ja_pago", "limite", "provedor", "incerto", "recusado", "ocupado", "ao_vivo", "aceite_pendente", "aceite_mudou"];
+    // M8.2b: `em_analise` (um cartão desta cotação em análise impede o Pix). M8.2d: `alteracao_mudou` (a página ficou aberta
+    // de uma alteração que já não vale).
+    const codigos: CodigoFalhaPix[] = ["nao_encontrada", "nao_oferecido", "em_andamento", "em_analise", "ja_pago", "limite", "provedor", "incerto", "recusado", "ocupado", "ao_vivo", "aceite_pendente", "aceite_mudou", "alteracao_mudou"];
     expect(Object.keys(MENSAGENS_PIX_HOSPEDE).sort()).toEqual([...codigos].sort());
     for (const m of Object.values(MENSAGENS_PIX_HOSPEDE)) expect(m).not.toMatch(/Configurações|painel|Beds24|contrato|proprietário/i);
     expect(mensagemSemPix("prazo_vencido")).toBe("O prazo das datas desta cotação acabou.");
     expect(mensagemSemPix("varios_proprietarios")).toBe(MENSAGENS_PIX_HOSPEDE.nao_oferecido);
     expect(mensagemSemPix("desligado_no_painel")).toBe(MENSAGENS_PIX_HOSPEDE.nao_oferecido);
+  });
+
+  it("M8.2d: por que a diferença de uma alteração não é oferecida — a alteração mudou, o prazo das novas datas acabou, ou o curto de sempre", () => {
+    expect(mensagemSemPixDaAlteracao("nao_segurada")).toBe(MENSAGENS_PIX_HOSPEDE.alteracao_mudou);
+    expect(mensagemSemPixDaAlteracao("cotacao_nao_encontrada")).toBe(MENSAGENS_PIX_HOSPEDE.alteracao_mudou);
+    expect(mensagemSemPixDaAlteracao("prazo_vencido")).toBe("O prazo das novas datas acabou: a sua reserva continua como estava.");
+    expect(mensagemSemPixDaAlteracao("recebimento_manual")).toBe(MENSAGENS_PIX_HOSPEDE.nao_oferecido);
+    expect(mensagemSemPixDaAlteracao("a_confirmar")).not.toMatch(/Beds24|painel/i);
   });
 });
 
@@ -349,6 +358,8 @@ describe("cartão de crédito na página da cotação (M8.2b)", () => {
     const codigos: CodigoFalhaCartao[] = [
       "nao_encontrada", "nao_oferecido", "indisponivel", "em_andamento", "em_analise", "ja_pago", "limite", "limite_geral", "parcelas", "so_credito",
       "dados_cartao", "recusado", "verificacao", "provedor", "incerto", "ocupado", "ao_vivo", "aceite_pendente", "aceite_mudou", "prazo",
+      // M8.2d: a alteração da página já não vale.
+      "alteracao_mudou",
     ];
     expect(Object.keys(MENSAGENS_CARTAO_HOSPEDE).sort()).toEqual([...codigos].sort());
     for (const m of Object.values(MENSAGENS_CARTAO_HOSPEDE)) expect(m).not.toMatch(/Configurações|painel|Beds24|contrato|proprietário|disjuntor|recusas|rejected|high_risk/i);

@@ -8,14 +8,16 @@
  */
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
-import { eventosPagamento, pagamentos } from "@/db/schema";
+import { contestacoesPagamento, eventosPagamento, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
+import { expirarSeVencida } from "./alteracao-prazo";
 import { aplicarLeitura, type Efeitos, type Leitura } from "./aplicar";
 import { DESISTIR_SEM_ORDER_CARTAO_MS, paginaAindaLe } from "./andamento";
+import { contestacaoDaLeitura, type LinhaParaCasar } from "./contestacao-regras";
 import { type Cobranca, ErroProvedor, type ProvedorPagamento } from "./provedor";
 import type { SituacaoPagamento } from "./situacoes";
-import { type Pagamento, travarCotacao } from "./travas";
+import { dinheiroDaReserva, type Pagamento, travarCotacao } from "./travas";
 
 /** A página e os outros gatilhos não leem o provedor mais de uma vez a cada 15 s por tentativa (salvo `forcar`). */
 export const INTERVALO_CONSULTA_MS = 15_000;
@@ -30,8 +32,11 @@ export const INTERVALO_FINANCEIRO_MS = 5 * 60_000;
 export const DESISTIR_SEM_ORDER_MS = 15 * 60_000;
 
 export type OrigemConferencia = "aviso" | "pagina" | "rotina" | "painel";
-/** `canceladas`: Pix que sobraram cancelados no provedor por causa desta leitura (dinheiro chegou nesta tentativa). */
-export type ResultadoConferencia = { ok: true; situacao: SituacaoPagamento; consultou: boolean; mudou: boolean; canceladas?: number } | { ok: false; erro: string };
+/**
+ * `canceladas`: Pix que sobraram cancelados no provedor por causa desta leitura (dinheiro chegou nesta tentativa).
+ * `aplicada`: a order lida bateu com a tentativa e foi aplicada (M8.2c: o cancelamento integral exige uma leitura aplicada).
+ */
+export type ResultadoConferencia = { ok: true; situacao: SituacaoPagamento; consultou: boolean; mudou: boolean; canceladas?: number; aplicada?: boolean } | { ok: false; erro: string };
 
 /**
  * Chave do cancelamento: nova a cada pedido (o provedor recusa repetir uma chave já usada, e cancelar o que já
@@ -43,17 +48,27 @@ const mensagemDoErro = (e: unknown) => (e instanceof ErroProvedor ? e.message : 
 /** Falha de leitura que chegou ao provedor (limite de chamadas ou sem resposta): na página, a marca dos 15 s fica. */
 const falhaQueSegura = (e: unknown) => e instanceof ErroProvedor && (e.tipo === "limite" || e.tipo === "incerto");
 
-function precisaFinanceiro(p: Pagamento, c: Cobranca, agora: Date, forcar: boolean): boolean {
-  // Taxa, líquido e liberação só servem enquanto aprovado (a taxa que não volta numa devolução a equipe informa).
-  if (c.situacao !== "aprovado") return false;
-  const primeira = p.situacao !== "aprovado" && c.situacao === "aprovado";
+/**
+ * Precisa ler taxa, líquido e liberação (Payments API) agora? M8.2e: pela situação explicada (`contestacaoDaLeitura`): a
+ * order ainda em `charged_back/*` de uma disputa já encerrada aqui (a ganha voltou o pagamento à situação de antes) vale a
+ * situação local, e a Payments API volta a ser lida; com a disputa em curso no dinheiro da reserva ainda sem liberação, a
+ * leitura serve para o aviso da liberação lida (`aplicarLeitura` nunca lança nesse caso).
+ */
+function precisaFinanceiro(p: Pagamento, c: Cobranca, linhas: readonly LinhaParaCasar[], agora: Date, forcar: boolean): boolean {
+  const s: string = c.situacao === "contestado" && !contestacaoDaLeitura(c, linhas).contestado ? p.situacao : c.situacao;
+  const emDisputa = s === "contestado" && dinheiroDaReserva(p) && !p.liberacaoConfirmadaEm;
+  // Taxa, líquido e liberação só servem enquanto aprovado (a taxa que não volta numa devolução a equipe informa). M8.2d: o
+  // dinheiro da reserva devolvido em parte pelas nossas devoluções ainda espera a liberação (`aplicarLeitura` confere).
+  if (s !== "aprovado" && !(s === "devolvido_parcial" && dinheiroDaReserva(p) && !p.liberacaoConfirmadaEm) && !emDisputa) return false;
+  const primeira = p.situacao !== "aprovado" && s === "aprovado";
   // Depois do primeiro dia da aprovação, a Payments API é lida a cada 6 h (o sinal de liberação pode demorar semanas).
   const intervalo = p.aprovadoEm && agora.getTime() - p.aprovadoEm.getTime() > 24 * 3_600_000 ? 6 * 3_600_000 : INTERVALO_FINANCEIRO_MS;
   if (!primeira && !forcar && p.financeiroConsultadoEm && agora.getTime() - p.financeiroConsultadoEm.getTime() < intervalo) return false;
-  if (p.taxa === null) return true;
-  if (p.desfecho === "reserva" && !p.liberacaoConfirmadaEm) return true;
+  if (emDisputa || p.taxa === null) return true;
+  // A liberação: do dinheiro da reserva (o que a confirmou e a diferença aplicada de uma alteração, M8.2d).
+  if (dinheiroDaReserva(p) && !p.liberacaoConfirmadaEm) return true;
   // Liberação registrada à mão: o sinal do provedor ainda concilia (ou acusa a diferença) — conferido uma vez por dia.
-  if (p.desfecho === "reserva" && p.liberacaoOrigem === "manual") {
+  if (dinheiroDaReserva(p) && p.liberacaoOrigem === "manual") {
     return forcar || !p.financeiroConsultadoEm || agora.getTime() - p.financeiroConsultadoEm.getTime() >= 24 * 3_600_000;
   }
   return false;
@@ -65,7 +80,7 @@ function precisaFinanceiro(p: Pagamento, c: Cobranca, agora: Date, forcar: boole
  * a criação), só depois de 24 h e com a Payments API também sem nenhum pagamento da referência (a chamada a mais só
  * acontece nesse caso; se ela falha, nada se decide).
  */
-async function lerProvedor(p: Pagamento, provedor: ProvedorPagamento, agora: Date, forcar: boolean, conhecida?: Cobranca): Promise<Leitura> {
+async function lerProvedor(p: Pagamento, linhas: readonly LinhaParaCasar[], provedor: ProvedorPagamento, agora: Date, forcar: boolean, conhecida?: Cobranca): Promise<Leitura> {
   let cobranca: Cobranca | null;
   if (conhecida) cobranca = conhecida;
   else if (p.idProvedor) cobranca = await provedor.consultar(p.idProvedor);
@@ -76,15 +91,20 @@ async function lerProvedor(p: Pagamento, provedor: ProvedorPagamento, agora: Dat
     if (p.forma !== "cartao") desistir = idade >= DESISTIR_SEM_ORDER_MS;
     else if (idade >= DESISTIR_SEM_ORDER_CARTAO_MS) desistir = !(await provedor.existePagamentoPorReferencia(p.referencia, p.criadoEm));
   }
-  const financeiro = cobranca && precisaFinanceiro(p, cobranca, agora, forcar) ? await provedor.detalheFinanceiro(cobranca) : null;
+  const financeiro = cobranca && precisaFinanceiro(p, cobranca, linhas, agora, forcar) ? await provedor.detalheFinanceiro(cobranca) : null;
   return { cobranca, financeiro, desistir, idLido: p.idProvedor };
 }
 
-/** Aplica uma leitura numa transação curta, com as travas na ordem única; devolve os efeitos para depois dela. */
-export async function aplicarNaTransacao(db: Db, organizacaoId: string, p: Pick<Pagamento, "id" | "cotacaoId">, leitura: Leitura, agora: Date): Promise<Efeitos | null> {
+/**
+ * Aplica uma leitura numa transação curta, com as travas na ordem única; devolve os efeitos para depois dela.
+ * `o.vencerAlteracoes` (o "Conferir agora" do painel, M8.2d): antes, vence a alteração da reserva com o prazo das datas
+ * vencido (sem provedor).
+ */
+export async function aplicarNaTransacao(db: Db, organizacaoId: string, p: Pick<Pagamento, "id" | "cotacaoId">, leitura: Leitura, agora: Date, o: { vencerAlteracoes?: boolean } = {}): Promise<Efeitos | null> {
   return db.transaction(async (tx) => {
     const t = await travarCotacao(tx, organizacaoId, p.cotacaoId);
     if (!t || !t.tentativas.some((x) => x.id === p.id)) return null;
+    if (o.vencerAlteracoes) await expirarSeVencida(tx, organizacaoId, t, agora);
     return aplicarLeitura(tx, organizacaoId, t, p.id, leitura, agora);
   });
 }
@@ -150,9 +170,14 @@ export async function conferirTentativa(
   const desfazerReserva = async () => {
     if (reservar) await db.update(pagamentos).set({ consultadoEm: p.consultadoEm }).where(and(eq(pagamentos.id, p.id), eq(pagamentos.consultadoEm, agora)));
   };
+  // M8.2e: as disputas do pagamento (sem trava) só para decidir se a Payments API precisa ser lida (situação explicada).
+  const linhas = await db
+    .select({ id: contestacoesPagamento.id, tipo: contestacoesPagamento.tipo, situacao: contestacoesPagamento.situacao, idCaso: contestacoesPagamento.idCaso, idContestacao: contestacoesPagamento.idContestacao, idTransacao: contestacoesPagamento.idTransacao, rodada: contestacoesPagamento.rodada, abertaEm: contestacoesPagamento.abertaEm })
+    .from(contestacoesPagamento)
+    .where(eq(contestacoesPagamento.pagamentoId, p.id));
   let leitura: Leitura;
   try {
-    leitura = await lerProvedor(p, provedor, agora, opcoes.forcar === true, opcoes.cobranca);
+    leitura = await lerProvedor(p, linhas, provedor, agora, opcoes.forcar === true, opcoes.cobranca);
   } catch (e) {
     // Salvo na página com o Mercado Pago limitando as chamadas (429) ou sem responder (tempo esgotado, 5xx): aí a
     // marca fica, e a página lê no máximo uma vez a cada 15 s mesmo enquanto ele falha (o freio vale justamente
@@ -162,14 +187,14 @@ export async function conferirTentativa(
   }
   let efeitos: Efeitos | null;
   try {
-    efeitos = await aplicarNaTransacao(db, organizacaoId, p, leitura, agora);
+    efeitos = await aplicarNaTransacao(db, organizacaoId, p, leitura, agora, { vencerAlteracoes: opcoes.origem === "painel" });
   } catch (e) {
     await desfazerReserva();
     throw e;
   }
   if (!efeitos) return { ok: false, erro: "Pagamento não encontrado." };
   const canceladas = efeitos.cancelar.length && !opcoes.semCancelar ? await cancelarNoProvedor(db, organizacaoId, efeitos.cancelar, provedor, agora) : 0;
-  return { ok: true, situacao: efeitos.situacao, consultou: true, mudou: efeitos.mudou, ...(canceladas ? { canceladas } : {}) };
+  return { ok: true, situacao: efeitos.situacao, consultou: true, mudou: efeitos.mudou, ...(canceladas ? { canceladas } : {}), ...(efeitos.aplicada ? { aplicada: true } : {}) };
 }
 
 export { FOLGA_LEITURA_PIX_ENCERRADO_MS } from "./andamento";

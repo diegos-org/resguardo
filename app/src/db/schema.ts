@@ -1,8 +1,23 @@
 import { sql } from "drizzle-orm";
-import { boolean, customType, date, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, boolean, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
-import type { ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
+import type { CodigoDevolucao, ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
+import type {
+  CodigoCausaContestacao,
+  DadosDoEvento,
+  DocumentacaoDaContestacao,
+  EstadoConhecidoContestacao,
+  FonteEventoContestacao,
+  OrigemContestacao,
+  OrigemValorContestacao,
+  QuemArcaContestacao,
+  SituacaoContestacao,
+  SituacaoPagamentoAntes,
+  TipoContestacao,
+  TipoEventoContestacao,
+} from "@/pagamentos/contestacao-regras";
 import type { PeriodicidadeRepasse } from "@/repasses/periodicidade";
+import type { SituacaoDisponibilidade } from "@/site/disponibilidade";
 
 /**
  * Esquema do banco (Drizzle). Novas tabelas entram aqui e geram migração com
@@ -408,6 +423,11 @@ export const reservas = pgTable(
     divergenciaEm: timestamp("divergencia_em", { withTimezone: true }),
     /** O cálculo divergente que ficou em conferência (M4.8): outro cálculo divergente reabre a conferência. */
     divergenciaCalculo: text("divergencia_calculo"),
+    /**
+     * Centavos que ficaram com a empresa de uma reserva CANCELADA sem devolução (M8.2c, política de cancelamento): o motor
+     * divide esse valor como uma reserva normal. null = nada retido. Só o cancelamento pela política grava.
+     */
+    valorRetido: integer("valor_retido"),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -546,6 +566,7 @@ export const TIPOS_LANCAMENTO = [
   "adiantamento", // empresa pagou algo devido pelo proprietário
   "reembolso", // proprietário devolveu adiantamento
   "ajuste", // correção/ajuste de canal (motivo obrigatório)
+  "devolucao", // dinheiro que voltou ao hóspede (saída; `montante` = o que saiu, `valor` 0) — M8.2c
 ] as const;
 export type TipoLancamento = (typeof TIPOS_LANCAMENTO)[number];
 export const tipoLancamentoEnum = pgEnum("tipo_lancamento", TIPOS_LANCAMENTO);
@@ -964,6 +985,13 @@ export const repasses = pgTable(
     valor: integer("valor").notNull(),
     /** M4.10, fechamento: parte da competência que ficou fora (dinheiro ainda não com a empresa); vai para o repasse seguinte. */
     foraDoFechamento: integer("fora_do_fechamento").notNull().default(0),
+    /**
+     * M8.2e, fechamento: do `foraDoFechamento`, a parte presa por disputa do pagamento (reserva em conferência) e as linhas da
+     * disputa que esperam junto (com sinal), gravadas no fechamento. null = fechamento de antes (a divisão é refeita pela
+     * linha do tempo, `foraPorDisputaDoFechamento`).
+     */
+    foraPresaDisputa: integer("fora_presa_disputa"),
+    foraSeguradoJunto: integer("fora_segurado_junto"),
     /** M4.10, fechamento: partes já disponíveis com noites fora do mês fechado, pagas neste repasse como adiantamento vinculado. */
     antecipado: integer("antecipado").notNull().default(0),
     situacao: text("situacao").$type<SituacaoRepasse>().notNull().default("a_pagar"),
@@ -1211,7 +1239,21 @@ export const rotinaExecucoes = pgTable(
 // gravado antes de chamar o provedor — é ele que impede mandar a mesma mensagem duas vezes.
 // ---------------------------------------------------------------------------
 
-export const TIPOS_MENSAGEM_HOSPEDE = ["confirmacao", "checkin", "checkout", "agradecimento"] as const;
+/**
+ * Do cancelamento de reserva paga pelo site (M8.2c): pedido recebido, decisão e devolução feita (que serve também à
+ * devolução de uma alteração). Da alteração (M8.2d): a proposta (em qualquer direção) e a confirmação.
+ */
+export const TIPOS_MENSAGEM_HOSPEDE = [
+  "confirmacao",
+  "checkin",
+  "checkout",
+  "agradecimento",
+  "cancelamento_recebido",
+  "cancelamento_decidido",
+  "devolucao_concluida",
+  "alteracao_proposta",
+  "alteracao_confirmada",
+] as const;
 export type TipoMensagemHospede = (typeof TIPOS_MENSAGEM_HOSPEDE)[number];
 /** enviando: pedido em curso (se ficar assim, não se sabe se saiu); incerto: sem confirmação do provedor. */
 export const ESTADOS_ENVIO_HOSPEDE = ["enviando", "enviado", "falhou", "incerto"] as const;
@@ -1423,10 +1465,18 @@ export const beds24CalendarioEnviado = pgTable("beds24_calendario_enviado", {
  */
 export const SITUACOES_PAGAMENTO = ["criando", "incerta", "pendente", "aprovado", "recusado", "cancelado", "expirado", "devolvido", "devolvido_parcial", "contestado"] as const;
 export type SituacaoPagamento = (typeof SITUACOES_PAGAMENTO)[number];
-/** O que foi feito do dinheiro aprovado: confirmou a reserva, foi devolvido pelo provedor ou devolvido por fora. */
-export const DESFECHOS_PAGAMENTO = ["reserva", "devolucao", "por_fora"] as const;
+/**
+ * O que foi feito do dinheiro aprovado: confirmou a reserva, pagou a diferença de uma alteração aplicada (M8.2d), foi
+ * devolvido pelo provedor, devolvido por fora, ou (só no pagamento sem reserva) voltou ao pagador por uma disputa
+ * perdida (M8.2e).
+ */
+export const DESFECHOS_PAGAMENTO = ["reserva", "alteracao", "devolucao", "por_fora", "contestacao"] as const;
 export type DesfechoPagamento = (typeof DESFECHOS_PAGAMENTO)[number];
-export const SITUACOES_DEVOLUCAO = ["pedida", "confirmada", "recusada", "por_fora"] as const;
+/**
+ * `substituida` (M8.2d): devolução de uma alteração que nunca chegou ao Mercado Pago e foi absorvida pela devolução de um
+ * cancelamento integral. Não compromete nada, nunca é enviada e fica no histórico.
+ */
+export const SITUACOES_DEVOLUCAO = ["pedida", "confirmada", "recusada", "por_fora", "substituida"] as const;
 export type SituacaoDevolucao = (typeof SITUACOES_DEVOLUCAO)[number];
 export const RESULTADOS_EVENTO_PAGAMENTO = ["pendente", "aplicado", "ignorado", "desconhecido", "erro"] as const;
 export type ResultadoEventoPagamento = (typeof RESULTADOS_EVENTO_PAGAMENTO)[number];
@@ -1469,7 +1519,7 @@ export const aceitesSite = pgTable(
 
 /**
  * Uma tentativa de pagamento (uma order do provedor, que aceita uma transação). `valor` é o que enviamos
- * (= `cotacoes.total`); `valorPago` só para mostrar. `taxa` = valor − líquido, numa leitura só. A liberação
+ * (= `cotacoes.total`, ou a diferença de uma alteração da reserva, M8.2d); `valorPago` só para mostrar. `taxa` = valor − líquido, numa leitura só. A liberação
  * prevista não libera nada; o recebimento no livro só nasce com o sinal explícito do provedor ou à mão.
  * Copia e cola e imagem do Pix são apagados quando o Pix vence ou é pago.
  */
@@ -1555,6 +1605,24 @@ export const pagamentos = pgTable(
      * leitura da Payments API que o trouxe; null = não lido. Com ele > 0 a taxa não entra sozinha (aviso `parcelas_sem_juros`).
      */
     custoParcelasVendedor: integer("custo_parcelas_vendedor"),
+    // --- O que a última leitura da order mostrou das devoluções (M8.2c): só valores, nunca dado pessoal.
+    /** Centavos já devolvidos (`Cobranca.devolvido`) na última leitura que bateu com a tentativa. */
+    devolvidoLido: integer("devolvido_lido").notNull().default(0),
+    /** A última leitura que bateu mostrou devolução em andamento (`Cobranca.devolucaoEmAndamento`). */
+    devolucaoEmAndamentoLida: boolean("devolucao_em_andamento_lida").notNull().default(false),
+    /** Primeira leitura com a situação `devolvido` (gravada uma vez só): o dia em que o dinheiro voltou ao hóspede. */
+    devolvidoVistoEm: timestamp("devolvido_visto_em", { withTimezone: true }),
+    // --- Alteração de reserva paga (M8.2d)
+    /** A alteração cuja diferença esta tentativa cobra (vive na cotação original); null = a tentativa da própria reserva. */
+    alteracaoId: uuid("alteracao_id").references((): AnyPgColumn => alteracoesReserva.id),
+    /**
+     * Centavos que o painel do Mercado Pago devolveu fora do sistema e que a equipe reconheceu numa decisão (o restante de um
+     * pagamento já devolvido em parte). Só cresce, sob a trava, auditado.
+     */
+    devolvidoForaReconhecido: integer("devolvido_fora_reconhecido").notNull().default(0),
+    // --- Contestação (M8.2e)
+    /** A última busca tardia de contestações deste pagamento (uma por semana), reservada por `UPDATE … RETURNING` antes da chamada. */
+    contestacoesBuscadasEm: timestamp("contestacoes_buscadas_em", { withTimezone: true }),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1563,6 +1631,9 @@ export const pagamentos = pgTable(
     uniqueIndex("pagamentos_id_provedor").on(t.organizacaoId, t.idProvedor).where(sql`${t.idProvedor} is not null`),
     // Só um pagamento confirma cada reserva: os outros só podem ser devolvidos.
     uniqueIndex("pagamentos_um_desfecho_reserva").on(t.reservaId).where(sql`${t.desfecho} = 'reserva'`),
+    // Só um pagamento paga a diferença de cada alteração (M8.2d).
+    uniqueIndex("pagamentos_um_desfecho_alteracao").on(t.alteracaoId).where(sql`${t.desfecho} = 'alteracao'`),
+    index("pagamentos_alteracao").on(t.alteracaoId).where(sql`${t.alteracaoId} is not null`),
     index("pagamentos_busca_id_provedor").on(t.idProvedor),
     index("pagamentos_cotacao").on(t.cotacaoId, t.criadoEm),
     index("pagamentos_reserva").on(t.reservaId),
@@ -1596,7 +1667,430 @@ export const disjuntoresCartao = pgTable(
   (t) => [index("disjuntores_cartao_org").on(t.organizacaoId, t.abertoEm)],
 );
 
-/** Devolução de um pagamento (uma por pagamento): pelo provedor (pedida → confirmada/recusada) ou feita por fora. */
+// ---------------------------------------------------------------------------
+// Cancelamento de reserva paga pelo site (M8.2c): o pedido (do hóspede em Minha reserva ou registrado pela equipe), o
+// retrato da política aceita no pagamento, a decisão e o acerto. Listas fechadas aqui; colunas de texto sem CHECK, como
+// as do M8.2a. Nenhum dado pessoal: as notas (até 300) passam por `textoSemDadosPessoais`.
+// ---------------------------------------------------------------------------
+
+/** pedido: aguarda a equipe; cancelada: decidida (não volta atrás); descartado: o pedido não vale (fica no histórico). */
+export const SITUACOES_CANCELAMENTO = ["pedido", "cancelada", "descartado"] as const;
+export type SituacaoCancelamento = (typeof SITUACOES_CANCELAMENTO)[number];
+/** Por onde o pedido chegou; `site` = o hóspede em Minha reserva (o horário é o do servidor, travado). */
+export const CANAIS_PEDIDO_CANCELAMENTO = ["site", "whatsapp", "email", "telefone", "presencial", "outro"] as const;
+export type CanalPedidoCancelamento = (typeof CANAIS_PEDIDO_CANCELAMENTO)[number];
+export const QUEM_CANCELA_RESERVA = ["hospede", "empresa", "nao_comparecimento"] as const;
+export type QuemCancelaReserva = (typeof QUEM_CANCELA_RESERVA)[number];
+export const MOTIVOS_CANCELAMENTO_EMPRESA = ["imovel_sem_condicoes", "forca_maior", "outro"] as const;
+export type MotivoCancelamentoEmpresa = (typeof MOTIVOS_CANCELAMENTO_EMPRESA)[number];
+/** Motivo da devolução integral por exceção (lista fechada; a nota vai em `motivo_decisao` e nunca ao hóspede nem ao proprietário). */
+export const MOTIVOS_EXCECAO = ["erro_da_scl", "forca_maior", "cortesia_comercial", "saude_ou_familia", "outro"] as const;
+export type MotivoExcecao = (typeof MOTIVOS_EXCECAO)[number];
+/** O que a decisão final dá ao hóspede: tudo de volta ou nada (a devolução de parte do valor é do M8.2d). */
+export const DIREITOS_CANCELAMENTO = ["integral", "nenhum"] as const;
+export type DireitoCancelamento = (typeof DIREITOS_CANCELAMENTO)[number];
+/** O que a política diz (calculado), antes de qualquer decisão da equipe. */
+export const CALCULOS_CANCELAMENTO = ["integral", "nenhum", "sem_politica"] as const;
+export type CalculoCancelamento = (typeof CALCULOS_CANCELAMENTO)[number];
+/**
+ * A base da decisão do cancelamento. `contestacao` (M8.2e): "Cancelar a reserva contestada", a rota sem decisão pela política
+ * e sem devolução pelo sistema (o dinheiro volta ao titular pela disputa, se ele ganhar).
+ */
+export const BASES_CANCELAMENTO = ["prazo", "arrependimento", "empresa", "excecao", "sem_politica", "fora_do_prazo", "estadia_iniciada", "nao_comparecimento", "contestacao"] as const;
+export type BaseCancelamento = (typeof BASES_CANCELAMENTO)[number];
+
+export const cancelamentosReserva = pgTable(
+  "cancelamentos_reserva",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    /** O pagamento que confirmou a reserva (desfecho 'reserva'). */
+    pagamentoId: uuid("pagamento_id").notNull().references(() => pagamentos.id),
+    situacao: text("situacao").$type<SituacaoCancelamento>().notNull().default("pedido"),
+    /** Quando a SCL recebeu o pedido (o que a política conta). Hóspede pelo site: relógio do servidor (travado). */
+    pedidoRecebidoEm: timestamp("pedido_recebido_em", { withTimezone: true }).notNull(),
+    /** O momento registrado pela equipe, quando o financeiro o corrigiu ao cancelar (auditado). */
+    pedidoRegistradoOriginalEm: timestamp("pedido_registrado_original_em", { withTimezone: true }),
+    motivoMomento: text("motivo_momento").notNull().default(""),
+    /** null quando a SCL cancela ou no não comparecimento. */
+    canal: text("canal").$type<CanalPedidoCancelamento>(),
+    quemCancela: text("quem_cancela").$type<QuemCancelaReserva>().notNull().default("hospede"),
+    motivoEmpresa: text("motivo_empresa").$type<MotivoCancelamentoEmpresa>(),
+    motivoExcecao: text("motivo_excecao").$type<MotivoExcecao>(),
+    /** Onde está o pedido (ex.: "WhatsApp da empresa, 14h10"); até 300; validado sem dados pessoais. */
+    nota: text("nota").notNull().default(""),
+    /** Nota obrigatória da exceção ou da decisão sem política; até 300; validada. Nunca vai ao hóspede nem ao proprietário. */
+    motivoDecisao: text("motivo_decisao").notNull().default(""),
+    /** Quem registrou o pedido; null = o hóspede, em Minha reserva. */
+    pedidoPor: uuid("pedido_por").references(() => usuarios.id, { onDelete: "set null" }),
+    // --- Retrato da política e da decisão (preenchido ao cancelar; nunca muda depois)
+    politicaVersao: integer("politica_versao"),
+    diasReembolsoIntegral: integer("dias_reembolso_integral"),
+    arrependimentoAteEntrada: boolean("arrependimento_ate_entrada"),
+    integralAte: date("integral_ate", { mode: "string" }),
+    arrependimentoAte: date("arrependimento_ate", { mode: "string" }),
+    entradaEm: timestamp("entrada_em", { withTimezone: true }),
+    calculado: text("calculado").$type<CalculoCancelamento>(),
+    direito: text("direito").$type<DireitoCancelamento>(),
+    base: text("base").$type<BaseCancelamento>(),
+    /** O que o hóspede pagou (valorPagoNaOrder) e o que a decisão devolve (0 ou o pago). */
+    valorPago: integer("valor_pago"),
+    valorADevolver: integer("valor_a_devolver"),
+    canceladaEm: timestamp("cancelada_em", { withTimezone: true }),
+    canceladaPor: uuid("cancelada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Componentes de resultado lançados (fase 1, sempre junto com o cancelamento). */
+    resultadoLancadoEm: timestamp("resultado_lancado_em", { withTimezone: true }),
+    /** Espelhos lançados no mês do cancelamento (algo já tinha movimentado dinheiro): o motor não recalcula mais a reserva. */
+    espelhado: boolean("espelhado").notNull().default(false),
+    /** Componentes de caixa lançados (devolução realizada; na retenção, nada a lançar). */
+    caixaLancadoEm: timestamp("caixa_lancado_em", { withTimezone: true }),
+    /** M8.3: datas reabertas nas OTAs (à mão até o M8.3; o M8.3 grava sozinho). */
+    otaLiberadaEm: timestamp("ota_liberada_em", { withTimezone: true }),
+    otaLiberadaPor: uuid("ota_liberada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Mensagens ao hóspede (copiadas e enviadas pela equipe, ou enviadas pelo M9.2; por null = o sistema). */
+    hospedeAvisadoPedidoEm: timestamp("hospede_avisado_pedido_em", { withTimezone: true }),
+    hospedeAvisadoPedidoPor: uuid("hospede_avisado_pedido_por").references(() => usuarios.id, { onDelete: "set null" }),
+    hospedeAvisadoDecisaoEm: timestamp("hospede_avisado_decisao_em", { withTimezone: true }),
+    // A chave estrangeira desta e da seguinte tem nome próprio (abaixo): o nome automático passaria dos 63 caracteres do Postgres.
+    hospedeAvisadoDecisaoPor: uuid("hospede_avisado_decisao_por"),
+    hospedeAvisadoDevolucaoEm: timestamp("hospede_avisado_devolucao_em", { withTimezone: true }),
+    hospedeAvisadoDevolucaoPor: uuid("hospede_avisado_devolucao_por"),
+    descartadoEm: timestamp("descartado_em", { withTimezone: true }),
+    descartadoPor: uuid("descartado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    descarteMotivo: text("descarte_motivo").notNull().default(""),
+    /** Pedido pelo site descartado: só como desistência do hóspede, com o canal e a hora da desistência. */
+    desistenciaCanal: text("desistencia_canal").$type<CanalPedidoCancelamento>(),
+    desistenciaEm: timestamp("desistencia_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Um pedido ou cancelamento ativo por reserva; os descartados ficam (nunca são apagados).
+    uniqueIndex("cancelamentos_reserva_um_ativo").on(t.reservaId).where(sql`${t.situacao} in ('pedido', 'cancelada')`),
+    foreignKey({ columns: [t.hospedeAvisadoDecisaoPor], foreignColumns: [usuarios.id], name: "cancelamentos_reserva_hospede_avisado_decisao_por_fk" }).onDelete("set null"),
+    foreignKey({ columns: [t.hospedeAvisadoDevolucaoPor], foreignColumns: [usuarios.id], name: "cancelamentos_reserva_hospede_avisado_devolucao_por_fk" }).onDelete("set null"),
+    index("cancelamentos_reserva_org").on(t.organizacaoId, t.situacao),
+    index("cancelamentos_reserva_reserva").on(t.reservaId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Alteração de reserva paga pelo site (M8.2d): datas, pessoas ou valor, só antes da entrada. A linha guarda o antes e o
+// depois, a cotação das datas novas (retrato), a diferença, o retrato da política (na redução), o prazo das datas
+// seguradas e o gancho do M8.3. Listas fechadas aqui; colunas de texto sem CHECK, como as do M8.2a. Nenhum dado
+// pessoal: as notas (até 300) passam por `textoSemDadosPessoais`. Nunca é apagada.
+// ---------------------------------------------------------------------------
+
+/** segurada → aplicada (final) | expirada (o prazo das datas passou) | desistida (a equipe desistiu). */
+export const SITUACOES_ALTERACAO = ["segurada", "aplicada", "expirada", "desistida"] as const;
+export type SituacaoAlteracao = (typeof SITUACOES_ALTERACAO)[number];
+export const QUEM_PEDE_ALTERACAO = ["hospede", "empresa"] as const;
+export type QuemPedeAlteracao = (typeof QUEM_PEDE_ALTERACAO)[number];
+/** Por onde o pedido do hóspede chegou (a alteração é sempre preparada pela equipe, no painel). */
+export const CANAIS_PEDIDO_ALTERACAO = ["whatsapp", "email", "telefone", "presencial", "outro"] as const;
+export type CanalPedidoAlteracao = (typeof CANAIS_PEDIDO_ALTERACAO)[number];
+/** De onde veio o valor novo: a cotação do site, o valor atual mantido, ou um valor digitado pela equipe. */
+export const ORIGENS_VALOR_ALTERACAO = ["cotacao", "mantido", "digitado"] as const;
+export type OrigemValorAlteracao = (typeof ORIGENS_VALOR_ALTERACAO)[number];
+/** Motivo do valor mantido ou digitado (lista fechada; a nota vai em `motivo_valor_nota`). */
+export const MOTIVOS_VALOR_ALTERACAO = ["alteracao_pela_scl", "cortesia_comercial", "erro_da_scl", "acordo_com_hospede", "preco_a_confirmar", "outro"] as const;
+export type MotivoValorAlteracao = (typeof MOTIVOS_VALOR_ALTERACAO)[number];
+/** A cotação das datas novas (retrato; nunca recalculado depois, nem ao aplicar). `leituraEm` em ISO. */
+export type CotacaoDaAlteracao = {
+  diarias: number | null;
+  limpeza: number | null;
+  hospedeExtra: number | null;
+  valorCheio: number | null;
+  desconto: number;
+  total: number | null;
+  situacao: SituacaoDisponibilidade;
+  leituraEm: string | null;
+};
+/** Centavos de um mês do financeiro da reserva, por componente. */
+export type ComponentesDaAlteracao = { bruto: number; taxa: number; comissao: number; parte: number };
+/** Antes, depois e diferença do financeiro, por componente e mês (o que o motor lançou ao aplicar). */
+export type ResultadoDaAlteracao = { meses: { mes: string; antes: ComponentesDaAlteracao; depois: ComponentesDaAlteracao }[] };
+
+export const alteracoesReserva = pgTable(
+  "alteracoes_reserva",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    /** A cotação original da reserva (as tentativas da diferença vivem nela). */
+    cotacaoId: uuid("cotacao_id").notNull().references(() => cotacoes.id),
+    /** O pagamento que confirmou a reserva (desfecho 'reserva'): a política da reserva é a dele. */
+    pagamentoId: uuid("pagamento_id").notNull().references((): AnyPgColumn => pagamentos.id),
+    situacao: text("situacao").$type<SituacaoAlteracao>().notNull().default("segurada"),
+    quemPede: text("quem_pede").$type<QuemPedeAlteracao>().notNull().default("hospede"),
+    motivoEmpresa: text("motivo_empresa").$type<MotivoCancelamentoEmpresa>(),
+    /** Quando a SCL recebeu o pedido (o que a política conta numa redução). */
+    pedidoRecebidoEm: timestamp("pedido_recebido_em", { withTimezone: true }).notNull(),
+    /** null quando a SCL propõe. */
+    canal: text("canal").$type<CanalPedidoAlteracao>(),
+    /** Onde está o pedido; até 300; validada sem dados pessoais. */
+    nota: text("nota").notNull().default(""),
+    // --- Antes (retrato da reserva ao preparar) e depois
+    checkinAntes: date("checkin_antes", { mode: "string" }).notNull(),
+    checkoutAntes: date("checkout_antes", { mode: "string" }).notNull(),
+    hospedesAntes: integer("hospedes_antes"),
+    /** `reservas.valor_bruto` ao preparar (o dinheiro que fica com a reserva). */
+    valorAntes: integer("valor_antes").notNull(),
+    checkinDepois: date("checkin_depois", { mode: "string" }).notNull(),
+    checkoutDepois: date("checkout_depois", { mode: "string" }).notNull(),
+    hospedesDepois: integer("hospedes_depois").notNull(),
+    /** O preço novo (cotação, mantido ou digitado). */
+    valorDepois: integer("valor_depois").notNull(),
+    origemValor: text("origem_valor").$type<OrigemValorAlteracao>().notNull(),
+    motivoValor: text("motivo_valor").$type<MotivoValorAlteracao>(),
+    motivoValorNota: text("motivo_valor_nota").notNull().default(""),
+    cotacao: jsonb("cotacao").$type<CotacaoDaAlteracao>().notNull(),
+    /** valor_depois − valor_antes (com sinal). */
+    diferenca: integer("diferenca").notNull(),
+    /** A data de entrada de que a política conta: a menor entre a da cotação original e a atual (`entradaQueConta`). */
+    entradaDaPolitica: date("entrada_da_politica", { mode: "string" }).notNull(),
+    /** Noites novas (fora da estadia de antes): um intervalo [início, fim), ou nenhum. */
+    noitesNovasInicio: date("noites_novas_inicio", { mode: "string" }),
+    noitesNovasFim: date("noites_novas_fim", { mode: "string" }),
+    /** Até quando as datas novas ficam seguradas (`regras.site.minutosHoldAlteracao`, estendido pelo pagamento da diferença). */
+    holdAte: timestamp("hold_ate", { withTimezone: true }),
+    /** A reserva-pedido que segura as noites novas (fonte 'alteracao'). */
+    holdReservaId: uuid("hold_reserva_id").references(() => reservas.id),
+    // --- Retrato da política (só na redução; nunca muda depois)
+    politicaVersao: integer("politica_versao"),
+    diasReembolsoIntegral: integer("dias_reembolso_integral"),
+    arrependimentoAteEntrada: boolean("arrependimento_ate_entrada"),
+    integralAte: date("integral_ate", { mode: "string" }),
+    arrependimentoAte: date("arrependimento_ate", { mode: "string" }),
+    calculado: text("calculado").$type<CalculoCancelamento>(),
+    direito: text("direito").$type<DireitoCancelamento>(),
+    base: text("base").$type<BaseCancelamento>(),
+    motivoExcecao: text("motivo_excecao").$type<MotivoExcecao>(),
+    /** Nota obrigatória da exceção ou da decisão sem política; até 300; validada. */
+    motivoDecisao: text("motivo_decisao").notNull().default(""),
+    /** 0 ou −diferença (na redução). */
+    valorADevolver: integer("valor_a_devolver"),
+    /** Assinatura da prévia aceita ao segurar (o "Aplicar" de uma segurada confere a assinatura da aplicação). */
+    assinatura: text("assinatura").notNull(),
+    taxaDepois: integer("taxa_depois"),
+    resultado: jsonb("resultado").$type<ResultadoDaAlteracao>(),
+    aplicadaEm: timestamp("aplicada_em", { withTimezone: true }),
+    /** null = aplicada pelo pagamento da diferença. */
+    aplicadaPor: uuid("aplicada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Aplicada pela aprovação da diferença depois do prazo das datas (com as noites ainda livres). */
+    aplicadaTardia: boolean("aplicada_tardia").notNull().default(false),
+    expiradaEm: timestamp("expirada_em", { withTimezone: true }),
+    desistidaEm: timestamp("desistida_em", { withTimezone: true }),
+    desistidaPor: uuid("desistida_por").references(() => usuarios.id, { onDelete: "set null" }),
+    desistenciaMotivo: text("desistencia_motivo").notNull().default(""),
+    /** M8.3: bloqueio das OTAs atualizado (à mão até o M8.3; o M8.3 grava sozinho). */
+    otaAtualizadaEm: timestamp("ota_atualizada_em", { withTimezone: true }),
+    otaAtualizadaPor: uuid("ota_atualizada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Mensagens ao hóspede (copiadas e enviadas pela equipe, ou enviadas pelo M9.2; por null = o sistema). */
+    hospedeAvisadoPropostaEm: timestamp("hospede_avisado_proposta_em", { withTimezone: true }),
+    // As chaves estrangeiras destas três têm nome próprio (abaixo), como no cancelamento.
+    hospedeAvisadoPropostaPor: uuid("hospede_avisado_proposta_por"),
+    hospedeAvisadoConfirmacaoEm: timestamp("hospede_avisado_confirmacao_em", { withTimezone: true }),
+    hospedeAvisadoConfirmacaoPor: uuid("hospede_avisado_confirmacao_por"),
+    hospedeAvisadoDevolucaoEm: timestamp("hospede_avisado_devolucao_em", { withTimezone: true }),
+    hospedeAvisadoDevolucaoPor: uuid("hospede_avisado_devolucao_por"),
+    criadaPor: uuid("criada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Uma alteração com as datas seguradas por reserva; as outras ficam (nunca são apagadas).
+    uniqueIndex("alteracoes_reserva_uma_segurada").on(t.reservaId).where(sql`${t.situacao} = 'segurada'`),
+    uniqueIndex("alteracoes_reserva_hold").on(t.holdReservaId).where(sql`${t.holdReservaId} is not null`),
+    index("alteracoes_reserva_org").on(t.organizacaoId, t.situacao),
+    index("alteracoes_reserva_reserva").on(t.reservaId),
+    foreignKey({ columns: [t.hospedeAvisadoPropostaPor], foreignColumns: [usuarios.id], name: "alteracoes_reserva_avisado_prop_por_fk" }).onDelete("set null"),
+    foreignKey({ columns: [t.hospedeAvisadoConfirmacaoPor], foreignColumns: [usuarios.id], name: "alteracoes_reserva_avisado_conf_por_fk" }).onDelete("set null"),
+    foreignKey({ columns: [t.hospedeAvisadoDevolucaoPor], foreignColumns: [usuarios.id], name: "alteracoes_reserva_avisado_dev_por_fk" }).onDelete("set null"),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Contestação do pagamento no site (M8.2e): a disputa (contestação no cartão, MED do Pix ou reclamação no Mercado
+// Pago), lida pela order, pela Chargebacks API e pela Payments API, ou registrada pela equipe; a decisão de quem arca, o
+// resultado (sempre confirmado pela equipe, C1) e o caixa. "Contestação" aqui é sempre a do pagamento (a dos
+// adiantamentos, M4.4, é outra). Listas fechadas em pagamentos/contestacao-regras.ts; colunas de texto sem CHECK, como as
+// do M8.2a. Nenhum dado pessoal: só ids do Mercado Pago, códigos, valores, datas e notas validadas (até 300). Toda
+// gravação acontece sob `travarCotacao`. Nunca apagada.
+// ---------------------------------------------------------------------------
+
+export const contestacoesPagamento = pgTable(
+  "contestacoes_pagamento",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    pagamentoId: uuid("pagamento_id").notNull().references(() => pagamentos.id),
+    /** A reserva cujo dinheiro está em disputa (pagamento com desfecho `reserva` ou `alteracao`); null no pagamento sem reserva. */
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    // --- Identificação
+    tipo: text("tipo").$type<TipoContestacao>().notNull(),
+    origem: text("origem").$type<OrigemContestacao>().notNull(),
+    /** O caso da Chargebacks API (o `case_id` da order): só algarismos, até 20. */
+    idCaso: text("id_caso"),
+    /** A contestação na order (CBK…). */
+    idContestacao: text("id_contestacao"),
+    /** O `transaction_id` da contestação (PAY…): só pista, nunca casa sozinho. */
+    idTransacao: text("id_transacao"),
+    /** 1; uma disputa ganha reaberta ("Conferir o aviso") ganha a rodada seguinte, numa linha nova com a mesma identificação. */
+    rodada: integer("rodada").notNull().default(1),
+    /** Segunda disputa no mesmo pagamento com outra ainda não final: não segura nada até "Confirmar que é outra disputa". */
+    duplicataPossivel: boolean("duplicata_possivel").notNull().default(false),
+    confirmadaOutraEm: timestamp("confirmada_outra_em", { withTimezone: true }),
+    confirmadaOutraPor: uuid("confirmada_outra_por").references(() => usuarios.id, { onDelete: "set null" }),
+    // --- Situação
+    situacao: text("situacao").$type<SituacaoContestacao>().notNull().default("aberta"),
+    /** A do pagamento antes da primeira linha não final dele: para onde ele volta se a SCL ganhar. */
+    situacaoPagamentoAntes: text("situacao_pagamento_antes").$type<SituacaoPagamentoAntes>().notNull(),
+    // --- Leitura
+    /** O último estado conhecido (`in_process`, `settled`, `reimbursed`); o desconhecido nunca o sobrescreve. */
+    estadoLido: text("estado_lido").$type<EstadoConhecidoContestacao>(),
+    /** O código cru curto, inclusive o desconhecido. */
+    codigo: text("codigo"),
+    /** `coverage_applied`: pela página atual do Mercado Pago, o resultado (o sentido está a conferir). */
+    coberturaAplicada: boolean("cobertura_aplicada"),
+    coberturaElegivel: boolean("cobertura_elegivel"),
+    /** `reason_id` (só algarismos) e o código do motivo (`reason` só quando é um código: nunca o texto livre). */
+    motivoId: text("motivo_id"),
+    motivoCodigo: text("motivo_codigo"),
+    /** Centavos em disputa; null = ilegível (o valor em risco usa o pago, com o aviso). */
+    valor: integer("valor"),
+    valorOrigem: text("valor_origem").$type<OrigemValorContestacao>().notNull(),
+    /** O derivado (`valorEmRisco`), gravado sob a trava a cada mudança: é o que a regra da conferência em SQL lê. */
+    valorEmRisco: integer("valor_em_risco").notNull().default(0),
+    /** Primeira vez vista ou registrada. */
+    abertaEm: timestamp("aberta_em", { withTimezone: true }).notNull(),
+    abertaNoProvedorEm: timestamp("aberta_no_provedor_em", { withTimezone: true }),
+    documentacao: text("documentacao").$type<DocumentacaoDaContestacao>(),
+    documentacaoPrazo: timestamp("documentacao_prazo", { withTimezone: true }),
+    /** "Documentos enviados no painel do Mercado Pago" (auditado). */
+    documentosEnviadosEm: timestamp("documentos_enviados_em", { withTimezone: true }),
+    documentosEnviadosPor: uuid("documentos_enviados_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Retrato da verificação do banco do pagamento na abertura. */
+    tresDSStatus: text("tres_ds_status").$type<StatusTresDS>(),
+    aoVivo: boolean("ao_vivo"),
+    consultadaEm: timestamp("consultada_em", { withTimezone: true }),
+    /** O início da chamada da última leitura aplicada (uma leitura iniciada antes é descartada). */
+    lidaEm: timestamp("lida_em", { withTimezone: true }),
+    /** `date_last_updated` do caso (uma leitura com data mais antiga é descartada). */
+    atualizadoNoProvedorEm: timestamp("atualizado_no_provedor_em", { withTimezone: true }),
+    proximaLeituraEm: timestamp("proxima_leitura_em", { withTimezone: true }),
+    falhasLeitura: integer("falhas_leitura").notNull().default(0),
+    /** Os avisos desta disputa (`AVISOS_DE_CONTESTACAO`); `pagamentos.avisos` leva a união deles. */
+    avisos: jsonb("avisos").$type<string[]>().notNull().default([]),
+    /** A nota do registro pela equipe (validada). */
+    notaRegistro: text("nota_registro").notNull().default(""),
+    // --- Decisão de quem arca
+    causa: text("causa").$type<CodigoCausaContestacao>(),
+    quemArca: text("quem_arca").$type<QuemArcaContestacao>(),
+    /** Nota obrigatória da decisão (até 300, validada); nunca vai ao proprietário. "Mudar quem arca" não a apaga. */
+    decisaoNota: text("decisao_nota").notNull().default(""),
+    /** A nota "por que mudar" da mudança mais recente ("Mudar quem arca"; até 300, validada); nunca vai ao proprietário. */
+    decisaoMudancaNota: text("decisao_mudanca_nota").notNull().default(""),
+    /** Explicação ao proprietário (opcional, até 300, validada): no extrato, no PDF e no e-mail, ao lado da causa. */
+    explicacaoProprietario: text("explicacao_proprietario").notNull().default(""),
+    decisaoPor: uuid("decisao_por").references(() => usuarios.id, { onDelete: "set null" }),
+    decisaoEm: timestamp("decisao_em", { withTimezone: true }),
+    /** 0 = sem decisão; sobe a cada mudança (e a cada "Atualizar o valor segurado"). */
+    decisaoVersao: integer("decisao_versao").notNull().default(0),
+    /** O retrato da divisão (D e C, as partes efetivas da reserva), congelado na decisão. */
+    baseParteProprietario: integer("base_parte_proprietario"),
+    baseComissao: integer("base_comissao"),
+    /** O valor em risco usado na versão em vigor e a divisão em vigor. */
+    exposicao: integer("exposicao"),
+    parteProprietario: integer("parte_proprietario"),
+    parteScl: integer("parte_scl"),
+    // --- Resultado (confirmado pela equipe)
+    /** A data do resultado informada. */
+    resultadoEm: date("resultado_em", { mode: "string" }),
+    resultadoPor: uuid("resultado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    resultadoNota: text("resultado_nota").notNull().default(""),
+    valorPerdido: integer("valor_perdido"),
+    /** Quanto deste pagamento nunca entrou na conta (o Mercado Pago não liberou). */
+    liquidoNaoEntrou: integer("liquido_nao_entrou"),
+    /** O dia em que o Mercado Pago debitou. */
+    debitoEm: date("debito_em", { mode: "string" }),
+    /** Tarifa do Mercado Pago pela disputa (despesa da SCL), quando houver. */
+    tarifa: integer("tarifa"),
+    /** Os lançamentos definitivos feitos (a guarda de idempotência da perdida). */
+    definitivoEm: timestamp("definitivo_em", { withTimezone: true }),
+    /** A nota do "Encerrar sem efeito". */
+    encerradaNota: text("encerrada_nota").notNull().default(""),
+    /** "Conferir o aviso" (`contestacao_resultado_mudou` numa linha final). */
+    avisoConferidoEm: timestamp("aviso_conferido_em", { withTimezone: true }),
+    avisoConferidoPor: uuid("aviso_conferido_por").references(() => usuarios.id, { onDelete: "set null" }),
+    avisoConferidoNota: text("aviso_conferido_nota").notNull().default(""),
+    // --- Caixa
+    /** O retido em vigor (previsto até "Confirmar o débito do Mercado Pago"; realizado depois). */
+    retidoLancamentoId: uuid("retido_lancamento_id").references(() => lancamentos.id),
+    retidoConfirmadoEm: timestamp("retido_confirmado_em", { withTimezone: true }),
+    retidoConfirmadoPor: uuid("retido_confirmado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** A nota do "Confirmar o débito do Mercado Pago" (obrigatória quando o valor difere do valor em risco; sem dado pessoal). */
+    debitoNota: text("debito_nota").notNull().default(""),
+    /** Ganha: o retido realizado que voltou. */
+    voltaLancamentoId: uuid("volta_lancamento_id").references(() => lancamentos.id),
+    /** Perdida: o caixa final. Chave estrangeira com nome próprio (abaixo): o automático passaria dos 63 caracteres. */
+    caixaFinalLancamentoId: uuid("caixa_final_lancamento_id"),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Casamento e idempotência: um caso e um CBK por pagamento e rodada, e uma disputa sem identificação não final por pagamento.
+    uniqueIndex("contestacoes_pagamento_caso").on(t.pagamentoId, t.idCaso, t.rodada).where(sql`${t.idCaso} is not null`),
+    uniqueIndex("contestacoes_pagamento_cbk").on(t.pagamentoId, t.idContestacao, t.rodada).where(sql`${t.idContestacao} is not null`),
+    uniqueIndex("contestacoes_pagamento_sem_id")
+      .on(t.pagamentoId)
+      .where(sql`${t.idCaso} is null and ${t.idContestacao} is null and ${t.situacao} in ('aberta', 'a_confirmar')`),
+    index("contestacoes_pagamento_situacao").on(t.organizacaoId, t.situacao),
+    index("contestacoes_pagamento_leitura").on(t.proximaLeituraEm).where(sql`${t.situacao} in ('aberta', 'a_confirmar')`),
+    index("contestacoes_pagamento_reserva").on(t.reservaId),
+    index("contestacoes_pagamento_pagamento").on(t.pagamentoId),
+    foreignKey({ columns: [t.caixaFinalLancamentoId], foreignColumns: [lancamentos.id], name: "contestacoes_pagamento_caixa_final_fk" }),
+  ],
+);
+
+/**
+ * A linha do tempo de uma disputa ("registro de cada evento"): o que o sistema leu (`usuario_id` null) e o que a equipe
+ * fez. `antes` e `depois` só com códigos, datas e centavos (nunca notas). Nunca apagada, ao contrário de
+ * `eventos_pagamento` (que some em 90 dias e não se liga ao pagamento).
+ */
+export const eventosContestacao = pgTable(
+  "eventos_contestacao",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    contestacaoId: uuid("contestacao_id").notNull().references(() => contestacoesPagamento.id),
+    fonte: text("fonte").$type<FonteEventoContestacao>().notNull(),
+    tipo: text("tipo").$type<TipoEventoContestacao>().notNull(),
+    antes: jsonb("antes").$type<DadosDoEvento>(),
+    depois: jsonb("depois").$type<DadosDoEvento>(),
+    /** null = o sistema. */
+    usuarioId: uuid("usuario_id").references(() => usuarios.id, { onDelete: "set null" }),
+    em: timestamp("em", { withTimezone: true }).notNull().defaultNow(),
+    /** A ordem de gravação (os eventos de uma mesma ação têm o mesmo `em`): a linha do tempo desempata por ela. */
+    ordem: integer("ordem").generatedAlwaysAsIdentity(),
+  },
+  (t) => [index("eventos_contestacao_contestacao").on(t.contestacaoId, t.em)],
+);
+
+/**
+ * De onde veio a devolução: `sem_reserva` (M8.2a: pagamento aprovado que não confirmou a reserva), `cancelamento`
+ * (M8.2c: reserva cancelada pela política) ou `alteracao` (M8.2d: a diferença de uma alteração, pela política). A
+ * coluna é texto livre de propósito: um banco de preview compartilhado pode ter origens que esta versão não conhece, e
+ * quem lê ignora essas linhas.
+ */
+export const ORIGENS_DEVOLUCAO = ["sem_reserva", "cancelamento", "alteracao"] as const;
+export type OrigemDevolucao = (typeof ORIGENS_DEVOLUCAO)[number];
+
+/**
+ * Devolução de um pagamento: pelo provedor (pedida → confirmada/recusada) ou feita por fora. Desde o M8.2d, várias por
+ * pagamento (a da alteração, a do cancelamento, o restante de uma devolvida a menos), com no máximo uma pedida por vez.
+ */
 export const devolucoesPagamento = pgTable(
   "devolucoes_pagamento",
   {
@@ -1604,11 +2098,15 @@ export const devolucoesPagamento = pgTable(
     organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
     pagamentoId: uuid("pagamento_id").notNull().references(() => pagamentos.id),
     motivo: text("motivo").notNull(),
+    /** O que esta devolução devolve (centavos pagos); nunca muda depois do primeiro envio, salvo a integral de um pagamento intocado. */
     valor: integer("valor").notNull(),
     situacao: text("situacao").$type<SituacaoDevolucao>().notNull().default("pedida"),
     /** Pedidos enviados ao provedor (`chaveAtual`, gravada antes). Chave nova a cada pedido, salvo depois de resposta incerta. */
     tentativas: integer("tentativas").notNull().default(0),
-    /** Pedidos recusados pelo provedor (resposta incerta não conta): depois de 3, relida a order, a devolução fica recusada (aviso). */
+    /**
+     * Pedidos recusados ou sem resposta clara do provedor (a resposta incerta conta; "aguarde" — devolução em andamento ou
+     * espera pedida pelo Mercado Pago — não conta): depois de 3, relida a order, a devolução fica recusada (aviso).
+     */
     falhas: integer("falhas").notNull().default(0),
     chaveAtual: text("chave_atual"),
     /**
@@ -1632,10 +2130,70 @@ export const devolucoesPagamento = pgTable(
     taxaPerdida: integer("taxa_perdida"),
     despesaLancamentoId: uuid("despesa_lancamento_id").references(() => lancamentos.id),
     autorId: uuid("autor_id").references(() => usuarios.id, { onDelete: "set null" }),
+    // --- M8.2c
+    /** Ver `ORIGENS_DEVOLUCAO`; as linhas antigas (M8.2a) ficam `sem_reserva` pelo padrão. */
+    origem: text("origem").notNull().default("sem_reserva"),
+    /** O cancelamento que pediu esta devolução (origem `cancelamento`). Chave estrangeira com nome próprio (abaixo): o automático passaria de 63 caracteres. */
+    cancelamentoId: uuid("cancelamento_id"),
+    /** O lançamento `devolucao` (saída do caixa), quando houve. */
+    saidaLancamentoId: uuid("saida_lancamento_id").references(() => lancamentos.id),
+    /**
+     * Quem confirmou: uma leitura da order, a equipe (devolução vista no painel do Mercado Pago) ou, desde o M8.2e, a disputa
+     * do pagamento perdida que a substituía (`contestacao`: o dinheiro voltou ao hóspede pela disputa).
+     */
+    confirmadaPor: text("confirmada_por").$type<"leitura" | "equipe" | "contestacao">(),
+    /** Nota obrigatória da confirmação pela equipe (até 300, validada sem dados pessoais). */
+    confirmadaNota: text("confirmada_nota").notNull().default(""),
+    /** Soma das devoluções confirmadas na leitura que confirmou; null = a leitura não trouxe a lista de devoluções. */
+    valorConfirmado: integer("valor_confirmado"),
+    /** Último código de `devolver` (lista fechada `CODIGOS_DEVOLUCAO`); null = nenhum. */
+    ultimoCodigo: text("ultimo_codigo").$type<CodigoDevolucao>(),
+    /** A equipe registrou que o painel do Mercado Pago recusou a devolução (libera a devolução por fora no cartão). */
+    recusaNoPainelEm: timestamp("recusa_no_painel_em", { withTimezone: true }),
+    recusaNoPainelPor: uuid("recusa_no_painel_por").references(() => usuarios.id, { onDelete: "set null" }),
+    recusaNoPainelNota: text("recusa_no_painel_nota").notNull().default(""),
+    /** "Parar a devolução pedida" (passou do prazo de leitura do Mercado Pago). */
+    paradaEm: timestamp("parada_em", { withTimezone: true }),
+    paradaNota: text("parada_nota").notNull().default(""),
+    // --- M8.2d
+    /** A alteração que pediu esta devolução (origem `alteracao`). */
+    alteracaoId: uuid("alteracao_id").references(() => alteracoesReserva.id),
+    /** A devolução que esta completa (o restante de uma que o Mercado Pago devolveu a menos). Chave estrangeira com nome próprio (abaixo). */
+    origemDevolucaoId: uuid("origem_devolucao_id"),
+    /** Os avisos desta devolução (lista fechada em pagamentos/situacoes.ts); `pagamentos.avisos` leva a união deles. */
+    avisos: jsonb("avisos").$type<string[]>().notNull().default([]),
+    /** O caixa desta devolução ficou acertado (saída lançada, ou nada a lançar): a guarda de idempotência. */
+    caixaLancadoEm: timestamp("caixa_lancado_em", { withTimezone: true }),
+    /** Taxa do Mercado Pago atribuída ao principal devolvido aqui, congelada na primeira vez que dá para calcular. */
+    taxaAtribuida: integer("taxa_atribuida"),
+    /** O formato do corpo enviado com `chave_atual` (true = corpo vazio, integral): todo reenvio com a chave usa o mesmo. */
+    corpoIntegral: boolean("corpo_integral"),
+    // --- M8.2e
+    /**
+     * A disputa do pagamento que substitui esta devolução (pedida sem aceite ou recusada quando a disputa abriu): o
+     * dinheiro volta ao hóspede pela disputa. O vínculo fica no histórico quando a substituição acaba. Chave estrangeira com
+     * nome próprio (abaixo).
+     */
+    contestacaoId: uuid("contestacao_id"),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("devolucoes_pagamento_um_por_pagamento").on(t.pagamentoId), index("devolucoes_pagamento_situacao").on(t.organizacaoId, t.situacao)],
+  (t) => [
+    // M8.2d: várias devoluções por pagamento. O banco continua sendo a guarda mais forte contra devolver duas vezes:
+    // uma principal sem reserva por pagamento, uma por cancelamento e pagamento, uma por alteração e pagamento, um
+    // restante por devolução e uma pedida por pagamento.
+    uniqueIndex("devolucoes_pagamento_sem_reserva").on(t.pagamentoId).where(sql`${t.origem} = 'sem_reserva' and ${t.origemDevolucaoId} is null`),
+    uniqueIndex("devolucoes_pagamento_do_cancelamento").on(t.cancelamentoId, t.pagamentoId).where(sql`${t.cancelamentoId} is not null and ${t.origemDevolucaoId} is null`),
+    uniqueIndex("devolucoes_pagamento_da_alteracao").on(t.alteracaoId, t.pagamentoId).where(sql`${t.alteracaoId} is not null and ${t.origemDevolucaoId} is null`),
+    uniqueIndex("devolucoes_pagamento_restante").on(t.origemDevolucaoId).where(sql`${t.origemDevolucaoId} is not null`),
+    uniqueIndex("devolucoes_pagamento_uma_pedida").on(t.pagamentoId).where(sql`${t.situacao} = 'pedida'`),
+    index("devolucoes_pagamento_pagamento").on(t.pagamentoId),
+    index("devolucoes_pagamento_situacao").on(t.organizacaoId, t.situacao),
+    foreignKey({ columns: [t.cancelamentoId], foreignColumns: [cancelamentosReserva.id], name: "devolucoes_pagamento_cancelamento_id_fk" }),
+    foreignKey({ columns: [t.origemDevolucaoId], foreignColumns: [t.id], name: "devolucoes_pagamento_origem_devolucao_fk" }),
+    foreignKey({ columns: [t.contestacaoId], foreignColumns: [contestacoesPagamento.id], name: "devolucoes_pagamento_contestacao_id_fk" }),
+    index("devolucoes_pagamento_contestacao").on(t.contestacaoId).where(sql`${t.contestacaoId} is not null`),
+  ],
 );
 
 /**

@@ -4,7 +4,7 @@ import { imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import {
-  adicionarEvento, definirMinimoNormalDoEvento, LIMITE_MINUTOS_ANALISE_CARTAO, lerData, lerRegrasCalendario, multiplicadorParaCentesimos, REGRAS_CALENDARIO_PADRAO, regrasDeJson, removerEvento,
+  adicionarEvento, definirMinimoNormalDoEvento, LIMITE_MINUTOS_ANALISE_CARTAO, LIMITES_MINUTOS_HOLD_ALTERACAO, lerData, lerRegrasCalendario, multiplicadorParaCentesimos, REGRAS_CALENDARIO_PADRAO, regrasDeJson, removerEvento,
   salvarRegrasCalendario, validarEvento, validarFormRegras,
 } from "./regras-config";
 
@@ -89,7 +89,7 @@ describe("formulário das regras", () => {
       eventos: [{ id: IM, nome: "Ok", inicio: "2026-12-25", fim: "2027-01-01", multiplicador: 400, estadiaMinima: null, minimoNormalComReserva: true, todosImoveis: false, imoveis: [IM] }],
       ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "scl" },
       envio: { imoveis: [IM], automatico: false },
-      site: { validadeLeituraHoras: 12, maximoNoitesConsulta: 90, minutosHold: 30, minutosAnaliseCartao: 60 },
+      site: { validadeLeituraHoras: 12, maximoNoitesConsulta: 90, minutosHold: 30, minutosAnaliseCartao: 60, minutosHoldAlteracao: 60 },
     });
   });
   it("minutos a mais do cartão em análise (M8.2b): padrão 60, de 0 a 240; gravado estranho volta ao padrão", () => {
@@ -109,6 +109,29 @@ describe("formulário das regras", () => {
     // Formulário aberto antes do campo existir: nada volta ao padrão em silêncio, fica o que estava gravado.
     expect(ler(undefined)).toBe(45);
     for (const ruim of ["", "241", "-1", "1,5", "x"]) expect(ler(ruim)).toEqual({ siteMinutosAnaliseCartao: "Número inteiro entre 0 e 240." });
+  });
+});
+
+describe("minutos das datas seguradas de uma alteração (M8.2d)", () => {
+  it("padrão 60, de 5 a 2880 (48 horas); gravado estranho volta ao padrão", () => {
+    expect(REGRAS_CALENDARIO_PADRAO.site.minutosHoldAlteracao).toBe(60);
+    expect(LIMITES_MINUTOS_HOLD_ALTERACAO).toEqual([5, 2880]);
+    const site = (v: unknown) => regrasDeJson({ site: { minutosHoldAlteracao: v } }).site.minutosHoldAlteracao;
+    expect([site(5), site(2880), site(240)]).toEqual([5, 2880, 240]);
+    for (const estranho of [4, 2881, 1.5, "60", null, undefined]) expect(site(estranho)).toBe(60);
+  });
+
+  it("independente dos minutos do visitante: mudar um não muda o outro (nem no gravado, nem no formulário)", () => {
+    expect(regrasDeJson({ site: { minutosHold: 15 } }).site).toMatchObject({ minutosHold: 15, minutosHoldAlteracao: 60 });
+    expect(regrasDeJson({ site: { minutosHoldAlteracao: 600 } }).site).toMatchObject({ minutosHold: 30, minutosHoldAlteracao: 600 });
+    const atual = { ...REGRAS_CALENDARIO_PADRAO, site: { ...REGRAS_CALENDARIO_PADRAO.site, minutosHoldAlteracao: 90 } };
+    const ler = (over: Record<string, unknown>) => {
+      const r = validarFormRegras(form(over), atual, [IM]);
+      return r.ok ? { hold: r.regras.site.minutosHold, alteracao: r.regras.site.minutosHoldAlteracao } : r.erros;
+    };
+    expect(ler({ siteMinutosHold: "45" })).toEqual({ hold: 45, alteracao: 90 });
+    expect(ler({ siteMinutosHoldAlteracao: " 2880 " })).toEqual({ hold: 30, alteracao: 2880 });
+    for (const ruim of ["", "4", "2881", "1,5", "x"]) expect(ler({ siteMinutosHoldAlteracao: ruim })).toEqual({ siteMinutosHoldAlteracao: "Número inteiro entre 5 e 2880." });
   });
 });
 

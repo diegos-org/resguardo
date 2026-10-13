@@ -1,15 +1,29 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
+import type { AlteracaoDoPainel } from "@/pagamentos/alteracao-painel";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), reserva: vi.fn(), pagamentos: vi.fn(), lancamentos: vi.fn(), recebimentos: vi.fn(), aceites: vi.fn() }));
+const m = vi.hoisted(() => ({
+  sessao: vi.fn(),
+  reserva: vi.fn(),
+  pagamentos: vi.fn(),
+  lancamentos: vi.fn(),
+  recebimentos: vi.fn(),
+  aceites: vi.fn(),
+  devolvida: vi.fn(),
+  cancelamento: vi.fn(),
+  momentos: vi.fn(),
+  historico: vi.fn(),
+  alteracoes: vi.fn(),
+  portador: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, redirect: vi.fn() }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
-vi.mock("@/reservas/repositorio", () => ({ obterReserva: m.reserva }));
+vi.mock("@/reservas/repositorio", () => ({ obterReserva: m.reserva, devolvidaNoProvedorDaReserva: m.devolvida }));
 vi.mock("@/reservas/horarios", async (original) => ({ ...(await original<typeof import("@/reservas/horarios")>()), lerHorariosReservas: async () => new Map() }));
 vi.mock("@/imoveis/repositorio", () => ({ obterImovel: async () => ({ id: "im", codigo: "403", nome: "Studio Fictício" }) }));
-vi.mock("@/auditoria/auditoria", async (original) => ({ ...(await original<typeof import("@/auditoria/auditoria")>()), historicoDe: async () => [] }));
+vi.mock("@/auditoria/auditoria", async (original) => ({ ...(await original<typeof import("@/auditoria/auditoria")>()), historicoDe: m.historico }));
 vi.mock("@/financeiro/ledger", () => ({ listarLancamentos: m.lancamentos }));
 vi.mock("@/imoveis/recebimento", () => ({ lerRecebimento: async () => ({}) }));
 vi.mock("@/configuracoes/regras-financeiras", () => ({ lerRegrasFinanceiras: async () => ({ recebimento: { site: "empresa" } }) }));
@@ -19,7 +33,35 @@ vi.mock("@/site/aceites", () => ({ aceitesDaReserva: m.aceites }));
 vi.mock("@/reservas/acoes", () => ({ cancelar: vi.fn(), confirmar: vi.fn(), resolverConferenciaAcao: vi.fn(), salvarEmailHospedeAcao: vi.fn() }));
 vi.mock("@/reservas/horarios-acoes", () => ({ alterarHorarioAcao: vi.fn() }));
 vi.mock("@/repasses/acoes", () => ({ estornarRecebimentoAcao: vi.fn(), registrarRecebimentoAcao: vi.fn() }));
-vi.mock("@/pagamentos/acoes-painel", () => ({ conferirAgoraAcao: vi.fn(), devolverAcao: vi.fn(), devolucaoPorForaAcao: vi.fn(), registrarLiberacaoAcao: vi.fn(), estornarLiberacaoAcao: vi.fn(), registrarTaxaPerdidaAcao: vi.fn() }));
+vi.mock("@/pagamentos/acoes-painel", () => ({
+  conferirAgoraAcao: vi.fn(),
+  devolverAcao: vi.fn(),
+  devolucaoPorForaAcao: vi.fn(),
+  registrarLiberacaoAcao: vi.fn(),
+  estornarLiberacaoAcao: vi.fn(),
+  registrarTaxaPerdidaAcao: vi.fn(),
+  pedirRestanteAcao: vi.fn(),
+}));
+// M8.2d: as alterações da reserva e a reserva-pedido que segura as novas noites.
+vi.mock("@/pagamentos/alteracao-painel", () => ({ alteracoesDaReserva: m.alteracoes, alteracaoDoPortador: m.portador }));
+vi.mock("@/pagamentos/acoes-alteracao", () => ({
+  calcularAlteracaoAcao: vi.fn(),
+  segurarAlteracaoAcao: vi.fn(),
+  previaDaAplicacaoAcao: vi.fn(),
+  aplicarAlteracaoAcao: vi.fn(),
+  desistirDaAlteracaoAcao: vi.fn(),
+  marcarOtaAtualizadaAcao: vi.fn(),
+  marcarHospedeAvisadoAlteracaoAcao: vi.fn(),
+}));
+vi.mock("@/pagamentos/cancelamento-painel", () => ({ cancelamentoDaReserva: m.cancelamento, momentosDoCancelamento: m.momentos }));
+vi.mock("@/pagamentos/acoes-cancelamento", () => ({
+  calcularCancelamentoAcao: vi.fn(),
+  cancelarReservaPagaAcao: vi.fn(),
+  registrarPedidoCancelamentoAcao: vi.fn(),
+  descartarPedidoCancelamentoAcao: vi.fn(),
+  marcarOtaLiberadaAcao: vi.fn(),
+  marcarHospedeAvisadoAcao: vi.fn(),
+}));
 import Page from "./page";
 
 const reserva = {
@@ -81,8 +123,15 @@ beforeEach(() => {
   m.lancamentos.mockResolvedValue([]);
   m.recebimentos.mockResolvedValue([]);
   m.aceites.mockResolvedValue([]);
+  m.devolvida.mockResolvedValue(false);
+  m.cancelamento.mockResolvedValue(null);
+  m.momentos.mockResolvedValue({ entradaEm: new Date("2026-10-12T18:00:00Z"), naoComparecimentoApos: new Date("2026-10-13T15:00:00Z"), fuso: "America/Sao_Paulo" });
+  m.historico.mockResolvedValue([]);
+  m.alteracoes.mockResolvedValue([]);
+  m.portador.mockResolvedValue(null);
 });
-const html = async () => renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve({}) } as PageProps<"/painel/reservas/[id]">));
+const html = async (busca: Record<string, string> = {}) =>
+  renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve(busca) } as PageProps<"/painel/reservas/[id]">));
 
 it("operação (lê reservas, não o financeiro): vê o quadro com situação e o selo de teste, sem valores nem ações", async () => {
   m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
@@ -135,4 +184,325 @@ it("páginas legais aceitas no site (M7.4): a seção aparece para quem lê rese
   m.sessao.mockResolvedValue({ papel: "limpeza", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   expect(await html()).not.toContain('aria-label="Páginas legais aceitas"');
   expect(m.aceites).not.toHaveBeenCalled();
+});
+
+it("M8.2c (D21): pagamento do site devolvido no Mercado Pago fora da política — o quadro \"Em conferência\" aparece, com o motivo e o botão de dar por resolvida", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.lancamentos.mockResolvedValue([{ id: "l1", origem: "motor", estornoDe: null, competencia: "2026-10-01", descricao: "Parte do proprietário", valor: 150000, efeitoSaldo: 150000, estado: "previsto" }]);
+  // Sem a devolução no Mercado Pago, a reserva confirmada e sem divergência não está em conferência.
+  expect(await html()).not.toContain('aria-label="Em conferência"');
+  expect(m.devolvida).toHaveBeenCalledWith({}, "org", "r1");
+  m.devolvida.mockResolvedValue(true);
+  const h = await html();
+  expect(h).toContain('aria-label="Em conferência"');
+  expect(h).toContain("O Mercado Pago mostra o pagamento desta reserva devolvido fora do sistema: a parte do proprietário não é repassada.");
+  expect(h).toContain("Dar a conferência por resolvida");
+  // Já dada por resolvida: o quadro some (e nem se consulta de novo).
+  m.devolvida.mockClear();
+  m.reserva.mockResolvedValue({ ...reserva, conferenciaResolvidaEm: new Date("2026-10-05T12:00:00Z") });
+  expect(await html()).not.toContain('aria-label="Em conferência"');
+  expect(m.devolvida).not.toHaveBeenCalled();
+});
+
+it("M8.2c: reserva paga pelo site — o botão de cancelar de sempre some; o cancelamento pela política fica no quadro do pagamento", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const h = await html();
+  expect(h).not.toContain(">Cancelar reserva</button>");
+  expect(h).toContain('aria-label="Cancelamento pela política"');
+  expect(h).toContain("Calcular o cancelamento pela política");
+  expect(h.indexOf('aria-label="Cancelamento pela política"')).toBeGreaterThan(h.indexOf('aria-label="Pagamento no site"'));
+  expect(m.cancelamento).toHaveBeenCalledWith({}, "org", "r1", expect.any(Date));
+  expect(m.momentos).toHaveBeenCalledWith({}, "org", "r1");
+  // A operação (sem o financeiro) registra o pedido; não calcula e não lê os momentos do cálculo.
+  m.momentos.mockClear();
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const op = await html();
+  expect(op).toContain("Registrar pedido de cancelamento");
+  expect(op).not.toContain("Calcular o cancelamento");
+  expect(m.momentos).not.toHaveBeenCalled();
+});
+
+it("M8.2c: reserva sem pagamento no site continua com o botão de cancelar de sempre e sem o quadro do cancelamento", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.pagamentos.mockResolvedValue([{ ...pagamento, desfecho: null }]);
+  const h = await html();
+  expect(h).toContain(">Cancelar reserva</button>");
+  expect(h).not.toContain('aria-label="Cancelamento pela política"');
+  expect(m.cancelamento).not.toHaveBeenCalled();
+});
+
+it("M8.2c: o resultado da ação do cancelamento vem só de chaves conhecidas", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  expect(await html({ cancelamento: "pedida" })).toContain("Reserva cancelada. Devolução pedida ao Mercado Pago: a confirmação aparece aqui quando ele concluir (use Conferir agora).");
+  expect(await html({ cancelamento: "pedido_registrado" })).toContain("Pedido de cancelamento registrado");
+  expect(await html({ cancelamento: "qualquer coisa" })).not.toContain("Reserva cancelada.");
+});
+
+// ---------------------------------------------------------------- M8.2d: alteração de reserva paga pelo site
+
+const ALTERACAO_ID = "33333333-3333-4333-8333-333333333333";
+const alteracao = (over: Partial<AlteracaoDoPainel> = {}): AlteracaoDoPainel => ({
+  id: ALTERACAO_ID,
+  situacao: "aplicada",
+  quemPede: "hospede",
+  motivoEmpresa: null,
+  canal: "whatsapp",
+  pedidoRecebidoEm: new Date("2026-10-01T15:30:00Z"),
+  antes: { checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 4, valor: 182400 },
+  depois: { checkin: "2026-10-12", checkout: "2026-10-14", hospedes: 4, valor: 121600 },
+  diferenca: -60800,
+  valorNovo: 121600,
+  origemValor: "cotacao",
+  motivoValor: null,
+  noitesNovas: null,
+  holdAte: new Date("2026-10-01T16:30:00Z"),
+  emCarencia: false,
+  criadaEm: new Date("2026-10-01T15:35:00Z"),
+  criadaPor: "Equipe Fictícia",
+  aplicadaEm: new Date("2026-10-01T15:36:00Z"),
+  aplicadaPor: "Equipe Fictícia",
+  aplicadaTardia: false,
+  expiradaEm: null,
+  desistidaEm: null,
+  desistidaPor: null,
+  desistenciaMotivo: "",
+  direito: "integral",
+  base: "prazo",
+  valorADevolver: 60800,
+  politicaVersao: 1,
+  integralAte: "2026-09-28",
+  entradaDaPolitica: "2026-10-12",
+  resultado: {
+    meses: [{ mes: "2026-10", antes: { bruto: 182400, taxa: -1806, comissao: 27090, parte: 153504 }, depois: { bruto: 121600, taxa: -1204, comissao: 18060, parte: 102336 } }],
+  },
+  ota: null,
+  avisados: { proposta: null, confirmacao: null, devolucao: null },
+  devolucao: { estado: "aguardando_liberacao", valor: 60800, valorConfirmado: null, em: null, previstaEm: "2026-10-20", porFora: false, algumaPorFora: false, forma: "pix" },
+  tentativas: [],
+  mensagens: { proposta: null, confirmada: { texto: "Olá! A alteração da sua reserva SCL-TESTE1 está confirmada: 12/10–14/10, R$ 1.216,00.", falta: [], textoBase: true }, devolvida: null },
+  ...over,
+});
+const historicoDaAlteracao = [
+  {
+    id: "h1",
+    acao: "reserva.alterar",
+    mudancas: { checkin: ["2026-10-12", "2026-10-12"], checkout: ["2026-10-15", "2026-10-14"], valorBruto: [182400, 121600], diferenca: [null, -60800], alteracao: [null, ALTERACAO_ID] },
+    criadoEm: new Date("2026-10-01T15:36:00Z"),
+    autor: "Equipe Fictícia",
+  },
+];
+const longe = { entradaEm: new Date("2099-10-12T18:00:00Z"), naoComparecimentoApos: new Date("2099-10-13T15:00:00Z"), fuso: "America/Sao_Paulo" };
+
+it("M8.2d: a operação vê a alteração aplicada sem nenhum valor (ficha, observações e histórico) e marca as OTAs; o admin vê os valores e o financeiro", async () => {
+  m.reserva.mockResolvedValue({ ...reserva, checkout: "2026-10-14", valorBruto: 121600, observacoes: "Alterada em 01/10: de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–14/10 (2 noites, 4 pessoas)." });
+  m.alteracoes.mockResolvedValue([alteracao()]);
+  m.historico.mockResolvedValue(historicoDaAlteracao);
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const op = await html();
+  expect(m.alteracoes).toHaveBeenCalledWith({}, "org", "r1", expect.any(Date));
+  expect(op).toContain('aria-label="Alteração da reserva"');
+  expect(op).toContain("Alteração aplicada");
+  expect(op).toContain("de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–14/10 (2 noites, 4 pessoas)");
+  expect(op).toContain("Esta reserva foi paga pelo site: a alteração é feita por quem cuida do financeiro.");
+  expect(op).toContain("Datas atualizadas nas OTAs");
+  expect(op).toContain("quem cuida do financeiro copia e envia esta mensagem");
+  // Nenhum valor para quem não lê o financeiro: nem na ficha, nem nas observações, nem no histórico.
+  expect(op).not.toContain("R$");
+  expect(op).not.toMatch(/182400|121600|60800/);
+  expect(op).not.toContain("Valor bruto");
+  expect(op).not.toContain("Diferença (centavos)");
+  expect(op).not.toContain("Copiar mensagem");
+  expect(op).not.toContain("Calcular a alteração");
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const ad = await html();
+  expect(ad).toContain("devolução de R$ 608,00 pela política");
+  expect(ad).toContain("Devolução de R$ 608,00: esperando o Mercado Pago liberar o pagamento (previsto para 20/10): nada foi pedido ainda");
+  expect(ad).toContain('aria-label="Financeiro da alteração"');
+  expect(ad).toContain("-R$ 608,00");
+  expect(ad).toContain("Copiar mensagem: alteração confirmada");
+  expect(ad).toContain("Diferença (centavos)");
+});
+
+it("M8.2d: alteração segurada — o que espera, sem valores para a operação; o admin aplica (sem aumento) ou desiste, e o formulário some", async () => {
+  m.momentos.mockResolvedValue(longe);
+  const segurada = alteracao({ situacao: "segurada", aplicadaEm: null, aplicadaPor: null, holdAte: new Date("2099-10-01T16:30:00Z"), devolucao: null, resultado: null, mensagens: { proposta: { texto: "Olá! Preparamos a alteração…", falta: [], textoBase: true }, confirmada: null, devolvida: null } });
+  m.alteracoes.mockResolvedValue([segurada]);
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const ad = await html();
+  expect(ad).toContain("Alteração com as novas datas seguradas");
+  expect(ad).toContain("esperando a confirmação do hóspede");
+  expect(ad).toContain("Copiar a proposta");
+  expect(ad).toContain("Conferir para aplicar (o hóspede aceitou)");
+  expect(ad).toContain("Desistir da alteração");
+  expect(ad).not.toContain("Calcular a alteração");
+  // Aumento: o pagamento da diferença aplica sozinho (sem "Aplicar").
+  m.alteracoes.mockResolvedValue([{ ...segurada, diferenca: 40000, direito: null, base: null, valorADevolver: null }]);
+  const aumento = await html();
+  expect(aumento).toContain("esperando o pagamento da diferença");
+  expect(aumento).not.toContain("Conferir para aplicar");
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const op = await html();
+  expect(op).toContain("Alteração com as novas datas seguradas");
+  expect(op).not.toContain("R$");
+  expect(op).not.toContain("Desistir da alteração");
+  expect(op).not.toContain("Copiar a proposta");
+});
+
+it("M8.2d: o formulário da alteração é do financeiro, com a reserva confirmada, sem cancelamento e antes da entrada", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.momentos.mockResolvedValue(longe);
+  const h = await html();
+  expect(h).toContain("Calcular a alteração");
+  expect(h).toContain('name="checkin" value="2026-10-12"');
+  expect(h).toContain("Manter o valor atual (R$ 1.824,00)");
+  m.cancelamento.mockResolvedValue({ situacao: "pedido", pedidoRecebidoEm: new Date("2026-10-01T15:30:00Z"), canal: "whatsapp", pedidoPor: null, quemCancela: "hospede", descartados: [], mensagens: { recebido: null, decidido: null, devolvida: null }, avisados: { pedido: null, decisao: null, devolucao: null } });
+  const comPedido = await html();
+  expect(comPedido).not.toContain("Calcular a alteração");
+  expect(comPedido).toContain("Há um pedido de cancelamento desta reserva: decida ou descarte o pedido antes de alterar.");
+  m.cancelamento.mockResolvedValue(null);
+  m.momentos.mockResolvedValue({ ...longe, entradaEm: new Date("2020-01-01T18:00:00Z") });
+  const iniciou = await html();
+  expect(iniciou).not.toContain("Calcular a alteração");
+  expect(iniciou).toContain("A estadia já começou: a alteração pelo sistema vale só antes da entrada.");
+});
+
+it("M8.2d: a reserva-pedido que segura as novas noites não confirma, não cancela, não guarda e-mail nem horários: aponta para a reserva alterada", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.reserva.mockResolvedValue({ ...reserva, id: "p1", codigo: "SCL-PORTA1", estado: "pedido", fonte: "alteracao", idFonte: ALTERACAO_ID, hospedeNome: "Alteração SCL-TESTE1", hospedeEmail: "", valorBruto: null });
+  m.pagamentos.mockResolvedValue([]);
+  m.portador.mockResolvedValue({ alteracaoId: ALTERACAO_ID, reservaId: "r1", reservaCodigo: "SCL-TESTE1", holdAte: new Date("2026-10-01T16:30:00Z"), situacao: "segurada" });
+  const h = await html();
+  expect(h).toContain('Datas seguradas para a alteração da reserva <a href="/painel/reservas/r1">SCL-TESTE1</a> até 01/10 às 13:30.');
+  expect(h).not.toContain("Confirmar reserva");
+  expect(h).not.toContain(">Cancelar reserva</button>");
+  expect(h).not.toContain('aria-label="E-mail do hóspede"');
+  expect(h).not.toContain("Sem e-mail do hóspede");
+  expect(h).not.toContain('aria-label="Horários combinados"');
+  expect(h).not.toContain("Pedido de reserva: ainda aguarda confirmação na origem");
+});
+
+it("M8.2d: o resultado da ação da alteração vem só de chaves conhecidas (o valor só para quem lê o financeiro)", async () => {
+  m.alteracoes.mockResolvedValue([alteracao()]);
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  expect(await html({ alteracao: "aplicada_liberacao" })).toContain("Alteração aplicada. Devolução de R$ 608,00 pedida quando o Mercado Pago liberar o pagamento (previsto para 20/10).");
+  expect(await html({ alteracao: "desistida" })).toContain("Alteração desfeita: as novas datas voltaram à venda e a reserva continua como estava.");
+  expect(await html({ alteracao: "qualquer coisa" })).not.toContain("Alteração aplicada.");
+  m.alteracoes.mockResolvedValue([alteracao({ situacao: "segurada", holdAte: new Date("2026-10-01T16:30:00Z"), aplicadaEm: null })]);
+  // O prazo de outro dia leva o dia (revisão do M8.2d); a ficha usa o relógio de agora.
+  expect(await html({ alteracao: "segurada" })).toMatch(/Datas seguradas até (01\/10 às )?13:30: copie a proposta para o hóspede\./);
+  m.alteracoes.mockResolvedValue([alteracao()]);
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const op = await html({ alteracao: "aplicada_pedida" });
+  expect(op).toContain("Alteração aplicada. Devolução da diferença pedida ao Mercado Pago");
+  expect(op).not.toContain("R$");
+});
+
+it("M8.2d (D26): a operação, em cada caso da alteração — aumento aplicado, redução retida, cada resultado e pagamentos com avisos, devoluções e notas com valor — nunca vê R$ nem valores na ficha, nas observações e no histórico", async () => {
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  const VALORES = /R\$|182400|222400|40000|60800|121600|29700|1\.824|2\.224|400,00|608,00/;
+  const observacoes = "Alterada em 01/10: de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–16/10 (4 noites, 4 pessoas).";
+  const historico = (valorDepois: number, diferenca: number) => [
+    { id: "h1", acao: "reserva.alterar", mudancas: { checkout: ["2026-10-15", "2026-10-16"], valorBruto: [182400, valorDepois], diferenca: [null, diferenca], alteracao: [null, ALTERACAO_ID] }, criadoEm: new Date("2026-10-01T15:36:00Z"), autor: "Equipe Fictícia" },
+  ];
+  // Aumento aplicado pelo pagamento da diferença: o pagamento da reserva (com um aviso que leva valor) e o da diferença.
+  const aumento = alteracao({
+    depois: { checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 222400 },
+    diferenca: 40000,
+    valorNovo: 222400,
+    noitesNovas: { inicio: "2026-10-15", fim: "2026-10-16" },
+    aplicadaPor: null,
+    direito: null,
+    base: null,
+    valorADevolver: null,
+    devolucao: null,
+    resultado: { meses: [{ mes: "2026-10", antes: { bruto: 182400, taxa: -1806, comissao: 27090, parte: 153504 }, depois: { bruto: 222400, taxa: -2202, comissao: 33030, parte: 187168 } }] },
+    tentativas: [{ id: "p2", forma: "pix", situacao: "aprovado", criadoEm: new Date("2026-10-01T15:40:00Z"), desfecho: "alteracao" }],
+  });
+  const diferenca: PagamentoDoPainel = { ...pagamento, id: "22222222-2222-4222-8222-222222222222", desfecho: "alteracao", alteracaoId: ALTERACAO_ID, valor: 40000, valorPago: 40000, taxa: 396, liquido: 39604 };
+  const comAviso: PagamentoDoPainel = {
+    ...pagamento,
+    avisos: ["A liberação deste pagamento passou da data prevista e a devolução de R$ 608,00 continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer."],
+    avisosSemValores: ["A liberação deste pagamento passou da data prevista e a devolução de parte do valor continua esperando: confira no painel do Mercado Pago e registre a liberação à mão quando ela aparecer."],
+  };
+  m.reserva.mockResolvedValue({ ...reserva, checkout: "2026-10-16", valorBruto: 222400, taxaCanal: 2202, valorLiquido: 220198, observacoes });
+  m.alteracoes.mockResolvedValue([aumento]);
+  m.historico.mockResolvedValue(historico(222400, 40000));
+  m.pagamentos.mockResolvedValue([comAviso, diferenca]);
+  const op = await html();
+  expect(op).toContain("Alteração aplicada");
+  expect(op).toContain("Aprovado: pagou a diferença da alteração");
+  expect(op).toContain("a devolução de parte do valor continua esperando");
+  expect(op).toContain(observacoes);
+  expect(op).not.toMatch(VALORES);
+  // O admin vê os mesmos com os valores (a regra é a permissão, não a falta do dado).
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  expect(await html()).toContain("a devolução de R$ 608,00 continua esperando");
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+
+  // Redução retida pela política (o valor da reserva continua o mesmo, com as datas novas).
+  const retida = alteracao({ direito: "nenhum", base: "prazo", valorADevolver: 0, valorNovo: 182400, devolucao: null, mensagens: { proposta: null, confirmada: null, devolvida: null } });
+  m.reserva.mockResolvedValue({ ...reserva, checkout: "2026-10-14", observacoes: "Alterada em 01/10: de 12/10–15/10 (3 noites, 4 pessoas) para 12/10–14/10 (2 noites, 4 pessoas)." });
+  m.alteracoes.mockResolvedValue([retida]);
+  m.historico.mockResolvedValue(historico(182400, -60800));
+  // O pagamento com uma devolução de cada tipo e as notas livres (que podem trazer valor).
+  const linha = {
+    id: "44444444-4444-4444-8444-444444444444",
+    origem: "alteracao",
+    alteracaoId: ALTERACAO_ID,
+    valor: 60800,
+    situacao: "confirmada" as const,
+    valorConfirmado: 29700,
+    ultimoCodigo: null,
+    avisos: ["devolucao_a_menor"],
+    restanteDe: null,
+    temRestante: false,
+    caixaLancadoEm: null,
+    taxaPerdida: 297,
+    criadoEm: new Date("2026-10-01T15:36:00Z"),
+    confirmadaEm: new Date("2026-10-02T15:00:00Z"),
+    porForaData: null,
+    porForaValor: null,
+    tentativas: 1,
+    falhas: 0,
+    confirmadaPor: "equipe" as const,
+    confirmadaNota: "painel mostra R$ 297,00 devolvidos",
+    porForaNota: "",
+    recusaNoPainelEm: null,
+    paradaEm: null,
+    paradaPeloPrazo: false,
+    aguardandoLiberacao: false,
+    restanteSemReserva: null,
+    acoes: { conferir: true, pedirDeNovo: false, porFora: false, confirmarVista: false, registrarRecusaNoPainel: false, parar: false, registrarTaxa: false, corrigirTaxa: true, pedirRestante: true, restantePorFora: true },
+  };
+  const porFora = { ...linha, id: "55555555-5555-4555-8555-555555555555", situacao: "por_fora" as const, valor: 31100, valorConfirmado: null, avisos: [], taxaPerdida: null, porForaData: "2026-10-03", porForaValor: 31100, porForaNota: "Pix de R$ 311,00 da conta da empresa", restanteDe: linha.id };
+  m.pagamentos.mockResolvedValue([
+    {
+      ...pagamento,
+      situacao: "devolvido_parcial",
+      devolucoes: [linha, porFora],
+      avisos: ["O Mercado Pago devolveu R$ 297,00 de R$ 608,00 pedidos nesta devolução: o que voltou já está no financeiro. Peça o restante ao Mercado Pago ou registre o restante devolvido por fora."],
+      avisosSemValores: ["O Mercado Pago devolveu menos do que foi pedido nesta devolução: o que voltou já está no financeiro. Peça o restante ao Mercado Pago ou registre o restante devolvido por fora."],
+      foraReconhecido: 0,
+      devolvidoLido: 29700,
+      restante: null,
+    },
+  ]);
+  const retidaOp = await html();
+  expect(retidaOp).toContain("Devolução da alteração de 01/10/2026: confirmada pela equipe (vista no painel do Mercado Pago) em 02/10/2026");
+  expect(retidaOp).toContain("Restante de uma devolução: feita por fora em 03/10/2026");
+  expect(retidaOp).toContain("O Mercado Pago devolveu menos do que foi pedido nesta devolução");
+  expect(retidaOp).not.toContain("nota:");
+  // As ações de dinheiro de cada devolução são do financeiro.
+  expect(retidaOp).not.toContain("Pedir o restante ao Mercado Pago");
+  expect(retidaOp).not.toContain("Corrigir taxa que não voltou");
+  expect(retidaOp).not.toMatch(VALORES);
+
+  // Cada resultado de ação no endereço, para a operação: nenhum valor (a devolução da última aplicada sem o valor).
+  m.alteracoes.mockResolvedValue([alteracao()]);
+  m.pagamentos.mockResolvedValue([pagamento]);
+  for (const chave of ["segurada", "aplicada_pedida", "aplicada_liberacao", "aplicada_fora_do_prazo", "aplicada_sem_devolucao", "aplicada", "desistida", "ota", "avisado"]) {
+    const h = await html({ alteracao: chave });
+    expect(h).toContain('role="status"');
+    expect(h).not.toMatch(VALORES);
+  }
 });

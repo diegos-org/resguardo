@@ -1,8 +1,9 @@
 /**
  * Páginas legais do site (M7.4) no banco: cada documento é uma chave de configuração com as suas versões (motor de
  * `documentos-versionados.ts`), com numeração e trava próprias — publicar um nunca mexe nos outros. Cada versão
- * congela os valores dos `{{campos}}` que o texto usa (dados da empresa no dia) e, na Política de cancelamento, o
- * prazo do reembolso integral (`regras`), que é o número que o texto mostra e que a devolução (M8.2c) usa.
+ * congela os valores dos `{{campos}}` que o texto usa (dados da empresa no dia) e, na Política de cancelamento, as
+ * `regras` que a devolução (M8.2c) usa: o prazo do reembolso integral (o número que o texto mostra) e se o arrependimento
+ * vale só até o horário de entrada (lida com o padrão de `regrasComPadrao`: a versão gravada sem o campo vale "sim").
  * Publicar é recusado quando falta um dado usado, quando o texto usa um campo que não existe ou fora do lugar e quando a
  * Política de cancelamento não mostra o prazo pelo campo — avisar em vez de supor. Não há "despublicar": o pagamento do
  * site só é oferecido com os três publicados, e toda versão continua no site para quem a aceitou.
@@ -23,6 +24,7 @@ import {
   mensagemDosCampos,
   PAGINAS_LEGAIS,
   type RegrasCancelamento,
+  regrasComPadrao,
   type SecaoLegal,
   validarPaginaLegal,
   valoresDisponiveis,
@@ -49,8 +51,11 @@ function definicao(doc: DocumentoLegal): DefinicaoDocumento<SecaoLegal, ExtraLeg
         const v = gravados[c.chave];
         if (typeof v === "string" && v.trim()) valores[c.chave] = v.trim().slice(0, 300);
       }
-      const dias = x.regras && typeof x.regras === "object" ? (x.regras as Record<string, unknown>).diasReembolsoIntegral : undefined;
-      return { valores, regras: doc === "cancelamento" && diasValidos(dias) ? { diasReembolsoIntegral: dias } : null };
+      const r = x.regras && typeof x.regras === "object" ? (x.regras as Record<string, unknown>) : {};
+      const dias = r.diasReembolsoIntegral;
+      const arrependimento = typeof r.arrependimentoAteEntrada === "boolean" ? { arrependimentoAteEntrada: r.arrependimentoAteEntrada } : {};
+      // Só os campos conhecidos; o ausente sai com o padrão (quem lê a versão nunca precisa adivinhar).
+      return { valores, regras: doc === "cancelamento" && diasValidos(dias) ? regrasComPadrao({ diasReembolsoIntegral: dias, ...arrependimento }) : null };
     },
     mudancasDoExtra: (antes, depois) => {
       const m: Record<string, [unknown, unknown]> = {};
@@ -62,6 +67,10 @@ function definicao(doc: DocumentoLegal): DefinicaoDocumento<SecaoLegal, ExtraLeg
       const a = antes?.regras?.diasReembolsoIntegral ?? null;
       const b = depois.regras?.diasReembolsoIntegral ?? null;
       if (a !== b) m["regra.diasReembolsoIntegral"] = [a, b];
+      // Com o padrão: a versão gravada sem o campo e uma nova com "sim" são a mesma regra (nenhuma versão nova por isso).
+      const ra = antes?.regras ? regrasComPadrao(antes.regras).arrependimentoAteEntrada : null;
+      const rb = depois.regras ? regrasComPadrao(depois.regras).arrependimentoAteEntrada : null;
+      if (ra !== rb) m["regra.arrependimentoAteEntrada"] = [ra, rb];
       return m;
     },
   };
@@ -116,24 +125,26 @@ export async function versoesLegaisTravadas(tx: Db, organizacaoId: string): Prom
 }
 
 /**
- * Publica a versão seguinte de um documento (datada de hoje) quando o texto, um valor usado ou o prazo mudou; tudo
+ * Publica a versão seguinte de um documento (datada de hoje) quando o texto, um valor usado ou uma regra mudou; tudo
  * igual não cria versão. O texto é conferido de novo aqui (deny-by-default); os campos são conferidos com os dados da
  * empresa lidos na mesma transação, e só os valores usados ficam na versão. `versaoBase`: ver `publicarVersao`.
+ * `arrependimentoAteEntrada` ausente (ou null) = sim, como a regra lida de uma versão sem o campo; o formulário sempre
+ * manda a caixa (desmarcada = não), conferida em `validarPaginaLegal`.
  */
 export async function publicarPaginaLegal(
   db: Db,
   organizacaoId: string,
   doc: DocumentoLegal,
-  entrada: { secoes: Record<string, string>; diasReembolsoIntegral: number | null },
+  entrada: { secoes: Record<string, string>; diasReembolsoIntegral: number | null; arrependimentoAteEntrada?: boolean | null },
   autorId: string | null,
   hoje: string,
   versaoBase?: number,
 ): Promise<ResultadoPublicacao<VersaoPaginaLegal>> {
-  const v = validarPaginaLegal(doc, { ...entrada.secoes, diasReembolsoIntegral: entrada.diasReembolsoIntegral ?? "" });
+  const v = validarPaginaLegal(doc, { ...entrada.secoes, diasReembolsoIntegral: entrada.diasReembolsoIntegral ?? "", arrependimentoAteEntrada: entrada.arrependimentoAteEntrada !== false });
   if (!v.ok) return { ok: false, erro: v.mensagem, erros: v.erros, atual: versaoAtual(await lerPaginaLegal(db, organizacaoId, doc)) };
-  const { secoes, diasReembolsoIntegral } = v.entrada;
+  const { secoes, diasReembolsoIntegral, arrependimentoAteEntrada } = v.entrada;
   return publicarVersao(db, DEFINICOES_LEGAIS[doc], organizacaoId, secoes as Record<SecaoLegal, string>, autorId, hoje, versaoBase, async (tx) => {
-    const regras = doc === "cancelamento" && diasReembolsoIntegral !== null ? { diasReembolsoIntegral } : null;
+    const regras = doc === "cancelamento" && diasReembolsoIntegral !== null ? { diasReembolsoIntegral, arrependimentoAteEntrada: arrependimentoAteEntrada !== false } : null;
     const c = conferirCampos(doc, secoes, valoresDisponiveis(await lerEmpresa(tx, organizacaoId), regras));
     const problema = mensagemDosCampos(c);
     if (problema) return { ok: false, erro: problema };
@@ -149,7 +160,7 @@ export function camposDesatualizados(v: VersaoPaginaLegal, agora: Partial<Record
   return CAMPOS_LEGAIS.map((c) => c.chave).filter((k) => k !== "dias_reembolso_integral" && v.valores[k] !== undefined && (agora[k]?.trim() ?? "") !== v.valores[k]);
 }
 
-/** Prazo da versão N da Política de cancelamento (para a prova do aceite e para a devolução, M8.2c). */
+/** Regras da versão N da Política de cancelamento, com o padrão (para a prova do aceite e para a devolução, M8.2c). */
 export async function regraDaPoliticaDeCancelamento(db: Db, organizacaoId: string, versao: number): Promise<RegrasCancelamento | null> {
   return (await lerPaginaLegal(db, organizacaoId, "cancelamento")).find((x) => x.numero === versao)?.regras ?? null;
 }

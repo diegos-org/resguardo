@@ -79,3 +79,98 @@ describe("textos do pagamento com cartão (M8.2b)", () => {
     expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, pagamentoCartaoAnalise: " " })).toMatchObject({ ok: false, erros: { pagamentoCartaoAnalise: "Este texto não pode ficar vazio." } });
   });
 });
+
+describe("textos do cancelamento (M8.2c): editáveis, com texto-base", () => {
+  const chaves = CAMPOS_TEXTOS_SITE.map((c) => c.chave).filter((k) => k.startsWith("cancelamento"));
+
+  it("as frases novas existem, com texto-base dentro do limite; as que o hóspede precisa ler não ficam vazias", () => {
+    expect(chaves).toEqual([
+      "cancelamentoSemTaxas",
+      "cancelamentoDevolucaoPedida",
+      "cancelamentoEstornoNoCartao",
+      "cancelamentoVoltaPix",
+      "cancelamentoVoltaCartao",
+      "cancelamentoVoltaPorFora",
+      "cancelamentoComAEquipe",
+      "cancelamentoEmConferencia",
+      "cancelamentoDevolvidoPelaDisputa",
+      "cancelamentoSemDevolucaoPrazo",
+      "cancelamentoSemDevolucaoNaoComparecimento",
+      "cancelamentoSemDevolucaoEquipe",
+      "cancelamentoFecho",
+      "cancelamentoPedidoRecebido",
+      "cancelamentoMinhaReservaIntro",
+    ]);
+    for (const k of chaves) {
+      const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === k)!;
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeGreaterThan(10);
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeLessThanOrEqual(campo.limite);
+    }
+    expect(TEXTOS_SITE_INICIAIS.cancelamentoSemTaxas).toBe("sem desconto de taxas.");
+    expect(TEXTOS_SITE_INICIAIS.cancelamentoPedidoRecebido).toBe("A equipe confirma com você, por escrito, o valor da devolução pela política que você aceitou.");
+    const opcionais = ["cancelamentoFecho", "cancelamentoMinhaReservaIntro"];
+    for (const k of chaves) expect(TEXTOS_SITE_OBRIGATORIOS.includes(k), k).toBe(!opcionais.includes(k));
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, cancelamentoFecho: "", cancelamentoMinhaReservaIntro: "" })).toMatchObject({ ok: true });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, cancelamentoVoltaPix: " ", cancelamentoPedidoRecebido: "" })).toEqual({
+      ok: false,
+      erros: { cancelamentoVoltaPix: "Este texto não pode ficar vazio.", cancelamentoPedidoRecebido: "Este texto não pode ficar vazio." },
+    });
+  });
+
+  it("o texto-base não cita o Beds24, não traz valor nem dado pessoal (as datas e os valores são do sistema)", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/beds24|R\$|\d|@/i);
+  });
+
+  it("as frases que também vão para a mensagem ao hóspede ({decisao}) não dizem 'esta página' (no e-mail não há página na frente dele)", () => {
+    for (const k of ["cancelamentoDevolucaoPedida", "cancelamentoEstornoNoCartao"] as const) {
+      expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/esta página/i);
+      expect(TEXTOS_SITE_INICIAIS[k], k).toContain("a página da sua reserva");
+    }
+  });
+});
+
+describe("textos da alteração de reserva paga (M8.2d): editáveis, com texto-base", () => {
+  const chaves = ["alteracaoEmAndamento", "alteracaoAguardaConfirmacao", "alteracaoPolitica", "alteracaoConfirmada", "devolucaoAguardaLiberacao", "alteracaoSemDevolucao", "alteracaoNaoAplicada", "alteracaoNaoVale"] as const;
+  const obrigatorias = ["alteracaoEmAndamento", "alteracaoAguardaConfirmacao", "alteracaoNaoAplicada", "alteracaoPolitica", "devolucaoAguardaLiberacao"];
+
+  it("as chaves novas existem com texto-base dentro do limite; as que o hóspede precisa ler não ficam vazias", () => {
+    for (const k of chaves) {
+      const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === k);
+      expect(campo, k).toBeTruthy();
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeGreaterThan(10);
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeLessThanOrEqual(campo!.limite);
+      expect(TEXTOS_SITE_OBRIGATORIOS.includes(k), k).toBe(obrigatorias.includes(k));
+    }
+    expect(TEXTOS_SITE_INICIAIS.alteracaoEmAndamento).toBe("Pague a diferença até esse horário para confirmar a alteração; até lá, a sua reserva continua como está.");
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, alteracaoConfirmada: "", alteracaoSemDevolucao: "", alteracaoNaoVale: "" })).toMatchObject({ ok: true });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, alteracaoEmAndamento: " ", devolucaoAguardaLiberacao: "" })).toEqual({
+      ok: false,
+      erros: { alteracaoEmAndamento: "Este texto não pode ficar vazio.", devolucaoAguardaLiberacao: "Este texto não pode ficar vazio." },
+    });
+  });
+
+  it("o texto-base não cita o Beds24, não traz valor, data nem dado pessoal; a devolução que espera a liberação nunca diz que já foi pedida", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/beds24|R\$|\d|@/i);
+    expect(TEXTOS_SITE_INICIAIS.devolucaoAguardaLiberacao).not.toMatch(/já pedimos/i);
+    expect(TEXTOS_SITE_INICIAIS.devolucaoAguardaLiberacao).toContain("quando ele liberar o seu pagamento");
+  });
+});
+
+describe("texto do pagamento em conferência (M8.2e): editável, com texto-base, pode ficar vazio", () => {
+  it("a chave existe com o texto-base do desenho dentro de 240 caracteres; vazia vale (a linha some)", () => {
+    const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === "pagamentoEmConferencia");
+    expect(campo).toBeTruthy();
+    expect(campo!.limite).toBe(240);
+    expect(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia).toBe(
+      "O pagamento desta reserva está em conferência com o Mercado Pago. Se tiver qualquer dúvida sobre a cobrança, fale com a nossa equipe.",
+    );
+    expect(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia.length).toBeLessThanOrEqual(240);
+    expect(TEXTOS_SITE_OBRIGATORIOS.includes("pagamentoEmConferencia")).toBe(false);
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, pagamentoEmConferencia: "" })).toMatchObject({ ok: true });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, pagamentoEmConferencia: "x".repeat(241) })).toMatchObject({ ok: false, erros: { pagamentoEmConferencia: "Máximo de 240 caracteres." } });
+  });
+
+  it("o texto-base nunca diz contestação nem acusa, nem cita o Beds24, valores ou dados pessoais", () => {
+    expect(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia).not.toMatch(/contesta|chargeback|fraude|disputa|beds24|R\$|\d|@/i);
+  });
+});

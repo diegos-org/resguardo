@@ -19,6 +19,11 @@
  *
  * O e-mail do pagador sai da reserva, no servidor (no teste, o adaptador troca pelo do sandbox); a página nunca o
  * recebe. O motivo de uma recusa nunca vai ao hóspede: os códigos daqui viram textos genéricos no site.
+ *
+ * A diferença de uma alteração da reserva paga (M8.2d, `o.alteracaoId`): o mesmo caminho, com o alvo da cobrança
+ * (`alvoDaCobranca`, como no Pix): o valor, o prazo e as tentativas que contam (uma por vez, "já pago", análise, o anterior
+ * a cancelar e o teto de 3 cartões) são os da alteração; o live_mode continua valendo para a cotação toda; o aceite é o
+ * dos Termos e da Privacidade em vigor com a política da reserva (D11).
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
@@ -30,11 +35,14 @@ import { type EtapaCartao, pagamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { aceiteVigenteTravado } from "@/site/aceites";
+import { TEXTO_ALTERACAO_MUDOU } from "./alvo";
 import { CARTOES_POR_HORA_NA_ORGANIZACAO, MAXIMO_CARTAO_POR_COTACAO } from "./andamento";
 import { aplicarLeitura, type Leitura } from "./aplicar";
 import { cancelarNoProvedor, chaveCancelamento } from "./conferencia";
 import { chaveCriacao, conferirOuOcupado, guardarIdDaOrder, leituraDaCriacao, referenciaDaTentativa, relerEncerradasRecentes } from "./criacao";
-import { motivoSemCartaoDaCotacao, motivoSoDoCartao, TEXTO_SEM_CARTAO } from "./oferta";
+import { motivoSemCartaoDaAlteracao, motivoSemCartaoDaCotacao, motivoSoDoCartao, TEXTO_SEM_CARTAO } from "./oferta";
+import { politicaDoAlvo } from "./pix";
+import { alvoDaCobranca, falhaDoAlvo } from "./alvo";
 import { CODIGOS_FALHA_DO_PROVEDOR, CODIGOS_TOKEN, type PedidoCartao, PARCELAS_MAXIMAS, type ProvedorPagamento, type ResultadoCriacao, type StatusTresDS } from "./provedor";
 import { comDinheiro, motivoDoDetalhe, type SituacaoPagamento } from "./situacoes";
 import { travarCotacao } from "./travas";
@@ -75,6 +83,7 @@ export type CodigoFalhaCartao =
   | "ao_vivo"
   | "aceite_pendente"
   | "aceite_mudou"
+  | "alteracao_mudou"
   | "prazo";
 
 /** `desafio` = o banco pediu a verificação (a página mostra o desafio); `conferindo` = processando no Mercado Pago. */
@@ -103,6 +112,7 @@ const TEXTOS: Record<CodigoFalhaCartao, string> = {
   aceite_pendente: "Falta o aceite das páginas legais.",
   aceite_mudou: "As páginas legais mudaram desde que a página foi aberta.",
   prazo: "O prazo das datas acabou durante o pagamento: o desafio do banco foi cancelado.",
+  alteracao_mudou: TEXTO_ALTERACAO_MUDOU,
 };
 const falha = (codigo: CodigoFalhaCartao, erro = TEXTOS[codigo]): ResultadoCartao => ({ ok: false, codigo, erro });
 
@@ -140,27 +150,35 @@ type Fase1 =
   | { tipo: "cancelar"; id: string; idProvedor: string }
   | { tipo: "criar"; id: string; base: BaseDoPedido };
 
-async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Date, d: { bandeira: string; parcelas: number; comDispositivo: boolean }, aceite: VersoesLegais | null): Promise<Fase1> {
+async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Date, d: { bandeira: string; parcelas: number; comDispositivo: boolean }, aceite: VersoesLegais | null, alteracaoId: string | null): Promise<Fase1> {
   const erro = (codigo: CodigoFalhaCartao, texto?: string): Fase1 => ({ tipo: "erro", resultado: falha(codigo, texto) });
   const t = await travarCotacao(tx, organizacaoId, cotacaoId);
   if (!t) return erro("nao_encontrada");
-  // Uma tentativa por vez na cotação (Pix ou cartão). Dinheiro vem antes da oferta: um Pix pago no instante em que o
+  // O alvo da cobrança (M8.2d): a reserva, ou a diferença da alteração com as datas seguradas agora.
+  const achado = alvoDaCobranca(tx, organizacaoId, t, alteracaoId, agora);
+  if (falhaDoAlvo(achado)) return erro(achado.erro);
+  const alvo = achado;
+  const doAlvo = alvo.tentativas;
+  // Uma tentativa por vez no alvo (Pix ou cartão). Dinheiro vem antes da oferta: um Pix pago no instante em que o
   // hóspede trocou pelo cartão já confirmou a reserva, e a resposta é "já pago" (não "indisponível").
-  if (t.tentativas.some((x) => x.situacao === "criando" || x.situacao === "incerta")) return erro("em_andamento");
-  if (t.tentativas.some((x) => comDinheiro(x.situacao))) return erro("ja_pago");
-  // Um pagamento desta cotação marcado como real (live_mode) no teste: nenhum outro.
+  if (doAlvo.some((x) => x.situacao === "criando" || x.situacao === "incerta")) return erro("em_andamento");
+  if (doAlvo.some((x) => comDinheiro(x.situacao))) return erro("ja_pago");
+  // Um pagamento desta cotação marcado como real (live_mode) no teste: nenhum outro (de nenhum alvo).
   if (t.tentativas.some((x) => x.aoVivo === true)) return erro("ao_vivo");
-  const motivo = await motivoSemCartaoDaCotacao(tx, organizacaoId, t.cotacao, t.reserva.estado, agora);
+  const motivo =
+    alvo.tipo === "reserva"
+      ? await motivoSemCartaoDaCotacao(tx, organizacaoId, t.cotacao, t.reserva.estado, agora)
+      : await motivoSemCartaoDaAlteracao(tx, organizacaoId, alvo.alteracao!, { id: t.reserva.id, imovelId: t.reserva.imovelId, estado: t.reserva.estado, cancelamentoAtivo: !!t.cancelamento }, agora);
   if (motivo) return erro(motivoSoDoCartao(motivo) ? "indisponivel" : "nao_oferecido", TEXTO_SEM_CARTAO[motivo]);
-  const pendentes = t.tentativas.filter((x) => x.situacao === "pendente");
+  const pendentes = doAlvo.filter((x) => x.situacao === "pendente");
   // Cartão em análise: o Mercado Pago não cancela e pode aprovar (nada de outro jeito); processando: espera.
   if (pendentes.some((x) => x.forma === "cartao" && x.etapaCartao === "analise")) return erro("em_analise");
   if (pendentes.some((x) => x.forma === "cartao" && x.etapaCartao !== "desafio")) return erro("em_andamento");
   // M7.4: páginas legais aceitas nas versões publicadas agora (o aceite enviado junto é gravado nesta mesma transação).
-  const a = await aceiteVigenteTravado(tx, organizacaoId, { cotacaoId, reservaId: t.reserva.id }, aceite, "cartao", agora);
+  const a = await aceiteVigenteTravado(tx, organizacaoId, { cotacaoId, reservaId: t.reserva.id }, aceite, "cartao", agora, await politicaDoAlvo(tx, organizacaoId, t, alvo));
   if (!a.ok) return a.motivo === "nao_publicadas" ? erro("nao_oferecido", TEXTO_SEM_CARTAO.sem_paginas_legais) : erro(a.motivo === "mudou" ? "aceite_mudou" : "aceite_pendente");
   // Tetos antes de cancelar qualquer coisa: com o teto atingido, o Pix pendente (ou o desafio) continua valendo.
-  if (t.tentativas.filter((x) => x.forma === "cartao").length >= MAXIMO_CARTAO_POR_COTACAO) return erro("limite");
+  if (doAlvo.filter((x) => x.forma === "cartao").length >= MAXIMO_CARTAO_POR_COTACAO) return erro("limite");
   // Teto geral pelas linhas que chegaram ao provedor (as apagadas por falha de transporte não contam). Não é serializado
   // entre cotações: algumas em paralelo podem passar da linha (é um freio; o disjuntor é a parada de verdade).
   const [hora] = await tx
@@ -191,8 +209,9 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
     referencia: referenciaDaTentativa(id),
     chaveIdempotencia: chaveCriacao(id),
     situacao: "criando",
-    valor: t.cotacao.total,
+    valor: alvo.valor,
     aceiteId: a.aceite.id,
+    alteracaoId: alvo.alteracaoId,
     parcelas: d.parcelas,
     bandeira: d.bandeira,
     tresDS: config.tresDS,
@@ -207,14 +226,14 @@ async function fase1(tx: Db, organizacaoId: string, cotacaoId: string, agora: Da
     base: {
       referencia: referenciaDaTentativa(id),
       chaveIdempotencia: chaveCriacao(id),
-      valor: t.cotacao.total,
+      valor: alvo.valor,
       bandeira: d.bandeira,
       tipo: "credit_card",
       parcelas: d.parcelas,
       tresDS: config.tresDS,
       emissor: null,
       email: t.reserva.hospedeEmail,
-      descricao: `${empresa} — reserva ${t.reserva.codigo} (${t.imovel.nome})`,
+      descricao: alvo.descricao(empresa),
       descricaoFatura: await nomeNaFatura(tx, organizacaoId),
     },
   };
@@ -249,7 +268,8 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
       const t = await travarCotacao(tx, organizacaoId, cotacaoId);
       const p = t?.tentativas.find((x) => x.id === f.id);
       if (!t || !p) return null;
-      const pedidoValido = t.reserva.estado === "pedido" && t.cotacao.estado === "segurada";
+      const achado = alvoDaCobranca(tx, organizacaoId, t, p.alteracaoId, agora, { daLeitura: true });
+      const pedidoValido = !falhaDoAlvo(achado) && achado.valido(agora);
       if (!l) {
         // O pedido não chegou ao provedor (sem conexão, chave recusada, limite de chamadas): nada foi cobrado.
         await tx.delete(pagamentos).where(eq(pagamentos.id, p.id));
@@ -307,7 +327,7 @@ async function criar(db: Db, organizacaoId: string, cotacaoId: string, f: Extrac
 /**
  * Paga a cotação com cartão de crédito. `provedor` = o liberado por `podeCobrar` (quem chama confere também o freio por
  * origem e `ofertaDeCartao`). `o.aceite`: as versões das páginas legais que o hóspede acabou de aceitar (a caixa
- * marcada); sem ele, vale o aceite já gravado na cotação.
+ * marcada); sem ele, vale o aceite já gravado na cotação. `o.alteracaoId` (M8.2d): o cartão da diferença dessa alteração.
  */
 export async function pagarComCartao(
   db: Db,
@@ -316,9 +336,11 @@ export async function pagarComCartao(
   agora: Date,
   provedor: ProvedorPagamento,
   dados: DadosCartaoDoHospede,
-  o: { aceite?: VersoesLegais | null } = {},
+  o: { aceite?: VersoesLegais | null; alteracaoId?: string | null } = {},
 ): Promise<ResultadoCartao> {
   if (!uuidValido(cotacaoId)) return falha("nao_encontrada");
+  const alteracaoId = o.alteracaoId || null;
+  if (alteracaoId && !uuidValido(alteracaoId)) return falha("alteracao_mudou");
   // Conferências locais antes de qualquer trava ou chamada (o provedor confere de novo de verdade).
   if (dados.tipo !== "credit_card") return falha("so_credito");
   const bandeira = typeof dados.bandeira === "string" ? dados.bandeira.trim().toLowerCase() : "";
@@ -326,13 +348,13 @@ export async function pagarComCartao(
   if (!Number.isInteger(dados.parcelas) || dados.parcelas < 1 || dados.parcelas > PARCELAS_MAXIMAS) return falha("parcelas");
   // O id do aparelho só segue quando tem formato válido (sem ele, o pagamento continua: bloqueadores de anúncio).
   const dispositivo = typeof dados.dispositivo === "string" && DISPOSITIVO.test(dados.dispositivo) ? dados.dispositivo : null;
-  const relida = await relerEncerradasRecentes(db, organizacaoId, cotacaoId, provedor, agora);
+  const relida = await relerEncerradasRecentes(db, organizacaoId, cotacaoId, provedor, agora, { alteracaoId });
   if (relida.tipo === "ocupado") return falha("ocupado");
   if (relida.tipo === "provedor") return falha("provedor", relida.erro);
   for (let volta = 0; volta < 3; volta++) {
     let f: Fase1;
     try {
-      f = await db.transaction((tx) => fase1(tx, organizacaoId, cotacaoId, agora, { bandeira, parcelas: dados.parcelas, comDispositivo: dispositivo !== null }, o.aceite ?? null));
+      f = await db.transaction((tx) => fase1(tx, organizacaoId, cotacaoId, agora, { bandeira, parcelas: dados.parcelas, comDispositivo: dispositivo !== null }, o.aceite ?? null, alteracaoId));
     } catch (e) {
       if (travaOcupada(e)) return falha("ocupado");
       throw e;

@@ -263,6 +263,20 @@ describe("formulário do cartão (M8.2b)", () => {
     const f = formularioDoCartao({ token: 123, payment_method_id: null, installments: 1.5, payer: { identification: { type: "CPF" } } }, undefined, { dispositivo: 42, aceite: null });
     expect(Object.fromEntries(f.entries())).toEqual({ token: "", bandeira: "", tipo: "", parcelas: "" });
   });
+
+  it("M8.2d: o cartão da diferença de uma alteração leva o id dela (e o valor é a diferença), num quadro só dele", async () => {
+    const alteracaoId = "44444444-4444-4444-8444-444444444444";
+    acao.mockResolvedValue({ ok: true, situacao: "aprovado" });
+    mostrar({ alteracaoId, valor: 52800 });
+    await esperarFormulario();
+    expect(ultimo().container).toBe(`cartao-COT-ABCDEFGH-${alteracaoId}`);
+    expect(ultimo().config.initialization.amount).toBe(528);
+    await act(() => ultimo().config.callbacks.onSubmit(DADOS, ADICIONAIS));
+    const f = acao.mock.calls[0][0] as FormData;
+    expect(f.get("alteracao")).toBe(alteracaoId);
+    expect(f.get("aceite")).toBeNull();
+    expect(formularioDoCartao(DADOS, "credit_card", { dispositivo: null, aceite: null }).get("alteracao")).toBeNull();
+  });
 });
 
 describe("desafio do banco (M8.2b)", () => {
