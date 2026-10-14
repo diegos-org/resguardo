@@ -15,7 +15,13 @@ vi.mock("@/equipe/acoes", () => ({ marcarFeitaAcao: vi.fn(), trocarMinhaSenhaAca
 vi.mock("@/convites/acoes", () => ({ seguirConvite: vi.fn() }));
 vi.mock("@/convites/convites", () => ({ lerConvite: m.convite }));
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
-vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
+vi.mock("next/link", () => ({
+  default: ({ children, href, "aria-label": rotulo }: { children: React.ReactNode; href: string; "aria-label"?: string }) => (
+    <a href={href} aria-label={rotulo}>
+      {children}
+    </a>
+  ),
+}));
 
 const conteudo = { organizacaoId: "org", nomeEmpresa: "Casa Exemplo", textos: TEXTOS_SITE_INICIAIS, whatsapp: null, email: "", imagens: { capa: null, marca: "/marca.png" } };
 const comSite = () => m.site.mockResolvedValue({ db: {}, conteudo });
@@ -76,7 +82,9 @@ describe("telas de acesso: título e descrição próprios, com o nome da empres
     semSite();
     const semNome = await entrar();
     expect(semNome).not.toContain("Sua Casa Leblon");
-    expect(semNome).toContain("Início");
+    // Sem o nome (M7.8): no topo, só a marca do estudo, com o link "Início" para leitor de tela.
+    expect(semNome).toContain('<a href="/" aria-label="Início"><img alt=""');
+    expect(semNome).toContain('src="/marca.png"');
   });
 
   it("convite cancelado ou vencido pede um novo à empresa do site; sem site, a quem mandou o convite", async () => {
