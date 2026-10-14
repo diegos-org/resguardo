@@ -67,8 +67,10 @@ Agora:
   passar pelas casas da lista sem ser levado para outra página a cada tecla.
 - **Calendário sem casa escolhida:** avisa que as noites ocupadas não aparecem ali (a situação de cada casa vem na
   página seguinte), em vez de parecer tudo livre.
-- **Link antigo para uma casa que saiu do site:** a consulta diz "Essa casa não está mais no site. Escolha outra ou
-  busque em todas as casas.", em vez de pedir para escolher uma casa.
+- **Link antigo para uma casa que saiu do site:** o link do site anterior ("/property/" seguido do código) leva à
+  consulta, que diz "Essa casa não está mais no site. Escolha outra ou busque em todas as casas.", já com as datas e
+  as pessoas do link, em vez de uma linha de texto solta (antes). A consulta mostra o mesmo aviso quando o link dela
+  aponta para uma casa que não está no site, com ou sem datas.
 
 Nada é gravado na busca. Para não pesar, o site confere até 10 casas por busca; acima disso, as outras aparecem com
 "Veja as datas na página da casa", numa etiqueta azul clara, diferente da cinza de "Indisponível" (essas casas não foram

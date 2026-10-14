@@ -11,7 +11,7 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
+import { CASA_FORA_DO_SITE, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
 /** Busca em todas as casas (M7.9): o pedido tem datas, mas nenhuma casa escolhida ("Todas as casas"). */
 const ehBusca = (p: { imovel: string; entrada: string; saida: string }) => !p.imovel && !!(p.entrada || p.saida);
@@ -48,6 +48,10 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const r = enviado ? montarConsulta(pedido, imovel, hoje, disponibilidade && { situacao: disponibilidade.situacao, noites: disponibilidade.noites, total: disponibilidade.cotacao?.total ?? null, desconto: disponibilidade.cotacao?.desconto ?? 0 }) : null;
   // Se a disponibilidade recusar o pedido, a mensagem não é oferecida: vale a conferência mais estrita.
   const prontoParaEnviar = r?.ok === true && disponibilidade?.situacao !== "invalida";
+  // Casa pedida que não está (mais) no site, mesmo sem datas (o link antigo de uma casa que saiu, M7.9): o aviso aparece
+  // já na chegada, com as outras casas e "Todas as casas" no campo.
+  const casaFora = !enviado && !!pedido.imovel && !todos.some((i) => i.codigo === pedido.imovel);
+  const erros = r && !r.ok ? r.erros : casaFora ? { imovel: CASA_FORA_DO_SITE } : {};
   // Pagamento no site (M8.2a): os textos "nenhum pagamento é feito aqui" dependem de o Pix estar oferecido.
   const gate = await portaoDoSite(db, conteudo.organizacaoId);
   // Estadia que dá para segurar (null = o site não oferece segurar estas datas).
@@ -73,7 +77,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
       )}
       <div className={styles.consultaColunas}>
         <div className={styles.consultaForm}>
-          <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} comPagamento={gate.ok} />
+          <FormConsulta imoveis={todos} valores={pedido} erros={erros} hoje={hojeMinimo} canal={canalDeContato(conteudo)} comPagamento={gate.ok} />
         </div>
         <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
           <p className={styles.olho}>Sua estadia, sem surpresas</p>

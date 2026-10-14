@@ -99,6 +99,15 @@ it("link antigo para uma casa que saiu do site: o campo volta em \"Todas as casa
   expect(h).not.toContain('value="303"');
   expect(h).toContain('<option value="">Todas as casas</option>');
 });
+it("link antigo de uma casa que saiu do site, sem datas (M7.9): o aviso aparece já na chegada; casa que está no site, nenhum aviso", async () => {
+  const h = await html({ imovel: "303" });
+  expect(h).toContain("Essa casa não está mais no site. Escolha outra ou busque em todas as casas.");
+  expect(h).not.toContain('value="303"');
+  expect(m.disponibilidade).not.toHaveBeenCalled();
+  const daCasa = await html({ imovel: "403" });
+  expect(daCasa).not.toContain("Essa casa não está mais no site.");
+  expect(daCasa).not.toContain("Escolha um apartamento.");
+});
 it("pedido inválido (pessoas acima da capacidade) nem chega à disponibilidade", async () => {
   const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "9" });
   expect(m.disponibilidade).not.toHaveBeenCalled();

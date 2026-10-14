@@ -287,13 +287,25 @@ export function metadadosDeAcesso(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | 
  * Links antigos do site (`/property/<código>?checkin=…&checkout=…&guests=…`, do contrato de links
  * já divulgado): levam à página do imóvel com só os critérios de estadia, conferidos. Critério
  * inválido, incompleto ou repetido: avisa (400) em vez de supor; outros parâmetros são descartados.
+ * Casa que não está (mais) no site (M7.9): leva à consulta, que avisa "Essa casa não está mais no site" e oferece
+ * as outras casas e a busca em todas, com as datas e as pessoas do link quando vêm uma vez cada (a consulta confere).
+ * Redirecionamento temporário (307), porque a casa pode voltar ao site.
  */
 export function destinoDoLinkAntigo(
   sp: URLSearchParams,
+  codigo: string,
   imovel: ImovelPublico | null,
   agora: Date = new Date(),
-): { status: 308; destino: string } | { status: 400; erro: string } | { status: 404 } {
-  if (!imovel) return { status: 404 };
+): { status: 308 | 307; destino: string } | { status: 400; erro: string } {
+  if (!imovel) {
+    const consulta = new URLSearchParams();
+    if (/^[\w-]{1,40}$/.test(codigo)) consulta.set("imovel", codigo);
+    for (const [antigo, novo] of [["checkin", "entrada"], ["checkout", "saida"], ["guests", "hospedes"]] as const) {
+      const v = sp.getAll(antigo);
+      if (v.length === 1 && v[0]) consulta.set(novo, v[0].slice(0, 40));
+    }
+    return { status: 307, destino: consulta.size ? `/consulta?${consulta}` : "/consulta" };
+  }
   // "Hoje" no fuso do imóvel, como a página do imóvel e a consulta: uma entrada válida em fuso mais atrasado não vira erro.
   const hoje = hojeISO(imovel.fuso, agora);
   const base = `/imoveis/${encodeURIComponent(imovel.codigo)}`;

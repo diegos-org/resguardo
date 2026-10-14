@@ -144,27 +144,32 @@ describe("site público (M7.1)", () => {
     expect(metadadosDeAcesso(null, "Entrar", "Descrição da tela.")).toEqual({ title: "Entrar", description: "Descrição da tela." });
   });
 
-  it("links antigos /property/<código>: levam à página do imóvel só com os critérios de estadia válidos", async () => {
+  it("links antigos /property/<código>: levam à página do imóvel só com os critérios de estadia válidos; casa fora do site, à consulta", async () => {
     const imovel = await imovelDoSite(db, org, "403");
     const q = (o: Record<string, string>) => new URLSearchParams(o);
     const valido = { checkin: "2026-10-10", checkout: "2026-10-12", guests: "2" };
     // 25/09/2026, 12:00 em São Paulo.
     const agora = new Date("2026-09-25T15:00:00Z");
-    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), imovel, agora)).toEqual({
+    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), "403", imovel, agora)).toEqual({
       status: 308,
       destino: "/imoveis/403?checkin=2026-10-10&checkout=2026-10-12&guests=2",
     });
-    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), imovel, agora)).toEqual({ status: 308, destino: "/imoveis/403" });
+    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), "403", imovel, agora)).toEqual({ status: 308, destino: "/imoveis/403" });
     for (const ruim of [{ guests: "5" }, { checkin: "2026-02-30" }, { checkout: "2026-10-10" }, { guests: "2e0" }, { checkin: "2020-01-01" }])
-      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q({ guests: "2" }), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q(valido), null, agora)).toEqual({ status: 404 });
+      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), "403", imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q({ guests: "2" }), "403", imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), "403", imovel, agora)).toMatchObject({ status: 400 });
+    // Casa que não está (mais) no site (M7.9): a consulta, com o aviso, e as datas e pessoas do link (cada uma uma vez).
+    expect(destinoDoLinkAntigo(q(valido), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303&entrada=2026-10-10&saida=2026-10-12&hospedes=2" });
+    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303" });
+    expect(destinoDoLinkAntigo(new URLSearchParams("checkin=2026-10-10&checkin=2026-10-11&guests=2"), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303&hospedes=2" });
+    expect(destinoDoLinkAntigo(q(valido), "../x?y", null, agora)).toEqual({ status: 307, destino: "/consulta?entrada=2026-10-10&saida=2026-10-12&hospedes=2" });
+    expect(destinoDoLinkAntigo(q({}), "a b", null, agora)).toEqual({ status: 307, destino: "/consulta" });
     // "Hoje" no fuso do imóvel: 00:30 em São Paulo (03:30Z) ainda é dia 9 em Rio Branco, então entrada em 9/10 é válida lá.
     const madrugada = new Date("2026-10-10T03:30:00Z");
     const hojeLink = { checkin: "2026-10-09", checkout: "2026-10-12", guests: "2" };
-    expect(destinoDoLinkAntigo(q(hojeLink), imovel, madrugada)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q(hojeLink), { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
+    expect(destinoDoLinkAntigo(q(hojeLink), "403", imovel, madrugada)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q(hojeLink), "403", { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
   });
 });
 
