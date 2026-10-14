@@ -18,6 +18,7 @@
   padding: 12px max(5vw, 20px);
   background: var(--scl-floresta);
   color: var(--scl-creme);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
 }
 
 .marca {
@@ -101,6 +102,7 @@
   overflow: hidden;
   background: var(--scl-profundo);
   color: var(--scl-branco);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
   padding: 44px max(5vw, 24px) 96px;
 }
 
@@ -461,6 +463,8 @@
   margin: 0 auto;
 }
 
+/* h1 numa faixa (o cadastro do marketplace sozinho, no meio do cadastro) com o visual do h2 da faixa. */
+.secao h1,
 .secao h2 {
   font-size: clamp(1.75rem, 3vw, 2.5rem);
   margin-bottom: 10px;
@@ -499,6 +503,7 @@
 .casas {
   background: var(--scl-floresta);
   color: var(--scl-creme);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
 }
 
 .casas h2,
@@ -521,7 +526,11 @@
   gap: 20px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
-  padding: 3px 3px 14px;
+  /* Folga para o contorno do foco (até 8px fora do cartão) não ser cortado pela rolagem (M7.11); a margem negativa
+     deixa os cartões no mesmo lugar, e o scroll-padding faz o cartão parar com a mesma folga depois de rolar. */
+  margin: -5px -5px 0;
+  padding: 8px 8px 14px;
+  scroll-padding-inline: 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(243, 238, 227, 0.45) transparent;
 }
@@ -651,7 +660,8 @@
   color: var(--scl-branco);
 }
 
-.cartaoCorpo h3 {
+/* Título do cartão: h3 na vitrine (abaixo do h2 da faixa) e h2 em Nossas casas (abaixo do h1), com o mesmo visual. */
+.cartaoCorpo .cartaoTitulo {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -662,7 +672,7 @@
   color: inherit;
 }
 
-.cartaoCorpo h3 span {
+.cartaoCorpo .cartaoTitulo span {
   font-family: var(--font-sans);
   font-size: 1rem;
 }
@@ -855,23 +865,32 @@
   background: var(--scl-areia);
 }
 
-.miniatura[aria-current="true"] {
-  outline: 2px solid var(--scl-dourado);
-  outline-offset: 2px;
-}
-
-.miniatura:focus-visible {
-  outline: 2px solid var(--scl-foco);
-  outline-offset: 2px;
+/*
+ * Miniatura escolhida (M7.11): anel dourado-escuro por dentro da borda (5,6:1 sobre o creme; o dourado dava 1,9:1). O
+ * contorno do foco do teclado é o de sempre, por fora e a 5px: os dois aparecem juntos sem se sobrepor.
+ */
+.miniatura[aria-current="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 3px solid var(--scl-dourado-escuro);
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 /* Mais de quatro miniaturas: rolam dentro da altura da foto principal, sem esticar a galeria. */
 .miniaturasRolagem {
   height: 0;
-  min-height: 100%;
+  /* Folga de 8px para o contorno do foco dentro da rolagem (M7.11); a margem negativa deixa as miniaturas no lugar. */
+  min-height: calc(100% + 12px);
+  margin: -6px;
   align-content: start;
   overflow-y: auto;
-  padding: 2px;
+  padding: 8px;
+  /* E a miniatura que recebe o foco no meio da rolagem para com a mesma folga da borda (nos dois sentidos: no celular
+     ela rola para o lado). */
+  scroll-padding: 8px;
 }
 
 @media (max-width: 600px) {
@@ -1105,7 +1124,8 @@
   font-size: 2rem;
 }
 
-.editorial h3 {
+/* Partes da ficha do imóvel ("O que você encontra", "Camas", "Regras da casa"): h2 abaixo do h1, em texto menor. */
+.editorial .tituloFicha {
   margin: 28px 0 8px;
   font-family: var(--font-sans);
   font-weight: 600;
@@ -1231,6 +1251,7 @@
 .fechamento {
   background: var(--scl-musgo);
   color: var(--scl-creme);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
   text-align: center;
 }
 
@@ -1253,6 +1274,7 @@
 .rodape {
   background: var(--scl-profundo);
   color: var(--scl-creme);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
   padding: 36px max(5vw, 24px) 24px;
 }
 
@@ -1354,6 +1376,11 @@
 
 .whatsapp:hover {
   background: var(--scl-musgo-escuro);
+}
+
+/* Flutua sobre faixas claras e verdes: o contorno laranja vai sobre o halo creme (M7.11). */
+.whatsapp:focus-visible {
+  box-shadow: var(--scl-foco-halo);
 }
 
 .whatsapp svg {
@@ -1588,7 +1615,8 @@
   border-radius: var(--scl-raio-cartao);
 }
 
-.oferta h3 {
+/* h3 abaixo do título da faixa; h2 quando a faixa está sem título (o título é opcional). */
+.oferta .tituloOferta {
   margin: 0;
   font-size: 1.5rem;
   color: var(--scl-tinta);
@@ -1692,6 +1720,7 @@
   align-items: start;
 }
 
+.cadastroProprietario h1,
 .cadastroProprietario h2 {
   margin-top: 6px;
 }
@@ -2132,6 +2161,9 @@
   padding: 20px;
   background: var(--scl-papel);
   color: var(--scl-tinta);
+  /* Na capa, o cartão fica dentro da faixa verde das casas, que troca o foco para o creme: aqui o fundo é claro, e o
+     contorno do botão volta ao laranja (M7.11; o creme sobre o papel some). */
+  --scl-foco-cor: var(--scl-foco);
   border: 1px solid var(--scl-borda);
   border-left: 3px solid var(--scl-dourado);
   border-radius: var(--scl-raio-cartao);

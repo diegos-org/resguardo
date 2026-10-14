@@ -1,5 +1,6 @@
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import { AVISO_SEM_CONTATO, type ConteudoSite, contatoDoSite, type OpcoesDoContato } from "@/site/site";
+import { LinkNovaJanela } from "./Acessibilidade";
 import styles from "./site.module.css";
 
 /** O aviso do site sem casas, de Configurações → Site; salvo vazio ou só com espaços, o texto-base (nunca um aviso em branco). */
@@ -30,12 +31,24 @@ export function SemCasas({ conteudo, contato: opcoes }: { conteudo: Pick<Conteud
   );
 }
 
-/** O botão do link de `contatoDoSite` (o mesmo no aviso do site sem casas e na busca em todas as casas). */
+/**
+ * O botão do link de `contatoDoSite` (o mesmo no aviso do site sem casas e na busca em todas as casas). O WhatsApp abre
+ * outra janela pelo `LinkNovaJanela` (M7.11, com o aviso para o leitor de tela); o e-mail abre o programa de e-mail.
+ */
 export function BotaoContato({ contato }: { contato: NonNullable<ReturnType<typeof contatoDoSite>> }) {
-  return (
-    <a href={contato.href} className={styles.botao} {...(contato.externo ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+  const rotulo = (
+    <>
       {contato.rotulo}
       <span aria-hidden="true">↗</span>
+    </>
+  );
+  return contato.externo ? (
+    <LinkNovaJanela href={contato.href} className={styles.botao}>
+      {rotulo}
+    </LinkNovaJanela>
+  ) : (
+    <a href={contato.href} className={styles.botao}>
+      {rotulo}
     </a>
   );
 }

@@ -22,7 +22,8 @@ export default async function Catalogo() {
       {lista.length ? (
         <div className={styles.grade}>
           {lista.map((i) => (
-            <CartaoImovel key={i.codigo} imovel={i} />
+            // Logo abaixo do h1 "Nossas casas": o título de cada casa é h2 (M7.11).
+            <CartaoImovel key={i.codigo} imovel={i} nivel={2} />
           ))}
         </div>
       ) : (

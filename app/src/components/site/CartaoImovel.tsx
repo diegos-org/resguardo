@@ -33,20 +33,25 @@ export function seloDoImovel(i: Pick<ImovelPublico, "quartos" | "bairro" | "cida
 /**
  * Cartão sálvia do apartamento (vitrine da página inicial e catálogo), como no estudo: foto com selo, ícones e capacidade.
  * Na busca em todas as casas (M7.9): `href` com as datas e as pessoas, a situação da casa em `children` e outra chamada.
+ * `nivel` (M7.11): o título é h3 na vitrine e na busca, abaixo do h2 da faixa ou da lista, e h2 em Nossas casas, logo
+ * abaixo do h1 — o mesmo visual em todos, para a ordem dos títulos não saltar um nível.
  */
 export function CartaoImovel({
   imovel,
   carregarCedo = false,
+  nivel = 3,
   href,
   chamada = "Conheça a casa →",
   children,
 }: {
   imovel: ImovelPublico;
   carregarCedo?: boolean;
+  nivel?: 2 | 3;
   href?: string;
   chamada?: string;
   children?: ReactNode;
 }) {
+  const Titulo = nivel === 2 ? "h2" : "h3";
   const selo = seloDoImovel(imovel);
   const icones = comodidadesDoCartao(imovel.comodidades);
   return (
@@ -57,10 +62,10 @@ export function CartaoImovel({
       </div>
       <div className={styles.cartaoCorpo}>
         <p className={styles.olho}>{olhoImovel(imovel)}</p>
-        <h3>
+        <Titulo className={styles.cartaoTitulo}>
           {imovel.nome}
           <span aria-hidden="true">↗</span>
-        </h3>
+        </Titulo>
         <div className={styles.cartaoMeio}>
           <p>{fraseDoImovel(imovel)}</p>
           {icones.length > 0 && (

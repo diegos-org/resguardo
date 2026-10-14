@@ -101,7 +101,10 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
           {imovel.descricao && <p className={styles.texto}>{imovel.descricao}</p>}
           {imovel.comodidades.length > 0 && (
             <section aria-labelledby="titulo-comodidades">
-              <h3 id="titulo-comodidades">O que você encontra</h3>
+              {/* h2 abaixo do h1 do imóvel (M7.11), no tamanho menor das partes da ficha. */}
+              <h2 id="titulo-comodidades" className={styles.tituloFicha}>
+                O que você encontra
+              </h2>
               <ul className={styles.comodidades}>
                 {imovel.comodidades.map((c) => (
                   <li key={c}>
@@ -114,7 +117,9 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
           )}
           {imovel.camas.length > 0 && (
             <section aria-labelledby="titulo-camas">
-              <h3 id="titulo-camas">Camas</h3>
+              <h2 id="titulo-camas" className={styles.tituloFicha}>
+                Camas
+              </h2>
               <ul className={styles.fichas}>
                 {imovel.camas.map((c) => (
                   <li key={c}>{c}</li>
@@ -123,7 +128,9 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
             </section>
           )}
           <section aria-labelledby="titulo-regras">
-            <h3 id="titulo-regras">Regras da casa</h3>
+            <h2 id="titulo-regras" className={styles.tituloFicha}>
+              Regras da casa
+            </h2>
             <ul className={styles.fichas}>
               {regras.map((r) => (
                 <li key={r}>{r}</li>

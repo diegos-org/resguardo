@@ -1,0 +1,547 @@
+// @vitest-environment jsdom
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MolduraPortal } from "@/components/portal/MolduraPortal";
+import { AVISO_NOVA_JANELA, ID_CONTEUDO, ROTULO_PULAR } from "@/components/site/Acessibilidade";
+import { AceiteFeito, BlocoAceite } from "@/components/site/BlocoAceite";
+import { BotaoContato } from "@/components/site/Cotacao";
+import { FormSegurar } from "@/components/site/FormSegurar";
+import { Moldura } from "@/components/site/Moldura";
+import { MolduraBase } from "@/components/site/MolduraBase";
+import styles from "@/components/site/site.module.css";
+import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import type { AceiteNaPagina } from "@/site/aceites";
+import type { ConteudoSite, ImovelPublico } from "@/site/site";
+import Consulta from "../consulta/page";
+import PaginaImovel from "../imoveis/[codigo]/page";
+import Catalogo from "../imoveis/page";
+import NaoEncontradaNoSite from "../not-found";
+import Inicio from "../page";
+
+/**
+ * M7.11 — acessibilidade do site público, das páginas do hóspede e dos portais (levantamento de 14/10): o contorno de
+ * foco visível também sobre os verdes, a miniatura escolhida da galeria, o "Pular para o conteúdo", o aviso dos links que
+ * abrem outra janela e a ordem dos títulos. Os contrastes saem dos valores dos tokens em globals.css, sem cor repetida aqui.
+ */
+const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), imovel: vi.fn(), tem: vi.fn(), bairro: vi.fn(), disponibilidade: vi.fn(), portao: vi.fn(), pix: vi.fn() }));
+vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
+vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel, temCasaNoSite: m.tem }));
+vi.mock("@/site/bairro", async (orig) => ({ ...(await orig<typeof import("@/site/bairro")>()), lugaresDoSite: m.bairro }));
+// A busca em todas as casas (M7.9) lê as configurações uma vez e consulta cada casa pela mesma `consultarDisponibilidade`.
+vi.mock("@/site/disponibilidade", async (orig) => ({
+  ...(await orig<typeof import("@/site/disponibilidade")>()),
+  consultarDisponibilidade: m.disponibilidade,
+  lerConfigDaConsulta: vi.fn(async () => ({})),
+}));
+vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, pixPossivel: m.pix }));
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    throw new Error("NAO_ENCONTRADA");
+  },
+  // A troca de casa no envio do "Planeje sua estadia" (M7.9), na página do imóvel.
+  useRouter: () => ({ push: vi.fn() }),
+}));
+vi.mock("next/link", () => ({
+  default: ({ children, href, ...resto }: { children: React.ReactNode; href: string; className?: string; "aria-label"?: string }) => (
+    <a href={href} {...resto}>
+      {children}
+    </a>
+  ),
+}));
+
+const SRC = join(process.cwd(), "src");
+const ler = (rel: string) => readFileSync(join(SRC, rel), "utf8");
+
+// ——— CSS: regras e tokens lidos dos arquivos ———
+
+type Regra = { seletor: string; corpo: string };
+/** Regras de um CSS (as de dentro de @media/@supports também), sem comentários; seletor com espaços normalizados. */
+const regras = (css: string): Regra[] =>
+  [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((r) => ({ seletor: r[1].trim().replace(/\s+/g, " "), corpo: r[2] }));
+const valor = (corpo: string, propriedade: string) => new RegExp(`(?:^|[;{\\s])${propriedade}\\s*:\\s*([^;]+);`).exec(corpo)?.[1].trim();
+const regra = (css: string, seletor: string) => {
+  const achada = regras(css).find((r) => r.seletor === seletor);
+  if (!achada) throw new Error(`regra ${seletor} não encontrada`);
+  return achada.corpo;
+};
+
+const GLOBAL = ler("app/globals.css");
+const TOKENS = Object.fromEntries([...regra(GLOBAL, ":root").matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((t) => [t[1], t[2].trim()]));
+/** O valor final de um token (segue `var(--outro)` até a cor). */
+function cor(token: string): string {
+  const v = TOKENS[token];
+  if (!v) throw new Error(`token ${token} não existe em globals.css`);
+  const ref = /^var\((--[\w-]+)\)$/.exec(v);
+  return ref ? cor(ref[1]) : v;
+}
+const tokenDe = (texto: string) => /var\((--[\w-]+)\)/.exec(texto)?.[1] ?? "";
+
+/** Contraste WCAG 2 entre duas cores #rrggbb. */
+function contraste(a: string, b: string): number {
+  const luminancia = (hex: string) => {
+    const [r, g, bl] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [x, y] = [luminancia(a), luminancia(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+const MINIMO_INDICADOR = 3; // WCAG 1.4.11 (e DESIGN.md): 3:1 para contornos, ícones e indicadores
+const VERDES = ["--scl-floresta", "--scl-profundo", "--scl-musgo", "--scl-salvia"];
+const CLAROS = ["--scl-creme", "--scl-papel", "--scl-areia"];
+
+const SELETOR_FOCO = "a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible";
+const FOCO = regra(GLOBAL, SELETOR_FOCO);
+const [larguraFoco, , corFoco] = (valor(FOCO, "outline") ?? "").split(/\s+/);
+const deslocamentoFoco = parseFloat(valor(FOCO, "outline-offset") ?? "0");
+/** Até onde o contorno chega fora do elemento: o deslocamento mais a espessura. */
+const ALCANCE_FOCO = deslocamentoFoco + parseFloat(larguraFoco);
+
+const CSS_MODULOS: string[] = [];
+(function varrer(dir: string) {
+  for (const nome of readdirSync(dir)) {
+    const caminho = join(dir, nome);
+    if (statSync(caminho).isDirectory()) varrer(caminho);
+    else if (nome.endsWith(".module.css")) CSS_MODULOS.push(relative(SRC, caminho).split(sep).join("/"));
+  }
+})(join(SRC, "components"));
+
+/**
+ * Toda regra com fundo verde, classificada. Contêiner: há coisa focável sobre o verde (ou, no dia do calendário, o
+ * contorno fica por dentro do próprio verde) — troca a cor do foco para a clara. Peça: um botão, um cartão-link ou um
+ * enfeite sem nada focável; o contorno dele fica por fora, sobre o fundo de quem o contém, e herda a cor dali.
+ */
+const CONTEINERES = [
+  "components/site/site.module.css | .topo",
+  "components/site/site.module.css | .capa",
+  "components/site/site.module.css | .casas",
+  "components/site/site.module.css | .fechamento",
+  "components/site/site.module.css | .rodape",
+  'components/site/calendario.module.css | .ponta, .ponta:hover, .dia[aria-disabled="true"].ponta:hover',
+  "components/painel/painel.module.css | .lateral",
+  "components/portal/portal.module.css | .topo",
+  "components/portal/portal.module.css | .rodape",
+];
+const PECAS = [
+  "components/site/site.module.css | .botao",
+  "components/site/site.module.css | .botao:hover",
+  "components/site/site.module.css | .cartaoCasa",
+  "components/site/site.module.css | .whatsapp",
+  "components/site/site.module.css | .whatsapp:hover",
+  "components/site/site.module.css | .capaComFoto::before",
+  "components/site/site.module.css | .foto",
+  "components/site/site.module.css | .contador",
+  "components/site/site.module.css | .legendaFoto",
+  "components/site/calendario.module.css | .fundo",
+  "components/calendario/calendario.module.css | .hoje strong",
+  "components/formularios.module.css | .acoes button, .botao",
+  "components/formularios.module.css | .acoes button:hover, .botao:hover",
+  "components/painel/painel.module.css | .filtro button",
+  "components/painel/painel.module.css | .filtro button:hover",
+  "components/painel/painel.module.css | .conteudo button:not([class])",
+  "components/painel/painel.module.css | .conteudo button:not([class]):hover",
+  "components/portal/portal.module.css | .botao",
+  "components/portal/portal.module.css | .botao:hover",
+];
+const FUNDO_VERDE = /background(?:-color)?\s*:[^;]*var\(--scl-(?:floresta|profundo|musgo|musgo-escuro|salvia)\)/;
+const FOCO_CLARO = /--scl-foco-cor\s*:\s*var\(--scl-foco-sobre-verde\)/;
+/**
+ * Áreas claras que aparecem dentro de um contêiner verde com coisa focável dentro (ex.: o cartão papel de "nenhuma casa
+ * publicada", na faixa verde das casas da capa): herdariam o creme do verde, que some no fundo claro (1,05:1 no papel);
+ * cada uma devolve o laranja no mesmo seletor do fundo.
+ */
+const CLAROS_DENTRO_DE_VERDE = ["components/site/site.module.css | .semCasas"];
+const FUNDO_CLARO = /background(?:-color)?\s*:[^;]*var\(--scl-(?:creme|papel|areia|branco|neutro-fundo|erro-fundo|aviso-fundo|ok-fundo|info-fundo|dourado-claro)\)/;
+const FOCO_LARANJA = /--scl-foco-cor\s*:\s*var\(--scl-foco\)/;
+const regrasVerdes = () =>
+  CSS_MODULOS.flatMap((arquivo) =>
+    regras(ler(arquivo))
+      .filter((r) => FUNDO_VERDE.test(r.corpo))
+      .map((r) => ({ chave: `${arquivo} | ${r.seletor}`, corpo: r.corpo })),
+  );
+
+describe("contorno de foco visível sobre os verdes (M7.11)", () => {
+  it("um contorno só para tudo: 3px, deslocado 5px (DESIGN.md), na cor da variável que os contêineres verdes trocam", () => {
+    expect(larguraFoco).toBe("3px");
+    expect(deslocamentoFoco).toBe(5);
+    expect(corFoco).toBe("var(--scl-foco-cor)");
+    expect(TOKENS["--scl-foco-cor"]).toBe("var(--scl-foco)");
+    expect(TOKENS["--scl-foco-sobre-verde"]).toBe("var(--scl-creme)");
+  });
+
+  it("contrastes a partir dos tokens: o laranja nos fundos claros, o creme nos quatro verdes, sempre ≥ 3:1", () => {
+    const laranja = cor("--scl-foco");
+    const claro = cor("--scl-foco-sobre-verde");
+    for (const fundo of CLAROS) expect(contraste(laranja, cor(fundo)), `foco sobre ${fundo}`).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+    for (const verde of VERDES) {
+      expect(contraste(claro, cor(verde)), `foco claro sobre ${verde}`).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+      // O motivo do item: o laranja quase some nos verdes (1,27 a 2,29:1).
+      expect(contraste(laranja, cor(verde)), `laranja sobre ${verde}`).toBeLessThan(MINIMO_INDICADOR);
+    }
+    // Os números do registro em DESIGN.md (desvio de 14/10).
+    expect([cor("--scl-floresta"), cor("--scl-profundo"), cor("--scl-salvia"), cor("--scl-musgo")].map((v) => contraste(claro, v).toFixed(2))).toEqual(["6.20", "8.43", "4.68", "5.18"]);
+    expect([cor("--scl-creme"), cor("--scl-papel")].map((v) => contraste(laranja, v).toFixed(2))).toEqual(["3.68", "3.88"]);
+  });
+
+  it("toda regra de fundo verde está classificada: os contêineres trocam para o foco claro, as peças não (herdam de quem as contém)", () => {
+    const achadas = regrasVerdes();
+    const chaves = achadas.map((r) => r.chave);
+    // Fundo verde novo? Decida aqui: contêiner (algo focável sobre ele) ou peça (o contorno fica por fora).
+    expect(chaves.filter((c) => !CONTEINERES.includes(c) && !PECAS.includes(c))).toEqual([]);
+    // E a lista não fica velha: cada item ainda existe.
+    expect([...CONTEINERES, ...PECAS].filter((c) => !chaves.includes(c))).toEqual([]);
+    for (const r of achadas) expect(FOCO_CLARO.test(r.corpo), r.chave).toBe(CONTEINERES.includes(r.chave));
+    // Cada contêiner, com o próprio fundo dele: o foco claro passa de 3:1.
+    for (const r of achadas.filter((a) => CONTEINERES.includes(a.chave))) {
+      const fundo = tokenDe(valor(r.corpo, "background") ?? "");
+      expect(contraste(cor("--scl-foco-sobre-verde"), cor(fundo)), r.chave).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+    }
+  });
+
+  it("as áreas claras dentro dos contêineres verdes devolvem o contorno laranja, no mesmo seletor do fundo claro", () => {
+    for (const chave of CLAROS_DENTRO_DE_VERDE) {
+      const [arquivo, seletor] = chave.split(" | ");
+      const corpo = regra(ler(arquivo), seletor);
+      expect(FUNDO_CLARO.test(corpo), chave).toBe(true);
+      expect(FOCO_LARANJA.test(corpo), chave).toBe(true);
+      const fundo = tokenDe(valor(corpo, "background") ?? "");
+      expect(contraste(cor("--scl-foco"), cor(fundo)), chave).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+      // O motivo: o creme herdado do verde some no fundo claro.
+      expect(contraste(cor("--scl-foco-sobre-verde"), cor(fundo)), chave).toBeLessThan(MINIMO_INDICADOR);
+    }
+    // Nenhum contêiner verde devolve o laranja, e nenhuma área clara fora da lista troca a cor do foco.
+    for (const arquivo of CSS_MODULOS)
+      for (const r of regras(ler(arquivo)).filter((x) => FOCO_LARANJA.test(x.corpo)))
+        expect(CLAROS_DENTRO_DE_VERDE, `${arquivo} | ${r.seletor}`).toContain(`${arquivo} | ${r.seletor}`);
+  });
+
+  it("dia do calendário de datas: o contorno fica inteiro por dentro do dia, sobre o fundo dele, e com a opacidade cheia", () => {
+    const calendario = ler("components/site/calendario.module.css");
+    const foco = regra(calendario, ".dia:focus-visible");
+    const largura = parseFloat(valor(foco, "outline-width")!);
+    // Deslocamento negativo de pelo menos a espessura: da borda do dia para dentro (os dias ficam colados um no outro).
+    expect(-parseFloat(valor(foco, "outline-offset")!)).toBeGreaterThanOrEqual(largura);
+    // O dia indisponível é apagado pela opacidade, que apagaria também o contorno.
+    expect(valor(foco, "opacity")).toBe("1");
+    // No dia escolhido (musgo), o contorno por dentro é o claro.
+    const ponta = regra(calendario, '.ponta, .ponta:hover, .dia[aria-disabled="true"].ponta:hover');
+    expect(contraste(cor("--scl-foco-sobre-verde"), cor(tokenDe(valor(ponta, "background")!)))).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+  });
+
+  it("o que flutua sobre faixas claras e verdes (WhatsApp, Pular para o conteúdo) ganha o halo creme sob o contorno laranja", () => {
+    const halo = tokenDe(TOKENS["--scl-foco-halo"]);
+    expect(halo).toBe("--scl-creme");
+    expect(contraste(cor("--scl-foco"), cor(halo))).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+    for (const verde of VERDES) expect(contraste(cor(halo), cor(verde)), verde).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+    // O halo cobre o contorno inteiro (que vai até 8px fora), com folga.
+    expect(parseFloat(TOKENS["--scl-foco-halo"].split(/\s+/)[3])).toBeGreaterThan(ALCANCE_FOCO);
+    expect(valor(regra(ler("components/site/site.module.css"), ".whatsapp:focus-visible"), "box-shadow")).toBe("var(--scl-foco-halo)");
+    expect(valor(regra(GLOBAL, ".scl-pular:focus-visible"), "box-shadow")).toBe("var(--scl-foco-halo)");
+  });
+
+  it("rolagens com coisa focável dentro têm folga para o contorno inteiro (a rolagem corta o que passa da borda)", () => {
+    const site = ler("components/site/site.module.css");
+    const folgas = (padding: string) => padding.split(/\s+/).map(parseFloat);
+    // Carrossel da vitrine: folga dos quatro lados e o cartão para com a mesma folga depois de rolar.
+    const carrossel = regras(site).find((r) => r.seletor === ".carrossel" && valor(r.corpo, "overflow-x"))!.corpo;
+    expect(Math.min(...folgas(valor(carrossel, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    expect(parseFloat(valor(carrossel, "scroll-padding-inline")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // Miniaturas da galeria quando rolam (mais de quatro fotos): para baixo no computador, para o lado no celular.
+    const miniaturas = regra(site, ".miniaturasRolagem");
+    expect(Math.min(...folgas(valor(miniaturas, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    expect(parseFloat(valor(miniaturas, "scroll-padding")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // Menu do painel no celular, que rola para o lado.
+    const menu = regras(ler("components/painel/painel.module.css")).find((r) => r.seletor === ".menu" && valor(r.corpo, "overflow-x"))!.corpo;
+    expect(Math.min(...folgas(valor(menu, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // A padding só vale no começo e no fim da rolagem; no meio, o navegador leva o item com foco até a borda, menos o
+    // scroll-padding.
+    expect(parseFloat(valor(menu, "scroll-padding-inline")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+  });
+});
+
+describe("miniatura escolhida da galeria (M7.11)", () => {
+  it("anel dourado-escuro por dentro (≥ 3:1 no creme e no papel), sem disputar com o contorno do foco, que fica por fora", () => {
+    const site = ler("components/site/site.module.css");
+    const escolhida = regra(site, '.miniatura[aria-current="true"]::after');
+    const [espessura, , corAnel] = (valor(escolhida, "border") ?? "").split(/\s+/);
+    expect(espessura).toBe("3px");
+    expect(tokenDe(corAnel)).toBe("--scl-dourado-escuro");
+    for (const fundo of ["--scl-creme", "--scl-papel"]) expect(contraste(cor(tokenDe(corAnel)), cor(fundo)), fundo).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+    // O dourado de antes não chegava a 3:1.
+    expect(contraste(cor("--scl-dourado"), cor("--scl-creme"))).toBeLessThan(MINIMO_INDICADOR);
+    // Por dentro da borda (inset 0) e acima da foto; a miniatura não tem contorno próprio: vale o do foco, a 5px por fora.
+    expect(valor(escolhida, "inset")).toBe("0");
+    expect(regras(site).filter((r) => r.seletor.startsWith(".miniatura") && valor(r.corpo, "outline"))).toEqual([]);
+  });
+});
+
+// ——— Telas ———
+
+const imovel: ImovelPublico = {
+  codigo: "403",
+  fuso: "America/Sao_Paulo",
+  nome: "Studio Exemplo",
+  bairro: "Leblon",
+  cidade: "Rio de Janeiro",
+  capacidade: 4,
+  quartos: 0,
+  banheiros: 1,
+  descricao: "Frase fictícia do apartamento.",
+  camas: ["1 cama de casal"],
+  comodidades: ["Wi-Fi", "Comodidade sem ícone"],
+  regrasCasa: "",
+  aceitaAnimais: false,
+  permiteFumar: false,
+  permiteFestas: false,
+  checkinAPartirDe: "15:00",
+  checkoutAte: "11:00",
+  estadiaMinima: null,
+  fotos: [
+    { grande: "/fotos/f1", pequena: "/fotos/f1/pequena", legenda: "" },
+    { grande: "/fotos/f2", pequena: "/fotos/f2/pequena", legenda: "" },
+  ],
+};
+const conteudo: ConteudoSite = {
+  organizacaoId: "org",
+  nomeEmpresa: "Sua Casa Exemplo",
+  textos: { ...TEXTOS_SITE_INICIAIS, porque: "Primeiro\nTexto um.\n\nSegundo\nTexto dois.", comoReservar: "Passos fictícios.", contato: "Contato fictício.", chamada: "Venha *logo*." },
+  whatsapp: "5521900000000",
+  email: "",
+  imagens: { capa: null, marca: "/marca.png" },
+};
+const disponivel = { situacao: "disponivel", motivos: [], noites: 3, cotacao: { diarias: 135000, limpeza: 25000, hospedeExtra: 0, valorCheio: 160000, desconto: 6400, total: 153600 }, leituraEm: new Date("2026-10-01T09:15:00Z") };
+const pedido = { imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" };
+/** Busca em todas as casas (M7.9): as datas e as pessoas, sem casa escolhida. */
+const busca = { entrada: pedido.entrada, saida: pedido.saida, hospedes: pedido.hospedes };
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  m.site.mockResolvedValue({ db: {}, conteudo });
+  m.imoveis.mockResolvedValue([imovel]);
+  m.imovel.mockResolvedValue(imovel);
+  m.tem.mockResolvedValue(true);
+  m.bairro.mockResolvedValue({ titulo: "O Leblon a pé", subtitulo: "", lugares: [{ nome: "Praia fictícia", distancia: "2 min", frase: "", foto: null }] });
+  m.disponibilidade.mockResolvedValue(disponivel);
+  m.portao.mockResolvedValue({ ok: false });
+  m.pix.mockResolvedValue(false);
+});
+
+const dom = (html: string) => {
+  const raiz = document.createElement("div");
+  raiz.innerHTML = html;
+  return raiz;
+};
+const props = (params: Record<string, string>, searchParams: Record<string, string> = {}) => ({ params: Promise.resolve(params), searchParams: Promise.resolve(searchParams) });
+const telas = async () => ({
+  "página inicial": renderToStaticMarkup(await Inicio()),
+  "Nossas casas": renderToStaticMarkup(await Catalogo()),
+  "página do imóvel": renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }, pedido) as never)),
+  consulta: renderToStaticMarkup(await Consulta(props({}, pedido) as never)),
+  "Sua busca": renderToStaticMarkup(await Consulta(props({}, busca) as never)),
+  "não encontrada": renderToStaticMarkup(await NaoEncontradaNoSite()),
+});
+/** As telas com o site sem nenhuma casa publicada (M7.8), como na produção hoje; a busca mostra o mesmo aviso (M7.9). */
+const telasSemCasas = async () => {
+  m.imoveis.mockResolvedValue([]);
+  m.tem.mockResolvedValue(false);
+  return {
+    "página inicial": renderToStaticMarkup(await Inicio()),
+    "Nossas casas": renderToStaticMarkup(await Catalogo()),
+    consulta: renderToStaticMarkup(await Consulta(props({}) as never)),
+    "Sua busca": renderToStaticMarkup(await Consulta(props({}, busca) as never)),
+    "não encontrada": renderToStaticMarkup(await NaoEncontradaNoSite()),
+  };
+};
+
+/** Níveis dos títulos na ordem da página. */
+const niveis = (html: string) => [...dom(html).querySelectorAll("h1, h2, h3, h4, h5, h6")].map((h) => Number(h.tagName[1]));
+/** Saltos na ordem dos títulos: o primeiro tem de ser o h1, há um h1 só e nenhum título desce mais de um nível. */
+function saltos(lista: number[]): string[] {
+  const erros: string[] = [];
+  if (lista[0] !== 1) erros.push(`começa em h${lista[0]}`);
+  if (lista.filter((n) => n === 1).length !== 1) erros.push(`${lista.filter((n) => n === 1).length} h1`);
+  lista.forEach((n, i) => i > 0 && n > lista[i - 1] + 1 && erros.push(`h${lista[i - 1]} → h${n}`));
+  return erros;
+}
+
+const FOCAVEIS = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [tabindex]';
+const primeiroFocavel = (raiz: HTMLElement) => [...raiz.querySelectorAll<HTMLElement>(FOCAVEIS)].find((el) => el.getAttribute("tabindex") !== "-1");
+
+describe("Pular para o conteúdo (M7.11)", () => {
+  const confere = (html: string) => {
+    const raiz = dom(html);
+    const pular = primeiroFocavel(raiz);
+    expect(pular?.textContent).toBe(ROTULO_PULAR);
+    expect(pular?.getAttribute("href")).toBe(`#${ID_CONTEUDO}`);
+    expect(pular?.className).toBe("scl-pular");
+    // O alvo existe, é o miolo, um só, e recebe o foco de fato (tabIndex -1: fora da ordem do Tab, mas focável).
+    const alvos = raiz.querySelectorAll(`#${ID_CONTEUDO}`);
+    expect(alvos.length).toBe(1);
+    expect(alvos[0].tagName).toBe("MAIN");
+    expect(alvos[0].getAttribute("tabindex")).toBe("-1");
+  };
+
+  it("primeiro elemento focável da moldura do site (com e sem o banco) e da moldura dos portais, apontando para o miolo", async () => {
+    confere(renderToStaticMarkup(<Moldura conteudo={conteudo}>{<h1>Oi</h1>}</Moldura>));
+    confere(renderToStaticMarkup(<MolduraBase>{<h1>Erro</h1>}</MolduraBase>));
+    confere(renderToStaticMarkup(<MolduraPortal empresa="Sua Casa Exemplo" titulo="Portal do proprietário">{<h1>Portal</h1>}</MolduraPortal>));
+    confere(renderToStaticMarkup(<MolduraPortal empresa="">{<h1>Erro</h1>}</MolduraPortal>));
+    for (const [tela, html] of Object.entries(await telas())) {
+      expect(primeiroFocavel(dom(html))?.textContent, tela).toBe(ROTULO_PULAR);
+      confere(html);
+    }
+  });
+
+  it("escondido até receber o foco, e o miolo focado pelo link não ganha contorno (é um contêiner, não um controle)", () => {
+    expect(valor(regra(GLOBAL, ".scl-pular"), "top")).toBe("-100px");
+    expect(valor(regra(GLOBAL, ".scl-pular:focus"), "top")).toBe("10px");
+    expect(valor(regra(GLOBAL, 'main[tabindex="-1"]:focus'), "outline")).toBe("none");
+    // Texto e fundo do link legíveis (tinta sobre papel).
+    expect(contraste(cor(tokenDe(valor(regra(GLOBAL, ".scl-pular"), "color")!)), cor(tokenDe(valor(regra(GLOBAL, ".scl-pular"), "background")!)))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("áreas claras dentro das faixas verdes do site, nas telas (M7.11)", () => {
+  it("toda área clara com coisa focável dentro de um contêiner verde está na lista das que devolvem o laranja", async () => {
+    const SITE = "components/site/site.module.css";
+    /** Classes simples (`.nome`) de uma lista "arquivo | seletor", só as do site. */
+    const classesDoSite = (lista: string[]) =>
+      lista
+        .filter((c) => c.startsWith(`${SITE} | `))
+        .flatMap((c) => c.split(" | ")[1].split(", "))
+        .filter((sel) => /^\.\w+$/.test(sel))
+        .map((sel) => sel.slice(1));
+    const verdes = classesDoSite(CONTEINERES);
+    const claras = [
+      ...new Set(
+        regras(ler(SITE))
+          .filter((r) => FUNDO_CLARO.test(r.corpo))
+          .flatMap((r) => r.seletor.split(", "))
+          .filter((sel) => /^\.\w+$/.test(sel))
+          .map((sel) => sel.slice(1)),
+      ),
+    ];
+    expect(verdes).toEqual(["topo", "capa", "casas", "fechamento", "rodape"]);
+    expect(claras).toContain("semCasas");
+    /** As áreas claras, dentro de algum contêiner verde, que têm link, botão ou campo dentro (o contorno cai sobre elas). */
+    const achadas = new Set<string>();
+    const procurar = (html: string) => {
+      const raiz = dom(html);
+      for (const v of verdes)
+        for (const conteiner of raiz.querySelectorAll(`.${styles[v]}`))
+          for (const c of claras) if ([...conteiner.querySelectorAll(`.${styles[c]}`)].some((el) => el.querySelector(FOCAVEIS))) achadas.add(c);
+    };
+    for (const html of Object.values(await telas())) procurar(html);
+    // Sem casas publicadas, como na produção hoje (a busca também).
+    for (const html of Object.values(await telasSemCasas())) procurar(html);
+    expect([...achadas].filter((c) => !classesDoSite(CLAROS_DENTRO_DE_VERDE).includes(c))).toEqual([]);
+    // E a lista não fica velha: o aviso sem casas aparece de fato dentro da faixa verde das casas, com o botão do contato.
+    expect([...achadas]).toContain("semCasas");
+  });
+});
+
+describe("links que abrem outra janela avisam quem usa leitor de tela (M7.11)", () => {
+  const aviso = `(${AVISO_NOVA_JANELA})`;
+  /** Cada `target="_blank"` do HTML: rel seguro e o aviso no aria-label ou no texto oculto do fim do link. */
+  const semAviso = (html: string) =>
+    [...dom(html).querySelectorAll("a[target]")]
+      .filter((a) => {
+        const rotulo = a.getAttribute("aria-label");
+        const oculto = a.querySelector(".scl-so-leitor")?.textContent?.trim();
+        return a.getAttribute("target") !== "_blank" || a.getAttribute("rel") !== "noopener noreferrer" || !(rotulo ? rotulo.endsWith(` ${aviso}`) : oculto === aviso);
+      })
+      .map((a) => a.outerHTML);
+  const contar = (html: string) => dom(html).querySelectorAll('a[target="_blank"]').length;
+
+  it("nas telas do site e do hóspede: WhatsApp da moldura e da consulta, contato do site sem casas, páginas legais, Pix", async () => {
+    const t = await telas();
+    for (const [tela, html] of Object.entries(t)) expect(semAviso(html), tela).toEqual([]);
+    // O botão flutuante: o aviso vai no rótulo que ele já tinha.
+    expect(dom(t.consulta).querySelector(`a[aria-label="Falar com Sua Casa Exemplo pelo WhatsApp ${aviso}"]`)).toBeTruthy();
+    // A mensagem da consulta pelo WhatsApp (botão com texto): o aviso no fim do link, só para o leitor de tela.
+    expect([...dom(t.consulta).querySelectorAll("a")].find((a) => a.textContent?.startsWith("Enviar pelo WhatsApp"))?.textContent).toBe(`Enviar pelo WhatsApp↗ ${aviso}`);
+    expect(contar(t.consulta)).toBe(2);
+    // Sua busca (M7.9): o botão do contato, ao lado das casas, também abre o WhatsApp (o botão flutuante e ele).
+    expect(contar(t["Sua busca"])).toBe(2);
+    expect([...dom(t["Sua busca"]).querySelectorAll(`.${styles.contatoBusca} a`)].map((a) => a.textContent)).toEqual([`Falar pelo WhatsApp↗ ${aviso}`]);
+    // Sem casas: o contato do site também abre o WhatsApp (na busca, com as datas e as pessoas na mensagem).
+    const semCasas = await telasSemCasas();
+    for (const tela of ["página inicial", "não encontrada", "Sua busca"] as const) {
+      expect(contar(semCasas[tela]), tela).toBe(2);
+      expect(semAviso(semCasas[tela]), tela).toEqual([]);
+    }
+    for (const [tela, html] of Object.entries(semCasas)) expect(semAviso(html), tela).toEqual([]);
+    // Cotação, segurar as datas e o aceite das páginas legais (antes de pagar e já feito).
+    const aceite: AceiteNaPagina = { versoes: { termos: 2, privacidade: 1, cancelamento: 3 }, aceito: null, resumo: [{ tipo: "paragrafo", texto: "RESUMO" }], prazo: { tipo: "integral_ate", data: "2099-10-01" } };
+    const pecas = [
+      renderToStaticMarkup(<BotaoContato whatsapp="5521900000000" email="" codigo="COT-ABCDEFGH" texto="Olá" />),
+      renderToStaticMarkup(<FormSegurar codigo="COT-ABCDEFGH" minutos={30} acao={vi.fn()} comPagamento privacidade={2} />),
+      renderToStaticMarkup(<BlocoAceite aceite={aceite} fuso="America/Sao_Paulo" />),
+      renderToStaticMarkup(<AceiteFeito aceito={{ em: "2026-10-01T15:02:00.000Z", versoes: aceite.versoes }} fuso="America/Sao_Paulo" />),
+    ];
+    expect(pecas.map(contar)).toEqual([1, 1, 3, 3]);
+    for (const html of pecas) expect(semAviso(html)).toEqual([]);
+  });
+
+  it('um lugar só: fora do painel, nenhum target="_blank" no código além do LinkNovaJanela', () => {
+    // O painel interno ficou fora do M7.11 (seus links seguem como estavam): estes são os dele.
+    const PAINEL = ["components/reservas/PaginasLegaisAceitas.tsx", "components/reservas/ContestacaoSite.tsx", "components/reservas/PagamentoNoSite.tsx", "components/anuncios/QuadroAnuncios.tsx"];
+    const achados: string[] = [];
+    (function varrer(dir: string) {
+      for (const nome of readdirSync(dir)) {
+        const caminho = join(dir, nome);
+        const rel = relative(SRC, caminho).split(sep).join("/");
+        if (statSync(caminho).isDirectory()) {
+          if (rel !== "app/painel") varrer(caminho);
+        } else if (/\.tsx?$/.test(nome) && !/\.test\.tsx?$/.test(nome) && !PAINEL.includes(rel) && rel !== "components/site/Acessibilidade.tsx" && readFileSync(caminho, "utf8").includes("_blank")) achados.push(rel);
+      }
+    })(SRC);
+    expect(achados).toEqual([]);
+  });
+});
+
+describe("ordem dos títulos sem saltos (M7.11)", () => {
+  it("página do imóvel: h1 do imóvel, as partes da ficha em h2 (antes h3) e os lugares do bairro em h3", async () => {
+    const html = renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }, pedido) as never));
+    expect(niveis(html)).toEqual([1, 2, 2, 2, 2, 2, 2, 2, 3]);
+    expect(saltos(niveis(html))).toEqual([]);
+    // O visual não muda: as partes da ficha mantêm o tamanho menor pela classe.
+    for (const titulo of ["O que você encontra", "Camas", "Regras da casa"]) {
+      const h = [...dom(html).querySelectorAll("h2")].find((e) => e.textContent === titulo);
+      expect(h?.className, titulo).toBe(styles.tituloFicha);
+    }
+    // Sem datas no link, sem o bairro e sem camas: continua sem salto.
+    m.bairro.mockResolvedValue({ titulo: "", subtitulo: "", lugares: [] });
+    m.imovel.mockResolvedValue({ ...imovel, camas: [], comodidades: [] });
+    expect(saltos(niveis(renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }) as never))))).toEqual([]);
+  });
+
+  it("Nossas casas: o título de cada casa é h2, logo abaixo do h1 (na vitrine da capa, h3 abaixo do h2 da faixa), com o mesmo visual", async () => {
+    const catalogo = renderToStaticMarkup(await Catalogo());
+    expect(niveis(catalogo)).toEqual([1, 2]);
+    expect(dom(catalogo).querySelector("h2")?.className).toBe(styles.cartaoTitulo);
+    const inicio = renderToStaticMarkup(await Inicio());
+    expect(dom(inicio).querySelector(`.${styles.cartaoCasa} h3`)?.className).toBe(styles.cartaoTitulo);
+  });
+
+  it("capa, Nossas casas, consulta e não encontrada: nenhuma tela salta um nível", async () => {
+    for (const [tela, html] of Object.entries(await telas())) expect(saltos(niveis(html)), tela).toEqual([]);
+    for (const [tela, html] of Object.entries(await telasSemCasas())) expect(saltos(niveis(html)), tela).toEqual([]);
+  });
+
+  it("Sua busca (M7.9): o h1 do cabeçalho da busca, o h2 da lista de casas e o nome de cada casa em h3, no visual do cartão", async () => {
+    m.imoveis.mockResolvedValue([imovel, { ...imovel, codigo: "404", nome: "Casa Exemplo" }]);
+    const lista = renderToStaticMarkup(await Consulta(props({}, busca) as never));
+    expect(niveis(lista)).toEqual([1, 2, 3, 3]);
+    expect(dom(lista).querySelector("h2")?.textContent).toBe("2 casas na sua busca");
+    for (const h of dom(lista).querySelectorAll("h3")) expect(h.className).toBe(styles.cartaoTitulo);
+    // Nenhuma casa para o grupo, datas erradas e o site sem casas: só o h1 do cabeçalho da busca, sem salto.
+    for (const pedidoBusca of [{ ...busca, hospedes: "9" }, { ...busca, saida: busca.entrada }]) {
+      const html = renderToStaticMarkup(await Consulta(props({}, pedidoBusca) as never));
+      expect(niveis(html), JSON.stringify(pedidoBusca)).toEqual([1]);
+    }
+    m.imoveis.mockResolvedValue([]);
+    expect(niveis(renderToStaticMarkup(await Consulta(props({}, busca) as never)))).toEqual([1]);
+  });
+});

@@ -1,3 +1,4 @@
+import { LinkNovaJanela } from "@/components/site/Acessibilidade";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { FormConsulta } from "@/components/site/FormConsulta";
@@ -93,6 +94,12 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   // link (a mensagem pronta, com o assunto da consulta no e-mail) também vem do lugar único, `contatoDoSite`.
   const canal = canalDeContato(conteudo);
   const envio = prontoParaEnviar && r?.ok ? contatoDoSite(conteudo, { mensagem: r.texto, assunto: ASSUNTO_CONSULTA }) : null;
+  const rotuloEnvio = (
+    <>
+      {canal === "whatsapp" ? "Enviar pelo WhatsApp" : "Enviar por e-mail"}
+      <span aria-hidden="true">↗</span>
+    </>
+  );
   return (
     <Moldura conteudo={conteudo}>
       {cabecalho(true)}
@@ -137,10 +144,16 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
               <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
               {envio ? (
                 <p style={{ marginTop: 16 }}>
-                  <a href={envio.href} className={styles.botao} {...(envio.externo ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
-                    {canal === "whatsapp" ? "Enviar pelo WhatsApp" : "Enviar por e-mail"}
-                    <span aria-hidden="true">↗</span>
-                  </a>
+                  {/* O WhatsApp abre outra janela pelo LinkNovaJanela (M7.11, com o aviso para o leitor de tela); o e-mail abre o programa de e-mail. */}
+                  {envio.externo ? (
+                    <LinkNovaJanela href={envio.href} className={styles.botao}>
+                      {rotuloEnvio}
+                    </LinkNovaJanela>
+                  ) : (
+                    <a href={envio.href} className={styles.botao}>
+                      {rotuloEnvio}
+                    </a>
+                  )}
                 </p>
               ) : (
                 <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>
