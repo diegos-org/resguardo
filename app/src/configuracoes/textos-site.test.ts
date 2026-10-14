@@ -174,3 +174,33 @@ describe("texto do pagamento em conferência (M8.2e): editável, com texto-base,
     expect(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia).not.toMatch(/contesta|chargeback|fraude|disputa|beds24|R\$|\d|@/i);
   });
 });
+
+describe("página não encontrada e site sem casas (M7.8): editáveis, com o texto-base do estudo", () => {
+  const chaves = ["naoEncontradoTitulo", "naoEncontradoTexto", "casaNaoEncontradaTitulo", "casaNaoEncontradaTexto", "semCasasTexto"] as const;
+
+  it("o texto-base é o do estudo aprovado (prototipos/scl-publico) e cabe no limite de cada campo", () => {
+    expect(TEXTOS_SITE_INICIAIS.naoEncontradoTitulo).toBe("Página não encontrada");
+    expect(TEXTOS_SITE_INICIAIS.naoEncontradoTexto).toBe("Você pode voltar ao catálogo para escolher sua casa.");
+    expect(TEXTOS_SITE_INICIAIS.casaNaoEncontradaTitulo).toBe("Casa não encontrada");
+    expect(TEXTOS_SITE_INICIAIS.casaNaoEncontradaTexto).toBe("Conheça os imóveis disponíveis no catálogo.");
+    for (const k of chaves) {
+      const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === k);
+      expect(campo, k).toBeTruthy();
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeLessThanOrEqual(campo!.limite);
+    }
+  });
+
+  it("os títulos e o aviso do site sem casas não podem ficar vazios; as frases abaixo do título podem", () => {
+    const obrigatorias = ["naoEncontradoTitulo", "casaNaoEncontradaTitulo", "semCasasTexto"];
+    for (const k of chaves) expect(TEXTOS_SITE_OBRIGATORIOS.includes(k), k).toBe(obrigatorias.includes(k));
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, naoEncontradoTitulo: " ", casaNaoEncontradaTitulo: "", semCasasTexto: "" })).toEqual({
+      ok: false,
+      erros: { naoEncontradoTitulo: "Este texto não pode ficar vazio.", casaNaoEncontradaTitulo: "Este texto não pode ficar vazio.", semCasasTexto: "Este texto não pode ficar vazio." },
+    });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, naoEncontradoTexto: "", casaNaoEncontradaTexto: "" })).toMatchObject({ ok: true });
+  });
+
+  it("o aviso do site sem casas é neutro: não promete data nem novidade e não cita o Beds24", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/beds24|em breve|logo mais|novidade|\d|@/i);
+  });
+});

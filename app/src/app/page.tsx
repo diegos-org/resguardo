@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CartaoImovel } from "@/components/site/CartaoImovel";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
+import { SemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { VitrineCasas } from "@/components/site/VitrineCasas";
 import { blocosDoTexto, tituloSimples } from "@/configuracoes/textos-site";
@@ -79,7 +80,8 @@ export default async function Inicio() {
               ))}
             </VitrineCasas>
           ) : (
-            <p className={styles.miudo}>Em breve.</p>
+            // Nenhuma casa publicada (M7.8): avisa e oferece o contato, em vez de "Em breve.".
+            <SemCasas conteudo={conteudo} />
           )}
         </div>
       </section>

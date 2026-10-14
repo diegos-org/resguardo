@@ -2,6 +2,7 @@ import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
+import { SemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
@@ -20,6 +21,27 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const pedido = lerPedidoConsulta(sp);
   const enviado = !!(pedido.entrada || pedido.saida);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
+  const { textos } = conteudo;
+  const cabecalho = (comTexto: boolean) => (
+    <header className={`${styles.cabecalhoPagina} ${styles.cabecalhoConsulta}`}>
+      {textos.consultaOlho && <p className={styles.olho}>{textos.consultaOlho}</p>}
+      <h1>
+        <TextoComDestaque texto={textos.consultaTitulo || "Planeje sua estadia"} />
+      </h1>
+      {comTexto && textos.consultaTexto && <p>{textos.consultaTexto}</p>}
+    </header>
+  );
+  // Nenhuma casa publicada (M7.8): o formulário teria um "Seu lugar" obrigatório sem opção e não daria para enviar.
+  // No lugar dele, o aviso e o contato; a frase da consulta ("escolha a casa…") também sai.
+  if (!todos.length)
+    return (
+      <Moldura conteudo={conteudo}>
+        {cabecalho(false)}
+        <div className={styles.consultaColunas}>
+          <SemCasas conteudo={conteudo} />
+        </div>
+      </Moldura>
+    );
   // Disponibilidade e valor reais (M7.2): só depois de o pedido passar na conferência básica.
   const imovel = enviado && pedido.imovel ? await imovelDoSite(db, conteudo.organizacaoId, pedido.imovel) : null;
   // "Hoje" no fuso do imóvel escolhido, o mesmo que a disponibilidade usa; sem imóvel, São Paulo.
@@ -40,16 +62,9 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
     segurar && imovel
       ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: pedido.entrada, checkout: pedido.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
       : false;
-  const { textos } = conteudo;
   return (
     <Moldura conteudo={conteudo}>
-      <header className={`${styles.cabecalhoPagina} ${styles.cabecalhoConsulta}`}>
-        {textos.consultaOlho && <p className={styles.olho}>{textos.consultaOlho}</p>}
-        <h1>
-          <TextoComDestaque texto={textos.consultaTitulo || "Planeje sua estadia"} />
-        </h1>
-        {textos.consultaTexto && <p>{textos.consultaTexto}</p>}
-      </header>
+      {cabecalho(true)}
       {sp.aviso === "mudou" && (
         <p className={styles.aviso} role="alert">
           A disponibilidade ou o valor mudaram desde a sua consulta anterior. Confira a situação atual abaixo.

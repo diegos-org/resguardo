@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { marcaComDestaque } from "@/components/site/Moldura";
+// Da moldura sem banco: assim a página de erro do portal (componente de cliente, M7.8) também usa esta moldura.
+import { marcaComDestaque } from "@/components/site/MolduraBase";
 import styles from "./portal.module.css";
 
 /**

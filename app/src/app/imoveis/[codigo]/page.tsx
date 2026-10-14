@@ -9,6 +9,7 @@ import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
+import { textosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
@@ -23,7 +24,8 @@ export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]"
   const { codigo } = await params;
   const { db, conteudo } = await carregarSite();
   const i = conteudo ? await imovelDoSite(db, conteudo.organizacaoId, codigo) : null;
-  return metadadosDoSite(i?.nome);
+  // Casa que não existe ou saiu do site (M7.8): a aba diz isso, como a página "Casa não encontrada".
+  return metadadosDoSite(i?.nome ?? (conteudo ? textosDaNaoEncontrada(conteudo.textos, "casa").titulo : undefined));
 }
 
 export default async function PaginaImovel({ params, searchParams }: PageProps<"/imoveis/[codigo]">) {

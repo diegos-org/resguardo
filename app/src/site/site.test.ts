@@ -6,7 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
-import { conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import { contatoDoSite, conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -160,6 +160,18 @@ describe("site público (M7.1)", () => {
     const hojeLink = { checkin: "2026-10-09", checkout: "2026-10-12", guests: "2" };
     expect(destinoDoLinkAntigo(q(hojeLink), imovel, madrugada)).toMatchObject({ status: 400 });
     expect(destinoDoLinkAntigo(q(hojeLink), { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
+  });
+});
+
+describe("contatoDoSite (M7.8)", () => {
+  it("WhatsApp antes do e-mail, como a consulta; sem os dois, nenhum botão", () => {
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "contato@exemplo.com" })).toEqual({
+      href: "https://wa.me/5521900000000?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20gostaria%20de%20falar%20com%20a%20equipe.",
+      rotulo: "Falar pelo WhatsApp",
+      externo: true,
+    });
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " })).toEqual({ href: "mailto:contato@exemplo.com?subject=Contato%20pelo%20site", rotulo: "Enviar um e-mail", externo: false });
+    expect(contatoDoSite({ whatsapp: null, email: "  " })).toBeNull();
   });
 });
 

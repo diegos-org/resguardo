@@ -17,6 +17,7 @@ import { type FotoPublica, fotosParaOSite } from "@/imoveis/fotos";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { enderecoImagemSite, lerImagensSite } from "./imagens-site";
+import { MARCA_PADRAO } from "./marca";
 
 export type ImovelPublico = {
   codigo: string;
@@ -59,8 +60,8 @@ export type ConteudoSite = {
   identidade?: { razaoSocial: string; cnpj: string; endereco: string };
 };
 
-/** Marca do estudo (o ícone do logotipo), usada enquanto nenhuma outra é enviada em Configurações → Site. */
-export const MARCA_PADRAO = "/marca.png";
+/** Marca do estudo, usada enquanto nenhuma outra é enviada (definida em `./marca`, que a moldura de cliente lê sem o banco). */
+export { MARCA_PADRAO };
 
 /**
  * De qual organização é o site: a da variável SITE_ORGANIZACAO_ID, se existir; senão, a única
@@ -274,6 +275,20 @@ export function destinoDoLinkAntigo(
 }
 
 export const linkWhatsapp = (numero: string, texto: string) => `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+
+/** Primeira mensagem de quem chama pelo site sem uma consulta montada (botão flutuante e aviso do site sem casas). */
+export const MENSAGEM_CONTATO_SITE = "Olá! Vim pelo site e gostaria de falar com a equipe.";
+
+/**
+ * Botão de contato do site (M7.8): o WhatsApp da empresa, senão o e-mail, na mesma ordem da consulta (`canalDeContato`);
+ * sem os dois, nenhum botão (a página não inventa um canal).
+ */
+export function contatoDoSite(c: Pick<ConteudoSite, "whatsapp" | "email">): { href: string; rotulo: string; externo: boolean } | null {
+  if (c.whatsapp) return { href: linkWhatsapp(c.whatsapp, MENSAGEM_CONTATO_SITE), rotulo: "Falar pelo WhatsApp", externo: true };
+  const email = c.email.trim();
+  if (email) return { href: `mailto:${email}?subject=${encodeURIComponent("Contato pelo site")}`, rotulo: "Enviar um e-mail", externo: false };
+  return null;
+}
 
 /**
  * Mínimo do campo de data quando o formulário lista vários imóveis: o "hoje" mais cedo entre os fusos.
