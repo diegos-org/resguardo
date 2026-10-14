@@ -1,3 +1,4 @@
+import { LinkNovaJanela } from "@/components/site/Acessibilidade";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { FormConsulta } from "@/components/site/FormConsulta";
@@ -108,10 +109,10 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
               <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
               {canal === "whatsapp" && conteudo.whatsapp ? (
                 <p style={{ marginTop: 16 }}>
-                  <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
+                  <LinkNovaJanela href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao}>
                     Enviar pelo WhatsApp
                     <span aria-hidden="true">↗</span>
-                  </a>
+                  </LinkNovaJanela>
                 </p>
               ) : canal === "email" ? (
                 <p style={{ marginTop: 16 }}>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ID_CONTEUDO, PularParaConteudo } from "@/components/site/Acessibilidade";
 // Da moldura sem banco: assim a página de erro do portal (componente de cliente, M7.8) também usa esta moldura.
 import { marcaComDestaque } from "@/components/site/MolduraBase";
 import styles from "./portal.module.css";
@@ -28,6 +29,8 @@ export function MolduraPortal({
   const nome = empresa.trim();
   return (
     <div className={styles.pagina}>
+      {/* M7.11: o mesmo "Pular para o conteúdo" do site, primeiro elemento focável. */}
+      <PularParaConteudo />
       <header className={styles.topo}>
         <div className={styles.topoAcoes}>
           <Link href="/" className={styles.marca}>
@@ -43,7 +46,9 @@ export function MolduraPortal({
           </form>
         )}
       </header>
-      <main className={estreito ? `${styles.miolo} ${styles.estreito}` : styles.miolo}>{children}</main>
+      <main id={ID_CONTEUDO} tabIndex={-1} className={estreito ? `${styles.miolo} ${styles.estreito}` : styles.miolo}>
+        {children}
+      </main>
       <footer className={styles.rodape}>
         {nome && (
           <span>

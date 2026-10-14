@@ -42,14 +42,16 @@ export default async function Anunciar({ searchParams }: PageProps<"/anunciar">)
   const org = conteudo.organizacaoId;
   const [textos, mercadoGravado, versoes] = await Promise.all([lerTextosProprietarios(db, org), lerMercado(db, org), lerComoFunciona(db, org)]);
 
+  // No meio do cadastro, ele é a página inteira: o título dele é o h1 (M7.11), com o mesmo visual do h2 da página toda.
+  const TituloCadastro = digitarCodigo || mensagem ? "h1" : "h2";
   const cadastro = (
     <section className={styles.secao} id="marketplace" aria-labelledby="titulo-cadastro">
       <div className={`${styles.dentro} ${styles.cadastroProprietario}`}>
         <div>
           {textos.cadastroOlho && <p className={styles.olho}>{textos.cadastroOlho}</p>}
-          <h2 id="titulo-cadastro">
+          <TituloCadastro id="titulo-cadastro">
             <TextoComDestaque texto={textos.cadastroTitulo} />
-          </h2>
+          </TituloCadastro>
           {textos.cadastroTexto && <p className={styles.texto}>{textos.cadastroTexto}</p>}
         </div>
         <div>
@@ -113,6 +115,8 @@ export default async function Anunciar({ searchParams }: PageProps<"/anunciar">)
   const mercado = mercadoParaMostrar(mercadoGravado);
   const versao = versaoAtual(versoes);
   const secoes = versao ? secoesParaMostrar(versao, conteudo.nomeEmpresa) : [];
+  // O título da faixa das ofertas é opcional: sem ele, os das duas ofertas sobem para h2, logo abaixo do h1 (M7.11).
+  const TituloOferta = textos.ofertasTitulo ? "h3" : "h2";
 
   return (
     <Moldura conteudo={conteudo} largura="cheia">
@@ -148,14 +152,18 @@ export default async function Anunciar({ searchParams }: PageProps<"/anunciar">)
           )}
           <div className={styles.ofertas}>
             <article className={styles.oferta} aria-labelledby="titulo-gestao">
-              <h3 id="titulo-gestao">{textos.gestaoTitulo}</h3>
+              <TituloOferta id="titulo-gestao" className={styles.tituloOferta}>
+                {textos.gestaoTitulo}
+              </TituloOferta>
               {textos.gestaoTexto && <p>{textos.gestaoTexto}</p>}
               <a href="#contato" className={styles.linkTexto}>
                 Pedir contato ↓
               </a>
             </article>
             <article className={styles.oferta} aria-labelledby="titulo-marketplace">
-              <h3 id="titulo-marketplace">{textos.marketplaceTitulo}</h3>
+              <TituloOferta id="titulo-marketplace" className={styles.tituloOferta}>
+                {textos.marketplaceTitulo}
+              </TituloOferta>
               {textos.marketplaceTexto && <p>{textos.marketplaceTexto}</p>}
               <a href="#marketplace" className={styles.linkTexto}>
                 Cadastrar meu imóvel ↓

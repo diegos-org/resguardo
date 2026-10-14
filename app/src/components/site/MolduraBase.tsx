@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { MARCA_PADRAO } from "@/site/marca";
+import { ID_CONTEUDO, LinkNovaJanela, PularParaConteudo } from "./Acessibilidade";
 import styles from "./site.module.css";
 
 /**
@@ -63,6 +64,8 @@ export function MolduraBase({
   const frase = rodape?.trim() || nome;
   return (
     <div className={styles.pagina}>
+      {/* M7.11: o primeiro elemento focável; leva ao miolo sem passar pelo menu. */}
+      <PularParaConteudo />
       <header className={styles.topo}>
         <Link href="/" className={styles.marca} aria-label={nome ? undefined : "Início"}>
           <Image src={marca} alt="" width={40} height={40} unoptimized className={styles.marcaIcone} />
@@ -86,11 +89,13 @@ export function MolduraBase({
           </Link>
         </nav>
       </header>
-      <main className={largura === "cheia" ? styles.conteudo : `${styles.conteudo} ${styles.miolo}`}>{children}</main>
+      <main id={ID_CONTEUDO} tabIndex={-1} className={largura === "cheia" ? styles.conteudo : `${styles.conteudo} ${styles.miolo}`}>
+        {children}
+      </main>
       {whatsapp && (
-        <a className={styles.whatsapp} href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={nome ? `Falar com ${nome} pelo WhatsApp` : "Falar pelo WhatsApp"}>
+        <LinkNovaJanela className={styles.whatsapp} href={whatsapp} aria-label={nome ? `Falar com ${nome} pelo WhatsApp` : "Falar pelo WhatsApp"}>
           <IconeWhatsapp />
-        </a>
+        </LinkNovaJanela>
       )}
       <footer className={styles.rodape}>
         <div className={styles.rodapeDentro}>

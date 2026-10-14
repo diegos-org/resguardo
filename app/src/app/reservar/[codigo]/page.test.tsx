@@ -238,7 +238,8 @@ describe("páginas legais na página da cotação (M7.4)", () => {
     m.versaoPrivacidade.mockResolvedValue(3);
     let h = await html();
     expect(m.versaoPrivacidade).toHaveBeenCalledWith({}, "org", "privacidade");
-    expect(h).toContain('<a href="/privacidade?versao=3" target="_blank" rel="noopener noreferrer">Política de privacidade</a>');
+    // Abre em outra janela, com o aviso para o leitor de tela (M7.11).
+    expect(h).toContain('<a href="/privacidade?versao=3" target="_blank" rel="noopener noreferrer">Política de privacidade<span class="scl-so-leitor"> (abre em nova janela)</span></a>');
     m.versaoPrivacidade.mockResolvedValue(null);
     h = await html();
     expect(h).toContain("Usamos seus dados só para confirmar a reserva com você. Nenhum pagamento é feito aqui.");

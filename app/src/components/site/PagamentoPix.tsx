@@ -7,6 +7,7 @@ import type { AceiteNaPagina } from "@/site/aceites";
 import type { EstadoCartao, EstadoContinuar, EstadoPix } from "@/site/acoes-pagamento";
 import { MENSAGEM_CARTAO_RECUSADO, MENSAGEM_VERIFICACAO_NAO_CONCLUIDA, NOTA_JUROS_CARTAO } from "@/site/mensagens-cartao";
 import { deveAcompanhar, ESTADOS_COM_DINHEIRO, type EstadoPagamentoHospede, type PagamentoDoHospede, type TextosDoCancelamento, textoDoCancelamento } from "@/site/pagamento-vista";
+import { LinkNovaJanela } from "./Acessibilidade";
 import { AceiteFeito, BlocoAceite } from "./BlocoAceite";
 import { DesafioCartao } from "./DesafioCartao";
 import { type BloqueioDaRecarga, PagamentoCartao, type TravaRecarga } from "./PagamentoCartao";
@@ -271,9 +272,9 @@ function QrDoPix({ pix }: { pix: NonNullable<PagamentoDoHospede["pix"]> }) {
   if (pix.link) {
     return (
       <p className={styles.pixQr}>
-        <a href={pix.link} className={`${styles.botao} ${styles.botaoContorno}`} target="_blank" rel="noopener noreferrer">
+        <LinkNovaJanela href={pix.link} className={`${styles.botao} ${styles.botaoContorno}`}>
           Abrir o Pix no Mercado Pago
-        </a>
+        </LinkNovaJanela>
       </p>
     );
   }

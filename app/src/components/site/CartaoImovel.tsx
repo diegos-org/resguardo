@@ -29,8 +29,13 @@ export function seloDoImovel(i: Pick<ImovelPublico, "quartos" | "bairro" | "cida
   return [tipo, i.bairro || i.cidade].filter(Boolean).join(" · ");
 }
 
-/** Cartão sálvia do apartamento (vitrine da página inicial e catálogo), como no estudo: foto com selo, ícones e capacidade. */
-export function CartaoImovel({ imovel, carregarCedo = false }: { imovel: ImovelPublico; carregarCedo?: boolean }) {
+/**
+ * Cartão sálvia do apartamento (vitrine da página inicial e catálogo), como no estudo: foto com selo, ícones e capacidade.
+ * `nivel` (M7.11): o título é h3 na vitrine, abaixo do h2 da faixa, e h2 em Nossas casas, logo abaixo do h1 — o mesmo
+ * visual nos dois, para a ordem dos títulos não saltar um nível.
+ */
+export function CartaoImovel({ imovel, carregarCedo = false, nivel = 3 }: { imovel: ImovelPublico; carregarCedo?: boolean; nivel?: 2 | 3 }) {
+  const Titulo = nivel === 2 ? "h2" : "h3";
   const selo = seloDoImovel(imovel);
   const icones = comodidadesDoCartao(imovel.comodidades);
   return (
@@ -41,10 +46,10 @@ export function CartaoImovel({ imovel, carregarCedo = false }: { imovel: ImovelP
       </div>
       <div className={styles.cartaoCorpo}>
         <p className={styles.olho}>{olhoImovel(imovel)}</p>
-        <h3>
+        <Titulo className={styles.cartaoTitulo}>
           {imovel.nome}
           <span aria-hidden="true">↗</span>
-        </h3>
+        </Titulo>
         <div className={styles.cartaoMeio}>
           <p>{fraseDoImovel(imovel)}</p>
           {icones.length > 0 && (

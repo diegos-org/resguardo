@@ -8,6 +8,7 @@
 .lateral {
   background: var(--scl-floresta);
   color: var(--scl-creme);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
   padding: 18px 14px;
 }
 
@@ -206,7 +207,10 @@
     flex-direction: row;
     overflow-x: auto;
     gap: 4px;
-    padding-bottom: 4px;
+    /* Folga para o contorno do foco (até 8px fora do link) dentro da rolagem (M7.11); a margem negativa deixa os links
+       no lugar (e os mesmos 4px embaixo). */
+    margin: -8px;
+    padding: 8px 8px 12px;
   }
 
   .menu a {

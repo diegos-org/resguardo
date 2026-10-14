@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { CAMPOS_VERSAO, DOCUMENTOS_LEGAIS, type DocumentoLegal as Documento, PAGINAS_LEGAIS, type VersoesLegais } from "@/configuracoes/paginas-legais-texto";
 import type { AceiteNaPagina } from "@/site/aceites";
+import { LinkNovaJanela } from "./Acessibilidade";
 import { DocumentoLegal } from "./DocumentoLegal";
 import styles from "./site.module.css";
 
@@ -11,9 +12,7 @@ const horario = (fuso: string) => (fuso === "America/Sao_Paulo" ? "horário de B
 /** A versão aceita (ou a que vai ser aceita) de um documento, numa aba nova: a página do pagamento fica como está. */
 function LinkLegal({ doc, versoes, children }: { doc: Documento; versoes: VersoesLegais; children?: ReactNode }) {
   return (
-    <a href={`${PAGINAS_LEGAIS[doc].rota}?versao=${versoes[doc]}`} target="_blank" rel="noopener noreferrer">
-      {children ?? PAGINAS_LEGAIS[doc].titulo}
-    </a>
+    <LinkNovaJanela href={`${PAGINAS_LEGAIS[doc].rota}?versao=${versoes[doc]}`}>{children ?? PAGINAS_LEGAIS[doc].titulo}</LinkNovaJanela>
   );
 }
 

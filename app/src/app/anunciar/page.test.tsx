@@ -118,3 +118,25 @@ it("sem e-mail configurado no servidor, o cadastro avisa que ainda não está di
   expect(h).not.toContain('aria-label="Confirmar e-mail"');
   expect(h).toContain('id="contato"');
 });
+
+it("ordem dos títulos sem saltos (M7.11): página inteira, faixa das ofertas sem título e o cadastro sozinho com o seu h1", async () => {
+  const niveis = (h: string) => [...h.matchAll(/<h([1-6])\b/g)].map((n) => Number(n[1]));
+  const semSalto = (lista: number[]) => lista[0] === 1 && lista.filter((n) => n === 1).length === 1 && lista.every((n, i) => i === 0 || n <= lista[i - 1] + 1);
+  m.mercado.mockResolvedValue({ referencia: "2026-09", fonte: "reservas fictícias", linhas: [{ tipo: "Studio", diaria: 45000, ocupacao: 7250, liquido: null }] });
+  m.comoFunciona.mockResolvedValue([{ numero: 2, data: "2026-10-07", autorId: null, secoes: RASCUNHO_COMO_FUNCIONA, empresa: "Casa Exemplo" }]);
+  const inteira = await html();
+  expect(semSalto(niveis(inteira))).toBe(true);
+  // As ofertas ficam abaixo do título da faixa (h3); sem ele (é opcional), sobem para h2, logo abaixo do h1.
+  expect(inteira).toMatch(/<h3 id="titulo-gestao"/);
+  m.textos.mockResolvedValue({ ...TEXTOS_PROPRIETARIOS_INICIAIS, ofertasTitulo: "" });
+  const semTituloDasOfertas = await html();
+  expect(semTituloDasOfertas).toMatch(/<h2 id="titulo-gestao"/);
+  expect(semSalto(niveis(semTituloDasOfertas))).toBe(true);
+  // No meio do cadastro, ele é a página: o título dele é o h1 (antes a página começava num h2).
+  const meioDoCadastro: Record<string, string>[] = [{ etapa: "codigo", email: "maria@exemplo.com" }, { erro: "codigo" }];
+  for (const params of meioDoCadastro) {
+    const h = await html(params);
+    expect(niveis(h)).toEqual([1]);
+    expect(h).toMatch(/<h1 id="titulo-cadastro">/);
+  }
+});
