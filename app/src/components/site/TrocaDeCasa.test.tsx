@@ -74,6 +74,20 @@ describe("\"Seu lugar\" opcional e troca de casa no envio do cartão lateral (M7
     expect(m.push).toHaveBeenCalledWith("/imoveis/102?checkin=2026-10-12&checkout=2026-10-15&guests=3");
   });
 
+  it("a outra casa tem noite ocupada nessas datas: Continuar abre a página dela com as mesmas datas (lá ela aparece indisponível)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({ ok: true, json: async () => ({ ocupadas: url.includes("imovel=102") ? ["2026-10-13"] : [] }) })),
+    );
+    render(<FormConsulta imoveis={casas} valores={{ imovel: "403", entrada: "2026-10-12", saida: "2026-10-15", hospedes: "2" }} hoje="2026-10-07" canal="whatsapp" variante="lateral" />);
+    fireEvent.change(lugar(), { target: { value: "102" } });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fireEvent.submit(document.querySelector("form")!)).toBe(false);
+    expect(m.push).toHaveBeenCalledWith("/imoveis/102?checkin=2026-10-12&checkout=2026-10-15&guests=2");
+    // O calendário não abriu para pedir a saída de novo.
+    expect(screen.queryByRole("dialog", { name: "Escolher as datas da estadia" })).toBeNull();
+  });
+
   it("\"Todas as casas\" ou a mesma casa seguem o envio normal (a busca e a consulta)", () => {
     render(<FormConsulta imoveis={casas} valores={{ imovel: "403", entrada: "2026-10-12", saida: "2026-10-15", hospedes: "2" }} hoje="2026-10-07" canal="whatsapp" variante="lateral" />);
     const form = document.querySelector("form")!;

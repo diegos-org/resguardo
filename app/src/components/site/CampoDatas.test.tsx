@@ -144,6 +144,27 @@ describe("campo de datas do site (M7.6)", () => {
     expect(dia("14 de outubro de 2026").getAttribute("aria-label")).toBe("14 de outubro de 2026");
   });
 
+  it("cartão da página de uma casa (M7.9): trocar para outra casa com noite ocupada no meio não desfaz a estadia; a da própria casa, sim", async () => {
+    render(<Formulario lugar="102" entrada="2026-10-12" saida="2026-10-16" casaDaPagina="102" />);
+    const lugar = screen.getByRole("combobox", { name: /Seu lugar/ });
+    fireEvent.change(lugar, { target: { value: "403" } });
+    await new Promise((r) => setTimeout(r, 20));
+    // O envio abre a página da 403 com as mesmas datas, que diz se ela está indisponível: nada é desfeito aqui.
+    expect([escondido("entrada"), escondido("saida")]).toEqual(["2026-10-12", "2026-10-16"]);
+    // Abrir o calendário com a 403 escolhida marca as noites dela, e a estadia continua.
+    fireEvent.click(campo("Entrada"));
+    await waitFor(() => expect(dia("14 de outubro de 2026").getAttribute("aria-label")).toContain("ocupada"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect([escondido("entrada"), escondido("saida")]).toEqual(["2026-10-12", "2026-10-16"]);
+    expect(fireEvent.submit(document.querySelector("form")!)).toBe(true);
+    cleanup();
+    // Na página da própria 403, a regra continua: a estadia que passa por noite ocupada dela é desfeita.
+    render(<Formulario lugar="403" entrada="2026-10-12" saida="2026-10-16" casaDaPagina="403" />);
+    fireEvent.click(campo("Entrada"));
+    await waitFor(() => expect(escondido("saida")).toBe(""));
+    expect(escondido("entrada")).toBe("2026-10-12");
+  });
+
   it("troca rápida de lugar: a resposta atrasada do lugar anterior não desfaz a estadia do lugar escolhido agora", async () => {
     let liberar: () => void = () => {};
     buscar.mockImplementationOnce(

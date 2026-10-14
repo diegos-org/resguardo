@@ -92,7 +92,16 @@ export function FormConsulta({
       </label>
       {trocaNoEnvio && valores.imovel && <TrocaDeCasa atual={valores.imovel} />}
       {/* Datas num calendário próprio (M7.6), com as noites ocupadas do lugar escolhido acima. */}
-      <CampoDatas hoje={hoje} entrada={valores.entrada} saida={valores.saida} campoImovel="imovel" erroEntrada={erros.entrada} erroSaida={erros.saida} variante={variante} />
+      <CampoDatas
+        hoje={hoje}
+        entrada={valores.entrada}
+        saida={valores.saida}
+        campoImovel="imovel"
+        casaDaPagina={trocaNoEnvio ? valores.imovel : undefined}
+        erroEntrada={erros.entrada}
+        erroSaida={erros.saida}
+        variante={variante}
+      />
       <label className={variante === "busca" ? undefined : styles.campoLargo}>
         Hóspedes
         <select name="hospedes" defaultValue={pessoasEscolhidas} required aria-describedby={erros.hospedes ? "erro-hospedes" : undefined}>

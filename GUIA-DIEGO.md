@@ -62,7 +62,8 @@ Agora:
   confirmar": o site nunca supõe que o grupo cabe. Casa que recebe menos pessoas fica de fora (a página diz quantas).
   Se nenhuma casa recebe o grupo, aparece um aviso e o botão para falar com a equipe pelo WhatsApp (ou e-mail).
 - **Trocar a casa na página de uma casa:** escolher outra casa no "Planeje sua estadia" e tocar em "Continuar" abre a
-  página dela com as mesmas datas e pessoas. Só mudar o campo não troca de página, para quem usa o teclado conseguir
+  página dela com as mesmas datas e pessoas, mesmo quando a outra casa está ocupada nessas datas (a página dela diz
+  que está indisponível, e o calendário dela marca as noites ocupadas). Só mudar o campo não troca de página, para quem usa o teclado conseguir
   passar pelas casas da lista sem ser levado para outra página a cada tecla.
 - **Calendário sem casa escolhida:** avisa que as noites ocupadas não aparecem ali (a situação de cada casa vem na
   página seguinte), em vez de parecer tudo livre.

@@ -47,6 +47,13 @@ export type PropsCampoDatas = {
   erroEntrada?: string;
   erroSaida?: string;
   variante?: "padrao" | "busca" | "lateral";
+  /**
+   * Cartão da página de uma casa (M7.9): o código dela. Com outra casa escolhida em `campoImovel`, o envio abre a página
+   * da outra casa com as mesmas datas (`TrocaDeCasa`), que confere tudo de novo e diz se ela está indisponível; por isso,
+   * nessa troca, a estadia não é desfeita quando a outra casa tem noite ocupada no meio (desfeita, o envio pararia aqui
+   * para pedir a saída e a outra casa nunca abriria).
+   */
+  casaDaPagina?: string;
 };
 
 const CELULAR = "(max-width: 700px)";
@@ -71,7 +78,7 @@ function Icone() {
   );
 }
 
-export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel, erroEntrada, erroSaida, variante = "padrao" }: PropsCampoDatas) {
+export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel, erroEntrada, erroSaida, variante = "padrao", casaDaPagina }: PropsCampoDatas) {
   const id = useId();
   const inicial = dataISOValida(entrada) ? entrada : "";
   const [datas, setDatas] = useState<Datas>({ entrada: inicial, saida: inicial && dataISOValida(saida) && saida > inicial ? saida : "" });
@@ -125,6 +132,9 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
   // Dia que recebe o Tab na grade: o do foco, se está à vista; senão o primeiro dia escolhível à vista.
   const focoVisivel = foco >= mes && foco < fimVisivel ? foco : menor(maior(mes, hoje), ultimoDia);
 
+  /** Outra casa escolhida no cartão da página de uma casa: o envio abre a página dela, e a estadia fica como está. */
+  const trocaDeCasa = useCallback((cod: string) => !imovel && !!casaDaPagina && cod !== casaDaPagina, [imovel, casaDaPagina]);
+
   /** Lê (uma vez por lugar e mês) as noites ocupadas; erro de rede ou resposta estranha = nada marcado. */
   const pedirMes = useCallback(
     (cod: string, m: string): Promise<readonly string[] | null> => {
@@ -149,13 +159,13 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
         setOcupacao((o) => ({ ...o, [chave]: lista }));
         // Noites que chegam depois da escolha: se a estadia do lugar escolhido agora passa por uma delas, a saída
         // é desfeita (a mesma regra da troca de lugar), em vez de seguir para o servidor recusar.
-        if ((imovel ?? seletor()?.value) !== cod) return;
+        if ((imovel ?? seletor()?.value) !== cod || trocaDeCasa(cod)) return;
         const noites = new Set(lista);
         setDatas((d) => (d.entrada && d.saida && cruzaOcupada(d.entrada, d.saida, noites) ? { entrada: d.entrada, saida: "" } : d));
       });
       return p;
     },
-    [hoje, imovel, seletor],
+    [hoje, imovel, seletor, trocaDeCasa],
   );
 
   // Meses à vista (e, escolhendo a saída, os meses desde a entrada, para conferir o caminho).
@@ -174,7 +184,7 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
       setRecusa(null);
       const cod = s.value;
       const [e, sd] = [campoEntrada.current?.value ?? "", campoSaida.current?.value ?? ""];
-      if (!CODIGO.test(cod) || !e || !sd) return;
+      if (!CODIGO.test(cod) || !e || !sd || trocaDeCasa(cod)) return;
       const meses = mesesEntre(maior(e, hoje), somarDias(sd, -1)).filter((m) => m < limiteDoCalendario(hoje));
       void Promise.all(meses.map((m) => pedirMes(cod, m))).then((listas) => {
         const noites = new Set(listas.flatMap((l) => l ?? []));
@@ -185,7 +195,7 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
     };
     s.addEventListener("change", aoMudar);
     return () => s.removeEventListener("change", aoMudar);
-  }, [imovel, seletor, hoje, pedirMes]);
+  }, [imovel, seletor, hoje, pedirMes, trocaDeCasa]);
 
   const mesParaMostrar = (dia: string, desde?: string) => {
     let m = inicioDoMes(desde ?? dia);
