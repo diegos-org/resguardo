@@ -211,6 +211,8 @@
        no lugar (e os mesmos 4px embaixo). */
     margin: -8px;
     padding: 8px 8px 12px;
+    /* O link que recebe o foco no meio da rolagem para com a mesma folga da borda. */
+    scroll-padding-inline: 8px;
   }
 
   .menu a {

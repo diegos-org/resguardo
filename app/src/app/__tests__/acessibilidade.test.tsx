@@ -139,6 +139,14 @@ const PECAS = [
 ];
 const FUNDO_VERDE = /background(?:-color)?\s*:[^;]*var\(--scl-(?:floresta|profundo|musgo|musgo-escuro|salvia)\)/;
 const FOCO_CLARO = /--scl-foco-cor\s*:\s*var\(--scl-foco-sobre-verde\)/;
+/**
+ * Áreas claras que aparecem dentro de um contêiner verde com coisa focável dentro (ex.: o cartão papel de "nenhuma casa
+ * publicada", na faixa verde das casas da capa): herdariam o creme do verde, que some no fundo claro (1,05:1 no papel);
+ * cada uma devolve o laranja no mesmo seletor do fundo.
+ */
+const CLAROS_DENTRO_DE_VERDE = ["components/site/site.module.css | .semCasas"];
+const FUNDO_CLARO = /background(?:-color)?\s*:[^;]*var\(--scl-(?:creme|papel|areia|branco|neutro-fundo|erro-fundo|aviso-fundo|ok-fundo|info-fundo|dourado-claro)\)/;
+const FOCO_LARANJA = /--scl-foco-cor\s*:\s*var\(--scl-foco\)/;
 const regrasVerdes = () =>
   CSS_MODULOS.flatMap((arquivo) =>
     regras(ler(arquivo))
@@ -184,6 +192,36 @@ describe("contorno de foco visível sobre os verdes (M7.11)", () => {
     }
   });
 
+  it("as áreas claras dentro dos contêineres verdes devolvem o contorno laranja, no mesmo seletor do fundo claro", () => {
+    for (const chave of CLAROS_DENTRO_DE_VERDE) {
+      const [arquivo, seletor] = chave.split(" | ");
+      const corpo = regra(ler(arquivo), seletor);
+      expect(FUNDO_CLARO.test(corpo), chave).toBe(true);
+      expect(FOCO_LARANJA.test(corpo), chave).toBe(true);
+      const fundo = tokenDe(valor(corpo, "background") ?? "");
+      expect(contraste(cor("--scl-foco"), cor(fundo)), chave).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+      // O motivo: o creme herdado do verde some no fundo claro.
+      expect(contraste(cor("--scl-foco-sobre-verde"), cor(fundo)), chave).toBeLessThan(MINIMO_INDICADOR);
+    }
+    // Nenhum contêiner verde devolve o laranja, e nenhuma área clara fora da lista troca a cor do foco.
+    for (const arquivo of CSS_MODULOS)
+      for (const r of regras(ler(arquivo)).filter((x) => FOCO_LARANJA.test(x.corpo)))
+        expect(CLAROS_DENTRO_DE_VERDE, `${arquivo} | ${r.seletor}`).toContain(`${arquivo} | ${r.seletor}`);
+  });
+
+  it("dia do calendário de datas: o contorno fica inteiro por dentro do dia, sobre o fundo dele, e com a opacidade cheia", () => {
+    const calendario = ler("components/site/calendario.module.css");
+    const foco = regra(calendario, ".dia:focus-visible");
+    const largura = parseFloat(valor(foco, "outline-width")!);
+    // Deslocamento negativo de pelo menos a espessura: da borda do dia para dentro (os dias ficam colados um no outro).
+    expect(-parseFloat(valor(foco, "outline-offset")!)).toBeGreaterThanOrEqual(largura);
+    // O dia indisponível é apagado pela opacidade, que apagaria também o contorno.
+    expect(valor(foco, "opacity")).toBe("1");
+    // No dia escolhido (musgo), o contorno por dentro é o claro.
+    const ponta = regra(calendario, '.ponta, .ponta:hover, .dia[aria-disabled="true"].ponta:hover');
+    expect(contraste(cor("--scl-foco-sobre-verde"), cor(tokenDe(valor(ponta, "background")!)))).toBeGreaterThanOrEqual(MINIMO_INDICADOR);
+  });
+
   it("o que flutua sobre faixas claras e verdes (WhatsApp, Pular para o conteúdo) ganha o halo creme sob o contorno laranja", () => {
     const halo = tokenDe(TOKENS["--scl-foco-halo"]);
     expect(halo).toBe("--scl-creme");
@@ -202,11 +240,16 @@ describe("contorno de foco visível sobre os verdes (M7.11)", () => {
     const carrossel = regras(site).find((r) => r.seletor === ".carrossel" && valor(r.corpo, "overflow-x"))!.corpo;
     expect(Math.min(...folgas(valor(carrossel, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
     expect(parseFloat(valor(carrossel, "scroll-padding-inline")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
-    // Miniaturas da galeria quando rolam (mais de quatro fotos).
-    expect(Math.min(...folgas(valor(regra(site, ".miniaturasRolagem"), "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // Miniaturas da galeria quando rolam (mais de quatro fotos): para baixo no computador, para o lado no celular.
+    const miniaturas = regra(site, ".miniaturasRolagem");
+    expect(Math.min(...folgas(valor(miniaturas, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    expect(parseFloat(valor(miniaturas, "scroll-padding")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
     // Menu do painel no celular, que rola para o lado.
     const menu = regras(ler("components/painel/painel.module.css")).find((r) => r.seletor === ".menu" && valor(r.corpo, "overflow-x"))!.corpo;
     expect(Math.min(...folgas(valor(menu, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // A padding só vale no começo e no fim da rolagem; no meio, o navegador leva o item com foco até a borda, menos o
+    // scroll-padding.
+    expect(parseFloat(valor(menu, "scroll-padding-inline")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
   });
 });
 
@@ -334,6 +377,47 @@ describe("Pular para o conteúdo (M7.11)", () => {
     expect(valor(regra(GLOBAL, 'main[tabindex="-1"]:focus'), "outline")).toBe("none");
     // Texto e fundo do link legíveis (tinta sobre papel).
     expect(contraste(cor(tokenDe(valor(regra(GLOBAL, ".scl-pular"), "color")!)), cor(tokenDe(valor(regra(GLOBAL, ".scl-pular"), "background")!)))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("áreas claras dentro das faixas verdes do site, nas telas (M7.11)", () => {
+  it("toda área clara com coisa focável dentro de um contêiner verde está na lista das que devolvem o laranja", async () => {
+    const SITE = "components/site/site.module.css";
+    /** Classes simples (`.nome`) de uma lista "arquivo | seletor", só as do site. */
+    const classesDoSite = (lista: string[]) =>
+      lista
+        .filter((c) => c.startsWith(`${SITE} | `))
+        .flatMap((c) => c.split(" | ")[1].split(", "))
+        .filter((sel) => /^\.\w+$/.test(sel))
+        .map((sel) => sel.slice(1));
+    const verdes = classesDoSite(CONTEINERES);
+    const claras = [
+      ...new Set(
+        regras(ler(SITE))
+          .filter((r) => FUNDO_CLARO.test(r.corpo))
+          .flatMap((r) => r.seletor.split(", "))
+          .filter((sel) => /^\.\w+$/.test(sel))
+          .map((sel) => sel.slice(1)),
+      ),
+    ];
+    expect(verdes).toEqual(["topo", "capa", "casas", "fechamento", "rodape"]);
+    expect(claras).toContain("semCasas");
+    /** As áreas claras, dentro de algum contêiner verde, que têm link, botão ou campo dentro (o contorno cai sobre elas). */
+    const achadas = new Set<string>();
+    const procurar = (html: string) => {
+      const raiz = dom(html);
+      for (const v of verdes)
+        for (const conteiner of raiz.querySelectorAll(`.${styles[v]}`))
+          for (const c of claras) if ([...conteiner.querySelectorAll(`.${styles[c]}`)].some((el) => el.querySelector(FOCAVEIS))) achadas.add(c);
+    };
+    for (const html of Object.values(await telas())) procurar(html);
+    // Sem casas publicadas, como na produção hoje.
+    m.imoveis.mockResolvedValue([]);
+    m.tem.mockResolvedValue(false);
+    for (const html of [renderToStaticMarkup(await Inicio()), renderToStaticMarkup(await Catalogo()), renderToStaticMarkup(await Consulta(props({}) as never)), renderToStaticMarkup(await NaoEncontradaNoSite())]) procurar(html);
+    expect([...achadas].filter((c) => !classesDoSite(CLAROS_DENTRO_DE_VERDE).includes(c))).toEqual([]);
+    // E a lista não fica velha: o aviso sem casas aparece de fato dentro da faixa verde das casas, com o botão do contato.
+    expect([...achadas]).toContain("semCasas");
   });
 });
 

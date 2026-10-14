@@ -207,9 +207,13 @@
   background: var(--scl-areia);
 }
 
+/* O contorno do foco do dia fica inteiro por dentro (2px, deslocado -2px: da borda para dentro), sobre o próprio fundo
+   do dia: os dias ficam colados, e por fora ele cairia sobre o vizinho ou o papel. O dia indisponível, apagado, volta
+   à opacidade cheia enquanto tem o foco: apagado, o contorno também ficava fraco (M7.11). */
 .dia:focus-visible {
-  outline-offset: -1px;
+  outline-offset: -2px;
   outline-width: 2px;
+  opacity: 1;
 }
 
 .dia[aria-disabled="true"] {
@@ -273,7 +277,7 @@
 .dia[aria-disabled="true"].ponta:hover {
   background: var(--scl-musgo);
   color: var(--scl-branco);
-  /* O contorno do foco do dia fica por dentro (deslocamento -1px), sobre o próprio musgo: o claro (M7.11). */
+  /* O contorno do foco do dia fica inteiro por dentro (.dia:focus-visible), sobre o próprio musgo: o claro (M7.11). */
   --scl-foco-cor: var(--scl-foco-sobre-verde);
   opacity: 1;
   text-decoration: none;

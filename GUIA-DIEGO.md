@@ -53,7 +53,9 @@ em voz alta para quem não enxerga bem). Para quem usa o mouse, nada muda.
 - **Contorno de quem usa o teclado:** quem navega com a tecla Tab vê um contorno laranja em volta do link ou do botão
   em que está. Nas partes verdes (cabeçalho, faixa das casas, faixa final e rodapé do site, o dia escolhido no
   calendário de datas, o menu do painel e o topo e o rodapé dos portais), o laranja quase sumia. Agora, ali, o contorno
-  é creme, bem visível; nas partes claras continua laranja. O contorno também ficou um pouco mais afastado do botão,
+  é creme, bem visível; nas partes claras continua laranja, inclusive no quadro claro de "nenhuma casa publicada",
+  que fica dentro da faixa verde das casas. No calendário de datas, o contorno fica inteiro por dentro do dia, também
+  nos dias que não dá para escolher. O contorno também ficou um pouco mais afastado do botão,
   como pede a especificação visual, e deixou de ser cortado nas faixas que rolam para o lado (as casas da página
   inicial, as fotos menores da página do imóvel, o menu do painel no celular). O botão redondo do WhatsApp, que passa
   por cima de partes claras e verdes, ganha um halo creme com o contorno laranja por cima.

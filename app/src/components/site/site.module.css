@@ -888,6 +888,9 @@
   align-content: start;
   overflow-y: auto;
   padding: 8px;
+  /* E a miniatura que recebe o foco no meio da rolagem para com a mesma folga da borda (nos dois sentidos: no celular
+     ela rola para o lado). */
+  scroll-padding: 8px;
 }
 
 @media (max-width: 600px) {
@@ -2158,6 +2161,9 @@
   padding: 20px;
   background: var(--scl-papel);
   color: var(--scl-tinta);
+  /* Na capa, o cartão fica dentro da faixa verde das casas, que troca o foco para o creme: aqui o fundo é claro, e o
+     contorno do botão volta ao laranja (M7.11; o creme sobre o papel some). */
+  --scl-foco-cor: var(--scl-foco);
   border: 1px solid var(--scl-borda);
   border-left: 3px solid var(--scl-dourado);
   border-radius: var(--scl-raio-cartao);

@@ -19,7 +19,13 @@ rodapé dos portais), que trocam a variável `--scl-foco-cor` no mesmo seletor d
 laranja dava 1,69:1 sobre floresta, 2,29:1 sobre profundo, 1,27:1 sobre sálvia e 1,41:1 sobre musgo,
 abaixo dos 3:1 dos indicadores, e o creme dá 6,2 / 8,43 / 4,68 / 5,18:1 (o `--scl-dourado-claro`, a
 outra opção, dava 3,87:1 na sálvia); o laranja continua nos fundos claros (3,68:1 no creme, 3,88:1 no
-papel, 3,13:1 na areia); o que flutua sobre fundos claros e verdes (botão do WhatsApp, "Pular para o
+papel, 3,13:1 na areia), inclusive numa área clara dentro de uma verde (o cartão papel de "nenhuma casa
+publicada", na faixa das casas), que devolve `--scl-foco-cor` ao laranja no próprio seletor (o creme
+herdado daria 1,05:1 no papel); no dia do calendário de datas, o contorno de 2px fica inteiro por dentro
+(deslocado -2px) e com a opacidade cheia, sobre o fundo do próprio dia (no dia escolhido, creme sobre o
+musgo, 5,18:1), porque os dias ficam colados e, meio por fora, ele caía sobre o vizinho ou o papel; nas
+rolagens com coisa focável (carrossel das casas, miniaturas da galeria, menu do painel no celular), folga
+de 8px e `scroll-padding` para o contorno não ser cortado; o que flutua sobre fundos claros e verdes (botão do WhatsApp, "Pular para o
 conteúdo") ganha um halo creme (`--scl-foco-halo`) sob o contorno laranja; objetivo: o foco do teclado
 visível em qualquer fundo do site, dos portais e do painel; (7) **14/10/2026 (M7.11), miniatura
 escolhida da galeria** — antes: contorno de 2px em `--scl-dourado` (1,93:1 sobre o creme, 2,04:1 sobre o
