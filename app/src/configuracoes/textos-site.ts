@@ -23,6 +23,18 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "chamada", rotulo: "Chamada final (título da faixa verde antes do rodapé)", limite: 120, linhas: 1 },
   { chave: "contato", rotulo: "Texto de contato", limite: 500, linhas: 3 },
   { chave: "rodape", rotulo: "Rodapé", limite: 240, linhas: 2 },
+  // Página não encontrada e site sem casas (M7.8): os títulos e as frases da não encontrada vêm do estudo aprovado
+  // (prototipos/scl-publico, `errorPage`); o aviso do site sem casas é um texto-base novo, para Diego revisar.
+  { chave: "naoEncontradoTitulo", rotulo: "Página não encontrada: título (endereço errado ou que saiu do site)", limite: 120, linhas: 1 },
+  { chave: "naoEncontradoTexto", rotulo: "Página não encontrada: frase abaixo do título (vazio = só o título e o botão)", limite: 240, linhas: 2 },
+  { chave: "casaNaoEncontradaTitulo", rotulo: "Casa não encontrada: título (link de uma casa que não existe ou saiu do site)", limite: 120, linhas: 1 },
+  { chave: "casaNaoEncontradaTexto", rotulo: "Casa não encontrada: frase abaixo do título (vazio = só o título e o botão)", limite: 240, linhas: 2 },
+  {
+    chave: "semCasasTexto",
+    rotulo: "Site sem nenhuma casa publicada: aviso na página inicial, em Nossas casas, na consulta e na página não encontrada (o botão do WhatsApp ou do e-mail vem logo abaixo)",
+    limite: 240,
+    linhas: 2,
+  },
   { chave: "pagamentoConvite", rotulo: "Pagamento no site: convite para pagar (página da cotação, com as datas seguradas)", limite: 240, linhas: 2 },
   { chave: "pagamentoAguardando", rotulo: "Pagamento por Pix: instrução enquanto o Pix aguarda o pagamento", limite: 240, linhas: 2 },
   { chave: "pagamentoSemDatas", rotulo: "Pagamento no site: pagamento recebido sem conseguir garantir as datas", limite: 400, linhas: 3 },
@@ -71,12 +83,16 @@ export const CAMPOS_TEXTOS_SITE = [
 export type ChaveTextoSite = (typeof CAMPOS_TEXTOS_SITE)[number]["chave"];
 export type TextosSite = Record<ChaveTextoSite, string>;
 /**
- * Textos que não podem ficar vazios: o título, os do pagamento e os do cancelamento e da alteração que o hóspede precisa
+ * Textos que não podem ficar vazios: o título, os títulos da página não encontrada e o aviso do site sem casas (M7.8:
+ * a página nunca sai sem dizer o que aconteceu), os do pagamento e os do cancelamento e da alteração que o hóspede precisa
  * ler (o que acontece com o dinheiro e com a reserva dele). A frase final e a abertura do quadro em Minha reserva podem
  * ficar vazias, e as frases da alteração que só completam uma linha que o sistema já escreve também.
  */
 export const TEXTOS_SITE_OBRIGATORIOS: readonly ChaveTextoSite[] = [
   "titulo",
+  "naoEncontradoTitulo",
+  "casaNaoEncontradaTitulo",
+  "semCasasTexto",
   "pagamentoConvite",
   "pagamentoAguardando",
   "pagamentoSemDatas",
@@ -125,6 +141,14 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   chamada: "O Rio está logo ali.",
   contato: "",
   rodape: "",
+  // Página não encontrada (M7.8): os textos do estudo aprovado (prototipos/scl-publico/src/server.mjs).
+  naoEncontradoTitulo: "Página não encontrada",
+  naoEncontradoTexto: "Você pode voltar ao catálogo para escolher sua casa.",
+  casaNaoEncontradaTitulo: "Casa não encontrada",
+  casaNaoEncontradaTexto: "Conheça os imóveis disponíveis no catálogo.",
+  // Sem nenhuma casa publicada (M7.8): texto-base novo (o estudo não tinha esse caso), para Diego revisar. Neutro, sem
+  // prometer data nem novidade; o contato vem no botão abaixo (sem canal, o aviso de contato não configurado).
+  semCasasTexto: "No momento, nenhuma casa está aberta para reserva pelo site. Se quiser, fale com a gente.",
   // Pagamento no site (M8.2a): texto-base para Diego revisar. O convite não cita a forma (M8.2b: Pix ou cartão).
   pagamentoConvite: "Pague aqui mesmo: assim que o pagamento é aprovado, a reserva fica confirmada, sem precisar esperar a equipe.",
   pagamentoAguardando: "Abra o app do seu banco, escolha pagar com Pix e use o código copia e cola (ou leia o QR). O valor já vem preenchido.",

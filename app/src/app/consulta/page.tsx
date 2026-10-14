@@ -1,7 +1,8 @@
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
-import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
+import { FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
+import { SemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
@@ -9,7 +10,7 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
+import { AVISO_SEM_CONTATO, canalDeContato, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
 export const generateMetadata = () => metadadosDoSite("Consulta");
 
@@ -20,6 +21,27 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const pedido = lerPedidoConsulta(sp);
   const enviado = !!(pedido.entrada || pedido.saida);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
+  const { textos } = conteudo;
+  const cabecalho = (comTexto: boolean) => (
+    <header className={`${styles.cabecalhoPagina} ${styles.cabecalhoConsulta}`}>
+      {textos.consultaOlho && <p className={styles.olho}>{textos.consultaOlho}</p>}
+      <h1>
+        <TextoComDestaque texto={textos.consultaTitulo || "Planeje sua estadia"} />
+      </h1>
+      {comTexto && textos.consultaTexto && <p>{textos.consultaTexto}</p>}
+    </header>
+  );
+  // Nenhuma casa publicada (M7.8): o formulário teria um "Seu lugar" obrigatório sem opção e não daria para enviar.
+  // No lugar dele, o aviso e o contato; a frase da consulta ("escolha a casa…") também sai.
+  if (!todos.length)
+    return (
+      <Moldura conteudo={conteudo}>
+        {cabecalho(false)}
+        <div className={styles.consultaColunas}>
+          <SemCasas conteudo={conteudo} />
+        </div>
+      </Moldura>
+    );
   // Disponibilidade e valor reais (M7.2): só depois de o pedido passar na conferência básica.
   const imovel = enviado && pedido.imovel ? await imovelDoSite(db, conteudo.organizacaoId, pedido.imovel) : null;
   // "Hoje" no fuso do imóvel escolhido, o mesmo que a disponibilidade usa; sem imóvel, São Paulo.
@@ -40,16 +62,11 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
     segurar && imovel
       ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: pedido.entrada, checkout: pedido.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
       : false;
-  const { textos } = conteudo;
+  // Por onde a conversa continua (WhatsApp, senão e-mail): a regra única do site, para o formulário e para o envio.
+  const canal = canalDeContato(conteudo);
   return (
     <Moldura conteudo={conteudo}>
-      <header className={`${styles.cabecalhoPagina} ${styles.cabecalhoConsulta}`}>
-        {textos.consultaOlho && <p className={styles.olho}>{textos.consultaOlho}</p>}
-        <h1>
-          <TextoComDestaque texto={textos.consultaTitulo || "Planeje sua estadia"} />
-        </h1>
-        {textos.consultaTexto && <p>{textos.consultaTexto}</p>}
-      </header>
+      {cabecalho(true)}
       {sp.aviso === "mudou" && (
         <p className={styles.aviso} role="alert">
           A disponibilidade ou o valor mudaram desde a sua consulta anterior. Confira a situação atual abaixo.
@@ -57,7 +74,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
       )}
       <div className={styles.consultaColunas}>
         <div className={styles.consultaForm}>
-          <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} comPagamento={gate.ok} />
+          <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canal} comPagamento={gate.ok} />
         </div>
         <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
           <p className={styles.olho}>Sua estadia, sem surpresas</p>
@@ -89,23 +106,23 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
             <section className={styles.bloco} aria-labelledby="titulo-mensagem">
               <h3 id="titulo-mensagem">Sua mensagem</h3>
               <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
-              {conteudo.whatsapp ? (
+              {canal === "whatsapp" && conteudo.whatsapp ? (
                 <p style={{ marginTop: 16 }}>
                   <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
                     Enviar pelo WhatsApp
                     <span aria-hidden="true">↗</span>
                   </a>
                 </p>
-              ) : conteudo.email ? (
+              ) : canal === "email" ? (
                 <p style={{ marginTop: 16 }}>
-                  <a href={`mailto:${conteudo.email}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
+                  <a href={`mailto:${conteudo.email.trim()}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
                     Enviar por e-mail
                     <span aria-hidden="true">↗</span>
                   </a>
                 </p>
               ) : (
                 <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>
-                  O contato ainda não foi configurado. Volte em breve.
+                  {AVISO_SEM_CONTATO}
                 </p>
               )}
               <p className={styles.miudo} style={{ marginTop: 12 }}>

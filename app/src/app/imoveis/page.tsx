@@ -1,5 +1,6 @@
 import { CartaoImovel } from "@/components/site/CartaoImovel";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
+import { SemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imoveisDoSite } from "@/site/site";
@@ -16,7 +17,7 @@ export default async function Catalogo() {
       <header className={styles.cabecalhoPagina}>
         <p className={styles.olho}>{["Apartamentos", ...lugares].join(" · ")}</p>
         <h1>Nossas casas</h1>
-        <p>Escolha um apartamento para ver o que ele oferece e consultar as datas.</p>
+        {lista.length > 0 && <p>Escolha um apartamento para ver o que ele oferece e consultar as datas.</p>}
       </header>
       {lista.length ? (
         <div className={styles.grade}>
@@ -25,7 +26,8 @@ export default async function Catalogo() {
           ))}
         </div>
       ) : (
-        <p className={styles.miudo}>Em breve.</p>
+        // Nenhuma casa publicada (M7.8): avisa e oferece o contato, em vez de "Em breve.".
+        <SemCasas conteudo={conteudo} />
       )}
     </Moldura>
   );

@@ -17,6 +17,7 @@ import { type FotoPublica, fotosParaOSite } from "@/imoveis/fotos";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { enderecoImagemSite, lerImagensSite } from "./imagens-site";
+import { MARCA_PADRAO } from "./marca";
 
 export type ImovelPublico = {
   codigo: string;
@@ -59,8 +60,8 @@ export type ConteudoSite = {
   identidade?: { razaoSocial: string; cnpj: string; endereco: string };
 };
 
-/** Marca do estudo (o ícone do logotipo), usada enquanto nenhuma outra é enviada em Configurações → Site. */
-export const MARCA_PADRAO = "/marca.png";
+/** Marca do estudo, usada enquanto nenhuma outra é enviada (definida em `./marca`, que a moldura de cliente lê sem o banco). */
+export { MARCA_PADRAO };
 
 /**
  * De qual organização é o site: a da variável SITE_ORGANIZACAO_ID, se existir; senão, a única
@@ -163,15 +164,22 @@ async function comFotos(db: Db, organizacaoId: string, linhas: Linha[]): Promise
   return linhas.map((l) => publico(l, (l.id && fotos.get(l.id)) || []));
 }
 
+/** Quais imóveis aparecem no site: os públicos e ativos da organização do site (a lista, a página e a conferência leem daqui). */
+const noSite = (organizacaoId: string) => and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.publico, true), eq(imoveis.ativo, true));
+
 /** Imóveis que aparecem no site: públicos e ativos, pelo código. */
 export async function imoveisDoSite(db: Db, organizacaoId: string): Promise<ImovelPublico[]> {
-  const linhas = await db
-    .select(colunasPublicas)
-    .from(imoveis)
-    .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
-    .where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.publico, true), eq(imoveis.ativo, true)))
-    .orderBy(asc(imoveis.codigo));
+  const linhas = await db.select(colunasPublicas).from(imoveis).leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id)).where(noSite(organizacaoId)).orderBy(asc(imoveis.codigo));
   return comFotos(db, organizacaoId, linhas);
+}
+
+/**
+ * Se há alguma casa no site (M7.8), sem montar a lista nem buscar fotos: a página não encontrada só precisa disso para
+ * decidir entre "Conhecer as casas" e o aviso do site sem casas (um endereço errado, até de robô, faz uma leitura curta).
+ */
+export async function temCasaNoSite(db: Db, organizacaoId: string): Promise<boolean> {
+  const [l] = await db.select({ id: imoveis.id }).from(imoveis).where(noSite(organizacaoId)).limit(1);
+  return !!l;
 }
 
 /** Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. */
@@ -181,7 +189,7 @@ export async function imovelDoSite(db: Db, organizacaoId: string, codigo: string
     .select(colunasPublicas)
     .from(imoveis)
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
-    .where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, codigo), eq(imoveis.publico, true), eq(imoveis.ativo, true)));
+    .where(and(noSite(organizacaoId), eq(imoveis.codigo, codigo)));
   return l ? (await comFotos(db, organizacaoId, [l]))[0] : null;
 }
 
@@ -284,6 +292,27 @@ export function destinoDoLinkAntigo(
 }
 
 export const linkWhatsapp = (numero: string, texto: string) => `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+
+/** Primeira mensagem de quem chama pelo site sem uma consulta montada (botão flutuante e aviso do site sem casas). */
+export const MENSAGEM_CONTATO_SITE = "Olá! Vim pelo site e gostaria de falar com a equipe.";
+
+export type CanalContato = "whatsapp" | "email" | null;
+/**
+ * Por onde a conversa com a empresa continua, em todo o site (a consulta, a página do imóvel e o aviso do site sem
+ * casas): o WhatsApp do cadastro da empresa, senão o e-mail; sem os dois, nenhum (a página avisa, não inventa um canal).
+ */
+export const canalDeContato = (c: Pick<ConteudoSite, "whatsapp" | "email">): CanalContato => (c.whatsapp ? "whatsapp" : c.email.trim() ? "email" : null);
+
+/** Aviso de quando não há WhatsApp nem e-mail no cadastro da empresa (o mesmo na consulta e no aviso do site sem casas). */
+export const AVISO_SEM_CONTATO = "O contato ainda não foi configurado. Volte em breve.";
+
+/** Botão de contato do site (M7.8), pelo canal de `canalDeContato`; sem canal, nenhum botão (quem mostra avisa). */
+export function contatoDoSite(c: Pick<ConteudoSite, "whatsapp" | "email">): { href: string; rotulo: string; externo: boolean } | null {
+  const canal = canalDeContato(c);
+  if (canal === "whatsapp" && c.whatsapp) return { href: linkWhatsapp(c.whatsapp, MENSAGEM_CONTATO_SITE), rotulo: "Falar pelo WhatsApp", externo: true };
+  if (canal === "email") return { href: `mailto:${c.email.trim()}?subject=${encodeURIComponent("Contato pelo site")}`, rotulo: "Enviar um e-mail", externo: false };
+  return null;
+}
 
 /**
  * Mínimo do campo de data quando o formulário lista vários imóveis: o "hoje" mais cedo entre os fusos.

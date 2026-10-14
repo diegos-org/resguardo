@@ -2093,3 +2093,52 @@
 .aceiteFeito p {
   margin: 0;
 }
+
+/*
+ * Página não encontrada e página de erro (M7.8): um bloco curto e largo no miolo, como o `.narrow` do estudo
+ * (prototipos/scl-publico: olho, título, frase e o botão "Conhecer as casas").
+ */
+.paginaAviso {
+  max-width: 820px;
+  min-height: 45vh;
+  margin: 32px auto 48px;
+}
+
+.paginaAviso h1 {
+  margin: 6px 0 14px;
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+}
+
+.paginaAviso > p {
+  margin: 0 0 24px;
+  max-width: 56ch;
+  color: var(--scl-texto-2);
+}
+
+.acoesAviso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+/* Site sem nenhuma casa publicada (M7.8): o aviso em cartão papel e o contato, no lugar da lista ou do formulário */
+.semCasas {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  max-width: 640px;
+  margin: 0 0 24px;
+  padding: 20px;
+  background: var(--scl-papel);
+  color: var(--scl-tinta);
+  border: 1px solid var(--scl-borda);
+  border-left: 3px solid var(--scl-dourado);
+  border-radius: var(--scl-raio-cartao);
+}
+
+.semCasas p {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--scl-tinta);
+}

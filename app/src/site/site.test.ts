@@ -6,7 +6,23 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
-import { conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, metadadosDeAcesso, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import {
+  canalDeContato,
+  contatoDoSite,
+  conteudoDoSite,
+  destinoDoLinkAntigo,
+  hojeMaisCedo,
+  imovelDoSite,
+  imoveisDoSite,
+  lerPedidoConsulta,
+  metadadosDeAcesso,
+  tituloDoSite,
+  linkWhatsapp,
+  montarConsulta,
+  numeroWhatsapp,
+  organizacaoDoSite,
+  temCasaNoSite,
+} from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -165,6 +181,55 @@ describe("site público (M7.1)", () => {
     const hojeLink = { checkin: "2026-10-09", checkout: "2026-10-12", guests: "2" };
     expect(destinoDoLinkAntigo(q(hojeLink), imovel, madrugada)).toMatchObject({ status: 400 });
     expect(destinoDoLinkAntigo(q(hojeLink), { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
+  });
+});
+
+describe("temCasaNoSite (M7.8)", () => {
+  it("há casa no site quando há algum imóvel público e ativo da organização, com a mesma regra da lista", async () => {
+    expect(await temCasaNoSite(db, org)).toBe(true);
+    expect((await imoveisDoSite(db, org)).length).toBeGreaterThan(0);
+    // Outra organização só com imóvel fora do site (não público, ou público e inativo): nenhuma casa, como a lista.
+    const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "Outra" }).returning();
+    expect(await temCasaNoSite(db, outra)).toBe(false);
+    await db.insert(imoveis).values([
+      { organizacaoId: outra, codigo: "A1", nome: "Fora do site", publico: false },
+      { organizacaoId: outra, codigo: "A2", nome: "Inativo", publico: true, ativo: false },
+    ]);
+    expect(await temCasaNoSite(db, outra)).toBe(false);
+    expect(await imoveisDoSite(db, outra)).toEqual([]);
+    await db.insert(imoveis).values({ organizacaoId: outra, codigo: "A3", nome: "No site", publico: true });
+    expect(await temCasaNoSite(db, outra)).toBe(true);
+  });
+});
+
+describe("canal de contato do site (M7.8): uma regra só", () => {
+  it("WhatsApp antes do e-mail; e-mail só de espaços não é canal; o botão segue sempre o canal", () => {
+    const casos = [
+      { whatsapp: "5521900000000", email: "contato@exemplo.com" },
+      { whatsapp: "5521900000000", email: "" },
+      { whatsapp: null, email: " contato@exemplo.com " },
+      { whatsapp: null, email: "   " },
+      { whatsapp: null, email: "" },
+    ];
+    expect(casos.map(canalDeContato)).toEqual(["whatsapp", "whatsapp", "email", null, null]);
+    // O botão do aviso do site sem casas e o canal da consulta nunca divergem.
+    const doBotao = (c: (typeof casos)[number]) => {
+      const r = contatoDoSite(c);
+      return r ? (r.href.startsWith("https://wa.me/") ? "whatsapp" : "email") : null;
+    };
+    for (const c of casos) expect(doBotao(c), JSON.stringify(c)).toBe(canalDeContato(c));
+  });
+});
+
+describe("contatoDoSite (M7.8)", () => {
+  it("WhatsApp antes do e-mail, como a consulta; sem os dois, nenhum botão", () => {
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "contato@exemplo.com" })).toEqual({
+      href: "https://wa.me/5521900000000?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20gostaria%20de%20falar%20com%20a%20equipe.",
+      rotulo: "Falar pelo WhatsApp",
+      externo: true,
+    });
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " })).toEqual({ href: "mailto:contato@exemplo.com?subject=Contato%20pelo%20site", rotulo: "Enviar um e-mail", externo: false });
+    expect(contatoDoSite({ whatsapp: null, email: "  " })).toBeNull();
   });
 });
 

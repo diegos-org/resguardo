@@ -5,8 +5,9 @@ import { BairroAPorta } from "@/components/site/BairroAPorta";
 import { olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
-import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
+import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
+import { textosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
 import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
@@ -17,13 +18,16 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
+import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
   const { db, conteudo } = await carregarSite();
-  const i = conteudo ? await imovelDoSite(db, conteudo.organizacaoId, codigo) : null;
-  return metadadosDoSite(i?.nome);
+  if (!conteudo) return metadadosDoSite(undefined);
+  const i = await imovelDoSite(db, conteudo.organizacaoId, codigo);
+  // Casa que não existe ou saiu do site (M7.8): o título da aba é o da "Casa não encontrada" já aqui, o mesmo de
+  // ./not-found.tsx, para não depender só do título da not-found (que o Next pode trocar pelo do layout).
+  return metadadosDoSite(i ? i.nome : textosDaNaoEncontrada(conteudo.textos, "casa").titulo);
 }
 
 export default async function PaginaImovel({ params, searchParams }: PageProps<"/imoveis/[codigo]">) {

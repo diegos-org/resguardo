@@ -88,3 +88,15 @@ it("pedido inválido (pessoas acima da capacidade) nem chega à disponibilidade"
   expect(m.disponibilidade).not.toHaveBeenCalled();
   expect(h).toContain("Este apartamento recebe até 4 pessoas.");
 });
+it("sem nenhuma casa publicada (M7.8): no lugar do formulário que não daria para enviar, o aviso e o contato", async () => {
+  m.imoveis.mockResolvedValue([]);
+  const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
+  expect(h).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
+  expect(h).toContain("Falar pelo WhatsApp");
+  expect(h).toContain("A gente encontra sua casa."); // o título da consulta continua
+  expect(h).not.toContain('name="imovel"');
+  expect(h).not.toContain("Seu lugar");
+  expect(h).not.toContain(TEXTOS_SITE_INICIAIS.consultaTexto);
+  expect(h).not.toContain("Resumo da viagem");
+  expect(m.disponibilidade).not.toHaveBeenCalled();
+});
