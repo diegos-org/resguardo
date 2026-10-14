@@ -443,7 +443,8 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
               Noites ocupadas
             </p>
           ) : (
-            <p className={css.legenda}>Escolha o lugar para ver as noites ocupadas.</p>
+            // Sem casa escolhida ("Todas as casas", M7.9): nada é marcado, e o quadro diz isso em vez de parecer tudo livre.
+            <p className={css.legenda}>Com todas as casas, as noites ocupadas não aparecem aqui: a situação de cada casa vem na próxima tela.</p>
           )}
           <div className={css.acoes}>
             <button type="button" className={css.limpar} onClick={limpar} disabled={!datas.entrada}>

@@ -1,0 +1,170 @@
+import { diasEntre } from "@/imoveis/regras-venda";
+import type { CasaNaBusca, ResultadoBusca } from "@/site/busca";
+import { linkDaCasa } from "@/site/link-da-casa";
+import { type ConteudoSite, type ImovelPublico, linkWhatsapp, mensagemDaBusca, type PedidoConsulta } from "@/site/site";
+import { CartaoImovel } from "./CartaoImovel";
+import { brl, TITULO_DA_SITUACAO } from "./Disponibilidade";
+import { canalDeContato, FormConsulta } from "./FormConsulta";
+import { TextoComDestaque } from "./Moldura";
+import styles from "./site.module.css";
+
+const dataBr = (d: string) => d.split("-").reverse().join("/");
+const ETIQUETA: Record<NonNullable<CasaNaBusca["disponibilidade"]>["situacao"], string> = {
+  disponivel: styles.etiquetaDisponivel,
+  a_confirmar: styles.etiquetaAConfirmar,
+  indisponivel: styles.etiquetaIndisponivel,
+  invalida: styles.etiquetaInvalida,
+};
+
+/**
+ * A situação de uma casa no cartão da busca (M7.9): o nome da situação da consulta (M7.2), os motivos em linguagem
+ * simples e, quando há valor, o total com o valor cheio e o desconto do site visíveis (regra do M12.1). Casa além do
+ * limite da busca: sem situação, só o convite para ver as datas na página dela.
+ */
+function SituacaoNaBusca({ casa }: { casa: CasaNaBusca }) {
+  const d = casa.disponibilidade;
+  if (!d) {
+    return (
+      <div className={styles.situacaoCasa}>
+        <p className={`${styles.etiqueta} ${styles.etiquetaIndisponivel}`}>Veja as datas na página da casa</p>
+      </div>
+    );
+  }
+  const c = d.cotacao;
+  const comValor = (d.situacao === "disponivel" || d.situacao === "a_confirmar") && c;
+  return (
+    <div className={styles.situacaoCasa}>
+      <p className={`${styles.etiqueta} ${ETIQUETA[d.situacao]}`}>{TITULO_DA_SITUACAO[d.situacao]}</p>
+      {!casa.imovel.capacidade && <p>Capacidade não informada</p>}
+      {d.motivos.length > 0 && (
+        <ul className={styles.motivosCasa}>
+          {d.motivos.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      )}
+      {comValor && (
+        <dl className={styles.valoresCasa}>
+          {c.desconto > 0 && c.valorCheio !== null && (
+            <>
+              <dt>Valor cheio</dt>
+              <dd>{brl(c.valorCheio)}</dd>
+              <dt>Desconto do site</dt>
+              <dd>− {brl(c.desconto)}</dd>
+            </>
+          )}
+          <dt>
+            Total ({d.noites} {d.noites === 1 ? "noite" : "noites"})
+          </dt>
+          <dd>
+            <strong>{c.total === null ? "a confirmar" : brl(c.total)}</strong>
+          </dd>
+        </dl>
+      )}
+    </div>
+  );
+}
+
+/** Contato para continuar a conversa: WhatsApp antes do e-mail, como na consulta; sem nenhum, o aviso. */
+function Contato({ conteudo, texto }: { conteudo: ConteudoSite; texto: string }) {
+  const canal = canalDeContato(conteudo);
+  if (canal === "whatsapp")
+    return (
+      <a href={linkWhatsapp(conteudo.whatsapp!, texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
+        Falar pelo WhatsApp
+        <span aria-hidden="true">↗</span>
+      </a>
+    );
+  if (canal === "email")
+    return (
+      <a href={`mailto:${conteudo.email}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(texto)}`} className={styles.botao}>
+        Falar por e-mail
+        <span aria-hidden="true">↗</span>
+      </a>
+    );
+  return (
+    <p className={styles.aviso} role="note">
+      O contato ainda não foi configurado. Volte em breve.
+    </p>
+  );
+}
+
+/**
+ * Página da busca em todas as casas (M7.9): o olho, o título e o aviso de Configurações → Textos do site, a busca para
+ * ajustar, e um cartão por casa que recebe o grupo, levando à página dela com as datas e as pessoas. Nada é gravado.
+ */
+export function ResultadosBusca({
+  conteudo,
+  imoveis,
+  pedido,
+  resultado,
+  hoje,
+}: {
+  conteudo: ConteudoSite;
+  /** Todas as casas do site (para o "Seu lugar" da busca). */
+  imoveis: ImovelPublico[];
+  pedido: PedidoConsulta;
+  resultado: ResultadoBusca;
+  /** Mínimo do campo de datas. */
+  hoje: string;
+}) {
+  const { textos } = conteudo;
+  return (
+    <div className={styles.buscaPagina}>
+      <header className={`${styles.cabecalhoPagina} ${styles.cabecalhoConsulta}`}>
+        {textos.buscaOlho && <p className={styles.olho}>{textos.buscaOlho}</p>}
+        <h1>
+          <TextoComDestaque texto={textos.buscaTitulo || "Encontre seu lugar."} />
+        </h1>
+      </header>
+      <div className={styles.buscaCaixa}>
+        <FormConsulta imoveis={imoveis} valores={pedido} erros={resultado.ok ? {} : resultado.erros} hoje={hoje} canal={canalDeContato(conteudo)} variante="busca" />
+      </div>
+      {!resultado.ok ? (
+        <p className={`${styles.aviso} ${styles.avisoBusca}`} role="alert">
+          Confira as datas e as pessoas acima para ver as casas.
+        </p>
+      ) : resultado.casas.length === 0 ? (
+        <section className={styles.semCasa} aria-label="Nenhuma casa para o grupo">
+          <p className={styles.aviso} role="status">
+            {/* Nenhuma casa ficou de fora pelo tamanho: o site ainda não tem casas publicadas. */}
+            {resultado.foraDoGrupo > 0 ? textos.buscaSemCasa : "As casas ainda não estão no site. Fale com a gente."}
+          </p>
+          <Contato conteudo={conteudo} texto={mensagemDaBusca(pedido, resultado.hospedes)} />
+        </section>
+      ) : (
+        <section aria-labelledby="titulo-casas-busca">
+          <h2 id="titulo-casas-busca" className={styles.tituloBusca}>
+            {resultado.casas.length} {resultado.casas.length === 1 ? "casa" : "casas"} para {resultado.hospedes} {resultado.hospedes === 1 ? "pessoa" : "pessoas"}
+          </h2>
+          <p className={styles.miudo}>
+            {dataBr(pedido.entrada)} a {dataBr(pedido.saida)} · {diasEntre(pedido.entrada, pedido.saida)} {diasEntre(pedido.entrada, pedido.saida) === 1 ? "noite" : "noites"}
+            {resultado.foraDoGrupo > 0 && ` · ${resultado.foraDoGrupo} ${resultado.foraDoGrupo === 1 ? "casa recebe" : "casas recebem"} menos pessoas e não ${resultado.foraDoGrupo === 1 ? "aparece" : "aparecem"} aqui`}
+          </p>
+          {textos.buscaAviso && (
+            <p className={`${styles.aviso} ${styles.avisoBusca}`} role="note">
+              {textos.buscaAviso}
+            </p>
+          )}
+          <div className={styles.grade}>
+            {resultado.casas.map((c, n) => (
+              <CartaoImovel
+                key={c.imovel.codigo}
+                imovel={c.imovel}
+                carregarCedo={n < 2}
+                href={linkDaCasa(c.imovel.codigo, { entrada: pedido.entrada, saida: pedido.saida, hospedes: String(resultado.hospedes) }) ?? undefined}
+                chamada="Ver a casa com as datas →"
+              >
+                <SituacaoNaBusca casa={c} />
+              </CartaoImovel>
+            ))}
+          </div>
+          <div className={styles.contatoBusca}>
+            <p className={styles.miudo}>Prefere conversar? A equipe ajuda a escolher a casa.</p>
+            <Contato conteudo={conteudo} texto={mensagemDaBusca(pedido, resultado.hospedes)} />
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}

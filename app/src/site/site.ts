@@ -213,6 +213,22 @@ const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFrac
  */
 export type ResumoCotacao = { situacao: "disponivel" | "indisponivel" | "a_confirmar" | "invalida"; noites: number; total: number | null; /** Desconto do site já aplicado em `total` (M12.1); omitido ou zero = sem desconto. */ desconto?: number };
 
+/**
+ * Datas e pessoas da consulta, sem o imóvel (a consulta de uma casa e a busca em todas as casas, M7.9, usam a mesma
+ * conferência). `hospedes` é o número pedido (NaN quando não é um número inteiro de pessoas).
+ */
+export function conferirDatasEPessoas(p: Pick<PedidoConsulta, "entrada" | "saida" | "hospedes">, hoje: string): { erros: ErrosConsulta; hospedes: number } {
+  const erros: ErrosConsulta = {};
+  if (!dataValida(p.entrada)) erros.entrada = "Informe a data de entrada.";
+  else if (p.entrada < hoje) erros.entrada = "A entrada não pode ser antes de hoje.";
+  if (!dataValida(p.saida)) erros.saida = "Informe a data de saída.";
+  else if (dataValida(p.entrada) && p.saida <= p.entrada) erros.saida = "A saída precisa ser depois da entrada.";
+  // Só dígitos: a mesma regra da disponibilidade (M7.2), para "2e0" não virar "2 pessoas".
+  const hospedes = /^\d+$/.test(p.hospedes) ? Number(p.hospedes) : NaN;
+  if (!Number.isInteger(hospedes) || hospedes < 1) erros.hospedes = "Informe quantas pessoas.";
+  return { erros, hospedes };
+}
+
 export function montarConsulta(
   p: PedidoConsulta,
   imovel: ImovelPublico | null,
@@ -222,14 +238,10 @@ export function montarConsulta(
 ): { ok: true; texto: string } | { ok: false; erros: ErrosConsulta } {
   const erros: ErrosConsulta = {};
   if (!imovel) erros.imovel = "Escolha um apartamento.";
-  if (!dataValida(p.entrada)) erros.entrada = "Informe a data de entrada.";
-  else if (p.entrada < hoje) erros.entrada = "A entrada não pode ser antes de hoje.";
-  if (!dataValida(p.saida)) erros.saida = "Informe a data de saída.";
-  else if (dataValida(p.entrada) && p.saida <= p.entrada) erros.saida = "A saída precisa ser depois da entrada.";
-  // Só dígitos: a mesma regra da disponibilidade (M7.2), para "2e0" não virar "2 pessoas".
-  const hospedes = /^\d+$/.test(p.hospedes) ? Number(p.hospedes) : NaN;
-  if (!Number.isInteger(hospedes) || hospedes < 1) erros.hospedes = "Informe quantas pessoas.";
-  else if (imovel?.capacidade && hospedes > imovel.capacidade) erros.hospedes = `Este apartamento recebe até ${imovel.capacidade} pessoas.`;
+  const base = conferirDatasEPessoas(p, hoje);
+  Object.assign(erros, base.erros);
+  const hospedes = base.hospedes;
+  if (!erros.hospedes && imovel?.capacidade && hospedes > imovel.capacidade) erros.hospedes = `Este apartamento recebe até ${imovel.capacidade} pessoas.`;
   if (Object.keys(erros).length || !imovel) return { ok: false, erros };
   const linhas = [
     `Olá! Gostaria de consultar a disponibilidade do ${imovel.nome} (${imovel.codigo}).`,
@@ -240,6 +252,14 @@ export function montarConsulta(
     linhas.push(`O site mostrou ${brl(cotacao.total)} para ${cotacao.noites} ${cotacao.noites === 1 ? "noite" : "noites"}${desconto}${cotacao.situacao === "a_confirmar" ? " (disponibilidade a confirmar)" : ""}.`);
   }
   return { ok: true, texto: linhas.join("\n") };
+}
+
+/**
+ * Mensagem da busca em todas as casas (M7.9) para continuar a conversa com a equipe: só as datas e as pessoas (nenhuma
+ * casa, nenhum valor). Nada é gravado nem enviado pelo sistema.
+ */
+export function mensagemDaBusca(p: Pick<PedidoConsulta, "entrada" | "saida">, hospedes: number): string {
+  return [`Olá! Gostaria de consultar uma estadia numa das casas.`, `Entrada: ${dataBr(p.entrada)} · Saída: ${dataBr(p.saida)} · ${hospedes} ${hospedes === 1 ? "pessoa" : "pessoas"}.`].join("\n");
 }
 
 /** Título da aba/busca: "Página — Nome da empresa" (o nome vem do cadastro da empresa no painel). */

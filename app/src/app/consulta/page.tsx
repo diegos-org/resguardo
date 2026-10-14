@@ -2,16 +2,23 @@ import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
+import { ResultadosBusca } from "@/components/site/ResultadosBusca";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
+import { buscarEmTodasAsCasas } from "@/site/busca";
 import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
-export const generateMetadata = () => metadadosDoSite("Consulta");
+/** Busca em todas as casas (M7.9): o pedido tem datas, mas nenhuma casa escolhida ("Todas as casas"). */
+const ehBusca = (p: { imovel: string; entrada: string; saida: string }) => !p.imovel && !!(p.entrada || p.saida);
+
+export async function generateMetadata({ searchParams }: PageProps<"/consulta">) {
+  return metadadosDoSite(ehBusca(lerPedidoConsulta(await searchParams)) ? "Sua busca" : "Consulta");
+}
 
 export default async function Consulta({ searchParams }: PageProps<"/consulta">) {
   const sp = await searchParams;
@@ -20,6 +27,15 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const pedido = lerPedidoConsulta(sp);
   const enviado = !!(pedido.entrada || pedido.saida);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
+  // Sem casa escolhida: a situação de cada casa que recebe o grupo, com o link para a página dela. Nada é gravado.
+  if (ehBusca(pedido)) {
+    const resultado = await buscarEmTodasAsCasas(db, conteudo.organizacaoId, pedido, todos);
+    return (
+      <Moldura conteudo={conteudo}>
+        <ResultadosBusca conteudo={conteudo} imoveis={todos} pedido={pedido} resultado={resultado} hoje={hojeMaisCedo(todos)} />
+      </Moldura>
+    );
+  }
   // Disponibilidade e valor reais (M7.2): só depois de o pedido passar na conferência básica.
   const imovel = enviado && pedido.imovel ? await imovelDoSite(db, conteudo.organizacaoId, pedido.imovel) : null;
   // "Hoje" no fuso do imóvel escolhido, o mesmo que a disponibilidade usa; sem imóvel, São Paulo.

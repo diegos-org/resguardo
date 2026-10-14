@@ -74,8 +74,11 @@ describe("campo de datas do site (M7.6)", () => {
     expect((quadro().getByRole("button", { name: "Mês anterior" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(quadro().getByRole("button", { name: "Próximo mês" }));
     expect(quadro().getAllByRole("grid").map((g) => document.getElementById(g.getAttribute("aria-labelledby")!)?.textContent)).toEqual(["novembro de 2026", "dezembro de 2026"]);
-    // Sem lugar escolhido: nenhuma marca de ocupação, nenhuma leitura, e o aviso para escolher o lugar.
-    expect(quadro().getByText("Escolha o lugar para ver as noites ocupadas.")).toBeTruthy();
+    // Sem lugar escolhido ("Todas as casas", M7.9): nenhuma marca de ocupação, nenhuma leitura, e o aviso de que as noites
+    // ocupadas não aparecem (a situação de cada casa vem na busca), em vez de parecer tudo livre.
+    expect(quadro().getByText("Com todas as casas, as noites ocupadas não aparecem aqui: a situação de cada casa vem na próxima tela.")).toBeTruthy();
+    expect(quadro().queryByText("Noites ocupadas")).toBeNull();
+    expect(quadro().getAllByRole("button").filter((b) => /ocupada/.test(b.getAttribute("aria-label") ?? ""))).toEqual([]);
     expect(buscar).not.toHaveBeenCalled();
   });
 
@@ -137,7 +140,7 @@ describe("campo de datas do site (M7.6)", () => {
     // Sem lugar: o aviso volta e nada é marcado.
     fireEvent.change(screen.getByRole("combobox", { name: /Seu lugar/ }), { target: { value: "" } });
     fireEvent.click(campo("Entrada"));
-    expect(quadro().getByText("Escolha o lugar para ver as noites ocupadas.")).toBeTruthy();
+    expect(quadro().getByText("Com todas as casas, as noites ocupadas não aparecem aqui: a situação de cada casa vem na próxima tela.")).toBeTruthy();
     expect(dia("14 de outubro de 2026").getAttribute("aria-label")).toBe("14 de outubro de 2026");
   });
 

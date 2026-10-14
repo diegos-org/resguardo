@@ -6,7 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
-import { conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import { conferirDatasEPessoas, conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, mensagemDaBusca, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -170,5 +170,23 @@ describe("hojeMaisCedo", () => {
     expect(hojeMaisCedo([{ fuso: "America/Sao_Paulo" }, { fuso: "America/Rio_Branco" }], agora)).toBe("2026-10-11");
     expect(hojeMaisCedo([{ fuso: "America/Sao_Paulo" }], agora)).toBe("2026-10-12");
     expect(hojeMaisCedo([], agora)).toBe("2026-10-12");
+  });
+});
+
+describe("busca em todas as casas (M7.9): a conferência e a mensagem sem casa", () => {
+  it("datas e pessoas conferidas como na consulta de uma casa, sem exigir a casa; a capacidade fica para cada casa", () => {
+    const base = { entrada: "2026-10-10", saida: "2026-10-13", hospedes: "12" };
+    expect(conferirDatasEPessoas(base, "2026-09-25")).toEqual({ erros: {}, hospedes: 12 });
+    expect(conferirDatasEPessoas({ ...base, entrada: "2026-09-01" }, "2026-09-25").erros).toEqual({ entrada: "A entrada não pode ser antes de hoje." });
+    expect(conferirDatasEPessoas({ ...base, saida: "2026-10-10" }, "2026-09-25").erros).toEqual({ saida: "A saída precisa ser depois da entrada." });
+    expect(conferirDatasEPessoas({ entrada: "", saida: "x", hospedes: "0" }, "2026-09-25").erros).toEqual({ entrada: "Informe a data de entrada.", saida: "Informe a data de saída.", hospedes: "Informe quantas pessoas." });
+    expect(conferirDatasEPessoas({ ...base, hospedes: "2e0" }, "2026-09-25")).toMatchObject({ erros: { hospedes: "Informe quantas pessoas." } });
+    // A consulta de uma casa continua com o erro da casa primeiro e a capacidade dela.
+    expect(Object.keys((montarConsulta({ imovel: "", ...base, entrada: "" }, null, "2026-09-25") as { erros: object }).erros)).toEqual(["imovel", "entrada"]);
+  });
+
+  it("mensagem para a equipe com as datas e as pessoas, sem casa e sem valor", () => {
+    expect(mensagemDaBusca({ entrada: "2026-10-10", saida: "2026-10-13" }, 3)).toBe("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 10/10/2026 · Saída: 13/10/2026 · 3 pessoas.");
+    expect(mensagemDaBusca({ entrada: "2026-10-10", saida: "2026-10-11" }, 1)).toContain("· 1 pessoa.");
   });
 });

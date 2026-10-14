@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { ImovelPublico } from "@/site/site";
 import { CapaDoImovel } from "./CapaDoImovel";
 import { comodidadesDoCartao, IconeComodidade } from "./IconeComodidade";
@@ -29,12 +30,27 @@ export function seloDoImovel(i: Pick<ImovelPublico, "quartos" | "bairro" | "cida
   return [tipo, i.bairro || i.cidade].filter(Boolean).join(" · ");
 }
 
-/** Cartão sálvia do apartamento (vitrine da página inicial e catálogo), como no estudo: foto com selo, ícones e capacidade. */
-export function CartaoImovel({ imovel, carregarCedo = false }: { imovel: ImovelPublico; carregarCedo?: boolean }) {
+/**
+ * Cartão sálvia do apartamento (vitrine da página inicial e catálogo), como no estudo: foto com selo, ícones e capacidade.
+ * Na busca em todas as casas (M7.9): `href` com as datas e as pessoas, a situação da casa em `children` e outra chamada.
+ */
+export function CartaoImovel({
+  imovel,
+  carregarCedo = false,
+  href,
+  chamada = "Conheça a casa →",
+  children,
+}: {
+  imovel: ImovelPublico;
+  carregarCedo?: boolean;
+  href?: string;
+  chamada?: string;
+  children?: ReactNode;
+}) {
   const selo = seloDoImovel(imovel);
   const icones = comodidadesDoCartao(imovel.comodidades);
   return (
-    <Link href={`/imoveis/${encodeURIComponent(imovel.codigo)}`} className={styles.cartaoCasa}>
+    <Link href={href ?? `/imoveis/${encodeURIComponent(imovel.codigo)}`} className={styles.cartaoCasa}>
       <div className={styles.cartaoFoto}>
         <CapaDoImovel nome={imovel.nome} fotos={imovel.fotos} sizes="(max-width: 600px) 100vw, 360px" carregarCedo={carregarCedo} />
         {selo && imovel.fotos.length > 0 && <span className={styles.selo}>{selo}</span>}
@@ -55,9 +71,10 @@ export function CartaoImovel({ imovel, carregarCedo = false }: { imovel: ImovelP
             </div>
           )}
         </div>
+        {children}
         <div className={styles.cartaoRodape}>
           <span>{imovel.capacidade ? `Até ${imovel.capacidade} ${imovel.capacidade === 1 ? "hóspede" : "hóspedes"}` : resumoImovel(imovel)}</span>
-          <span>Conheça a casa →</span>
+          <span>{chamada}</span>
         </div>
       </div>
     </Link>

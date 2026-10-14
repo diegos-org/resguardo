@@ -2093,3 +2093,112 @@
 .aceiteFeito p {
   margin: 0;
 }
+
+/* Busca em todas as casas (M7.9): a busca para ajustar e um cartão por casa, com a situação real de cada uma */
+.buscaPagina {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.buscaPagina .cabecalhoConsulta {
+  max-width: none;
+}
+
+.tituloBusca {
+  margin: 32px 0 4px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+.avisoBusca {
+  margin: 16px 0 0;
+  max-width: 72ch;
+}
+
+.semCasa {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.contatoBusca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 28px;
+}
+
+.contatoBusca .miudo {
+  margin: 0;
+}
+
+.situacaoCasa {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+/* Etiqueta da situação: as cores semânticas dos tokens (o "p" do cartão não muda a cor delas) */
+.etiqueta,
+.cartaoCorpo .etiqueta {
+  align-self: flex-start;
+  padding: 3px 8px;
+  border-radius: var(--scl-raio-campo);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.etiquetaDisponivel,
+.cartaoCorpo .etiquetaDisponivel {
+  background: var(--scl-ok-fundo);
+  color: var(--scl-ok);
+}
+
+.etiquetaAConfirmar,
+.cartaoCorpo .etiquetaAConfirmar {
+  background: var(--scl-aviso-fundo);
+  color: var(--scl-aviso-texto);
+}
+
+.etiquetaIndisponivel,
+.cartaoCorpo .etiquetaIndisponivel {
+  background: var(--scl-neutro-fundo);
+  color: var(--scl-texto-2);
+}
+
+.etiquetaInvalida,
+.cartaoCorpo .etiquetaInvalida {
+  background: var(--scl-erro-fundo);
+  color: var(--scl-erro-texto);
+}
+
+.motivosCasa {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--scl-sobre-escuro);
+}
+
+.valoresCasa {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+}
+
+.valoresCasa dt,
+.valoresCasa dd {
+  margin: 0;
+}
+
+.valoresCasa dd {
+  text-align: right;
+  color: var(--scl-branco);
+}

@@ -1,12 +1,14 @@
 import type { ConteudoSite, ErrosConsulta, ImovelPublico, PedidoConsulta } from "@/site/site";
 import { CampoDatas } from "./CampoDatas";
 import styles from "./site.module.css";
+import { TrocaDeCasa } from "./TrocaDeCasa";
 
 /**
  * Formulário da consulta (GET para /consulta): nada é gravado; vira uma mensagem para o contato da
  * empresa (WhatsApp ou e-mail).
  * Só apartamento, datas e pessoas vão no endereço da página — nome e mensagem o visitante escreve
  * direto na conversa (dado pessoal não fica no endereço, no histórico nem em registro de acesso).
+ * "Seu lugar" é opcional (M7.9): "Todas as casas" (valor vazio) leva à busca com a situação de cada casa.
  */
 export type CanalContato = "whatsapp" | "email" | null;
 /** Por onde a conversa continua: o que está no cadastro da empresa (WhatsApp antes do e-mail). */
@@ -34,8 +36,9 @@ const TEXTO_CANAL: Record<"whatsapp" | "email" | "nenhum", string> = {
 
 /**
  * `variante`: "busca" é a caixa translúcida sob a capa (campos em linha, sem título); "lateral" é o
- * cartão "Planeje sua estadia" da página do imóvel (o título fica fora do formulário); o padrão é o
- * cartão papel com título, usado na página de consulta.
+ * cartão "Planeje sua estadia" da página do imóvel (o título fica fora do formulário; trocar a casa abre
+ * a página dela com as mesmas datas e pessoas, M7.9); o padrão é o cartão papel com título, usado na
+ * página de consulta.
  */
 export function FormConsulta({
   imoveis,
@@ -65,16 +68,17 @@ export function FormConsulta({
   const pedidas = /^\d+$/.test(valores.hospedes ?? "") ? Number(valores.hospedes) : 0;
   const pessoasEscolhidas = String(pessoas.includes(pedidas) ? pedidas : Math.min(2, pessoas.length));
   const classe = variante === "busca" ? styles.buscaForm : `${styles.formulario} ${styles.duasColunas}`;
-  const dica = variante === "busca" ? "Escolha o lugar e as datas. A disponibilidade e o valor aparecem na próxima tela, antes de qualquer reserva." : `${TEXTO_CANAL[canal ?? "nenhum"]} ${comPagamento ? "Nada é cobrado na consulta." : "Nenhum pagamento é feito aqui."}`;
+  const dica =
+    variante === "busca"
+      ? "Escolha as datas e, se quiser, uma casa. A disponibilidade e o valor aparecem antes de qualquer reserva."
+      : `${variante === "lateral" ? "Trocar a casa abre a página dela com as mesmas datas. " : ""}${TEXTO_CANAL[canal ?? "nenhum"]} ${comPagamento ? "Nada é cobrado na consulta." : "Nenhum pagamento é feito aqui."}`;
   return (
     <form action="/consulta" method="get" className={classe} aria-label="Consultar disponibilidade">
       {variante === "padrao" && <strong>Consultar disponibilidade</strong>}
       <label className={styles.campoLargo}>
         Seu lugar
-        <select name="imovel" defaultValue={valores.imovel ?? ""} required aria-describedby={erros.imovel ? "erro-imovel" : undefined}>
-          <option value="" disabled>
-            Escolha
-          </option>
+        <select name="imovel" defaultValue={valores.imovel ?? ""} aria-describedby={erros.imovel ? "erro-imovel" : undefined}>
+          <option value="">Todas as casas</option>
           {imoveis.map((i) => (
             <option key={i.codigo} value={i.codigo}>
               {i.nome}
@@ -83,6 +87,7 @@ export function FormConsulta({
         </select>
         {erro("imovel")}
       </label>
+      {variante === "lateral" && valores.imovel && <TrocaDeCasa atual={valores.imovel} />}
       {/* Datas num calendário próprio (M7.6), com as noites ocupadas do lugar escolhido acima. */}
       <CampoDatas hoje={hoje} entrada={valores.entrada} saida={valores.saida} campoImovel="imovel" erroEntrada={erros.entrada} erroSaida={erros.saida} variante={variante} />
       <label className={variante === "busca" ? undefined : styles.campoLargo}>
