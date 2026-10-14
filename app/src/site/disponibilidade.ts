@@ -63,6 +63,12 @@ export const fechadaNaLeitura = (o: Pick<ObservacaoPlano, "bloqueio" | "livres">
 export const noiteOcupada = (l: Pick<LinhaPlano, "livresSeguidas" | "observacao" | "enviado">, limite: number) =>
   l.livresSeguidas === 0 || (leituraAtual(l, limite) && fechadaNaLeitura(l.observacao!));
 
+/**
+ * Motivo da consulta quando a capacidade da casa não foi cadastrada. Exportado para a busca em todas as casas (M7.9),
+ * que mostra no cartão a linha "Capacidade não informada" no lugar dele (um aviso só por cartão).
+ */
+export const MOTIVO_SEM_CAPACIDADE = "A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.";
+
 /** As noites [checkin, checkout) de uma reserva que a cotação não conta como ocupadas (a da alteração, M8.2d). */
 export type EstadiaPropria = { reservaId: string; checkin: string; checkout: string };
 
@@ -208,7 +214,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   if (aConfirmar) avisos.push("Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa.");
   // Capacidade não cadastrada: não dá para saber se as pessoas cabem, então nada é confirmado por omissão.
   const semCapacidade = !imovel.capacidade;
-  if (semCapacidade) avisos.push("A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.");
+  if (semCapacidade) avisos.push(MOTIVO_SEM_CAPACIDADE);
   if (total === null) avisos.push(semPrecoNaFonte ? "O preço dessas datas ainda não foi confirmado: confirmamos na conversa." : "O valor dessas datas é confirmado na conversa.");
   return {
     situacao: aConfirmar || semCapacidade || semPrecoNaFonte ? "a_confirmar" : "disponivel",

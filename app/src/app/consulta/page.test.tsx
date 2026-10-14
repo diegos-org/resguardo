@@ -4,9 +4,14 @@ import { CampoDatas } from "@/components/site/CampoDatas";
 import Page, { generateMetadata } from "./page";
 import { metadadosDoSite } from "@/site/pagina";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import { MOTIVO_SEM_CAPACIDADE } from "@/site/disponibilidade";
 const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), imovel: vi.fn(), disponibilidade: vi.fn() }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
-vi.mock("@/site/disponibilidade", () => ({ consultarDisponibilidade: m.disponibilidade, lerConfigDaConsulta: vi.fn(async () => ({ regras: "lidas uma vez", precos: {} })) }));
+vi.mock("@/site/disponibilidade", async (orig) => ({
+  ...(await orig<typeof import("@/site/disponibilidade")>()),
+  consultarDisponibilidade: m.disponibilidade,
+  lerConfigDaConsulta: vi.fn(async () => ({ regras: "lidas uma vez", precos: {} })),
+}));
 vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel }));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 // Campo de datas real (M7.6), observado para conferir o "hoje" que o formulário recebe.
@@ -84,6 +89,16 @@ it("as datas são conferidas no fuso do imóvel escolhido, não no de São Paulo
     vi.useRealTimers();
   }
 });
+it("link antigo para uma casa que saiu do site: o campo volta em \"Todas as casas\" e o erro não pede para escolher uma casa", async () => {
+  m.imovel.mockResolvedValue(null);
+  const h = await html({ imovel: "303", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
+  expect(m.disponibilidade).not.toHaveBeenCalled();
+  expect(h).toContain("Essa casa não está mais no site. Escolha outra ou busque em todas as casas.");
+  expect(h).not.toContain("Escolha um apartamento.");
+  // A opção da casa 303 não existe: nenhuma opção marcada, e o navegador mostra a primeira ("Todas as casas").
+  expect(h).not.toContain('value="303"');
+  expect(h).toContain('<option value="">Todas as casas</option>');
+});
 it("pedido inválido (pessoas acima da capacidade) nem chega à disponibilidade", async () => {
   const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "9" });
   expect(m.disponibilidade).not.toHaveBeenCalled();
@@ -91,11 +106,12 @@ it("pedido inválido (pessoas acima da capacidade) nem chega à disponibilidade"
 });
 
 describe("busca em todas as casas (M7.9)", () => {
-  const casas = [imovel, { ...imovel, codigo: "102", nome: "Studio Pequeno", capacidade: 2 }, { ...imovel, codigo: "205", nome: "Casa Sem Capacidade", capacidade: null }];
+  // Na ordem do site, a casa sem capacidade (205) vem antes da livre (403): a página precisa reordenar.
+  const casas = [{ ...imovel, codigo: "205", nome: "Casa Sem Capacidade", capacidade: null }, { ...imovel, codigo: "102", nome: "Studio Pequeno", capacidade: 2 }, imovel];
   const disponivel = { situacao: "disponivel", motivos: [], noites: 3, cotacao: { diarias: 135000, limpeza: 25000, hospedeExtra: 0, valorCheio: 160000, desconto: 6400, total: 153600 }, leituraEm: new Date("2026-10-01T09:15:00Z") };
   const semCapacidade = {
     situacao: "a_confirmar",
-    motivos: ["A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.", "O valor dessas datas é confirmado na conversa."],
+    motivos: [MOTIVO_SEM_CAPACIDADE, "O valor dessas datas é confirmado na conversa."],
     noites: 3,
     cotacao: { diarias: null, limpeza: 25000, hospedeExtra: 0, valorCheio: null, desconto: 0, total: null },
     leituraEm: null,
@@ -106,7 +122,7 @@ describe("busca em todas as casas (M7.9)", () => {
   });
 
   it("sem casa escolhida: a situação real de cada casa que recebe o grupo, com o link para a página dela com as datas; nada para segurar aqui", async () => {
-    // A capa manda a casa vazia ("Todas as casas"): a casa sem capacidade vem antes na ordem do site, mas a livre aparece primeiro.
+    // A capa manda a casa vazia ("Todas as casas"): a casa sem capacidade vem antes na ordem do site (205, 102, 403), mas a livre aparece primeiro.
     const h = await html({ imovel: "", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "3" });
     expect(m.disponibilidade).toHaveBeenCalledTimes(2);
     expect(m.disponibilidade.mock.calls.map((c) => c[2].imovel).sort()).toEqual(["205", "403"]);
@@ -115,8 +131,8 @@ describe("busca em todas as casas (M7.9)", () => {
     expect(h).toContain("Sua busca");
     expect(h).toContain("Encontre seu lugar.");
     expect(h).toContain(TEXTOS_SITE_INICIAIS.buscaAviso);
-    expect(h).toContain("2 casas para 3 pessoas");
-    expect(h).toContain("12/10/2099 a 15/10/2099 · 3 noites · 1 casa recebe menos pessoas e não aparece aqui");
+    expect(h).toContain("2 casas na sua busca");
+    expect(h).toContain("12/10/2099 a 15/10/2099 · 3 noites · 3 pessoas · 1 casa recebe menos pessoas e não aparece aqui");
     const link403 = h.indexOf('href="/imoveis/403?checkin=2099-10-12&amp;checkout=2099-10-15&amp;guests=3"');
     const link205 = h.indexOf('href="/imoveis/205?checkin=2099-10-12&amp;checkout=2099-10-15&amp;guests=3"');
     expect(link403).toBeGreaterThan(-1);
@@ -131,14 +147,17 @@ describe("busca em todas as casas (M7.9)", () => {
     expect(cartao403).toContain("R$ 1.536,00");
     const cartao205 = h.slice(link205);
     expect(cartao205).toContain("Disponibilidade a confirmar");
-    expect(cartao205).toContain("Capacidade não informada");
-    expect(cartao205).toContain("A capacidade deste apartamento ainda não foi cadastrada");
+    // Um aviso só sobre a capacidade: a linha do cartão no lugar do motivo da consulta que diz o mesmo.
+    expect(cartao205).toContain("Capacidade não informada: a equipe confirma na conversa se o grupo cabe.");
+    expect(cartao205).not.toContain("A capacidade deste apartamento ainda não foi cadastrada");
+    expect(cartao205).toContain("O valor dessas datas é confirmado na conversa.");
     expect(cartao205).not.toContain(">Disponível<");
     expect(cartao205).toContain("a confirmar");
     // Segurar as datas e pagar exigem uma casa só: ficam na página dela.
     expect(h).not.toContain("Segurar");
     expect(h).not.toContain("Resumo da viagem");
-    // Contato com as datas e as pessoas, sem casa nem valor.
+    // Contato com a frase editável e as datas e as pessoas, sem casa nem valor.
+    expect(h).toContain(TEXTOS_SITE_INICIAIS.buscaContato);
     expect(h).toContain(`wa.me/5521900000000?text=${encodeURIComponent("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 12/10/2099 · Saída: 15/10/2099 · 3 pessoas.")}`);
     // O formulário volta com "Todas as casas" e o que foi pedido.
     expect(h).toContain('<option value="" selected="">Todas as casas</option>');
@@ -147,7 +166,7 @@ describe("busca em todas as casas (M7.9)", () => {
   it("links com os nomes do contrato (checkin, checkout, guests) e sem casa também levam à busca; o título da aba diz \"Sua busca\"", async () => {
     const h = await html({ checkin: "2099-10-12", checkout: "2099-10-15", guests: "2" });
     expect(h).toContain("Encontre seu lugar.");
-    expect(h).toContain("3 casas para 2 pessoas");
+    expect(h).toContain("3 casas na sua busca");
     await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({ checkin: "2099-10-12" }) });
     expect(metadadosDoSite).toHaveBeenLastCalledWith("Sua busca");
     await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({ imovel: "403", entrada: "2099-10-12" }) });
@@ -164,11 +183,14 @@ describe("busca em todas as casas (M7.9)", () => {
     expect(h).toContain("Aviso fictício: nenhuma casa para o grupo.");
     expect(h).toContain("Falar pelo WhatsApp");
     expect(h).not.toContain("/imoveis/403?");
-    // Sem nenhuma casa publicada, a página não diz que o grupo é grande demais.
+    // Sem nenhuma casa publicada, a página não diz que o grupo é grande demais: a frase editável do site sem casas.
     m.imoveis.mockResolvedValue([]);
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...conteudo.textos, buscaSemCasa: "Aviso fictício: nenhuma casa para o grupo." } } });
     const vazio = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
-    expect(vazio).toContain("As casas ainda não estão no site. Fale com a gente.");
+    expect(vazio).toContain(TEXTOS_SITE_INICIAIS.buscaSemCasasNoSite);
     expect(vazio).not.toContain("Aviso fictício");
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...conteudo.textos, buscaSemCasasNoSite: "Frase fictícia: o site ainda não tem casas." } } });
+    expect(await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" })).toContain("Frase fictícia: o site ainda não tem casas.");
   });
 
   it("datas inválidas: os erros no formulário da busca, sem consultar nenhuma casa", async () => {
@@ -176,6 +198,54 @@ describe("busca em todas as casas (M7.9)", () => {
     expect(m.disponibilidade).not.toHaveBeenCalled();
     expect(h).toContain("A entrada não pode ser antes de hoje.");
     expect(h).toContain("Confira as datas e as pessoas acima para ver as casas.");
+  });
+
+  it("mais casas que o limite: as além dele, sem consulta, com a etiqueta neutra e sem valor; a sem capacidade avisa também ali", async () => {
+    // 12 casas na ordem do site; as 2 últimas passam do limite de 10 consultas, e a última não tem capacidade cadastrada.
+    const muitas = Array.from({ length: 12 }, (_, i) => ({ ...imovel, codigo: `C${i + 1}`, nome: `Casa ${i + 1}`, capacidade: i === 11 ? null : 4, fotos: [] }));
+    m.imoveis.mockResolvedValue(muitas);
+    m.disponibilidade.mockImplementation(async (_db: unknown, _org: string, p: { imovel: string }) =>
+      p.imovel === "C1" ? { situacao: "invalida", motivos: ["Motivo fictício: confira as datas desta casa."], noites: 0, cotacao: null, leituraEm: null } : disponivel,
+    );
+    const h = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "3" });
+    expect(m.disponibilidade).toHaveBeenCalledTimes(10);
+    expect(m.disponibilidade.mock.calls.map((c) => c[2].imovel)).not.toContain("C11");
+    expect(h).toContain("12 casas na sua busca");
+    const cartao = (codigo: string) => {
+      const ini = h.indexOf(`href="/imoveis/${codigo}?`);
+      expect(ini).toBeGreaterThan(-1);
+      const fim = h.indexOf("</a>", ini);
+      return h.slice(ini, fim);
+    };
+    // Dados a conferir: a etiqueta "Confira os dados" e o motivo, sem valor nem "Disponível".
+    const c1 = cartao("C1");
+    expect(c1).toContain("Confira os dados");
+    expect(c1).toContain("Motivo fictício: confira as datas desta casa.");
+    expect(c1).not.toContain("Total");
+    expect(c1).not.toContain("R$");
+    expect(c1).not.toContain(">Disponível<");
+    // Além do limite: a etiqueta neutra (não a de indisponível), sem valor nem situação.
+    for (const codigo of ["C11", "C12"]) {
+      const c = cartao(codigo);
+      expect(c).toContain("Veja as datas na página da casa");
+      expect(c).toMatch(/class="[^"]*etiquetaNaoConsultada/);
+      expect(c).not.toMatch(/etiquetaIndisponivel/);
+      expect(c).not.toContain("R$");
+      expect(c).not.toContain(">Disponível<");
+      expect(c).not.toContain("Indisponível");
+    }
+    expect(cartao("C12")).toContain("Capacidade não informada");
+    expect(cartao("C11")).not.toContain("Capacidade não informada");
+    // Ordem: as livres, depois a de dados a conferir e, por fim, as não consultadas.
+    expect(h.indexOf('href="/imoveis/C2?')).toBeLessThan(h.indexOf('href="/imoveis/C1?'));
+    expect(h.indexOf('href="/imoveis/C1?')).toBeLessThan(h.indexOf('href="/imoveis/C11?'));
+  });
+
+  it("frase do contato editável: vazia, só o botão", async () => {
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...conteudo.textos, buscaContato: "" } } });
+    const h = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "3" });
+    expect(h).not.toContain(TEXTOS_SITE_INICIAIS.buscaContato);
+    expect(h).toContain("Falar pelo WhatsApp");
   });
 
   it("sem contato no cadastro: o aviso no lugar do botão", async () => {

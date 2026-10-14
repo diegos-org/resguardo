@@ -213,6 +213,9 @@ const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFrac
  */
 export type ResumoCotacao = { situacao: "disponivel" | "indisponivel" | "a_confirmar" | "invalida"; noites: number; total: number | null; /** Desconto do site já aplicado em `total` (M12.1); omitido ou zero = sem desconto. */ desconto?: number };
 
+/** Erro do "Seu lugar" quando a casa pedida não está no site (link antigo ou casa que saiu do site), M7.9. */
+export const CASA_FORA_DO_SITE = "Essa casa não está mais no site. Escolha outra ou busque em todas as casas.";
+
 /**
  * Datas e pessoas da consulta, sem o imóvel (a consulta de uma casa e a busca em todas as casas, M7.9, usam a mesma
  * conferência). `hospedes` é o número pedido (NaN quando não é um número inteiro de pessoas).
@@ -237,7 +240,9 @@ export function montarConsulta(
   cotacao?: ResumoCotacao | null,
 ): { ok: true; texto: string } | { ok: false; erros: ErrosConsulta } {
   const erros: ErrosConsulta = {};
-  if (!imovel) erros.imovel = "Escolha um apartamento.";
+  // Casa pedida que não está (mais) no site, como num link antigo: o campo volta em "Todas as casas" (a opção dela não
+  // existe), então a mensagem não pede para escolher uma casa como se buscar em todas fosse proibido (M7.9).
+  if (!imovel) erros.imovel = p.imovel.trim() ? CASA_FORA_DO_SITE : "Escolha um apartamento.";
   const base = conferirDatasEPessoas(p, hoje);
   Object.assign(erros, base.erros);
   const hospedes = base.hospedes;

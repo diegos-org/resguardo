@@ -176,22 +176,30 @@ describe("texto do pagamento em conferência (M8.2e): editável, com texto-base,
 });
 
 describe("textos da busca em todas as casas (M7.9): editáveis, com o texto-base do estudo", () => {
-  it("olho, título e aviso com texto-base dentro do limite; o aviso pode ficar vazio, a frase sem casa não", () => {
-    for (const k of ["buscaOlho", "buscaTitulo", "buscaAviso", "buscaSemCasa"] as const) {
+  it("olho, título, aviso, frases sem casa e a do contato com texto-base dentro do limite; o aviso e o contato podem ficar vazios, as frases sem casa não", () => {
+    for (const k of ["buscaOlho", "buscaTitulo", "buscaAviso", "buscaSemCasa", "buscaSemCasasNoSite", "buscaContato"] as const) {
       const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === k)!;
       expect(campo).toBeTruthy();
       expect(TEXTOS_SITE_INICIAIS[k].length).toBeGreaterThan(0);
       expect(TEXTOS_SITE_INICIAIS[k].length).toBeLessThanOrEqual(campo.limite);
     }
     expect([TEXTOS_SITE_INICIAIS.buscaOlho, TEXTOS_SITE_INICIAIS.buscaTitulo]).toEqual(["Sua busca", "Encontre seu lugar."]);
-    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, buscaAviso: "", buscaOlho: "" })).toMatchObject({ ok: true });
-    expect(TEXTOS_SITE_OBRIGATORIOS).toContain("buscaSemCasa");
-    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, buscaSemCasa: " " })).toEqual({ ok: false, erros: { buscaSemCasa: "Este texto não pode ficar vazio." } });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, buscaAviso: "", buscaOlho: "", buscaContato: "" })).toMatchObject({ ok: true });
+    expect(TEXTOS_SITE_OBRIGATORIOS).toEqual(expect.arrayContaining(["buscaSemCasa", "buscaSemCasasNoSite"]));
+    expect(TEXTOS_SITE_OBRIGATORIOS).not.toContain("buscaContato");
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, buscaSemCasa: " ", buscaSemCasasNoSite: "" })).toEqual({
+      ok: false,
+      erros: { buscaSemCasa: "Este texto não pode ficar vazio.", buscaSemCasasNoSite: "Este texto não pode ficar vazio." },
+    });
   });
 
-  it("o texto-base não cita o Beds24 nem diz que alguma casa está livre (a situação é a da consulta de cada casa)", () => {
-    for (const k of ["buscaOlho", "buscaTitulo", "buscaAviso", "buscaSemCasa"] as const) expect(TEXTOS_SITE_INICIAIS[k]).not.toMatch(/beds24|dispon[ií]ve(l|is)|livres?\b/i);
+  it("o texto-base não cita o Beds24 nem diz que alguma casa está livre ou que cabe o grupo (a situação é a da consulta de cada casa)", () => {
+    for (const k of ["buscaOlho", "buscaTitulo", "buscaAviso", "buscaSemCasa", "buscaSemCasasNoSite", "buscaContato"] as const)
+      expect(TEXTOS_SITE_INICIAIS[k]).not.toMatch(/beds24|dispon[ií]ve(l|is)|livres?\b/i);
     // O estudo dizia "ainda não confirmada"; aqui a situação de cada casa é a real, e nada fica reservado pela busca.
     expect(TEXTOS_SITE_INICIAIS.buscaAviso).toContain("Nada fica reservado pela busca");
+    // A lista inclui casas sem capacidade cadastrada: o aviso diz "podem receber", nunca que todas recebem o grupo.
+    expect(TEXTOS_SITE_INICIAIS.buscaAviso).toContain("podem receber o seu grupo");
+    expect(TEXTOS_SITE_INICIAIS.buscaAviso).not.toMatch(/por partes|agenda de agora/);
   });
 });

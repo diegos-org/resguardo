@@ -1,5 +1,6 @@
 import { diasEntre } from "@/imoveis/regras-venda";
 import type { CasaNaBusca, ResultadoBusca } from "@/site/busca";
+import { MOTIVO_SEM_CAPACIDADE } from "@/site/disponibilidade";
 import { linkDaCasa } from "@/site/link-da-casa";
 import { type ConteudoSite, type ImovelPublico, linkWhatsapp, mensagemDaBusca, type PedidoConsulta } from "@/site/site";
 import { CartaoImovel } from "./CartaoImovel";
@@ -19,26 +20,31 @@ const ETIQUETA: Record<NonNullable<CasaNaBusca["disponibilidade"]>["situacao"], 
 /**
  * A situação de uma casa no cartão da busca (M7.9): o nome da situação da consulta (M7.2), os motivos em linguagem
  * simples e, quando há valor, o total com o valor cheio e o desconto do site visíveis (regra do M12.1). Casa além do
- * limite da busca: sem situação, só o convite para ver as datas na página dela.
+ * limite da busca: sem situação, com uma etiqueta neutra própria (não foi consultada; não quer dizer que está ocupada) e
+ * o convite para ver as datas na página dela. Casa sem capacidade cadastrada: a linha "Capacidade não informada" em
+ * qualquer caso, no lugar do motivo da consulta que diz o mesmo (um aviso só por cartão).
  */
 function SituacaoNaBusca({ casa }: { casa: CasaNaBusca }) {
   const d = casa.disponibilidade;
+  const semCapacidade = !casa.imovel.capacidade && <p>Capacidade não informada: a equipe confirma na conversa se o grupo cabe.</p>;
   if (!d) {
     return (
       <div className={styles.situacaoCasa}>
-        <p className={`${styles.etiqueta} ${styles.etiquetaIndisponivel}`}>Veja as datas na página da casa</p>
+        <p className={`${styles.etiqueta} ${styles.etiquetaNaoConsultada}`}>Veja as datas na página da casa</p>
+        {semCapacidade}
       </div>
     );
   }
+  const motivos = d.motivos.filter((m) => m !== MOTIVO_SEM_CAPACIDADE);
   const c = d.cotacao;
   const comValor = (d.situacao === "disponivel" || d.situacao === "a_confirmar") && c;
   return (
     <div className={styles.situacaoCasa}>
       <p className={`${styles.etiqueta} ${ETIQUETA[d.situacao]}`}>{TITULO_DA_SITUACAO[d.situacao]}</p>
-      {!casa.imovel.capacidade && <p>Capacidade não informada</p>}
-      {d.motivos.length > 0 && (
+      {semCapacidade}
+      {motivos.length > 0 && (
         <ul className={styles.motivosCasa}>
-          {d.motivos.map((m) => (
+          {motivos.map((m) => (
             <li key={m}>{m}</li>
           ))}
         </ul>
@@ -90,8 +96,9 @@ function Contato({ conteudo, texto }: { conteudo: ConteudoSite; texto: string })
 }
 
 /**
- * Página da busca em todas as casas (M7.9): o olho, o título e o aviso de Configurações → Textos do site, a busca para
- * ajustar, e um cartão por casa que recebe o grupo, levando à página dela com as datas e as pessoas. Nada é gravado.
+ * Página da busca em todas as casas (M7.9): o olho, o título, o aviso, as frases sem casa e a do contato vêm de
+ * Configurações → Textos do site; a busca para ajustar e um cartão por casa que recebe o grupo, levando à página dela com
+ * as datas e as pessoas. Nada é gravado.
  */
 export function ResultadosBusca({
   conteudo,
@@ -128,17 +135,19 @@ export function ResultadosBusca({
         <section className={styles.semCasa} aria-label="Nenhuma casa para o grupo">
           <p className={styles.aviso} role="status">
             {/* Nenhuma casa ficou de fora pelo tamanho: o site ainda não tem casas publicadas. */}
-            {resultado.foraDoGrupo > 0 ? textos.buscaSemCasa : "As casas ainda não estão no site. Fale com a gente."}
+            {resultado.foraDoGrupo > 0 ? textos.buscaSemCasa : textos.buscaSemCasasNoSite}
           </p>
           <Contato conteudo={conteudo} texto={mensagemDaBusca(pedido, resultado.hospedes)} />
         </section>
       ) : (
         <section aria-labelledby="titulo-casas-busca">
+          {/* "Na sua busca", não "para N pessoas": a lista inclui as casas sem capacidade cadastrada, que podem não caber. */}
           <h2 id="titulo-casas-busca" className={styles.tituloBusca}>
-            {resultado.casas.length} {resultado.casas.length === 1 ? "casa" : "casas"} para {resultado.hospedes} {resultado.hospedes === 1 ? "pessoa" : "pessoas"}
+            {resultado.casas.length} {resultado.casas.length === 1 ? "casa" : "casas"} na sua busca
           </h2>
           <p className={styles.miudo}>
-            {dataBr(pedido.entrada)} a {dataBr(pedido.saida)} · {diasEntre(pedido.entrada, pedido.saida)} {diasEntre(pedido.entrada, pedido.saida) === 1 ? "noite" : "noites"}
+            {dataBr(pedido.entrada)} a {dataBr(pedido.saida)} · {diasEntre(pedido.entrada, pedido.saida)} {diasEntre(pedido.entrada, pedido.saida) === 1 ? "noite" : "noites"} · {resultado.hospedes}{" "}
+            {resultado.hospedes === 1 ? "pessoa" : "pessoas"}
             {resultado.foraDoGrupo > 0 && ` · ${resultado.foraDoGrupo} ${resultado.foraDoGrupo === 1 ? "casa recebe" : "casas recebem"} menos pessoas e não ${resultado.foraDoGrupo === 1 ? "aparece" : "aparecem"} aqui`}
           </p>
           {textos.buscaAviso && (
@@ -160,7 +169,7 @@ export function ResultadosBusca({
             ))}
           </div>
           <div className={styles.contatoBusca}>
-            <p className={styles.miudo}>Prefere conversar? A equipe ajuda a escolher a casa.</p>
+            {textos.buscaContato && <p className={styles.miudo}>{textos.buscaContato}</p>}
             <Contato conteudo={conteudo} texto={mensagemDaBusca(pedido, resultado.hospedes)} />
           </div>
         </section>

@@ -38,7 +38,7 @@ afterEach(() => {
   m.push.mockClear();
 });
 
-describe("\"Seu lugar\" opcional e troca de casa no cartão lateral (M7.9)", () => {
+describe("\"Seu lugar\" opcional e troca de casa no envio do cartão lateral (M7.9)", () => {
   it("\"Todas as casas\" é a primeira opção e o campo não é obrigatório (sem casa, o envio leva à busca)", () => {
     render(<FormConsulta imoveis={casas} valores={{}} hoje="2026-10-07" canal="whatsapp" variante="busca" />);
     expect(lugar().required).toBe(false);
@@ -52,28 +52,54 @@ describe("\"Seu lugar\" opcional e troca de casa no cartão lateral (M7.9)", () 
     expect(document.querySelector("form")!.textContent).toContain("Escolha as datas e, se quiser, uma casa.");
   });
 
-  it("na página de uma casa, trocar a casa abre a página da outra com as mesmas datas e pessoas", () => {
+  it("na página de uma casa, escolher outra casa e Continuar abre a página dela com as mesmas datas e pessoas", () => {
     render(<FormConsulta imoveis={casas} valores={{ imovel: "403", entrada: "2026-10-12", saida: "2026-10-15", hospedes: "3" }} hoje="2026-10-07" canal="whatsapp" variante="lateral" />);
     expect(lugar().value).toBe("403");
-    expect(document.querySelector("form")!.textContent).toContain("Trocar a casa abre a página dela com as mesmas datas.");
+    // A dica fica ligada ao campo, para o leitor de tela anunciar antes da escolha.
+    const dica = document.getElementById("dica-troca-casa")!;
+    expect(dica.textContent).toContain("Com outra casa escolhida, Continuar abre a página dela com as mesmas datas.");
+    expect(lugar().getAttribute("aria-describedby")).toBe("dica-troca-casa");
+    // Mudar o campo não muda de página (nem pelo teclado: as setas num campo fechado mudam o valor a cada tecla).
+    fireEvent.keyDown(lugar(), { key: "ArrowDown" });
     fireEvent.change(lugar(), { target: { value: "102" } });
+    fireEvent.keyDown(lugar(), { key: "ArrowDown" });
+    fireEvent.change(lugar(), { target: { value: "205" } });
+    fireEvent.keyDown(lugar(), { key: "ArrowUp" });
+    fireEvent.change(lugar(), { target: { value: "102" } });
+    expect(m.push).not.toHaveBeenCalled();
+    // O envio leva à página da casa escolhida, no lugar do envio normal para a consulta.
+    const seguiuEnvioNormal = fireEvent.submit(document.querySelector("form")!);
+    expect(seguiuEnvioNormal).toBe(false);
     expect(m.push).toHaveBeenCalledTimes(1);
     expect(m.push).toHaveBeenCalledWith("/imoveis/102?checkin=2026-10-12&checkout=2026-10-15&guests=3");
   });
 
-  it("\"Todas as casas\" ou a mesma casa não abrem nada; sem datas, vão só as pessoas", () => {
-    render(<FormConsulta imoveis={casas} valores={{ imovel: "403", hospedes: "2" }} hoje="2026-10-07" canal="whatsapp" variante="lateral" />);
+  it("\"Todas as casas\" ou a mesma casa seguem o envio normal (a busca e a consulta)", () => {
+    render(<FormConsulta imoveis={casas} valores={{ imovel: "403", entrada: "2026-10-12", saida: "2026-10-15", hospedes: "2" }} hoje="2026-10-07" canal="whatsapp" variante="lateral" />);
+    const form = document.querySelector("form")!;
     fireEvent.change(lugar(), { target: { value: "" } });
+    expect(fireEvent.submit(form)).toBe(true);
     fireEvent.change(lugar(), { target: { value: "403" } });
+    expect(fireEvent.submit(form)).toBe(true);
     expect(m.push).not.toHaveBeenCalled();
+  });
+
+  it("sem as datas, Continuar abre o calendário e não troca de casa; com elas, abre a outra casa", () => {
+    render(<FormConsulta imoveis={casas} valores={{ imovel: "403", hospedes: "2" }} hoje="2026-10-07" canal="whatsapp" variante="lateral" />);
+    const form = document.querySelector("form")!;
     fireEvent.change(lugar(), { target: { value: "205" } });
-    expect(m.push).toHaveBeenCalledWith("/imoveis/205?guests=2");
+    expect(fireEvent.submit(form)).toBe(false);
+    expect(m.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
   it("fora do cartão lateral (capa e consulta), trocar a casa não navega: vale o envio do formulário", () => {
     render(<FormConsulta imoveis={casas} valores={{ imovel: "403", entrada: "2026-10-12", saida: "2026-10-15", hospedes: "2" }} hoje="2026-10-07" canal="whatsapp" />);
     fireEvent.change(lugar(), { target: { value: "102" } });
+    expect(fireEvent.submit(document.querySelector("form")!)).toBe(true);
     expect(m.push).not.toHaveBeenCalled();
+    expect(document.getElementById("dica-troca-casa")).toBeNull();
+    expect(lugar().hasAttribute("aria-describedby")).toBe(false);
     // Sem JavaScript também: o formulário continua sendo um GET para a consulta, com os mesmos campos.
     const form = document.querySelector("form")!;
     expect([form.getAttribute("action"), form.getAttribute("method")]).toEqual(["/consulta", "get"]);

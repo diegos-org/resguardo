@@ -6,7 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
-import { conferirDatasEPessoas, conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, mensagemDaBusca, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import { CASA_FORA_DO_SITE, conferirDatasEPessoas, conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, mensagemDaBusca, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -183,6 +183,14 @@ describe("busca em todas as casas (M7.9): a conferência e a mensagem sem casa",
     expect(conferirDatasEPessoas({ ...base, hospedes: "2e0" }, "2026-09-25")).toMatchObject({ erros: { hospedes: "Informe quantas pessoas." } });
     // A consulta de uma casa continua com o erro da casa primeiro e a capacidade dela.
     expect(Object.keys((montarConsulta({ imovel: "", ...base, entrada: "" }, null, "2026-09-25") as { erros: object }).erros)).toEqual(["imovel", "entrada"]);
+  });
+
+  it("casa pedida que não está no site (link antigo): o erro diz isso e oferece buscar em todas, sem pedir para escolher uma casa", () => {
+    const base = { entrada: "2026-10-10", saida: "2026-10-13", hospedes: "2" };
+    expect(montarConsulta({ imovel: "303", ...base }, null, "2026-09-25")).toEqual({ ok: false, erros: { imovel: CASA_FORA_DO_SITE } });
+    expect(CASA_FORA_DO_SITE).toBe("Essa casa não está mais no site. Escolha outra ou busque em todas as casas.");
+    // Sem casa nenhuma pedida, continua o pedido de escolher.
+    expect(montarConsulta({ imovel: " ", ...base }, null, "2026-09-25")).toEqual({ ok: false, erros: { imovel: "Escolha um apartamento." } });
   });
 
   it("mensagem para a equipe com as datas e as pessoas, sem casa e sem valor", () => {

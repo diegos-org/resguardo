@@ -2177,12 +2177,20 @@
   color: var(--scl-erro-texto);
 }
 
+/* Casa além do limite da busca: não consultada (não quer dizer ocupada), por isso um tom neutro diferente do indisponível */
+.etiquetaNaoConsultada,
+.cartaoCorpo .etiquetaNaoConsultada {
+  background: var(--scl-info-fundo);
+  color: var(--scl-info);
+}
+
+/* Branco sobre o sálvia do cartão (5,4:1); o --scl-sobre-escuro dava 3,8:1, abaixo do mínimo em letra de 12px */
 .motivosCasa {
   margin: 0;
   padding-left: 16px;
   font-size: 0.75rem;
   line-height: 1.5;
-  color: var(--scl-sobre-escuro);
+  color: var(--scl-branco);
 }
 
 .valoresCasa {
