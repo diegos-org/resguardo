@@ -113,6 +113,40 @@ it("pedido inválido (pessoas acima da capacidade) nem chega à disponibilidade"
   expect(m.disponibilidade).not.toHaveBeenCalled();
   expect(h).toContain("Este apartamento recebe até 4 pessoas.");
 });
+it("sem nenhuma casa publicada (M7.8): no lugar do formulário, que não teria casa para consultar, o aviso e o contato", async () => {
+  m.imoveis.mockResolvedValue([]);
+  const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
+  expect(h).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
+  expect(h).toContain("Falar pelo WhatsApp");
+  expect(h).toContain("A gente encontra sua casa."); // o título da consulta continua
+  expect(h).not.toContain('name="imovel"');
+  expect(h).not.toContain("Seu lugar");
+  expect(h).not.toContain(TEXTOS_SITE_INICIAIS.consultaTexto);
+  expect(h).not.toContain("Resumo da viagem");
+  expect(m.disponibilidade).not.toHaveBeenCalled();
+});
+it("sem nenhuma casa publicada, o mesmo aviso em qualquer pedido (M7.8 com a busca do M7.9): o link de uma casa fora do site e a busca com datas erradas", async () => {
+  m.imoveis.mockResolvedValue([]);
+  // Casa fora do site com o site sem casas: o aviso do site sem casas, não o da casa que saiu (não há outra para escolher).
+  const casaFora = await html({ imovel: "303" });
+  expect(casaFora).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
+  expect(casaFora).not.toContain("Essa casa não está mais no site.");
+  expect(casaFora).toContain("A gente encontra sua casa.");
+  expect(casaFora).not.toContain('name="imovel"');
+  // Busca com datas erradas: o mesmo aviso, com a mensagem padrão do site (não há datas conferidas para levar à conversa).
+  const erradas = await html({ entrada: "2020-01-01", saida: "2099-10-15", hospedes: "2" });
+  expect(erradas).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
+  expect(erradas).toContain("Encontre seu lugar.");
+  expect(erradas).not.toContain("A entrada não pode ser antes de hoje.");
+  expect(erradas).not.toContain('name="imovel"');
+  expect(erradas).toContain(`wa.me/5521900000000?text=${encodeURIComponent("Olá! Vim pelo site e gostaria de falar com a equipe.")}`);
+  // Pelo e-mail (sem WhatsApp no cadastro), as datas e as pessoas da busca vão no corpo da mensagem.
+  m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, whatsapp: null, email: " contato@exemplo.com " } });
+  const porEmail = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
+  expect(porEmail).toContain(`href="mailto:contato@exemplo.com?subject=Contato%20pelo%20site&amp;body=${encodeURIComponent("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 12/10/2099 · Saída: 15/10/2099 · 2 pessoas.")}"`);
+  expect(porEmail).toContain("Enviar um e-mail");
+  expect(m.disponibilidade).not.toHaveBeenCalled();
+});
 
 describe("busca em todas as casas (M7.9)", () => {
   // Na ordem do site, a casa sem capacidade (205) vem antes da livre (403): a página precisa reordenar.
@@ -192,13 +226,19 @@ describe("busca em todas as casas (M7.9)", () => {
     expect(h).toContain("Aviso fictício: nenhuma casa para o grupo.");
     expect(h).toContain("Falar pelo WhatsApp");
     expect(h).not.toContain("/imoveis/403?");
-    // Sem nenhuma casa publicada, a página não diz que o grupo é grande demais: a frase editável do site sem casas.
+    // Sem nenhuma casa publicada, a página não diz que o grupo é grande demais: o aviso do site sem casas (M7.8), a regra
+    // única desse caso, com o cabeçalho da busca, sem o formulário e com as datas e as pessoas na mensagem do contato.
     m.imoveis.mockResolvedValue([]);
     m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...conteudo.textos, buscaSemCasa: "Aviso fictício: nenhuma casa para o grupo." } } });
     const vazio = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
-    expect(vazio).toContain(TEXTOS_SITE_INICIAIS.buscaSemCasasNoSite);
+    expect(vazio).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
     expect(vazio).not.toContain("Aviso fictício");
-    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...conteudo.textos, buscaSemCasasNoSite: "Frase fictícia: o site ainda não tem casas." } } });
+    expect(vazio).toContain("Encontre seu lugar.");
+    expect(vazio).not.toContain('name="imovel"');
+    expect(vazio).not.toContain("na sua busca");
+    expect(vazio).toContain(`wa.me/5521900000000?text=${encodeURIComponent("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 12/10/2099 · Saída: 15/10/2099 · 2 pessoas.")}`);
+    expect(m.disponibilidade).not.toHaveBeenCalled();
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, textos: { ...conteudo.textos, semCasasTexto: "Frase fictícia: o site ainda não tem casas." } } });
     expect(await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" })).toContain("Frase fictícia: o site ainda não tem casas.");
   });
 

@@ -33,6 +33,15 @@
   color: var(--scl-dourado);
 }
 
+/* Só a marca do estudo, sem o nome da empresa (a página de erro, que não lê o banco — M7.8). */
+.marcaIcone {
+  display: block;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  object-fit: contain;
+}
+
 .topoTitulo {
   font-size: 0.8125rem;
   color: var(--scl-sobre-escuro);

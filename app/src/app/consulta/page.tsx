@@ -1,8 +1,9 @@
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
-import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
+import { FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
-import { ResultadosBusca } from "@/components/site/ResultadosBusca";
+import { CabecalhoBusca, ResultadosBusca } from "@/components/site/ResultadosBusca";
+import { SemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
@@ -11,7 +12,7 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { CASA_FORA_DO_SITE, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
+import { AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, mensagemDaBusca, montarConsulta } from "@/site/site";
 
 /** Busca em todas as casas (M7.9): o pedido tem datas, mas nenhuma casa escolhida ("Todas as casas"). */
 const ehBusca = (p: { imovel: string; entrada: string; saida: string }) => !p.imovel && !!(p.entrada || p.saida);
@@ -27,8 +28,36 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const pedido = lerPedidoConsulta(sp);
   const enviado = !!(pedido.entrada || pedido.saida);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
+  const { textos } = conteudo;
+  const busca = ehBusca(pedido);
+  const cabecalho = (comTexto: boolean) => (
+    <header className={`${styles.cabecalhoPagina} ${styles.cabecalhoConsulta}`}>
+      {textos.consultaOlho && <p className={styles.olho}>{textos.consultaOlho}</p>}
+      <h1>
+        <TextoComDestaque texto={textos.consultaTitulo || "Planeje sua estadia"} />
+      </h1>
+      {comTexto && textos.consultaTexto && <p>{textos.consultaTexto}</p>}
+    </header>
+  );
+  // Nenhuma casa publicada (M7.8), na consulta e também na busca em todas as casas (M7.9): o formulário só teria
+  // "Todas as casas" e nenhuma casa para consultar. Uma regra só para os dois casos, decidida aqui antes da busca: no
+  // lugar do formulário, o aviso do site sem casas (`semCasasTexto`) e o contato; a frase da consulta ("escolha a
+  // casa…") também sai. Vale também para o link de uma casa fora do site: sem casas, o aviso é este, não o da casa.
+  // Na busca, o cabeçalho é o dela (como o título da aba) e, com datas e pessoas válidas, a mensagem do contato já leva
+  // essas informações, como a busca sem casa para o grupo.
+  if (!todos.length) {
+    const resultado = busca ? await buscarEmTodasAsCasas(db, conteudo.organizacaoId, pedido, todos) : null;
+    return (
+      <Moldura conteudo={conteudo}>
+        {busca ? <CabecalhoBusca textos={textos} /> : cabecalho(false)}
+        <div className={styles.consultaColunas}>
+          <SemCasas conteudo={conteudo} mensagem={resultado?.ok ? mensagemDaBusca(pedido, resultado.hospedes) : undefined} />
+        </div>
+      </Moldura>
+    );
+  }
   // Sem casa escolhida: a situação de cada casa que recebe o grupo, com o link para a página dela. Nada é gravado.
-  if (ehBusca(pedido)) {
+  if (busca) {
     const resultado = await buscarEmTodasAsCasas(db, conteudo.organizacaoId, pedido, todos);
     return (
       <Moldura conteudo={conteudo}>
@@ -60,16 +89,11 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
     segurar && imovel
       ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: pedido.entrada, checkout: pedido.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
       : false;
-  const { textos } = conteudo;
+  // Por onde a conversa continua (WhatsApp, senão e-mail): a regra única do site, para o formulário e para o envio.
+  const canal = canalDeContato(conteudo);
   return (
     <Moldura conteudo={conteudo}>
-      <header className={`${styles.cabecalhoPagina} ${styles.cabecalhoConsulta}`}>
-        {textos.consultaOlho && <p className={styles.olho}>{textos.consultaOlho}</p>}
-        <h1>
-          <TextoComDestaque texto={textos.consultaTitulo || "Planeje sua estadia"} />
-        </h1>
-        {textos.consultaTexto && <p>{textos.consultaTexto}</p>}
-      </header>
+      {cabecalho(true)}
       {sp.aviso === "mudou" && (
         <p className={styles.aviso} role="alert">
           A disponibilidade ou o valor mudaram desde a sua consulta anterior. Confira a situação atual abaixo.
@@ -77,7 +101,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
       )}
       <div className={styles.consultaColunas}>
         <div className={styles.consultaForm}>
-          <FormConsulta imoveis={todos} valores={pedido} erros={erros} hoje={hojeMinimo} canal={canalDeContato(conteudo)} comPagamento={gate.ok} />
+          <FormConsulta imoveis={todos} valores={pedido} erros={erros} hoje={hojeMinimo} canal={canal} comPagamento={gate.ok} />
         </div>
         <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
           <p className={styles.olho}>Sua estadia, sem surpresas</p>
@@ -109,23 +133,23 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
             <section className={styles.bloco} aria-labelledby="titulo-mensagem">
               <h3 id="titulo-mensagem">Sua mensagem</h3>
               <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
-              {conteudo.whatsapp ? (
+              {canal === "whatsapp" && conteudo.whatsapp ? (
                 <p style={{ marginTop: 16 }}>
                   <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
                     Enviar pelo WhatsApp
                     <span aria-hidden="true">↗</span>
                   </a>
                 </p>
-              ) : conteudo.email ? (
+              ) : canal === "email" ? (
                 <p style={{ marginTop: 16 }}>
-                  <a href={`mailto:${conteudo.email}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
+                  <a href={`mailto:${conteudo.email.trim()}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
                     Enviar por e-mail
                     <span aria-hidden="true">↗</span>
                   </a>
                 </p>
               ) : (
                 <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>
-                  O contato ainda não foi configurado. Volte em breve.
+                  {AVISO_SEM_CONTATO}
                 </p>
               )}
               <p className={styles.miudo} style={{ marginTop: 12 }}>
