@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { signOut } from "@/acesso/auth";
 import { obterSessao } from "@/acesso/sessao-atual";
@@ -12,6 +13,14 @@ import { marcarFeitaAcao, trocarMinhaSenhaAcao } from "@/equipe/acoes";
 import { limpezasDaProfissional } from "@/equipe/equipe";
 import { FRASE_FINAL, lerConfigAgenda } from "@/agenda/agenda";
 import { hojeISO } from "@/lib/datas";
+import { carregarSite } from "@/site/pagina";
+import { metadadosDeAcesso } from "@/site/site";
+
+/** Título e descrição da própria tela (M7.10), não os do painel interno; fora dos buscadores pelo next.config. */
+export async function generateMetadata(): Promise<Metadata> {
+  const { conteudo } = await carregarSite();
+  return metadadosDeAcesso(conteudo, "Minhas limpezas", "Equipe de limpeza: as limpezas marcadas para você e a agenda da equipe.");
+}
 
 const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const dia = (d: string) => `${DIAS[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.split("-").reverse().slice(0, 2).join("/")}`;
