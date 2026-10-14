@@ -15,6 +15,7 @@ import {
   imovelDoSite,
   imoveisDoSite,
   lerPedidoConsulta,
+  metadadosDeAcesso,
   tituloDoSite,
   linkWhatsapp,
   montarConsulta,
@@ -152,6 +153,11 @@ describe("site público (M7.1)", () => {
     expect(tituloDoSite({ nomeEmpresa: "Empresa Exemplo" }, "Apartamentos")).toBe("Apartamentos — Empresa Exemplo");
     expect(tituloDoSite({ nomeEmpresa: "Empresa Exemplo" })).toBe("Empresa Exemplo");
     expect(tituloDoSite(null, "Consulta")).toBe("Consulta");
+  });
+
+  it("telas de acesso (M7.10): título com o nome da empresa e a descrição da própria tela; sem site, só o nome da tela", () => {
+    expect(metadadosDeAcesso({ nomeEmpresa: " Empresa Exemplo " }, "Entrar", "Descrição da tela.")).toEqual({ title: "Entrar — Empresa Exemplo", description: "Descrição da tela." });
+    expect(metadadosDeAcesso(null, "Entrar", "Descrição da tela.")).toEqual({ title: "Entrar", description: "Descrição da tela." });
   });
 
   it("links antigos /property/<código>: levam à página do imóvel só com os critérios de estadia válidos", async () => {

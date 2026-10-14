@@ -257,6 +257,16 @@ export function tituloDoSite(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null,
 }
 
 /**
+ * Metadados das telas de acesso (entrada, convite do proprietário e equipe de limpeza; M7.10): o título com o nome da
+ * empresa do site e a descrição da própria tela, e não a do layout (que é a do painel interno). Essas telas ficam fora
+ * dos buscadores pelo `next.config.ts`; título e descrição aparecem na aba do navegador e na prévia do link (o convite
+ * mandado por WhatsApp, por exemplo). Sem site configurado, o título fica só com o nome da tela.
+ */
+export function metadadosDeAcesso(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null, pagina: string, descricao: string): { title: string; description: string } {
+  return { title: tituloDoSite(conteudo, pagina), description: descricao };
+}
+
+/**
  * Links antigos do site (`/property/<código>?checkin=…&checkout=…&guests=…`, do contrato de links
  * já divulgado): levam à página do imóvel com só os critérios de estadia, conferidos. Critério
  * inválido, incompleto ou repetido: avisa (400) em vez de supor; outros parâmetros são descartados.

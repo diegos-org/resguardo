@@ -70,8 +70,13 @@ describe("erro inesperado na raiz (M7.8)", () => {
     expect(screen.getByRole("link", { name: "Voltar à agenda" }).getAttribute("href")).toBe("/equipe");
     expect(document.body.textContent).toContain("abc123");
     expect(document.body.textContent).not.toContain("detalhe interno");
-    // Sem o nome da empresa: o link do topo diz "Início" e o rodapé não tem "© 2026 Início".
-    expect(screen.getByRole("link", { name: "Início" }).getAttribute("href")).toBe("/");
+    // Sem o nome da empresa: o topo mostra só a marca do estudo (sem a palavra "Início" escrita no lugar do nome), com o
+    // link "Início" para leitor de tela, e o rodapé não tem "© 2026 Início".
+    const marca = screen.getByRole("link", { name: "Início" });
+    expect(marca.getAttribute("href")).toBe("/");
+    expect(marca.textContent).toBe("");
+    expect(marca.querySelector("img")?.getAttribute("src")).toContain("marca.png");
+    expect(marca.closest("header")?.textContent).not.toContain("Início");
     expect(screen.getByRole("contentinfo").textContent).not.toContain("©");
     fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
     expect(retry).toHaveBeenCalledTimes(1);

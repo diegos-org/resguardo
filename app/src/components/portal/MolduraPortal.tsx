@@ -1,8 +1,10 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ID_CONTEUDO, PularParaConteudo } from "@/components/site/Acessibilidade";
 // Da moldura sem banco: assim a página de erro do portal (componente de cliente, M7.8) também usa esta moldura.
 import { marcaComDestaque } from "@/components/site/MolduraBase";
+import { MARCA_PADRAO } from "@/site/marca";
 import styles from "./portal.module.css";
 
 /**
@@ -24,8 +26,8 @@ export function MolduraPortal({
   estreito?: boolean;
   children: ReactNode;
 }) {
-  // Sem o nome da empresa (a página de erro, que não lê o banco): o link do topo diz só "Início" e o rodapé fica sem o ©,
-  // em vez de um "© 2026 Início" como se fosse o nome da empresa.
+  // Sem o nome da empresa (a página de erro, que não lê o banco): o topo mostra só a marca do estudo, como a moldura do
+  // site, com o link "Início" para quem usa leitor de tela, e o rodapé fica sem o ©. Nenhum nome de reserva aparece.
   const nome = empresa.trim();
   return (
     <div className={styles.pagina}>
@@ -33,8 +35,8 @@ export function MolduraPortal({
       <PularParaConteudo />
       <header className={styles.topo}>
         <div className={styles.topoAcoes}>
-          <Link href="/" className={styles.marca}>
-            {nome ? marcaComDestaque(nome) : "Início"}
+          <Link href="/" className={styles.marca} aria-label={nome ? undefined : "Início"}>
+            {nome ? marcaComDestaque(nome) : <Image src={MARCA_PADRAO} alt="" width={36} height={36} unoptimized className={styles.marcaIcone} />}
           </Link>
           {titulo && <span className={styles.topoTitulo}>{titulo}</span>}
         </div>
