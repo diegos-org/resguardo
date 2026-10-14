@@ -113,13 +113,16 @@ describe("o que o hóspede vê em cada situação do pagamento (M8.2a)", () => {
     expect(screen.getByRole("button", { name: "Copiar o código do Pix" })).toBeTruthy();
     expect(container.textContent).toContain("Este Pix vale até 12:30 (faltam 30:00).");
     expect(screen.getByText(/Pode fechar e voltar por este link: a página confirma sozinha/)).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Abrir o Pix no Mercado Pago" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Abrir o Pix no Mercado Pago/ })).toBeNull();
   });
 
   it("sem a imagem do QR: o link do Mercado Pago; sem a autorização, nada do Pix (só a situação)", () => {
     mostrar({ estado: "pix_aguardando", pix: { ...pix, imagem: null } });
     expect(screen.queryByRole("img")).toBeNull();
-    expect(screen.getByRole("link", { name: "Abrir o Pix no Mercado Pago" }).getAttribute("href")).toBe(pix.link);
+    const mercadoPago = screen.getByRole("link", { name: /^Abrir o Pix no Mercado Pago/ });
+    expect(mercadoPago.getAttribute("href")).toBe(pix.link);
+    // Abre outra janela (M7.11): o fim do link, só para o leitor de tela, avisa.
+    expect(mercadoPago.textContent).toBe("Abrir o Pix no Mercado Pago (abre em nova janela)");
     cleanup();
     mostrar({ estado: "pix_aguardando", pix: null }, false);
     expect(screen.queryByText(pix.copiaECola)).toBeNull();
@@ -305,7 +308,12 @@ describe("aceite das páginas legais antes do Pix (M7.4)", () => {
   const aceito: AceiteNaPagina = { ...pendente, aceito: { em: "2026-10-01T15:02:00.000Z", versoes } };
   const comAceite = (aceite: AceiteNaPagina | null, over: Partial<PagamentoDoHospede> = {}, autorizado = true) =>
     render(<PagamentoPix codigo="COT-ABCDEFGH" pagamento={{ ...base, ...over }} autorizado={autorizado} fuso="America/Sao_Paulo" total={182400} textos={textos} contato={null} gerarPix={acoes.gerarPix} continuar={acoes.continuar} aceite={aceite} />);
-  const link = (nome: string) => screen.getByRole("link", { name: nome });
+  // As páginas legais abrem em outra janela, com o aviso para o leitor de tela no fim do link (M7.11).
+  const link = (nome: string) => {
+    const achado = screen.getAllByRole("link").find((a) => a.textContent === `${nome} (abre em nova janela)`);
+    if (!achado) throw new Error(`link "${nome}" com o aviso de nova janela não encontrado`);
+    return achado;
+  };
 
   it("pagar sem o aceite das versões em vigor: resumo da política, prazo desta reserva, caixa obrigatória com os links das versões e as versões escondidas; o formulário leva tudo", async () => {
     acoes.gerarPix.mockResolvedValue({ ok: true });
@@ -317,7 +325,9 @@ describe("aceite das páginas legais antes do Pix (M7.4)", () => {
     expect(caixa.required).toBe(true);
     expect(caixa.name).toBe("aceite");
     expect(caixa.value).toBe("sim");
-    expect(caixa.closest("label")?.textContent).toBe("Li e aceito os Termos de uso e a Política de cancelamento, e li a Política de privacidade.");
+    expect(caixa.closest("label")?.textContent).toBe(
+      "Li e aceito os Termos de uso (abre em nova janela) e a Política de cancelamento (abre em nova janela), e li a Política de privacidade (abre em nova janela).",
+    );
     for (const [nome, href] of [
       ["Termos de uso", "/termos?versao=2"],
       ["Política de cancelamento", "/cancelamento?versao=3"],
@@ -348,7 +358,7 @@ describe("aceite das páginas legais antes do Pix (M7.4)", () => {
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(container.querySelector('input[name="versaoTermos"]')).toBeNull();
     expect(container.textContent).toContain(
-      "Você aceitou os Termos de uso (versão 2), a Política de cancelamento (versão 3) e leu a Política de privacidade (versão 1) em 01/10 às 12:02.",
+      "Você aceitou os Termos de uso (versão 2) (abre em nova janela), a Política de cancelamento (versão 3) (abre em nova janela) e leu a Política de privacidade (versão 1) (abre em nova janela) em 01/10 às 12:02.",
     );
     expect(link("Termos de uso (versão 2)").getAttribute("href")).toBe("/termos?versao=2");
     expect(screen.getByRole("button", { name: "Gerar Pix" })).toBeTruthy();
@@ -360,7 +370,7 @@ describe("aceite das páginas legais antes do Pix (M7.4)", () => {
 
   it("reserva confirmada: as versões aceitas no pagamento que confirmou e o prazo do reembolso; sem aceite (pagamento anterior às páginas), nada", () => {
     const { container } = comAceite(aceito, { estado: "confirmada", holdAte: null, reservaCodigo: "SCL-TESTE1" });
-    expect(container.textContent).toContain("Você aceitou os Termos de uso (versão 2), a Política de cancelamento (versão 3)");
+    expect(container.textContent).toContain("Você aceitou os Termos de uso (versão 2) (abre em nova janela), a Política de cancelamento (versão 3) (abre em nova janela)");
     expect(container.textContent).toContain("Para esta reserva, o reembolso integral vale para pedidos de cancelamento até 23h59 de 28/09/2026 (horário de Brasília).");
     expect(link("Política de cancelamento (versão 3)").getAttribute("href")).toBe("/cancelamento?versao=3");
     cleanup();

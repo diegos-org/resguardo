@@ -11,7 +11,28 @@ linha inferior — formulários densos ficam mais legíveis assim; (2) o olho do
 mínimo em texto pequeno); (3) `--scl-aviso` ficou `#7d6118` (o `#8a6d1c` dava 4,46:1 sobre o
 papel); (4) a foto da capa e as fotos dos imóveis esperam o M7.3: a capa é um gradiente sobre
 `--scl-profundo` e os cartões mostram um quadro "foto em breve"; (5) o PDF do relatório mantém
-a paleta anterior. Aprovado por Diego em 4/10/2026: adotar o visual do estudo do "Sage" (site público,
+a paleta anterior; (6) **14/10/2026 (M7.11), contorno do foco sobre os verdes** — antes: o mesmo
+`--scl-foco` laranja (`#b66630`) em toda parte, deslocado 3px; agora: deslocado 5px, como esta
+especificação pede, e creme (`--scl-foco-sobre-verde`) dentro das áreas verdes (cabeçalho, capa, faixa
+das casas, fechamento e rodapé do site, dia escolhido do calendário de datas, menu do painel, topo e
+rodapé dos portais), que trocam a variável `--scl-foco-cor` no mesmo seletor do fundo; motivo: o
+laranja dava 1,69:1 sobre floresta, 2,29:1 sobre profundo, 1,27:1 sobre sálvia e 1,41:1 sobre musgo,
+abaixo dos 3:1 dos indicadores, e o creme dá 6,2 / 8,43 / 4,68 / 5,18:1 (o `--scl-dourado-claro`, a
+outra opção, dava 3,87:1 na sálvia); o laranja continua nos fundos claros (3,68:1 no creme, 3,88:1 no
+papel, 3,13:1 na areia), inclusive numa área clara dentro de uma verde (o cartão papel de "nenhuma casa
+publicada", na faixa das casas), que devolve `--scl-foco-cor` ao laranja no próprio seletor (o creme
+herdado daria 1,05:1 no papel); no dia do calendário de datas, o contorno de 2px fica inteiro por dentro
+(deslocado -2px) e com a opacidade cheia, sobre o fundo do próprio dia (no dia escolhido, creme sobre o
+musgo, 5,18:1), porque os dias ficam colados e, meio por fora, ele caía sobre o vizinho ou o papel; nas
+rolagens com coisa focável (carrossel das casas, miniaturas da galeria, menu do painel no celular), folga
+de 8px e `scroll-padding` para o contorno não ser cortado; o que flutua sobre fundos claros e verdes (botão do WhatsApp, "Pular para o
+conteúdo") ganha um halo creme (`--scl-foco-halo`) sob o contorno laranja; objetivo: o foco do teclado
+visível em qualquer fundo do site, dos portais e do painel; (7) **14/10/2026 (M7.11), miniatura
+escolhida da galeria** — antes: contorno de 2px em `--scl-dourado` (1,93:1 sobre o creme, 2,04:1 sobre o
+papel); agora: anel de 3px em `--scl-dourado-escuro` por dentro da borda (5,64:1 / 5,94:1), com o
+contorno do foco por fora, a 5px, sem os dois se sobreporem; motivo e objetivo: a foto escolhida
+reconhecível sem depender da cor fraca, e o foco distinto da escolha.
+Aprovado por Diego em 4/10/2026: adotar o visual do estudo do "Sage" (site público,
 `prototipos/acervo-visual-2026-10` e `prototipos/scl-publico`) como design geral do projeto —
 site, portal do hóspede, portal do proprietário e painel —, com os ajustes abaixo. O painel usa a
 mesma paleta e os mesmos padrões, só mais denso. Este documento é a fonte dos tokens; o código
@@ -38,7 +59,8 @@ decisões de 4/10.
 | `--scl-tinta` | texto principal | `#252b23` | `#252b23` | |
 | `--scl-texto-2` | texto secundário | `#5b604f` | `#5b604f` | contraste ≥ 4,5:1 sobre o papel |
 | `--scl-borda` | bordas de cartões e campos | `#cfc1a9` | `#cfc1a9` | |
-| `--scl-foco` | contorno de foco do teclado | `#b66630` | `#b66630` | 3px, deslocado 5px |
+| `--scl-foco` | contorno de foco do teclado | `#b66630` | `#b66630` | 3px, deslocado 5px; sobre os fundos claros (nos verdes, o token abaixo: desvio 6, 14/10) |
+| `--scl-foco-sobre-verde` | contorno de foco dentro das áreas verdes | — | **`--scl-creme`** | 6,2:1 floresta, 8,43:1 profundo, 4,68:1 sálvia, 5,18:1 musgo (M7.11) |
 
 Contraste: todo texto sobre `--scl-creme`/`--scl-papel` usa `--scl-tinta` ou `--scl-texto-2`;
 sobre os verdes, `--scl-creme` ou branco. O dourado do estudo (`#c9a96e`) não alcança 4,5:1 em
@@ -122,7 +144,7 @@ texto corrido**.
 - **Portal do hóspede e portal do proprietário:** mesma linguagem do site (cabeçalho floresta,
   fundo creme, cartões papel, serifa nos títulos), com a densidade do site.
 - **Painel interno:** mesma paleta e mesmos padrões (cabeçalho e menu lateral em floresta/profundo,
-  fundo creme, cartões e tabelas em papel, botões musgo, foco laranja), com **densidade maior**:
+  fundo creme, cartões e tabelas em papel, botões musgo, foco laranja — creme no menu verde, desvio 6), com **densidade maior**:
   grade de 4/8px, tabelas compactas (linhas de 36–40px), formulários em colunas, títulos menores
   (h1 1,5rem, h2 1,125rem), sem capa nem seções de respiro. É lugar de trabalho: mais informação
   por tela, sem perder a identidade.

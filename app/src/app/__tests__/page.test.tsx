@@ -57,7 +57,10 @@ describe("site público (M7.1)", () => {
     );
     // Nome com uma palavra só: nada em itálico.
     expect(screen.getByRole("link", { name: "Casa" }).querySelector("em")).toBeNull();
-    expect(screen.getByRole("link", { name: "Falar com Casa pelo WhatsApp" }).getAttribute("href")).toMatch(/^https:\/\/wa\.me\/5521900000000\?text=/);
+    // Abre outra janela (M7.11): o aviso vai no rótulo do botão, para quem usa leitor de tela.
+    const whatsapp = screen.getByRole("link", { name: "Falar com Casa pelo WhatsApp (abre em nova janela)" });
+    expect(whatsapp.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/5521900000000\?text=/);
+    expect(whatsapp.getAttribute("target")).toBe("_blank");
   });
 
   it("rodapé (M7.4): as três páginas legais em todas as páginas e, com razão social ou CNPJ no cadastro, a identificação da empresa", () => {

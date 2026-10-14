@@ -17,6 +17,7 @@
   padding: 12px max(4vw, 16px);
   background: var(--scl-floresta);
   color: var(--scl-creme);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
 }
 
 .marca {
@@ -73,6 +74,7 @@
   padding: 18px max(4vw, 16px);
   background: var(--scl-profundo);
   color: var(--scl-sobre-escuro);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
   font-size: 0.75rem;
   display: flex;
   justify-content: space-between;

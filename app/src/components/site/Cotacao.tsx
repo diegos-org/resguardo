@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { type CotacaoVista, motivoDaMudanca, textoDaCotacao } from "@/site/cotacoes";
 import { linkWhatsapp } from "@/site/site";
+import { LinkNovaJanela } from "./Acessibilidade";
 import styles from "./site.module.css";
 
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -22,9 +23,9 @@ export function BotaoContato({ whatsapp, email, codigo, texto, secundario = fals
   const classe = secundario ? `${styles.botao} ${styles.botaoContorno}` : styles.botao;
   if (whatsapp) {
     return (
-      <a href={linkWhatsapp(whatsapp, texto)} className={classe} target="_blank" rel="noopener noreferrer">
+      <LinkNovaJanela href={linkWhatsapp(whatsapp, texto)} className={classe}>
         Falar com a equipe pelo WhatsApp
-      </a>
+      </LinkNovaJanela>
     );
   }
   if (email) {
