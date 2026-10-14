@@ -1,18 +1,32 @@
 import { readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { IncomingMessage } from "node:http";
 import { buildCustomRoute } from "next/dist/lib/build-custom-route";
+import { matchHas } from "next/dist/shared/lib/router/utils/prepare-destination";
 import { describe, expect, it } from "vitest";
 import nextConfig from "../../next.config";
 import { NAO_LISTAR, PAGINAS_FORA_DOS_BUSCADORES } from "./fora-dos-buscadores";
 
 /**
  * Os cabeçalhos que um endereço recebe, com as regras do `next.config.ts` montadas como o Next monta na publicação (a
- * mesma expressão que vai para o manifesto de rotas que a Vercel usa).
+ * mesma expressão que vai para o manifesto de rotas que a Vercel usa) e as condições da consulta do endereço (`has`)
+ * conferidas pela mesma função do Next.
  */
-async function cabecalhosDe(): Promise<(caminho: string) => { key: string; value: string }[]> {
+async function cabecalhosDe(): Promise<(endereco: string) => { key: string; value: string }[]> {
   const regras = (await nextConfig.headers!()).map((r) => buildCustomRoute("header", r));
-  return (caminho) => regras.filter((r) => new RegExp(r.regex).test(caminho)).flatMap((r) => r.headers);
+  return (endereco) => {
+    const url = new URL(endereco, "https://site.exemplo");
+    const consulta: Record<string, string | string[]> = {};
+    for (const [chave, valor] of url.searchParams) {
+      const antes = consulta[chave];
+      consulta[chave] = antes === undefined ? valor : [...(Array.isArray(antes) ? antes : [antes]), valor];
+    }
+    const requisicao = { headers: {} } as IncomingMessage;
+    return regras
+      .filter((r) => new RegExp(r.regex).test(url.pathname) && matchHas(requisicao, consulta, r.has, r.missing) !== false)
+      .flatMap((r) => r.headers);
+  };
 }
 
 const robotsDe = (cabecalhos: { key: string; value: string }[]) => cabecalhos.filter((c) => c.key.toLowerCase() === "x-robots-tag");
@@ -37,6 +51,10 @@ const PRIVADOS = [
   "/reservar/ABC123/pagamento",
   "/anunciar/dados",
   "/anunciar/enviado",
+  // A etapa do código do cadastro do proprietário, com o e-mail da pessoa no endereço (src/marketplace/acoes.ts).
+  "/anunciar?etapa=codigo&email=pessoa%40exemplo.com",
+  "/anunciar?etapa=codigo&email=pessoa%40exemplo.com&erro=codigo",
+  "/anunciar?email=pessoa%40exemplo.com",
   "/api/health",
   "/api/auth/signin",
   "/api/cron/cotacoes",
@@ -99,6 +117,10 @@ describe("páginas pessoais e internas fora dos buscadores (M7.10)", () => {
     for (const rota of PUBLICOS) expect(robotsDe(de(exemplo(rota))), rota).toEqual([]);
     // Prefixo parecido não é o mesmo endereço.
     for (const caminho of ["/painelx", "/entrada", "/anunciar/outra", "/hospedes", "/convites", "/reservarx"]) expect(robotsDe(de(caminho)), caminho).toEqual([]);
+    // A /anunciar sem o e-mail na consulta continua pública (com erro ou com outra consulta, também), e o e-mail na
+    // consulta de outra página pública não muda nada.
+    for (const endereco of ["/anunciar?erro=email-vazio", "/anunciar?etapa=codigo", "/anunciar?email=", "/anunciar#marketplace", "/?email=pessoa%40exemplo.com", "/imoveis?email=x"])
+      expect(robotsDe(de(endereco)), endereco).toEqual([]);
   });
 
   it("toda rota do app está decidida: pessoal ou interna (fora dos buscadores) ou pública (fica como está)", async () => {
@@ -123,8 +145,9 @@ describe("páginas pessoais e internas fora dos buscadores (M7.10)", () => {
   it("um lugar só: cada endereço da lista vira uma regra com o mesmo cabeçalho, sem repetição", async () => {
     const regras = await nextConfig.headers!();
     const robots = regras.filter((r) => r.headers.some((c) => c.key === NAO_LISTAR.key));
-    expect(robots.map((r) => r.source)).toEqual([...PAGINAS_FORA_DOS_BUSCADORES]);
+    expect(robots.map((r) => (r.has ? { source: r.source, has: r.has } : r.source))).toEqual([...PAGINAS_FORA_DOS_BUSCADORES]);
     for (const r of robots) expect(r.headers).toEqual([NAO_LISTAR]);
-    expect(new Set(PAGINAS_FORA_DOS_BUSCADORES).size).toBe(PAGINAS_FORA_DOS_BUSCADORES.length);
+    const chaves = PAGINAS_FORA_DOS_BUSCADORES.map((e) => JSON.stringify(e));
+    expect(new Set(chaves).size).toBe(chaves.length);
   });
 });

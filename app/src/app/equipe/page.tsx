@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { signOut } from "@/acesso/auth";
 import { obterSessao } from "@/acesso/sessao-atual";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
@@ -13,13 +14,20 @@ import { marcarFeitaAcao, trocarMinhaSenhaAcao } from "@/equipe/acoes";
 import { limpezasDaProfissional } from "@/equipe/equipe";
 import { FRASE_FINAL, lerConfigAgenda } from "@/agenda/agenda";
 import { hojeISO } from "@/lib/datas";
-import { carregarSite } from "@/site/pagina";
 import { metadadosDeAcesso } from "@/site/site";
 
-/** Título e descrição da própria tela (M7.10), não os do painel interno; fora dos buscadores pelo next.config. */
+/** A sessão e o nome da empresa dela, lidos uma vez por requisição: o título da aba e a moldura usam os mesmos. */
+const sessaoDaTela = cache(obterSessao);
+const empresaDaTela = cache((organizacaoId: string) => nomeDaEmpresa(getDb(), organizacaoId));
+
+/**
+ * Título e descrição da própria tela (M7.10), não os do painel interno; fora dos buscadores pelo next.config. O nome é o
+ * da empresa de quem entrou, o mesmo da moldura; sem sessão de limpeza (a tela vai redirecionar), só o nome da tela.
+ */
 export async function generateMetadata(): Promise<Metadata> {
-  const { conteudo } = await carregarSite();
-  return metadadosDeAcesso(conteudo, "Minhas limpezas", "Equipe de limpeza: as limpezas marcadas para você e a agenda da equipe.");
+  const sessao = await sessaoDaTela();
+  const nomeEmpresa = sessao?.papel === "limpeza" && sessao.profissionalId ? await empresaDaTela(sessao.organizacaoId) : "";
+  return metadadosDeAcesso({ nomeEmpresa }, "Minhas limpezas", "Equipe de limpeza: as limpezas marcadas para você e a agenda da equipe.");
 }
 
 const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
@@ -30,7 +38,7 @@ const dia = (d: string) => `${DIAS[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.
  * das cidades escolhidas para ela (só essas) e a senha dela. Sem custo, sem proprietário, sem financeiro.
  */
 export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
-  const sessao = await obterSessao();
+  const sessao = await sessaoDaTela();
   if (!sessao) redirect("/entrar");
   if (sessao.papel === "proprietario") redirect("/portal");
   if (sessao.papel !== "limpeza" || !sessao.profissionalId) redirect("/painel");
@@ -40,7 +48,7 @@ export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
   const [lista, config, empresa, agenda, senha] = await Promise.all([
     limpezasDaProfissional(db, sessao.organizacaoId, sessao.profissionalId, hoje),
     lerConfigAgenda(db, sessao.organizacaoId),
-    nomeDaEmpresa(db, sessao.organizacaoId),
+    empresaDaTela(sessao.organizacaoId),
     agendaDaProfissional(db, sessao.organizacaoId, sessao.profissionalId, hojeISO("America/Sao_Paulo")),
     situacaoDaSenha(db, sessao.usuarioId),
   ]);

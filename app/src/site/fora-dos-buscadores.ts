@@ -13,10 +13,16 @@
 export const NAO_LISTAR = { key: "X-Robots-Tag", value: "noindex, nofollow" };
 
 /**
+ * Um endereço fora dos buscadores, no formato do `next.config.ts`: só o caminho, ou o caminho com uma condição na
+ * consulta do endereço (`has`), quando a mesma página é pública sem ela e pessoal com ela.
+ */
+export type EnderecoForaDosBuscadores = string | { source: string; has: { type: "query"; key: string }[] };
+
+/**
  * Endereços fora dos buscadores, no formato do `next.config.ts`. `:path*` casa o próprio endereço e tudo abaixo dele
  * (`/painel`, `/painel/` e `/painel/reservas/...`), sem pegar vizinhos (`/painelx`).
  */
-export const PAGINAS_FORA_DOS_BUSCADORES = [
+export const PAGINAS_FORA_DOS_BUSCADORES: readonly EnderecoForaDosBuscadores[] = [
   // Painel interno da equipe.
   "/painel/:path*",
   // Tela da equipe de limpeza.
@@ -34,11 +40,19 @@ export const PAGINAS_FORA_DOS_BUSCADORES = [
   // Etapas do cadastro do proprietário no marketplace (a página /anunciar continua pública).
   "/anunciar/dados/:path*",
   "/anunciar/enviado/:path*",
+  // A etapa do código do mesmo cadastro (`/anunciar?etapa=codigo&email=...`): mostra o e-mail da pessoa, que vai também
+  // no endereço. Só com o e-mail na consulta; a /anunciar sem ele continua pública.
+  { source: "/anunciar", has: [{ type: "query", key: "email" }] },
   // Endereços do sistema: login, rotinas, aviso do Mercado Pago, saúde e dados do calendário do site.
   "/api/:path*",
-] as const;
+];
+
+/** Uma regra de cabeçalho do `next.config.ts`. */
+export type RegraForaDosBuscadores = { source: string; has?: { type: "query"; key: string }[]; headers: { key: string; value: string }[] };
 
 /** As regras de cabeçalho do `next.config.ts` para os endereços acima. */
-export function regrasForaDosBuscadores(): { source: string; headers: { key: string; value: string }[] }[] {
-  return PAGINAS_FORA_DOS_BUSCADORES.map((source) => ({ source, headers: [{ ...NAO_LISTAR }] }));
+export function regrasForaDosBuscadores(): RegraForaDosBuscadores[] {
+  return PAGINAS_FORA_DOS_BUSCADORES.map((e) =>
+    typeof e === "string" ? { source: e, headers: [{ ...NAO_LISTAR }] } : { source: e.source, has: e.has.map((h) => ({ ...h })), headers: [{ ...NAO_LISTAR }] },
+  );
 }
