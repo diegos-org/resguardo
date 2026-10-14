@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { lerComoFunciona, secoesParaMostrar, versaoAtual } from "@/configuracoes/como-funciona";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
@@ -6,13 +7,25 @@ import { lerConvite } from "@/convites/convites";
 import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import styles from "@/components/portal/portal.module.css";
 import { carregarSite } from "@/site/pagina";
+import { metadadosDeAcesso } from "@/site/site";
 
-const MOTIVOS: Record<string, string> = {
-  invalido: "Este link de convite não é válido. Confira se copiou o endereço inteiro.",
-  aceito: "Este convite já foi usado. Se foi você, é só entrar normalmente.",
-  revogado: "Este convite foi cancelado. Peça um novo à Sua Casa Leblon.",
-  vencido: "Este convite venceu (vale 7 dias). Peça um novo à Sua Casa Leblon.",
-};
+/** Título e descrição da própria tela (M7.10), não os do painel interno; o link é pessoal e fica fora dos buscadores. */
+export async function generateMetadata(): Promise<Metadata> {
+  const { conteudo } = await carregarSite();
+  return metadadosDeAcesso(conteudo, "Seu convite", "Convite para acompanhar seus imóveis no portal do proprietário.");
+}
+
+/** Por que o link não serve. Pedir um novo à empresa do site (Configurações → Empresa); sem ela, a quem mandou o link. */
+function motivo(m: string, empresa: string): string {
+  const aQuem = empresa ? `à ${empresa}` : "a quem mandou o convite";
+  const textos: Record<string, string> = {
+    invalido: "Este link de convite não é válido. Confira se copiou o endereço inteiro.",
+    aceito: "Este convite já foi usado. Se foi você, é só entrar normalmente.",
+    revogado: `Este convite foi cancelado. Peça um novo ${aQuem}.`,
+    vencido: `Este convite venceu (vale 7 dias). Peça um novo ${aQuem}.`,
+  };
+  return textos[m];
+}
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 
@@ -21,7 +34,8 @@ export default async function PaginaConvite({ params, searchParams }: PageProps<
   const { erro } = await searchParams;
   const db = getDb();
   const [r, { conteudo }] = await Promise.all([lerConvite(db, token), carregarSite()]);
-  const empresa = conteudo?.nomeEmpresa.trim() || "Sua Casa Leblon";
+  // O nome da empresa do site (Configurações → Empresa); sem site configurado, nada de nome suposto.
+  const empresa = conteudo?.nomeEmpresa.trim() ?? "";
   // M5.6: com o "Como funciona" publicado, o convite só segue com o aceite marcado (gravado no login, com o convite).
   // O documento e o nome da empresa são os da organização do convite (o site público pode ser de outra).
   const [documento, empresaDoConvite] = r.ok ? await Promise.all([lerComoFunciona(db, r.convite.organizacaoId).then(versaoAtual), nomeDaEmpresa(db, r.convite.organizacaoId)]) : [null, empresa];
@@ -80,7 +94,7 @@ export default async function PaginaConvite({ params, searchParams }: PageProps<
         </>
       ) : (
         <p role="alert" className={styles.alerta}>
-          {MOTIVOS[r.motivo]}
+          {motivo(r.motivo, empresa)}
         </p>
       )}
     </MolduraPortal>

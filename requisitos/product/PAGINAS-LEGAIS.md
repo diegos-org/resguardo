@@ -355,5 +355,5 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Alteração de reserv
 - Registro do consentimento nos formulários dos proprietários.
 - O cartão (feito no M8.2b, 9/10/2026, com a mesma caixa e a mesma conferência).
 - Lista das versões aceitas em Minha reserva (a página `/reservar/<código>` já mostra).
-- Mapa do site e robots.
+- Mapa do site e robots. As páginas pessoais e internas (cotação, Minha reserva, convite, entrada, painel, portal, equipe e as etapas do cadastro do proprietário, inclusive a do código, que mostra o e-mail da pessoa) já saem dos buscadores desde o M7.10 (14/10/2026), pelo cabeçalho do `next.config.ts`; falta a decisão de Diego sobre as páginas públicas.
 - Rascunho guardado e "despublicar" (D6 e D12).
