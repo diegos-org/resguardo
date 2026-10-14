@@ -6,7 +6,7 @@
  * "Contestação (M8.2e)").
  */
 import { and, asc, eq, inArray, like } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { auditoria, categoriasDespesa, contestacoesPagamento, contratos, cotacoes, eventosContestacao, lancamentos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -49,7 +49,7 @@ import {
   TEXTO_SEM_PROPRIETARIO_NA_RESERVA,
 } from "./contestacao-regras";
 import { type Contestacao, travarCotacao } from "./travas";
-import { type Cenario, cancelar, entradaPadrao, minutos, montarCenario, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
+import { AGORA, type Cenario, cancelar, entradaPadrao, minutos, montarCenario, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "./testes";
 
 let db: Db, close: () => Promise<void>, c: Cenario, equipe: string;
 beforeAll(async () => {
@@ -256,11 +256,20 @@ describe("decisão de quem arca (item 9)", () => {
 
   it("a divisão mudou depois da decisão é calculada na leitura (o motor não grava na disputa); recálculo ao mesmo tempo que a decisão, sem impasse", async () => {
     const x = await disputada();
-    const [r1] = await Promise.all([decidir(x.l, "proporcional", sp("2026-10-22 10:00")), recalcularReservas(db, c.org, { imovelId: c.imovel }, null)]);
-    expect(r1).toMatchObject({ ok: true });
-    const gravada = await linha(x.l.id);
-    await db.update(contratos).set({ comissaoBp: 2000 }).where(eq(contratos.imovelId, c.imovel));
-    await recalcularReservas(db, c.org, { imovelId: c.imovel }, null);
+    // O recálculo só alcança entradas de hoje em diante (relógio real): com o relógio no dia do cenário (1/10), a reserva
+    // de 12/10 entra nele em qualquer data em que o teste rodar.
+    vi.useFakeTimers({ now: AGORA, toFake: ["Date"] });
+    let gravada: Awaited<ReturnType<typeof linha>>;
+    try {
+      const [r1, rec1] = await Promise.all([decidir(x.l, "proporcional", sp("2026-10-22 10:00")), recalcularReservas(db, c.org, { imovelId: c.imovel }, null)]);
+      expect(r1).toMatchObject({ ok: true });
+      expect(rec1.reservas).toBeGreaterThan(0);
+      gravada = await linha(x.l.id);
+      await db.update(contratos).set({ comissaoBp: 2000 }).where(eq(contratos.imovelId, c.imovel));
+      expect((await recalcularReservas(db, c.org, { imovelId: c.imovel }, null)).reservas).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(await linha(x.l.id)).toEqual(gravada);
     const pv = await previaDaDecisao(db, c.org, x.l.id);
     expect(pv.ok && pv.fatos).toMatchObject({ divisaoMudou: true, base: { parteProprietario: gravada.baseParteProprietario, comissao: gravada.baseComissao } });
