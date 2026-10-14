@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import { AVISO_SEM_CONTATO, type ConteudoSite, type ImovelPublico } from "@/site/site";
 import CasaNaoEncontrada, { generateMetadata as metadadosDaCasa } from "../imoveis/[codigo]/not-found";
-import PaginaImovel from "../imoveis/[codigo]/page";
+import PaginaImovel, { generateMetadata as metadadosDoImovel } from "../imoveis/[codigo]/page";
 import Catalogo from "../imoveis/page";
 import NaoEncontradaNoSite, { generateMetadata as metadadosDaPagina } from "../not-found";
 import Inicio from "../page";
@@ -127,9 +127,26 @@ describe("página não encontrada do site (M7.8)", () => {
     const props = { params: Promise.resolve({ codigo: "NAOEXISTE" }), searchParams: Promise.resolve({}) };
     await expect(PaginaImovel(props)).rejects.toThrow("NAO_ENCONTRADA");
     expect(m.imovel).toHaveBeenCalledWith({}, "org", "NAOEXISTE");
-    // Com o notFound(), o Next monta o título com o generateMetadata da not-found ao lado (o do teste acima), não o da página.
     const app = join(dirname(fileURLToPath(import.meta.url)), "..");
     expect(existsSync(join(app, "imoveis", "[codigo]", "not-found.tsx"))).toBe(true);
+    // O título da aba já sai "Casa não encontrada" pelos metadados da própria página, sem depender só da not-found.
+    await metadadosDoImovel(props);
+    expect(m.meta).toHaveBeenLastCalledWith("Casa não encontrada");
+    m.site.mockResolvedValue({ db: {}, conteudo: comTextos({ casaNaoEncontradaTitulo: "Essa casa saiu do site" }) });
+    await metadadosDoImovel(props);
+    expect(m.meta).toHaveBeenLastCalledWith("Essa casa saiu do site");
+  });
+
+  it("página do imóvel: a casa que existe tem o nome dela na aba; site sem organização, o título-base", async () => {
+    const props = { params: Promise.resolve({ codigo: "403" }), searchParams: Promise.resolve({}) };
+    m.imovel.mockResolvedValue(imovel);
+    await metadadosDoImovel(props);
+    expect(m.meta).toHaveBeenLastCalledWith("Studio Exemplo");
+    m.site.mockResolvedValue({ db: {}, conteudo: null });
+    m.imovel.mockClear();
+    await metadadosDoImovel(props);
+    expect(m.meta).toHaveBeenLastCalledWith(undefined);
+    expect(m.imovel).not.toHaveBeenCalled();
   });
 });
 
