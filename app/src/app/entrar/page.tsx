@@ -1,9 +1,20 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { loginCodigoConfigurado, loginConfigurado, loginGoogleConfigurado, loginSenhaConfigurado, signIn } from "@/acesso/auth";
 import { entrarComCodigo, entrarComSenhaAcao, pedirCodigoAcao } from "@/acesso/entrar-acoes";
 import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import styles from "@/components/portal/portal.module.css";
 import { carregarSite } from "@/site/pagina";
+import { metadadosDeAcesso } from "@/site/site";
+
+const OLHO = "Área da equipe e dos proprietários";
+const CHAMADA = "Entre para acessar o painel ou o seu portal.";
+
+/** Título e descrição da própria tela (M7.10), não os do painel interno; fora dos buscadores pelo next.config. */
+export async function generateMetadata(): Promise<Metadata> {
+  const { conteudo } = await carregarSite();
+  return metadadosDeAcesso(conteudo, "Entrar", `${OLHO}. ${CHAMADA}`);
+}
 
 const MENSAGENS: Record<string, string> = {
   "nao-cadastrado": "Este e-mail não tem acesso. Peça a um administrador para cadastrá-lo.",
@@ -20,7 +31,8 @@ const MENSAGENS: Record<string, string> = {
 export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
   const { erro, etapa, email, login, aviso } = await searchParams;
   const { conteudo } = await carregarSite();
-  const empresa = conteudo?.nomeEmpresa.trim() || "Sua Casa Leblon";
+  // O nome da empresa do site (Configurações → Empresa); sem site configurado, a moldura não supõe um nome.
+  const empresa = conteudo?.nomeEmpresa.trim() ?? "";
   const mensagem = typeof erro === "string" ? (MENSAGENS[erro] ?? "Não foi possível entrar. Tente novamente.") : null;
   const emailInformado = typeof email === "string" ? email : "";
   const digitarCodigo = etapa === "codigo" && emailInformado && loginCodigoConfigurado;
@@ -34,9 +46,9 @@ export default async function Entrar({ searchParams }: PageProps<"/entrar">) {
   return (
     <MolduraPortal empresa={empresa} estreito>
       <header>
-        <p className={styles.olho}>Área da equipe e dos proprietários</p>
+        <p className={styles.olho}>{OLHO}</p>
         <h1>Entrar</h1>
-        <p className={styles.miudo}>Entre para acessar o painel ou o seu portal.</p>
+        <p className={styles.miudo}>{CHAMADA}</p>
       </header>
       {mensagem && (
         <p role="alert" className={styles.alerta}>
