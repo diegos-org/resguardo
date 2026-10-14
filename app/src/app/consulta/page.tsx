@@ -12,7 +12,7 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, mensagemDaBusca, montarConsulta } from "@/site/site";
+import { ASSUNTO_CONSULTA, AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato, contatoDoSite, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, mensagemDaBusca, montarConsulta } from "@/site/site";
 
 /** Busca em todas as casas (M7.9): o pedido tem datas, mas nenhuma casa escolhida ("Todas as casas"). */
 const ehBusca = (p: { imovel: string; entrada: string; saida: string }) => !p.imovel && !!(p.entrada || p.saida);
@@ -43,15 +43,15 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   // "Todas as casas" e nenhuma casa para consultar. Uma regra só para os dois casos, decidida aqui antes da busca: no
   // lugar do formulário, o aviso do site sem casas (`semCasasTexto`) e o contato; a frase da consulta ("escolha a
   // casa…") também sai. Vale também para o link de uma casa fora do site: sem casas, o aviso é este, não o da casa.
-  // Na busca, o cabeçalho é o dela (como o título da aba) e, com datas e pessoas válidas, a mensagem do contato já leva
-  // essas informações, como a busca sem casa para o grupo.
+  // Na busca, o cabeçalho é o dela (como o título da aba) e o contato é o da busca sem casa para o grupo: o assunto da
+  // consulta e, com datas e pessoas válidas, a mensagem com essas informações. Fora da busca, o contato padrão do aviso.
   if (!todos.length) {
     const resultado = busca ? await buscarEmTodasAsCasas(db, conteudo.organizacaoId, pedido, todos) : null;
     return (
       <Moldura conteudo={conteudo}>
         {busca ? <CabecalhoBusca textos={textos} /> : cabecalho(false)}
         <div className={styles.consultaColunas}>
-          <SemCasas conteudo={conteudo} mensagem={resultado?.ok ? mensagemDaBusca(pedido, resultado.hospedes) : undefined} />
+          <SemCasas conteudo={conteudo} contato={busca ? { assunto: ASSUNTO_CONSULTA, mensagem: resultado?.ok ? mensagemDaBusca(pedido, resultado.hospedes) : undefined } : undefined} />
         </div>
       </Moldura>
     );
@@ -89,8 +89,10 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
     segurar && imovel
       ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: pedido.entrada, checkout: pedido.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
       : false;
-  // Por onde a conversa continua (WhatsApp, senão e-mail): a regra única do site, para o formulário e para o envio.
+  // Por onde a conversa continua (WhatsApp, senão e-mail): a regra única do site, para o formulário e para o envio, cujo
+  // link (a mensagem pronta, com o assunto da consulta no e-mail) também vem do lugar único, `contatoDoSite`.
   const canal = canalDeContato(conteudo);
+  const envio = prontoParaEnviar && r?.ok ? contatoDoSite(conteudo, { mensagem: r.texto, assunto: ASSUNTO_CONSULTA }) : null;
   return (
     <Moldura conteudo={conteudo}>
       {cabecalho(true)}
@@ -133,17 +135,10 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
             <section className={styles.bloco} aria-labelledby="titulo-mensagem">
               <h3 id="titulo-mensagem">Sua mensagem</h3>
               <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
-              {canal === "whatsapp" && conteudo.whatsapp ? (
+              {envio ? (
                 <p style={{ marginTop: 16 }}>
-                  <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
-                    Enviar pelo WhatsApp
-                    <span aria-hidden="true">↗</span>
-                  </a>
-                </p>
-              ) : canal === "email" ? (
-                <p style={{ marginTop: 16 }}>
-                  <a href={`mailto:${conteudo.email.trim()}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
-                    Enviar por e-mail
+                  <a href={envio.href} className={styles.botao} {...(envio.externo ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+                    {canal === "whatsapp" ? "Enviar pelo WhatsApp" : "Enviar por e-mail"}
                     <span aria-hidden="true">↗</span>
                   </a>
                 </p>

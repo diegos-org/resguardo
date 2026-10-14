@@ -140,12 +140,23 @@ it("sem nenhuma casa publicada, o mesmo aviso em qualquer pedido (M7.8 com a bus
   expect(erradas).not.toContain("A entrada não pode ser antes de hoje.");
   expect(erradas).not.toContain('name="imovel"');
   expect(erradas).toContain(`wa.me/5521900000000?text=${encodeURIComponent("Olá! Vim pelo site e gostaria de falar com a equipe.")}`);
-  // Pelo e-mail (sem WhatsApp no cadastro), as datas e as pessoas da busca vão no corpo da mensagem.
+  // Pelo e-mail (sem WhatsApp no cadastro), as datas e as pessoas da busca vão no corpo da mensagem, com o assunto da
+  // busca (o mesmo da busca com casas no site); com datas erradas, o mesmo assunto, sem corpo.
   m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, whatsapp: null, email: " contato@exemplo.com " } });
   const porEmail = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
-  expect(porEmail).toContain(`href="mailto:contato@exemplo.com?subject=Contato%20pelo%20site&amp;body=${encodeURIComponent("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 12/10/2099 · Saída: 15/10/2099 · 2 pessoas.")}"`);
+  expect(porEmail).toContain(`href="mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade&amp;body=${encodeURIComponent("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 12/10/2099 · Saída: 15/10/2099 · 2 pessoas.")}"`);
   expect(porEmail).toContain("Enviar um e-mail");
+  expect(await html({ entrada: "2020-01-01", saida: "2099-10-15", hospedes: "2" })).toContain('href="mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade"');
+  // Fora da busca (a consulta e o link de uma casa fora do site), o contato padrão do aviso do site sem casas.
+  expect(await html({ imovel: "303" })).toContain('href="mailto:contato@exemplo.com?subject=Contato%20pelo%20site"');
   expect(m.disponibilidade).not.toHaveBeenCalled();
+});
+it("envio da consulta por e-mail (sem WhatsApp no cadastro): a mensagem pronta no corpo, com o assunto da consulta", async () => {
+  m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, whatsapp: null, email: " contato@exemplo.com " } });
+  const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
+  const href = h.match(/href="(mailto:[^"]+)"[^>]*>Enviar por e-mail/)?.[1];
+  expect(href).toMatch(/^mailto:contato@exemplo\.com\?subject=Consulta%20de%20disponibilidade&amp;body=Ol%C3%A1!%20Gostaria/);
+  expect(h).not.toContain("Enviar pelo WhatsApp");
 });
 
 describe("busca em todas as casas (M7.9)", () => {
@@ -295,6 +306,32 @@ describe("busca em todas as casas (M7.9)", () => {
     const h = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "3" });
     expect(h).not.toContain(TEXTOS_SITE_INICIAIS.buscaContato);
     expect(h).toContain("Falar pelo WhatsApp");
+  });
+
+  it("contato por e-mail (sem WhatsApp no cadastro): o mesmo link e o mesmo rótulo com casas no site e no site sem casas", async () => {
+    m.site.mockResolvedValue({ db: {}, conteudo: { ...conteudo, whatsapp: null, email: " contato@exemplo.com " } });
+    const mailto = `href="mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade&amp;body=${encodeURIComponent("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 12/10/2099 · Saída: 15/10/2099 · 3 pessoas.")}"`;
+    // O botão: o link da busca e, logo nele, o rótulo do contato do site.
+    const botao = (h: string) => h.slice(h.indexOf(mailto), h.indexOf("</a>", h.indexOf(mailto)));
+    // Com a lista: o botão depois dela.
+    const comLista = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "3" });
+    expect(comLista).toContain("2 casas na sua busca");
+    expect(botao(comLista)).toMatch(/>Enviar um e-mail<span/);
+    // Nenhuma casa recebe o grupo.
+    m.imoveis.mockResolvedValue([{ ...imovel, codigo: "102", capacidade: 2, fotos: [] }]);
+    const semCasaParaOGrupo = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "3" });
+    expect(semCasaParaOGrupo).toContain(TEXTOS_SITE_INICIAIS.buscaSemCasa);
+    expect(botao(semCasaParaOGrupo)).toMatch(/>Enviar um e-mail<span/);
+    // Site sem nenhuma casa: o aviso do M7.8, com o mesmo contato.
+    m.imoveis.mockResolvedValue([]);
+    const semCasasNoSite = await html({ entrada: "2099-10-12", saida: "2099-10-15", hospedes: "3" });
+    expect(semCasasNoSite).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
+    expect(botao(semCasasNoSite)).toMatch(/>Enviar um e-mail<span/);
+    for (const h of [comLista, semCasaParaOGrupo, semCasasNoSite]) {
+      expect(h).toContain(mailto);
+      expect(h).not.toContain("Falar por e-mail");
+      expect(h).not.toContain("Contato%20pelo%20site");
+    }
   });
 
   it("sem contato no cadastro: o aviso no lugar do botão", async () => {

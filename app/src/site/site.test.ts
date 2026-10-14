@@ -7,6 +7,7 @@ import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
 import {
+  ASSUNTO_CONSULTA,
   CASA_FORA_DO_SITE,
   canalDeContato,
   conferirDatasEPessoas,
@@ -240,15 +241,30 @@ describe("contatoDoSite (M7.8)", () => {
     expect(contatoDoSite({ whatsapp: null, email: "  " })).toBeNull();
   });
 
-  it("com uma mensagem (a busca do M7.9 no site sem casas), ela vai no WhatsApp e no corpo do e-mail; o canal não muda", () => {
+  it("com uma mensagem, ela vai no WhatsApp e no corpo do e-mail; o canal e os rótulos não mudam", () => {
     const texto = mensagemDaBusca({ entrada: "2099-10-12", saida: "2099-10-15" }, 2);
-    expect(contatoDoSite({ whatsapp: "5521900000000", email: "contato@exemplo.com" }, texto)).toEqual({ href: linkWhatsapp("5521900000000", texto), rotulo: "Falar pelo WhatsApp", externo: true });
-    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " }, texto)).toEqual({
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "contato@exemplo.com" }, { mensagem: texto })).toEqual({ href: linkWhatsapp("5521900000000", texto), rotulo: "Falar pelo WhatsApp", externo: true });
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " }, { mensagem: texto })).toEqual({
       href: `mailto:contato@exemplo.com?subject=Contato%20pelo%20site&body=${encodeURIComponent(texto)}`,
       rotulo: "Enviar um e-mail",
       externo: false,
     });
-    expect(contatoDoSite({ whatsapp: null, email: "" }, texto)).toBeNull();
+    expect(contatoDoSite({ whatsapp: null, email: "" }, { mensagem: texto })).toBeNull();
+  });
+
+  it("com o assunto da consulta (a busca do M7.9, com ou sem casas no site, e o envio da consulta): só o assunto do e-mail muda", () => {
+    const texto = mensagemDaBusca({ entrada: "2099-10-12", saida: "2099-10-15" }, 2);
+    expect(ASSUNTO_CONSULTA).toBe("Consulta de disponibilidade");
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " }, { mensagem: texto, assunto: ASSUNTO_CONSULTA })).toEqual({
+      href: `mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade&body=${encodeURIComponent(texto)}`,
+      rotulo: "Enviar um e-mail",
+      externo: false,
+    });
+    // Sem mensagem (a busca com datas erradas no site sem casas): o assunto da consulta, sem corpo.
+    expect(contatoDoSite({ whatsapp: null, email: "contato@exemplo.com" }, { assunto: ASSUNTO_CONSULTA })?.href).toBe("mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade");
+    // O WhatsApp não tem assunto: o mesmo link com ou sem ele.
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "" }, { mensagem: texto, assunto: ASSUNTO_CONSULTA })).toEqual(contatoDoSite({ whatsapp: "5521900000000", email: "" }, { mensagem: texto }));
+    expect(contatoDoSite({ whatsapp: null, email: "" }, { assunto: ASSUNTO_CONSULTA })).toBeNull();
   });
 });
 

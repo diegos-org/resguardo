@@ -343,16 +343,28 @@ export const canalDeContato = (c: Pick<ConteudoSite, "whatsapp" | "email">): Can
 /** Aviso de quando não há WhatsApp nem e-mail no cadastro da empresa (o mesmo na consulta e no aviso do site sem casas). */
 export const AVISO_SEM_CONTATO = "O contato ainda não foi configurado. Volte em breve.";
 
+/** Assunto do e-mail de contato do site sem uma consulta montada (botão do aviso do site sem casas). */
+export const ASSUNTO_CONTATO_SITE = "Contato pelo site";
+/** Assunto do e-mail que continua uma consulta ou uma busca (datas e pessoas na mensagem). */
+export const ASSUNTO_CONSULTA = "Consulta de disponibilidade";
+
+export type OpcoesDoContato = {
+  /** A primeira mensagem da conversa, no WhatsApp e no corpo do e-mail (padrão: `MENSAGEM_CONTATO_SITE`, e o e-mail sai sem corpo). */
+  mensagem?: string;
+  /** Assunto do e-mail (padrão: `ASSUNTO_CONTATO_SITE`). */
+  assunto?: string;
+};
+
 /**
- * Botão de contato do site (M7.8), pelo canal de `canalDeContato`; sem canal, nenhum botão (quem mostra avisa).
- * `mensagem`: a primeira mensagem da conversa, no WhatsApp e no corpo do e-mail (padrão: `MENSAGEM_CONTATO_SITE`, e o
- * e-mail sai sem corpo). A busca em todas as casas com o site sem casas (M7.9) manda as datas e as pessoas pedidas.
+ * Link de contato do site (M7.8), pelo canal de `canalDeContato`; sem canal, nenhum (quem mostra avisa). É o único lugar
+ * que monta o link do WhatsApp ou do e-mail para a conversa com a equipe: o aviso do site sem casas, a busca em todas as
+ * casas (M7.9, com as datas e as pessoas e o assunto `ASSUNTO_CONSULTA`, também no site sem casas) e o envio da consulta.
  */
-export function contatoDoSite(c: Pick<ConteudoSite, "whatsapp" | "email">, mensagem?: string): { href: string; rotulo: string; externo: boolean } | null {
+export function contatoDoSite(c: Pick<ConteudoSite, "whatsapp" | "email">, { mensagem, assunto = ASSUNTO_CONTATO_SITE }: OpcoesDoContato = {}): { href: string; rotulo: string; externo: boolean } | null {
   const canal = canalDeContato(c);
   if (canal === "whatsapp" && c.whatsapp) return { href: linkWhatsapp(c.whatsapp, mensagem ?? MENSAGEM_CONTATO_SITE), rotulo: "Falar pelo WhatsApp", externo: true };
   if (canal === "email")
-    return { href: `mailto:${c.email.trim()}?subject=${encodeURIComponent("Contato pelo site")}${mensagem ? `&body=${encodeURIComponent(mensagem)}` : ""}`, rotulo: "Enviar um e-mail", externo: false };
+    return { href: `mailto:${c.email.trim()}?subject=${encodeURIComponent(assunto)}${mensagem ? `&body=${encodeURIComponent(mensagem)}` : ""}`, rotulo: "Enviar um e-mail", externo: false };
   return null;
 }
 

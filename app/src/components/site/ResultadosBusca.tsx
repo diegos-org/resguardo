@@ -2,11 +2,12 @@ import { diasEntre } from "@/imoveis/regras-venda";
 import type { CasaNaBusca, ResultadoBusca } from "@/site/busca";
 import { MOTIVO_SEM_CAPACIDADE } from "@/site/disponibilidade";
 import { linkDaCasa } from "@/site/link-da-casa";
-import { AVISO_SEM_CONTATO, canalDeContato, type ConteudoSite, type ImovelPublico, linkWhatsapp, mensagemDaBusca, type PedidoConsulta } from "@/site/site";
+import { ASSUNTO_CONSULTA, AVISO_SEM_CONTATO, canalDeContato, type ConteudoSite, contatoDoSite, type ImovelPublico, mensagemDaBusca, type PedidoConsulta } from "@/site/site";
 import { CartaoImovel } from "./CartaoImovel";
 import { brl, TITULO_DA_SITUACAO } from "./Disponibilidade";
 import { FormConsulta } from "./FormConsulta";
 import { TextoComDestaque } from "./Moldura";
+import { BotaoContato } from "./SemCasas";
 import styles from "./site.module.css";
 
 const dataBr = (d: string) => d.split("-").reverse().join("/");
@@ -71,23 +72,13 @@ function SituacaoNaBusca({ casa }: { casa: CasaNaBusca }) {
   );
 }
 
-/** Contato para continuar a conversa: o canal de `canalDeContato` (WhatsApp, senão e-mail), como na consulta; sem nenhum, o aviso. */
+/**
+ * Contato para continuar a conversa: o link de `contatoDoSite` (WhatsApp, senão e-mail), com a mensagem da busca e o
+ * assunto da consulta, o mesmo da busca no site sem casas; sem nenhum canal, o aviso.
+ */
 function Contato({ conteudo, texto }: { conteudo: ConteudoSite; texto: string }) {
-  const canal = canalDeContato(conteudo);
-  if (canal === "whatsapp")
-    return (
-      <a href={linkWhatsapp(conteudo.whatsapp!, texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
-        Falar pelo WhatsApp
-        <span aria-hidden="true">↗</span>
-      </a>
-    );
-  if (canal === "email")
-    return (
-      <a href={`mailto:${conteudo.email.trim()}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(texto)}`} className={styles.botao}>
-        Falar por e-mail
-        <span aria-hidden="true">↗</span>
-      </a>
-    );
+  const contato = contatoDoSite(conteudo, { mensagem: texto, assunto: ASSUNTO_CONSULTA });
+  if (contato) return <BotaoContato contato={contato} />;
   return (
     <p className={styles.aviso} role="note">
       {AVISO_SEM_CONTATO}
