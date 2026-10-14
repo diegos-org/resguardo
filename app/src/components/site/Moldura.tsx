@@ -24,7 +24,8 @@ export function TextoComDestaque({ texto }: { texto: string }) {
  * as outras páginas ficam no miolo centralizado. O desenho é o da `MolduraBase`; aqui só se lê o conteúdo do site.
  */
 export function Moldura({ conteudo, children, largura = "miolo" }: { conteudo: ConteudoSite | null; children: ReactNode; largura?: "miolo" | "cheia" }) {
-  const nome = conteudo?.nomeEmpresa.trim() || "Início";
+  // Sem nome no cadastro (ou sem organização definida), nenhum nome de reserva: a moldura mostra só a marca.
+  const nome = conteudo?.nomeEmpresa.trim() ?? "";
   // Quem vende (Decreto 7.962, art. 2º): razão social, CNPJ e endereço da empresa, quando preenchidos em Configurações → Empresa.
   const id = conteudo?.identidade;
   const identidade = id && (id.razaoSocial || id.cnpj) ? [id.razaoSocial, id.cnpj && `CNPJ ${id.cnpj}`, id.endereco].filter(Boolean).join(" · ") : null;

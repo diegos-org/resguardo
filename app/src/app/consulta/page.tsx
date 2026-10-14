@@ -1,6 +1,6 @@
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
-import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
+import { FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import { SemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
@@ -10,7 +10,7 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
+import { AVISO_SEM_CONTATO, canalDeContato, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, linkWhatsapp, montarConsulta } from "@/site/site";
 
 export const generateMetadata = () => metadadosDoSite("Consulta");
 
@@ -62,6 +62,8 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
     segurar && imovel
       ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: pedido.entrada, checkout: pedido.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
       : false;
+  // Por onde a conversa continua (WhatsApp, senão e-mail): a regra única do site, para o formulário e para o envio.
+  const canal = canalDeContato(conteudo);
   return (
     <Moldura conteudo={conteudo}>
       {cabecalho(true)}
@@ -72,7 +74,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
       )}
       <div className={styles.consultaColunas}>
         <div className={styles.consultaForm}>
-          <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canalDeContato(conteudo)} comPagamento={gate.ok} />
+          <FormConsulta imoveis={todos} valores={pedido} erros={r && !r.ok ? r.erros : {}} hoje={hojeMinimo} canal={canal} comPagamento={gate.ok} />
         </div>
         <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
           <p className={styles.olho}>Sua estadia, sem surpresas</p>
@@ -104,23 +106,23 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
             <section className={styles.bloco} aria-labelledby="titulo-mensagem">
               <h3 id="titulo-mensagem">Sua mensagem</h3>
               <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
-              {conteudo.whatsapp ? (
+              {canal === "whatsapp" && conteudo.whatsapp ? (
                 <p style={{ marginTop: 16 }}>
                   <a href={linkWhatsapp(conteudo.whatsapp, r.texto)} className={styles.botao} target="_blank" rel="noopener noreferrer">
                     Enviar pelo WhatsApp
                     <span aria-hidden="true">↗</span>
                   </a>
                 </p>
-              ) : conteudo.email ? (
+              ) : canal === "email" ? (
                 <p style={{ marginTop: 16 }}>
-                  <a href={`mailto:${conteudo.email}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
+                  <a href={`mailto:${conteudo.email.trim()}?subject=${encodeURIComponent("Consulta de disponibilidade")}&body=${encodeURIComponent(r.texto)}`} className={styles.botao}>
                     Enviar por e-mail
                     <span aria-hidden="true">↗</span>
                   </a>
                 </p>
               ) : (
                 <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>
-                  O contato ainda não foi configurado. Volte em breve.
+                  {AVISO_SEM_CONTATO}
                 </p>
               )}
               <p className={styles.miudo} style={{ marginTop: 12 }}>

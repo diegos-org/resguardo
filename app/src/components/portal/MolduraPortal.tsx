@@ -23,13 +23,15 @@ export function MolduraPortal({
   estreito?: boolean;
   children: ReactNode;
 }) {
-  const nome = empresa.trim() || "Início";
+  // Sem o nome da empresa (a página de erro, que não lê o banco): o link do topo diz só "Início" e o rodapé fica sem o ©,
+  // em vez de um "© 2026 Início" como se fosse o nome da empresa.
+  const nome = empresa.trim();
   return (
     <div className={styles.pagina}>
       <header className={styles.topo}>
         <div className={styles.topoAcoes}>
           <Link href="/" className={styles.marca}>
-            {marcaComDestaque(nome)}
+            {nome ? marcaComDestaque(nome) : "Início"}
           </Link>
           {titulo && <span className={styles.topoTitulo}>{titulo}</span>}
         </div>
@@ -43,9 +45,11 @@ export function MolduraPortal({
       </header>
       <main className={estreito ? `${styles.miolo} ${styles.estreito}` : styles.miolo}>{children}</main>
       <footer className={styles.rodape}>
-        <span>
-          © {new Date().getFullYear()} {nome}
-        </span>
+        {nome && (
+          <span>
+            © {new Date().getFullYear()} {nome}
+          </span>
+        )}
         <Link href="/">Site</Link>
       </footer>
     </div>

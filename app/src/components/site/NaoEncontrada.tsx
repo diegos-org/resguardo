@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { TEXTOS_SITE_INICIAIS, type TextosSite } from "@/configuracoes/textos-site";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { type ConteudoSite, imoveisDoSite } from "@/site/site";
+import { type ConteudoSite, temCasaNoSite } from "@/site/site";
 import { Moldura } from "./Moldura";
 import { SemCasas } from "./SemCasas";
 import styles from "./site.module.css";
@@ -57,11 +57,14 @@ export function NaoEncontrada({ conteudo, tipo, temCasas }: { conteudo: Conteudo
   );
 }
 
-/** A página não encontrada com o conteúdo do site lido nesta requisição (as casas decidem o botão). */
+/**
+ * A página não encontrada com o conteúdo do site lido nesta requisição (o mesmo da página que chamou `notFound()`). Para
+ * o botão, só a conferência curta de que há alguma casa no site, sem a lista nem as fotos.
+ */
 export async function PaginaNaoEncontrada({ tipo }: { tipo: TipoNaoEncontrada }) {
   const { db, conteudo } = await carregarSite();
-  const casas = conteudo ? await imoveisDoSite(db, conteudo.organizacaoId) : [];
-  return <NaoEncontrada conteudo={conteudo} tipo={tipo} temCasas={casas.length > 0} />;
+  const temCasas = conteudo ? await temCasaNoSite(db, conteudo.organizacaoId) : false;
+  return <NaoEncontrada conteudo={conteudo} tipo={tipo} temCasas={temCasas} />;
 }
 
 /** Título da aba da página não encontrada: "Página não encontrada — Nome da empresa". */

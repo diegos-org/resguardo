@@ -24,7 +24,13 @@ vi.mock("next/navigation", () => ({
     throw new Error("NAO_ENCONTRADA");
   },
 }));
-vi.mock("next/link", () => ({ default: ({ children, href, className }: { children: React.ReactNode; href: string; className?: string }) => <a href={href} className={className}>{children}</a> }));
+vi.mock("next/link", () => ({
+  default: ({ children, href, ...resto }: { children: React.ReactNode; href: string; className?: string; "aria-label"?: string }) => (
+    <a href={href} {...resto}>
+      {children}
+    </a>
+  ),
+}));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site }));
 
@@ -49,6 +55,10 @@ describe("erro inesperado na raiz (M7.8)", () => {
     expect(retry).toHaveBeenCalledTimes(1);
     expect(document.body.textContent).not.toContain("detalhe interno");
     expect(document.body.textContent).not.toContain("abc123");
+    // Sem o nome da empresa (viria do banco), nenhum nome de reserva: a marca com o link "Início" e o rodapé sem o ©.
+    expect(screen.getByRole("link", { name: "Início" }).getAttribute("href")).toBe("/");
+    expect(screen.getByRole("contentinfo").textContent).not.toContain("©");
+    expect(screen.getByRole("contentinfo").textContent).not.toContain("Início");
   });
 
   it("nas áreas internas sem página de erro própria: a moldura dos portais, sem o menu do site, e o código do erro", () => {
@@ -60,6 +70,9 @@ describe("erro inesperado na raiz (M7.8)", () => {
     expect(screen.getByRole("link", { name: "Voltar à agenda" }).getAttribute("href")).toBe("/equipe");
     expect(document.body.textContent).toContain("abc123");
     expect(document.body.textContent).not.toContain("detalhe interno");
+    // Sem o nome da empresa: o link do topo diz "Início" e o rodapé não tem "© 2026 Início".
+    expect(screen.getByRole("link", { name: "Início" }).getAttribute("href")).toBe("/");
+    expect(screen.getByRole("contentinfo").textContent).not.toContain("©");
     fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
@@ -121,6 +134,8 @@ describe("portal do proprietário (M7.8): erro e não encontrada na moldura do p
     expect(screen.getByText("Portal do proprietário")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Voltar ao portal" }).getAttribute("href")).toBe("/portal");
     expect(screen.queryByRole("navigation", { name: "Principal" })).toBeNull();
+    // Com o nome conhecido, o © é o da empresa.
+    expect(screen.getByRole("contentinfo").textContent).toContain(`© ${new Date().getFullYear()} Sua Casa Exemplo`);
   });
 
   it("qualquer outro endereço dentro do portal cai na não encontrada do portal", () => {

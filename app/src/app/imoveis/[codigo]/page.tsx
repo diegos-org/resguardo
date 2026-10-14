@@ -5,11 +5,10 @@ import { BairroAPorta } from "@/components/site/BairroAPorta";
 import { olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
-import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
+import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
-import { textosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
@@ -18,14 +17,15 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
+import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
   const { db, conteudo } = await carregarSite();
   const i = conteudo ? await imovelDoSite(db, conteudo.organizacaoId, codigo) : null;
-  // Casa que não existe ou saiu do site (M7.8): a aba diz isso, como a página "Casa não encontrada".
-  return metadadosDoSite(i?.nome ?? (conteudo ? textosDaNaoEncontrada(conteudo.textos, "casa").titulo : undefined));
+  // Casa que não existe ou saiu do site (M7.8): com o notFound() da página, o Next usa o título de ./not-found.tsx
+  // ("Casa não encontrada"), não este.
+  return metadadosDoSite(i?.nome);
 }
 
 export default async function PaginaImovel({ params, searchParams }: PageProps<"/imoveis/[codigo]">) {

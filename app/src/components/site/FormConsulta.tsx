@@ -1,4 +1,4 @@
-import type { ConteudoSite, ErrosConsulta, ImovelPublico, PedidoConsulta } from "@/site/site";
+import type { CanalContato, ErrosConsulta, ImovelPublico, PedidoConsulta } from "@/site/site";
 import { CampoDatas } from "./CampoDatas";
 import styles from "./site.module.css";
 
@@ -7,10 +7,8 @@ import styles from "./site.module.css";
  * empresa (WhatsApp ou e-mail).
  * Só apartamento, datas e pessoas vão no endereço da página — nome e mensagem o visitante escreve
  * direto na conversa (dado pessoal não fica no endereço, no histórico nem em registro de acesso).
+ * O canal (`canal`) vem de `canalDeContato` (@/site/site), a regra única do site.
  */
-export type CanalContato = "whatsapp" | "email" | null;
-/** Por onde a conversa continua: o que está no cadastro da empresa (WhatsApp antes do e-mail). */
-export const canalDeContato = (c: Pick<ConteudoSite, "whatsapp" | "email">): CanalContato => (c.whatsapp ? "whatsapp" : c.email ? "email" : null);
 
 /**
  * Opções de "Hóspedes": de 1 até a maior capacidade dos lugares listados; com alguma capacidade não cadastrada,

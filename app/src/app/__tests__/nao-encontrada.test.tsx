@@ -1,9 +1,12 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
-import type { ConteudoSite, ImovelPublico } from "@/site/site";
+import { AVISO_SEM_CONTATO, type ConteudoSite, type ImovelPublico } from "@/site/site";
 import CasaNaoEncontrada, { generateMetadata as metadadosDaCasa } from "../imoveis/[codigo]/not-found";
-import PaginaImovel, { generateMetadata as metadadosDoImovel } from "../imoveis/[codigo]/page";
+import PaginaImovel from "../imoveis/[codigo]/page";
 import Catalogo from "../imoveis/page";
 import NaoEncontradaNoSite, { generateMetadata as metadadosDaPagina } from "../not-found";
 import Inicio from "../page";
@@ -12,9 +15,9 @@ import Inicio from "../page";
  * M7.8: página não encontrada do site (endereço errado e casa que não existe) e o aviso do site sem nenhuma casa publicada
  * — o caso da produção hoje — na capa, em Nossas casas e na página não encontrada.
  */
-const m = vi.hoisted(() => ({ site: vi.fn(), meta: vi.fn(), imoveis: vi.fn(), imovel: vi.fn() }));
+const m = vi.hoisted(() => ({ site: vi.fn(), meta: vi.fn(), imoveis: vi.fn(), imovel: vi.fn(), tem: vi.fn() }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: m.meta }));
-vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel }));
+vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel, temCasaNoSite: m.tem }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NAO_ENCONTRADA");
@@ -51,6 +54,7 @@ beforeEach(() => {
   m.site.mockResolvedValue({ db: {}, conteudo });
   m.imoveis.mockResolvedValue([imovel]);
   m.imovel.mockResolvedValue(null);
+  m.tem.mockResolvedValue(true);
 });
 
 describe("página não encontrada do site (M7.8)", () => {
@@ -63,6 +67,9 @@ describe("página não encontrada do site (M7.8)", () => {
     expect(h).toMatch(/<a href="\/imoveis"[^>]*>Conhecer as casas/);
     expect(h).not.toContain("could not be found");
     expect(h).not.toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
+    // Para o botão, só a conferência curta de que há casa no site: nada da lista nem das fotos.
+    expect(m.tem).toHaveBeenCalledWith({}, "org");
+    expect(m.imoveis).not.toHaveBeenCalled();
   });
 
   it("casa que não existe: \"Casa não encontrada\" com a frase do estudo", async () => {
@@ -85,7 +92,7 @@ describe("página não encontrada do site (M7.8)", () => {
   });
 
   it("sem nenhuma casa publicada: em vez de levar a um catálogo vazio, o aviso com o contato e a volta ao início", async () => {
-    m.imoveis.mockResolvedValue([]);
+    m.tem.mockResolvedValue(false);
     const h = renderToStaticMarkup(await NaoEncontradaNoSite());
     expect(h).toContain("Página não encontrada");
     expect(h).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
@@ -102,6 +109,7 @@ describe("página não encontrada do site (M7.8)", () => {
     expect(h).toContain("Página não encontrada");
     expect(h).toContain("Voltar ao início");
     expect(h).not.toContain("Conhecer as casas");
+    expect(m.tem).not.toHaveBeenCalled();
     expect(m.imoveis).not.toHaveBeenCalled();
   });
 
@@ -115,15 +123,13 @@ describe("página não encontrada do site (M7.8)", () => {
     expect(m.meta).toHaveBeenLastCalledWith("Essa casa saiu do site");
   });
 
-  it("página do imóvel: código que não existe ou saiu do site cai na página não encontrada, e a aba diz \"Casa não encontrada\"", async () => {
+  it("página do imóvel: código que não existe ou saiu do site cai na página \"Casa não encontrada\" (a aba vem dela)", async () => {
     const props = { params: Promise.resolve({ codigo: "NAOEXISTE" }), searchParams: Promise.resolve({}) };
     await expect(PaginaImovel(props)).rejects.toThrow("NAO_ENCONTRADA");
     expect(m.imovel).toHaveBeenCalledWith({}, "org", "NAOEXISTE");
-    await metadadosDoImovel(props);
-    expect(m.meta).toHaveBeenLastCalledWith("Casa não encontrada");
-    m.imovel.mockResolvedValue(imovel);
-    await metadadosDoImovel(props);
-    expect(m.meta).toHaveBeenLastCalledWith("Studio Exemplo");
+    // Com o notFound(), o Next monta o título com o generateMetadata da not-found ao lado (o do teste acima), não o da página.
+    const app = join(dirname(fileURLToPath(import.meta.url)), "..");
+    expect(existsSync(join(app, "imoveis", "[codigo]", "not-found.tsx"))).toBe(true);
   });
 });
 
@@ -145,19 +151,24 @@ describe("site sem nenhuma casa publicada (M7.8)", () => {
     expect(h).not.toContain("Escolha um apartamento");
   });
 
-  it("o aviso é o texto editado em Configurações → Site; sem WhatsApp, o botão é o e-mail; sem os dois, só o texto", async () => {
+  it("o aviso é o texto editado em Configurações → Site; sem WhatsApp, o botão é o e-mail; sem os dois, o aviso de contato não configurado", async () => {
     m.site.mockResolvedValue({ db: {}, conteudo: comTextos({ semCasasTexto: "Aviso fictício." }, { whatsapp: null, email: "contato@exemplo.com" }) });
     let h = renderToStaticMarkup(await Catalogo());
     expect(h).toContain("Aviso fictício.");
     expect(h).toContain('href="mailto:contato@exemplo.com?subject=Contato%20pelo%20site"');
     expect(h).toContain("Enviar um e-mail");
     expect(h).not.toContain("Falar pelo WhatsApp");
-    m.site.mockResolvedValue({ db: {}, conteudo: comTextos({ semCasasTexto: "" }, { whatsapp: null, email: "" }) });
-    h = renderToStaticMarkup(await Catalogo());
-    // Salvo vazio (a tela não deixa, mas o dado pode vir assim): o texto-base, nunca um aviso em branco.
-    expect(h).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
-    expect(h).not.toContain("Enviar um e-mail");
-    expect(h).not.toContain("wa.me");
+    expect(h).not.toContain(AVISO_SEM_CONTATO);
+    for (const vazio of ["", "   "]) {
+      m.site.mockResolvedValue({ db: {}, conteudo: comTextos({ semCasasTexto: vazio }, { whatsapp: null, email: vazio }) });
+      h = renderToStaticMarkup(await Catalogo());
+      // Salvo vazio ou só com espaços (a tela não deixa, mas o dado pode vir assim): o texto-base, nunca um aviso em branco.
+      expect(h).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
+      // Sem canal (um e-mail só de espaços também não é canal): a página diz que o contato não foi configurado.
+      expect(h).toContain(AVISO_SEM_CONTATO);
+      expect(h).not.toContain("mailto:");
+      expect(h).not.toContain("wa.me");
+    }
   });
 
   it("com casas, nada muda: a vitrine e a lista aparecem e o aviso não", async () => {

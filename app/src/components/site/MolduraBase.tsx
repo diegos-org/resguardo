@@ -34,9 +34,11 @@ const IconeWhatsapp = () => (
 /**
  * Cabeçalho (floresta) e rodapé (profundo) do site público, com o botão do WhatsApp quando há o endereço dele.
  * `largura="cheia"` é para a página inicial, que tem faixas de cor de ponta a ponta; as outras ficam no miolo.
+ * Sem o nome da empresa (a página de erro, que não lê o banco, ou o site em configuração), nenhum nome é inventado: o
+ * cabeçalho mostra só a marca, com o link "Início" para quem usa leitor de tela, e o rodapé fica sem a frase e sem o ©.
  */
 export function MolduraBase({
-  nome,
+  nome: nomeRecebido = "",
   marca = MARCA_PADRAO,
   rodape,
   identidade = null,
@@ -44,8 +46,8 @@ export function MolduraBase({
   largura = "miolo",
   children,
 }: {
-  /** Nome da empresa (o texto da marca e do ©). */
-  nome: string;
+  /** Nome da empresa (o texto da marca e do ©); vazio ou omitido = não conhecido. */
+  nome?: string;
   marca?: string;
   /** Frase do rodapé; vazia = o nome. */
   rodape?: string;
@@ -57,12 +59,14 @@ export function MolduraBase({
   children: ReactNode;
 }) {
   const ano = new Date().getFullYear();
+  const nome = nomeRecebido.trim();
+  const frase = rodape?.trim() || nome;
   return (
     <div className={styles.pagina}>
       <header className={styles.topo}>
-        <Link href="/" className={styles.marca}>
+        <Link href="/" className={styles.marca} aria-label={nome ? undefined : "Início"}>
           <Image src={marca} alt="" width={40} height={40} unoptimized className={styles.marcaIcone} />
-          <span>{marcaComDestaque(nome)}</span>
+          {nome && <span>{marcaComDestaque(nome)}</span>}
         </Link>
         <nav className={styles.menu} aria-label="Principal">
           <Link href="/imoveis" className={styles.menuCelularOculto}>
@@ -84,7 +88,7 @@ export function MolduraBase({
       </header>
       <main className={largura === "cheia" ? styles.conteudo : `${styles.conteudo} ${styles.miolo}`}>{children}</main>
       {whatsapp && (
-        <a className={styles.whatsapp} href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Falar com ${nome} pelo WhatsApp`}>
+        <a className={styles.whatsapp} href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={nome ? `Falar com ${nome} pelo WhatsApp` : "Falar pelo WhatsApp"}>
           <IconeWhatsapp />
         </a>
       )}
@@ -92,9 +96,9 @@ export function MolduraBase({
         <div className={styles.rodapeDentro}>
           <strong className={styles.rodapeMarca}>
             <Image src={marca} alt="" width={34} height={34} unoptimized className={styles.marcaIcone} />
-            <span>{marcaComDestaque(nome)}</span>
+            {nome && <span>{marcaComDestaque(nome)}</span>}
           </strong>
-          <p>{rodape || nome}</p>
+          {frase && <p>{frase}</p>}
           <div className={styles.rodapeLinks}>
             <Link href="/imoveis">Nossas casas</Link>
             <Link href="/consulta">Consulta</Link>
@@ -109,9 +113,11 @@ export function MolduraBase({
             <Link href="/cancelamento">Cancelamento</Link>
           </div>
           {identidade && <small className={styles.rodapeIdentidade}>{identidade}</small>}
-          <small>
-            © {ano} {nome}
-          </small>
+          {nome && (
+            <small>
+              © {ano} {nome}
+            </small>
+          )}
         </div>
       </footer>
     </div>

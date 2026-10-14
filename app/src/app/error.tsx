@@ -16,7 +16,8 @@ export default function ErroNaPagina({ error, retry }: { error: Error & { digest
   const interna = molduraDoErro(usePathname() ?? "/");
   if (interna) return <ErroNoPortal titulo={interna.titulo} volta={interna.volta} digest={error.digest} retry={retry} />;
   return (
-    <MolduraBase nome="Início">
+    // Sem o nome da empresa (viria do banco): a moldura mostra só a marca do estudo, sem inventar um nome.
+    <MolduraBase>
       <section className={styles.paginaAviso} aria-labelledby="titulo-erro">
         <h1 id="titulo-erro">Algo não saiu como esperado</h1>
         <p>Não conseguimos abrir esta página agora. Tente de novo em instantes.</p>

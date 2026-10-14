@@ -23,7 +23,8 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "chamada", rotulo: "Chamada final (título da faixa verde antes do rodapé)", limite: 120, linhas: 1 },
   { chave: "contato", rotulo: "Texto de contato", limite: 500, linhas: 3 },
   { chave: "rodape", rotulo: "Rodapé", limite: 240, linhas: 2 },
-  // Página não encontrada e site sem casas (M7.8): o texto-base vem do estudo aprovado (prototipos/scl-publico).
+  // Página não encontrada e site sem casas (M7.8): os títulos e as frases da não encontrada vêm do estudo aprovado
+  // (prototipos/scl-publico, `errorPage`); o aviso do site sem casas é um texto-base novo, para Diego revisar.
   { chave: "naoEncontradoTitulo", rotulo: "Página não encontrada: título (endereço errado ou que saiu do site)", limite: 120, linhas: 1 },
   { chave: "naoEncontradoTexto", rotulo: "Página não encontrada: frase abaixo do título (vazio = só o título e o botão)", limite: 240, linhas: 2 },
   { chave: "casaNaoEncontradaTitulo", rotulo: "Casa não encontrada: título (link de uma casa que não existe ou saiu do site)", limite: 120, linhas: 1 },
@@ -145,7 +146,8 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   naoEncontradoTexto: "Você pode voltar ao catálogo para escolher sua casa.",
   casaNaoEncontradaTitulo: "Casa não encontrada",
   casaNaoEncontradaTexto: "Conheça os imóveis disponíveis no catálogo.",
-  // Sem nenhuma casa publicada (M7.8): neutro, sem prometer data nem novidade; o contato vem no botão abaixo.
+  // Sem nenhuma casa publicada (M7.8): texto-base novo (o estudo não tinha esse caso), para Diego revisar. Neutro, sem
+  // prometer data nem novidade; o contato vem no botão abaixo (sem canal, o aviso de contato não configurado).
   semCasasTexto: "No momento, nenhuma casa está aberta para reserva pelo site. Se quiser, fale com a gente.",
   // Pagamento no site (M8.2a): texto-base para Diego revisar. O convite não cita a forma (M8.2b: Pix ou cartão).
   pagamentoConvite: "Pague aqui mesmo: assim que o pagamento é aprovado, a reserva fica confirmada, sem precisar esperar a equipe.",
