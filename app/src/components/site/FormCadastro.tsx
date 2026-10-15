@@ -2,23 +2,23 @@
 
 import { useActionState, useState } from "react";
 import type { EstadoCadastro } from "@/marketplace/acoes";
-import { CAMPO_AUTORIZACAO, type TextoAutorizacao, textoDaAutorizacao } from "@/proprietarios/autorizacao";
+import { CAMPO_AUTORIZACAO, type TextoAutorizacao } from "@/proprietarios/autorizacao";
 import styles from "./site.module.css";
 
 type Acao = (a: EstadoCadastro, f: FormData) => Promise<EstadoCadastro>;
 
 /**
  * Formulário público do cadastro marketplace (M12.3). Depois de um erro, volta com o que foi digitado. O texto da caixa
- * de autorização vem de `proprietarios/autorizacao` (M7.14), o mesmo que o servidor grava; o campo escondido leva só a
- * marca desse texto. Se ele mudou depois que a página abriu, o servidor devolve o texto novo, que continua na tela nos
- * erros seguintes (eles não trazem o texto de novo).
+ * de autorização (`autorizacao`) é a versão em vigor, lida pela página no servidor (M7.15), a mesma que o servidor confere
+ * e grava no envio (M7.14); o campo escondido leva só a marca desse texto. Se ele mudou depois que a página abriu, o
+ * servidor devolve o texto novo, que continua na tela nos erros seguintes (eles não trazem o texto de novo).
  */
-export function FormCadastro({ enviar, empresa }: { enviar: Acao; empresa: string }) {
+export function FormCadastro({ enviar, autorizacao: daPagina }: { enviar: Acao; autorizacao: TextoAutorizacao }) {
   const [estado, acao, enviando] = useActionState(enviar, {});
   const v = (k: string, padrao = "") => estado.valores?.[k] ?? padrao;
   const [doServidor, setDoServidor] = useState<TextoAutorizacao | undefined>(estado.autorizacao);
   if (estado.autorizacao && estado.autorizacao.marca !== doServidor?.marca) setDoServidor(estado.autorizacao);
-  const autorizacao = estado.autorizacao ?? doServidor ?? textoDaAutorizacao("cadastro", empresa);
+  const autorizacao = estado.autorizacao ?? doServidor ?? daPagina;
   const [anuncio, setAnuncio] = useState(v("anuncio"));
   const erro = (k: keyof NonNullable<EstadoCadastro["erros"]>) =>
     estado.erros?.[k] ? (

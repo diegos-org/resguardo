@@ -7,6 +7,8 @@ import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
 import { TIPOS_MENSAGEM_HOSPEDE } from "@/db/schema";
 import { salvarConfigMensagens } from "@/mensagens/hospede";
+import { FORMULARIOS_PROPRIETARIO, type FormularioProprietario } from "@/proprietarios/autorizacao";
+import { CAIXAS_AUTORIZACAO, publicarTextoAutorizacao } from "./autorizacao-proprietarios";
 import { type ErrosEmpresa, salvarEmpresa, validarEmpresa } from "./empresa";
 import { atualizarModelo, criarModelo, type ErrosModelo, excluirModelo } from "./modelos";
 import { lerFormRegras } from "./regras-financeiras";
@@ -123,6 +125,31 @@ export async function publicarPaginaLegalAcao(_a: EstadoForm, form: FormData): P
   return {
     ok: true,
     aviso: r.mudou ? `Versão ${r.versao.numero} publicada em ${data}. O site já mostra esta versão; os próximos pagamentos pedem o aceite dela.` : `Nada mudou: a versão ${r.versao.numero}, de ${data}, continua valendo.`,
+  };
+}
+
+/**
+ * Texto da caixa de autorização de um formulário de "Anuncie seu imóvel" (M7.15): publica a versão seguinte quando o
+ * texto mudou. Recusada (texto vazio ou inválido, outra pessoa publicou no meio), nada é revalidado e o formulário mantém
+ * o que foi digitado e a versão que mostrava — a mesma regra do "Como funciona" e das páginas legais.
+ */
+export async function publicarAutorizacaoAcao(_a: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const sessao = await sessaoConfig();
+  const f = String(form.get("formulario") ?? "");
+  if (!(FORMULARIOS_PROPRIETARIO as readonly string[]).includes(f)) return { mensagem: "Formulário desconhecido. Recarregue a página." };
+  const formulario = f as FormularioProprietario;
+  const base = String(form.get("versaoBase") ?? "");
+  if (!/^\d{1,6}$/.test(base)) return { mensagem: "Recarregue a página e tente de novo.", valores: campos(form) };
+  const r = await publicarTextoAutorizacao(getDb(), sessao.organizacaoId, formulario, form.get("texto"), sessao.usuarioId, hojeISO(), Number(base));
+  if (!r.ok) return { mensagem: r.erro, erros: r.erros, valores: campos(form) };
+  revalidatePath("/painel/configuracoes/autorizacao-proprietarios");
+  revalidatePath("/anunciar", "layout");
+  const caixa = CAIXAS_AUTORIZACAO[formulario].titulo.toLowerCase();
+  if (!r.mudou) return { ok: true, aviso: `Nada mudou no texto: a versão ${r.versao.numero} continua valendo.` };
+  const data = r.versao.data.split("-").reverse().join("/");
+  return {
+    ok: true,
+    aviso: `Versão ${r.versao.numero} publicada em ${data}. A caixa do ${caixa} já mostra o texto novo; os pedidos já recebidos continuam com o texto que guardam.`,
   };
 }
 

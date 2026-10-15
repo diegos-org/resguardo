@@ -1,55 +1,81 @@
 import { describe, expect, it } from "vitest";
 import {
+  autorizacaoDeOrigem,
   CAMPO_AUTORIZACAO,
-  conferirAutorizacao,
+  ERROS_TEXTO_AUTORIZACAO,
   FORMULARIOS_PROPRIETARIO,
+  LIMITE_TEXTO_AUTORIZACAO,
   lerRegistroAutorizacao,
   marcaDoFormulario,
+  montarAutorizacao,
   SEM_REGISTRO_AUTORIZACAO,
-  TEXTOS_AUTORIZACAO,
-  textoDaAutorizacao,
+  TEXTOS_ORIGEM_AUTORIZACAO,
+  VERSAO_ORIGEM_AUTORIZACAO,
+  validarTextoAutorizacao,
 } from "./autorizacao";
 
 /**
- * Cada versão já usada do texto de cada caixa (M7.14). O registro de um envio guarda o texto inteiro, mas a versão também
- * precisa contar a verdade: mudar o texto sem subir a versão faz este teste falhar. Texto novo = versão nova aqui, sem
- * tirar as anteriores.
+ * A versão 1 de cada caixa, exatamente como o M7.14 a mostrou e gravou nos envios (antes do M7.15, este teste guardava
+ * cada versão do código). Ela continua sendo a versão 1 do motor de versões (a de origem): mudar o texto aqui criaria
+ * duas "versão 1" diferentes — os envios já gravados com a versão 1 têm este texto.
  */
-const VERSOES: Record<(typeof FORMULARIOS_PROPRIETARIO)[number], Record<number, string>> = {
-  contato: { 1: "Autorizo o uso destes dados só para a {empresa} me responder sobre a gestão do imóvel." },
-  cadastro: { 1: "Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo." },
+const VERSAO_1: Record<(typeof FORMULARIOS_PROPRIETARIO)[number], string> = {
+  contato: "Autorizo o uso destes dados só para a {empresa} me responder sobre a gestão do imóvel.",
+  cadastro: "Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo.",
 };
 
-describe("texto da autorização dos proprietários (M7.14)", () => {
-  it.each(FORMULARIOS_PROPRIETARIO)("%s: o texto atual é o da versão registrada (texto novo pede versão nova)", (f) => {
-    const { versao, modelo } = TEXTOS_AUTORIZACAO[f];
-    expect(VERSOES[f][versao]).toBe(modelo);
+describe("texto da autorização dos proprietários (M7.14; editável no M7.15)", () => {
+  it.each(FORMULARIOS_PROPRIETARIO)("%s: a versão de origem é a 1, com o texto de hoje, e não pode ser trocada", (f) => {
+    expect(VERSAO_ORIGEM_AUTORIZACAO).toBe(1);
+    expect(TEXTOS_ORIGEM_AUTORIZACAO[f]).toBe(VERSAO_1[f]);
+    expect(Object.isFrozen(TEXTOS_ORIGEM_AUTORIZACAO)).toBe(true);
+    // O texto de origem passa nas regras de publicação (é um texto que o painel aceitaria).
+    expect(validarTextoAutorizacao(VERSAO_1[f])).toEqual({ ok: true, texto: VERSAO_1[f] });
   });
 
-  it("monta o texto com o nome da empresa, como aparece ao lado da caixa", () => {
-    expect(textoDaAutorizacao("contato", "Sua Casa Exemplo")).toMatchObject({ versao: 1, texto: "Autorizo o uso destes dados só para a Sua Casa Exemplo me responder sobre a gestão do imóvel." });
-    expect(textoDaAutorizacao("contato", "  Sua Casa Exemplo  ").texto).toContain("para a Sua Casa Exemplo me");
+  it("monta o texto com o nome da empresa, como aparece ao lado da caixa (o mesmo que o M7.14 mostrava)", () => {
+    expect(autorizacaoDeOrigem("contato", "Sua Casa Exemplo")).toMatchObject({ versao: 1, texto: "Autorizo o uso destes dados só para a Sua Casa Exemplo me responder sobre a gestão do imóvel." });
+    expect(autorizacaoDeOrigem("contato", "  Sua Casa Exemplo  ").texto).toContain("para a Sua Casa Exemplo me");
     // Sem nome cadastrado, a frase continua legível (não fica "para a  me responder").
-    expect(textoDaAutorizacao("contato", " ").texto).toContain("para a empresa me responder");
-    expect(textoDaAutorizacao("cadastro", "Sua Casa Exemplo").texto).toBe("Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo.");
+    expect(autorizacaoDeOrigem("contato", " ").texto).toContain("para a empresa me responder");
+    expect(autorizacaoDeOrigem("cadastro", "Sua Casa Exemplo").texto).toBe("Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo.");
+    // Texto editado: o marcador vale em qualquer caixa e em qualquer lugar do texto, quantas vezes aparecer.
+    expect(montarAutorizacao(2, "Autorizo a {empresa} (e só a {empresa}) a analisar o cadastro.", "Casa Exemplo")).toMatchObject({
+      versao: 2,
+      texto: "Autorizo a Casa Exemplo (e só a Casa Exemplo) a analisar o cadastro.",
+    });
   });
 
-  it("a marca é curta, igual para o mesmo texto e muda com o texto ou a versão", () => {
-    const a = textoDaAutorizacao("contato", "Sua Casa Exemplo");
+  it("a marca é curta, igual para o mesmo texto e muda com o texto, o nome da empresa ou a versão", () => {
+    const a = autorizacaoDeOrigem("contato", "Sua Casa Exemplo");
     expect(a.marca).toMatch(/^v1\.[0-9a-z]{1,7}$/);
-    expect(textoDaAutorizacao("contato", "Sua Casa Exemplo").marca).toBe(a.marca);
-    expect(textoDaAutorizacao("contato", "Outra Empresa").marca).not.toBe(a.marca);
-    expect(textoDaAutorizacao("cadastro", "Sua Casa Exemplo").marca).not.toBe(a.marca);
+    // A mesma marca do M7.14 (a impressão não mudou): página aberta antes da publicação deste item continua valendo.
+    expect(a.marca).toBe(montarAutorizacao(1, VERSAO_1.contato, "Sua Casa Exemplo").marca);
+    expect(autorizacaoDeOrigem("contato", "Outra Empresa").marca).not.toBe(a.marca);
+    expect(autorizacaoDeOrigem("cadastro", "Sua Casa Exemplo").marca).not.toBe(a.marca);
+    expect(montarAutorizacao(2, VERSAO_1.contato, "Sua Casa Exemplo").marca).not.toBe(a.marca);
+    expect(montarAutorizacao(2, "Outro texto.", "Sua Casa Exemplo").marca).toMatch(/^v2\./);
     // A marca não carrega o texto (o formulário manda só ela).
     expect(a.marca).not.toContain("Autorizo");
   });
 
-  it("confere a marca enviada contra o texto atual e devolve sempre o texto atual", () => {
-    const atual = textoDaAutorizacao("contato", "Sua Casa Exemplo");
-    expect(conferirAutorizacao("contato", "Sua Casa Exemplo", atual.marca)).toEqual({ ok: true, autorizacao: atual });
-    expect(conferirAutorizacao("contato", "Casa Nova Exemplo", atual.marca)).toEqual({ ok: false, autorizacao: textoDaAutorizacao("contato", "Casa Nova Exemplo") });
-    expect(conferirAutorizacao("contato", "Sua Casa Exemplo", atual.texto)).toMatchObject({ ok: false });
-    expect(conferirAutorizacao("contato", "Sua Casa Exemplo", "")).toMatchObject({ ok: false });
+  it("texto para publicar: pontas e espaços seguidos arrumados; vazio, longo, com quebra, invisível, < > ou outra chave, recusado", () => {
+    expect(validarTextoAutorizacao("  Autorizo   a {empresa}\ta responder.  ")).toEqual({ ok: true, texto: "Autorizo a {empresa} a responder." });
+    for (const vazio of ["", "   ", "\n\n", null, undefined, 42]) expect(validarTextoAutorizacao(vazio)).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.vazio });
+    expect(validarTextoAutorizacao("x".repeat(LIMITE_TEXTO_AUTORIZACAO))).toMatchObject({ ok: true });
+    expect(validarTextoAutorizacao("x".repeat(LIMITE_TEXTO_AUTORIZACAO + 1))).toEqual({ ok: false, erro: `Máximo de ${LIMITE_TEXTO_AUTORIZACAO} caracteres (o texto tem ${LIMITE_TEXTO_AUTORIZACAO + 1}).` });
+    expect(validarTextoAutorizacao("Autorizo o uso.\r\nOutra linha.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.linhas });
+    for (const invisivel of ["Autorizo\u200b o uso.", "Autorizo \u202eosu o.", "Autorizo\u0007 o uso.", "Autorizo o\ufeff uso."]) {
+      expect(validarTextoAutorizacao(invisivel)).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.invisivel });
+    }
+    expect(validarTextoAutorizacao("Autorizo o <b>uso</b>.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.marcacao });
+    expect(validarTextoAutorizacao("Autorizo a {nome} a responder.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.chaves });
+    expect(validarTextoAutorizacao("Autorizo a {empresa a responder.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.chaves });
+    expect(validarTextoAutorizacao("Autorizo a {{empresa}} a responder.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.chaves });
+    // Nas pontas, o invisível sai junto com os espaços (o texto mostrado é o mesmo).
+    expect(validarTextoAutorizacao("\ufeffAutorizo o uso.")).toEqual({ ok: true, texto: "Autorizo o uso." });
+    // Acentos, aspas e travessão são texto comum.
+    expect(validarTextoAutorizacao("Autorizo — de acordo com a “política” — o uso.")).toMatchObject({ ok: true });
   });
 
   it("lê a marca do campo escondido: só texto, sem espaços nas pontas e com tamanho limitado", () => {

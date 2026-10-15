@@ -15,21 +15,22 @@
  *
  * Autorização (M7.14): o pedido guarda, no mesmo insert, quando o envio com a caixa marcada chegou ao servidor (relógio
  * do servidor, o mesmo `criadoEm`), a versão e o texto exato dela, com o nome da empresa lido no envio (`./autorizacao`).
- * O texto gravado é sempre o do servidor; o formulário manda só a marca do texto que mostrou, e marca que não confere
- * (texto mudou depois que a página abriu) é recusada.
+ * O texto gravado é sempre o do servidor — desde o M7.15, a versão em vigor editada no painel
+ * (`configuracoes/autorizacao-proprietarios`); o formulário manda só a marca do texto que mostrou, e marca que não
+ * confere (texto mudou depois que a página abriu) é recusada.
  */
 import { and, asc, count, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { emailValido } from "@/acesso/codigo-email";
 import { normalizarEmail } from "@/acesso/entrada";
 import { apagarContasVelhas, contarNaJanela, type Limite } from "@/acesso/senha";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { lerEmpresa } from "@/configuracoes/empresa";
+import { conferirAutorizacao } from "@/configuracoes/autorizacao-proprietarios";
 import { pedidosContatoProprietario, type SituacaoPedidoContato, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
 import { uuidValido } from "@/lib/ids";
-import { conferirAutorizacao, ERRO_AUTORIZACAO_MUDOU, marcaDoFormulario, type TextoAutorizacao } from "./autorizacao";
+import { ERRO_AUTORIZACAO_MUDOU, marcaDoFormulario, type TextoAutorizacao } from "./autorizacao";
 import { ERRO_TELEFONE_DDD, telefoneComDddValido } from "./documento";
 
 /** Pedidos com o mesmo e-mail em 24 horas (o e-mail não é conferido: o teto passa sozinho, ninguém fica bloqueado). */
@@ -146,8 +147,8 @@ export type ResultadoRegistro = { ok: true; pedido: PedidoContato } | { ok: fals
 /**
  * Grava o pedido como "novo", respeitando os tetos. `origem` = endereço de quem enviou (ver `origemDoPedido`); sem ele,
  * só valem os outros tetos. Os tetos por e-mail e por hora da organização são conferidos e gravados sob a mesma trava.
- * Junto, no mesmo insert, o registro da autorização: agora, a versão e o texto atual da caixa, com o nome da empresa lido
- * nesta transação — se a marca do formulário não for a desse texto, nada é gravado.
+ * Junto, no mesmo insert, o registro da autorização: agora, a versão em vigor do texto da caixa e o texto dela, com o nome
+ * da empresa lido nesta transação — se a marca do formulário não for a desse texto, nada é gravado.
  */
 export async function registrarPedidoContato(db: Db, organizacaoId: string, dados: DadosPedidoContato, agora: Date, origem: string | null = null): Promise<ResultadoRegistro> {
   const email = normalizarEmail(dados.email);
@@ -172,8 +173,8 @@ export async function registrarPedidoContato(db: Db, organizacaoId: string, dado
     if ((await desde(UM_DIA_MS, eq(pedidosContatoProprietario.email, email))) >= MAX_POR_EMAIL_POR_DIA) return { ok: false as const, erro: ERRO_LIMITE_POR_EMAIL };
     if ((await desde(UMA_HORA_MS)) >= MAX_POR_HORA) return { ok: false as const, erro: ERRO_LIMITE_TOTAL };
     const { marcaAutorizacao, ...campos } = dados;
-    // O texto que se grava é o do servidor, com o nome da empresa de agora (o mesmo que a página mostra).
-    const { ok: confere, autorizacao } = conferirAutorizacao("contato", (await lerEmpresa(tx, organizacaoId)).nome, marcaAutorizacao);
+    // O texto que se grava é o do servidor: a versão em vigor (M7.15), com o nome da empresa de agora (o mesmo que a página mostra).
+    const { ok: confere, autorizacao } = await conferirAutorizacao(tx, organizacaoId, "contato", marcaAutorizacao);
     if (!confere) return { ok: false as const, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao };
     const [pedido] = await tx
       .insert(pedidosContatoProprietario)

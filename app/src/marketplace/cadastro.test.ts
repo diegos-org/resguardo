@@ -7,7 +7,8 @@ import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
 import { criarToken, lerToken } from "@/lib/token-assinado";
 import { salvarEmpresa } from "@/configuracoes/empresa";
-import { ERRO_AUTORIZACAO_MUDOU, TEXTOS_AUTORIZACAO, textoDaAutorizacao } from "@/proprietarios/autorizacao";
+import { publicarTextoAutorizacao } from "@/configuracoes/autorizacao-proprietarios";
+import { autorizacaoDeOrigem, ERRO_AUTORIZACAO_MUDOU, montarAutorizacao } from "@/proprietarios/autorizacao";
 import {
   aprovarCadastro,
   contarPendentes,
@@ -28,7 +29,7 @@ let correio: CorreioMemoria;
 const segredo = "segredo-de-teste";
 const agora = new Date("2026-09-25T15:00:00Z");
 /** Marca do texto da caixa que a página mostra (M7.14). */
-const marca = (empresa = "Sua Casa Exemplo") => textoDaAutorizacao("cadastro", empresa).marca;
+const marca = (empresa = "Sua Casa Exemplo") => autorizacaoDeOrigem("cadastro", empresa).marca;
 const TEXTO_V1 = "Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo.";
 
 const form = (over: Record<string, string> = {}) => ({
@@ -221,22 +222,19 @@ describe("registro da autorização (M7.14)", () => {
 
   it("marca que não é a do texto atual (ou nenhuma): recusa com o texto atual e não grava nada", async () => {
     for (const enviada of [TEXTO_V1, "v1.qualquer", ""]) {
-      expect(await enviar("maria@example.com", { autorizacao: enviada })).toEqual({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: textoDaAutorizacao("cadastro", "Sua Casa Exemplo") });
+      expect(await enviar("maria@example.com", { autorizacao: enviada })).toEqual({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: autorizacaoDeOrigem("cadastro", "Sua Casa Exemplo") });
     }
     expect(await linhas()).toEqual([]);
   });
 
-  it("versão nova do texto não muda os cadastros antigos, nem depois de aprovado ou com outro nome da empresa", async () => {
+  it("versão nova do texto publicada no painel (M7.15): a marca antiga é recusada, o envio grava a versão nova e os cadastros antigos não mudam, nem depois de aprovado ou com outro nome da empresa", async () => {
     const r = await enviar();
-    const definicao = TEXTOS_AUTORIZACAO.cadastro;
     const marcaV1 = marca();
-    TEXTOS_AUTORIZACAO.cadastro = { versao: 2, modelo: "Texto fictício da versão 2: autorizo a {empresa} a analisar o cadastro." };
-    try {
-      expect(await enviar("outra@example.com", { autorizacao: marcaV1 })).toMatchObject({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: { versao: 2 } });
-      expect(await enviar("outra@example.com", { autorizacao: marca() })).toMatchObject({ ok: true });
-    } finally {
-      TEXTOS_AUTORIZACAO.cadastro = definicao;
-    }
+    const modeloV2 = "Texto fictício da versão 2: autorizo a {empresa} a analisar o cadastro.";
+    expect(await publicarTextoAutorizacao(db, org, "cadastro", modeloV2, null, "2026-09-26", 1)).toMatchObject({ ok: true, versao: { numero: 2 } });
+    const v2 = montarAutorizacao(2, modeloV2, "Sua Casa Exemplo");
+    expect(await enviar("outra@example.com", { autorizacao: marcaV1 })).toEqual({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: v2 });
+    expect(await enviar("outra@example.com", { autorizacao: v2.marca })).toMatchObject({ ok: true });
     await salvarEmpresa(db, org, { nome: "Casa Nova Exemplo", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", encarregado: "", site: "", chavePix: "" }, null);
     if (!r.ok) throw new Error("não gravou");
     expect(await aprovarCadastro(db, org, r.id, "ipa-200", null, agora)).toMatchObject({ ok: true });
