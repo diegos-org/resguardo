@@ -5,6 +5,7 @@
  */
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
+import { deployDeProducao } from "@/sistema/ambiente";
 
 export type SituacaoServico = "ok" | "configurado" | "falha" | "nao_configurado" | "planejado";
 
@@ -14,10 +15,14 @@ export const NOME_MERCADO_PAGO = "Pagamentos (Mercado Pago)";
 
 const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 
-/** No deploy de produção sem as chaves de teste (que ficam só no ambiente Preview): é o esperado, não falta nada. */
+/**
+ * No deploy de produção sem as chaves de teste (que ficam só no ambiente Preview): é o esperado, não falta nada. Só no
+ * deploy de verdade (`deployDeProducao`, a mesma regra de `sistema/ambiente.ts`): onde só conta como produção, faltar a
+ * chave segue como "desligado".
+ */
 export const TEXTO_PRODUCAO_SEM_CHAVES = "Deploy de produção: o teste do pagamento roda nas prévias (as chaves de teste ficam só no ambiente Preview da Vercel)";
 export const producaoSemChaves = (mp: SituacaoMercadoPago, env: NodeJS.ProcessEnv) =>
-  env.VERCEL_ENV === "production" && mp.situacao === "desligado" && ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) !== null;
+  deployDeProducao(env) && mp.situacao === "desligado" && ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) !== null;
 
 /**
  * A linha do Mercado Pago (Integrações e Sistema), lida de `situacaoDoMercadoPago` — a mesma função nos dois

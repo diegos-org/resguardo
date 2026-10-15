@@ -72,7 +72,11 @@ Diego"; GUIA, seção 7).
   hóspede (que consulta o provedor enquanto espera) e do botão **Conferir agora** do painel. O aviso
   assinado (webhook) é testado com o botão "Simular" do Mercado Pago contra o endereço de produção,
   que só confere a assinatura e registra o evento (lá não há pagamento a aplicar).
-- A página mostra "Ambiente de teste: nenhuma cobrança real" e o painel marca "pagamento de teste".
+- O painel marca "pagamento de teste", e a página do hóspede avisa que é teste. Antes (até 14/10/2026), com a nota
+  "Ambiente de teste: nenhuma cobrança real" na cotação. Desde 15/10/2026 (M7.12), pela faixa "Prévia de teste · não é o
+  site de verdade · nenhuma cobrança real" no topo de toda página do ambiente de teste (a mesma regra deste item,
+  `app/src/sistema/ambiente.ts`); a nota da cotação fica só para um pagamento de teste visto fora dele. Motivo: o aviso
+  não se repete na mesma página; objetivo: quem testa não confunde a prévia com o site de verdade.
 
 ## Variáveis e travas
 
