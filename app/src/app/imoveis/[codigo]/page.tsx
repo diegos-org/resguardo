@@ -31,7 +31,8 @@ export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]"
   // Casa que não existe ou saiu do site (M7.8): o título da aba é o da "Casa não encontrada" já aqui, o mesmo de
   // ./not-found.tsx, para não depender só do título da not-found (que o Next pode trocar pelo do layout).
   if (!i) return metadadosDaNaoEncontrada("casa");
-  // Prévia do link (M7.13): o nome, a primeira frase da descrição (a mesma do cartão) e a versão pequena da capa da casa
+  // Prévia do link (M7.13): o nome, a frase do cartão (`fraseDoImovel`: a frase de abertura da casa, M7.17, ou a primeira
+  // frase da descrição) e a versão pequena da capa da casa
   // (sem foto, sem imagem: nunca a capa do site no lugar). O endereço principal é o da casa, sem as datas do link.
   const capa = i.fotos[0];
   return metadadosDoSite(i.nome, {
@@ -109,6 +110,8 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
         <div className={styles.editorial}>
           {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel.fuso} comPagamento={comPix} />}
           {segurar && <SegurarDatas pedido={consulta} aConfirmar={segurar.situacao === "a_confirmar"} acao={criarCotacaoAcao} comPagamento={comPix} />}
+          {/* Frase de abertura da casa (M7.17), acima da descrição, em serifa como no estudo; h2 logo abaixo do h1. Sem frase, nada. */}
+          {imovel.frase && <h2 className={styles.fraseDaCasa}>{imovel.frase}</h2>}
           {imovel.descricao && <p className={styles.texto}>{imovel.descricao}</p>}
           {imovel.comodidades.length > 0 && (
             <section aria-labelledby="titulo-comodidades">

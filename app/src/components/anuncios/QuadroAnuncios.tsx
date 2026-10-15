@@ -8,6 +8,12 @@ import styles from "./anuncios.module.css";
 
 export type ImovelAnuncios = Awaited<ReturnType<typeof listarAnuncios>>[number];
 const nomes = { airbnb: "Airbnb", booking: "Booking.com" };
+/**
+ * Nota do preço base no cartão "Site". Até o M7.17 dizia "O site ainda não publica cotações de estadia.", vencida desde o
+ * M7.2/M8.1: o site mostra o valor da estadia, calculado noite a noite pela fonte de preços do imóvel (M3.9), com o
+ * desconto do site (M12.1) por cima.
+ */
+export const NOTA_PRECO_SITE = "Preço interno de referência. O valor que o site mostra numa consulta é calculado noite a noite pela fonte de preços escolhida na ficha do imóvel, com o desconto do site por cima.";
 export function referenciasDoQuadro(imovel: ImovelAnuncios, siteDaOrg: boolean): ReferenciaComparacao[] {
   return [{ nome: "Site", situacao: siteDaOrg && imovel.ativo && imovel.publico ? "publicado" : "inexistente", titulo: imovel.nome, descricao: imovel.descricao, precoBase: imovel.precoBase, fotos: [] },
     ...imovel.anuncios.filter(a => a.canal === "airbnb" || a.canal === "booking").map(a => ({ ...a, nome: nomes[a.canal as keyof typeof nomes], situacao: a.situacao as Situacao }))];
@@ -23,8 +29,8 @@ export function QuadroAnuncios({ imovel: i, podeEditar, siteDaOrg, fotosNoSite =
         <h3>Site</h3><strong>{siteVisivel ? "Visível no site deste ambiente" : !siteDaOrg ? "Site não configurado para esta empresa" : "Não exibido no site"}</strong>
         {siteVisivel && <Link href={`/imoveis/${encodeURIComponent(i.codigo)}`} target="_blank" rel="noopener noreferrer">Abrir página do imóvel</Link>}
         <p className={styles.miudo}>Dados atuais do cadastro do imóvel.</p>
-        <dl><dt>Título</dt><dd>{i.nome}</dd><dt>Descrição</dt><dd>{i.descricao || "Não cadastrada"}</dd><dt>Preço base cadastrado</dt><dd>{i.precoBase === null ? "Não informado" : formatBRL(i.precoBase)}</dd></dl>
-        <p className={styles.miudo}>Preço interno de referência. O site ainda não publica cotações de estadia.</p>
+        <dl><dt>Título</dt><dd>{i.nome}</dd><dt>Frase de abertura</dt><dd>{i.frase || "Não cadastrada (o cartão usa a primeira frase da descrição)"}</dd><dt>Descrição</dt><dd>{i.descricao || "Não cadastrada"}</dd><dt>Preço base cadastrado</dt><dd>{i.precoBase === null ? "Não informado" : formatBRL(i.precoBase)}</dd></dl>
+        <p className={styles.miudo}>{NOTA_PRECO_SITE}</p>
         <p>{fotosNoSite ? `${fotosNoSite} ${fotosNoSite === 1 ? "foto real" : "fotos reais"} na galeria (a primeira é a capa).` : "Sem fotos ainda: o site mostra \"foto em breve\". Suba as fotos na ficha do imóvel."}</p>
         {podeEditar && <Link href={`/painel/imoveis/${i.id}`}>Editar dados do site no cadastro</Link>}
       </article>

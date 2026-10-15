@@ -1124,6 +1124,18 @@
   font-size: 2rem;
 }
 
+/* Frase de abertura da casa (M7.17), acima da descrição: o texto editorial do estudo, na serifa dos títulos. */
+.editorial .fraseDaCasa {
+  margin: 0 0 12px;
+  font-size: clamp(1.625rem, 3.2vw, 2rem);
+  text-wrap: balance;
+}
+
+/* Depois da disponibilidade e do "segurar as datas" (link com datas), um respiro antes da frase. */
+.editorial > * + .fraseDaCasa {
+  margin-top: 28px;
+}
+
 /* Partes da ficha do imóvel ("O que você encontra", "Camas", "Regras da casa"): h2 abaixo do h1, em texto menor. */
 .editorial .tituloFicha {
   margin: 28px 0 8px;

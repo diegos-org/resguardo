@@ -44,6 +44,7 @@ const imovel: ImovelPublico = {
   quartos: 0,
   banheiros: 1,
   descricao: "Um refúgio para dois, com o Leblon à porta. Cama queen e cozinha equipada.",
+  frase: "",
   camas: [],
   comodidades: [],
   regrasCasa: "",
@@ -115,6 +116,13 @@ describe("prévia dos links do site (M7.13)", () => {
       openGraph: { url: "/imoveis/403", images: [{ url: "/fotos/f1/pequena", alt: "Foto de Studio Exemplo" }] },
       twitter: { card: "summary_large_image" },
     });
+  });
+
+  it("casa com frase de abertura (M7.17): a prévia usa a frase, a mesma do cartão; vazia, volta à primeira frase da descrição", async () => {
+    m.imovel.mockResolvedValue({ ...imovel, frase: "Frase fictícia de abertura da casa." });
+    expect((await metadadosCasa(casa())).description).toBe("Frase fictícia de abertura da casa.");
+    m.imovel.mockResolvedValue({ ...imovel, frase: "" });
+    expect((await metadadosCasa(casa())).description).toBe("Um refúgio para dois, com o Leblon à porta.");
   });
 
   it("casa sem foto: sem imagem, nem a capa do site no lugar", async () => {

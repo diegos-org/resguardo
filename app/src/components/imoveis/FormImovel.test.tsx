@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FormImovel } from "./FormImovel";
 
@@ -22,5 +22,32 @@ describe("FormImovel", () => {
     expect((screen.getByLabelText("Capacidade (hóspedes)") as HTMLInputElement).value).toBe("3");
     expect((screen.getByLabelText("Aparece no site público") as HTMLInputElement).checked).toBe(true);
     expect((document.querySelector('input[name="id"]') as HTMLInputElement).value).toBe("abc");
+  });
+
+  it("frase de abertura (M7.17): ao lado da descrição, vazia no imóvel novo, até 120 caracteres e com a explicação", () => {
+    render(<FormImovel acao={async () => ({})} />);
+    const frase = document.querySelector('input[name="frase"]') as HTMLInputElement;
+    expect(frase.value).toBe("");
+    expect(frase.maxLength).toBe(120);
+    // Campo de uma linha só (input, não textarea), logo antes da descrição.
+    const campos = [...document.querySelectorAll("input, textarea")].map((c) => c.getAttribute("name"));
+    expect(campos.indexOf("frase") + 1).toBe(campos.indexOf("descricao"));
+    const rotulo = frase.closest("label")!;
+    expect(rotulo.textContent).toContain("Frase de abertura (site)");
+    expect(rotulo.textContent).toContain("acima da descrição");
+    expect(rotulo.textContent).toContain("Em branco, nada aparece");
+  });
+
+  it("frase de abertura: a edição mostra a gravada e o erro do servidor fica ligado ao campo", async () => {
+    render(<FormImovel acao={async () => ({})} id="abc" inicial={{ codigo: "403", nome: "Studio", frase: "Frase fictícia da casa." }} />);
+    expect((document.querySelector('input[name="frase"]') as HTMLInputElement).value).toBe("Frase fictícia da casa.");
+    cleanup();
+    const acao = vi.fn(async () => ({ erros: { frase: "Máximo de 120 caracteres." }, mensagem: "Confira os campos destacados." }));
+    render(<FormImovel acao={acao} id="abc" inicial={{ codigo: "403", nome: "Studio" }} />);
+    fireEvent.submit(document.querySelector("form")!);
+    const erro = await screen.findByText("Máximo de 120 caracteres.");
+    const campo = document.querySelector('input[name="frase"]') as HTMLInputElement;
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(campo.getAttribute("aria-describedby")).toBe(erro.id);
   });
 });

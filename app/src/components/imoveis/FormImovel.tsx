@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import type { EstadoFormImovel } from "@/imoveis/acoes";
-import type { DadosImovel } from "@/imoveis/validacao";
+import { type DadosImovel, LIMITE_FRASE } from "@/imoveis/validacao";
 import styles from "../formularios.module.css";
 
 type Props = {
@@ -71,6 +71,17 @@ export function FormImovel({ acao, id, inicial = {} }: Props) {
           </label>
         ))}
       </div>
+      <label>
+        Frase de abertura (site)
+        <input name="frase" defaultValue={inicial.frase} maxLength={LIMITE_FRASE} {...invalido("frase")} />
+        {/* Dentro do rótulo, como a dica dos campos de Configurações (FormCampos). */}
+        <span style={{ fontSize: "0.8125rem" }}>
+          Abre a página da casa no site, em letra grande, acima da descrição; vai também para o cartão da vitrine e para a
+          prévia do link. Até {LIMITE_FRASE} caracteres, numa linha só. Em branco, nada aparece e o cartão usa a primeira frase
+          da descrição.
+        </span>
+        {erro("frase")}
+      </label>
       <label>
         Descrição
         <textarea name="descricao" rows={4} defaultValue={inicial.descricao} {...invalido("descricao")} />

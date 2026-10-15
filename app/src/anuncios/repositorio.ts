@@ -9,7 +9,7 @@ export type Anuncio = typeof anuncios.$inferSelect;
 export async function listarAnuncios(db: Db, org: string) {
   // Consultas em lote: não cresce o número de consultas conforme a quantidade de imóveis.
   const [lista, referencias, vinculos] = await Promise.all([
-    db.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome, descricao: imoveis.descricao, ativo: imoveis.ativo, publico: imoveis.publico, precoBase: imoveisDetalhes.precoBase })
+    db.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome, descricao: imoveis.descricao, frase: imoveis.frase, ativo: imoveis.ativo, publico: imoveis.publico, precoBase: imoveisDetalhes.precoBase })
       .from(imoveis).leftJoin(imoveisDetalhes, and(eq(imoveisDetalhes.imovelId, imoveis.id), eq(imoveisDetalhes.organizacaoId, org)))
       .where(eq(imoveis.organizacaoId, org)).orderBy(asc(imoveis.codigo)),
     db.select().from(anuncios).where(eq(anuncios.organizacaoId, org)),

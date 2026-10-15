@@ -17,7 +17,7 @@ vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.Re
 // Campo de datas real (M7.6), observado para conferir o "hoje" que o formulário recebe.
 vi.mock("@/components/site/CampoDatas", async (orig) => ({ CampoDatas: vi.fn((await orig<typeof import("@/components/site/CampoDatas")>()).CampoDatas) }));
 const hojeDoFormulario = () => vi.mocked(CampoDatas).mock.lastCall?.[0].hoje;
-const imovel = { codigo: "403", fuso: "America/Sao_Paulo", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null };
+const imovel = { codigo: "403", fuso: "America/Sao_Paulo", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", frase: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null };
 const conteudo = { organizacaoId: "org", nomeEmpresa: "Sua Casa Exemplo", textos: { ...TEXTOS_SITE_INICIAIS, titulo: "T", subtitulo: "", comoReservar: "", contato: "", rodape: "" }, whatsapp: "5521900000000", email: "", imagens: { capa: null, marca: "/marca.png" } };
 beforeEach(() => {
   vi.clearAllMocks();

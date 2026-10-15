@@ -43,6 +43,7 @@ describe("histórico de imóveis", () => {
     quartos: null,
     banheiros: null,
     descricao: "",
+    frase: "",
   };
 
   beforeEach(async () => {
