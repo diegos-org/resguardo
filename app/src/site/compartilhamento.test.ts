@@ -168,13 +168,18 @@ describe("metadados e prévia dos links de cada página (M7.13)", () => {
   });
 
   it("ícone da aba (M7.18): a marca enviada que serve de ícone, em toda página do site; sem ela, a do estudo; a prévia do link não muda", () => {
-    const icone = { url: "/imagens-site/marca", lado: 256 };
+    const icone = { url: "/imagens-site/marca", lado: 256, atalho: true };
     const comMarca = conteudo({ imagens: { capa: "/imagens-site/capa", marca: "/imagens-site/marca", previa: "/imagens-site/capa-pequena", icone } });
     for (const m of [metadadosDaPagina(comMarca, undefined, {}, HOST), metadadosDaPagina(comMarca, "Studio Exemplo", { imagem: FOTO, caminho: "/imoveis/403" }, HOST)])
       expect(m.icons).toEqual({
         icon: [{ url: "/imagens-site/marca", type: "image/png", sizes: "256x256" }],
         apple: [{ url: "/imagens-site/marca", type: "image/png", sizes: "256x256" }],
       });
+    // Com transparência: a marca enviada na aba e a do estudo no atalho do celular.
+    expect(metadadosDaPagina(conteudo({ imagens: { ...comMarca.imagens, icone: { ...icone, atalho: false } } }), undefined, {}, HOST).icons).toEqual({
+      icon: [{ url: "/imagens-site/marca", type: "image/png", sizes: "256x256" }],
+      apple: ICONES_PADRAO.apple,
+    });
     // Marca enviada que não serve (icone null) ou nenhuma enviada: os ícones da marca do estudo.
     expect(metadadosDaPagina(conteudo({ imagens: { ...comMarca.imagens, icone: null } }), undefined, {}, HOST).icons).toBe(ICONES_PADRAO);
     expect(metadadosDaPagina(conteudo(), "Consulta", {}, HOST).icons).toBe(ICONES_PADRAO);

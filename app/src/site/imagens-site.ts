@@ -13,7 +13,8 @@ import { LIMITE_FOTO, LIMITE_MINIATURA, tipoDaImagem } from "@/imoveis/fotos-reg
 import { CACHE_FOTO_PUBLICA } from "@/imoveis/fotos-entrega";
 import { uuidValido } from "@/lib/ids";
 import { idsDasFotosDoBairro } from "./bairro";
-import { BYTES_DO_CABECALHO, conferirIconeDaMarca, type IconeDaMarca } from "./icone";
+import { BYTES_LIDOS_DA_MARCA, conferirIconeDaMarca, type IconeDaMarca } from "./icone";
+import { TAMANHO_SUGERIDO_DA_MARCA } from "./marca";
 
 export const enderecoImagemSite = (id: string) => `/imagens-site/${id}`;
 
@@ -29,16 +30,17 @@ export async function lerImagensSite(db: Db, organizacaoId: string): Promise<Ima
 }
 
 /**
- * Se a marca enviada serve de ícone da aba (M7.18; a regra em ./icone): lê só o começo do arquivo (o tipo e as medidas
- * do PNG), não a imagem inteira, a cada página do site. null = nenhuma marca enviada (vale a do estudo, sem nota).
+ * Se a marca enviada serve de ícone da aba e do atalho do celular (M7.18; a regra em ./icone): lê só o começo do arquivo
+ * (o tipo, as medidas e a transparência do PNG, até `BYTES_LIDOS_DA_MARCA`), não a imagem inteira, a cada página do site.
+ * null = nenhuma marca enviada (vale a do estudo, sem nota).
  */
 export async function iconeDaMarcaEnviada(db: Db, organizacaoId: string, marcaId: string | null): Promise<IconeDaMarca | null> {
   if (!marcaId) return null;
   const [a] = await db
-    .select({ cabecalho: sql<Uint8Array>`substring(${arquivos.conteudo} from 1 for ${BYTES_DO_CABECALHO})` })
+    .select({ comeco: sql<Uint8Array>`substring(${arquivos.conteudo} from 1 for ${BYTES_LIDOS_DA_MARCA})` })
     .from(arquivos)
     .where(and(eq(arquivos.id, marcaId), eq(arquivos.organizacaoId, organizacaoId)));
-  return conferirIconeDaMarca(a?.cabecalho ?? null);
+  return conferirIconeDaMarca(a?.comeco ?? null);
 }
 
 /** Todos os ids de imagem que a configuração do site usa agora (capa e a versão pequena dela, marca e fotos dos lugares do bairro). */
@@ -123,7 +125,7 @@ export async function definirImagemSite(
   autorId: string | null,
   pequena?: { nome: string; conteudo: Uint8Array } | null,
 ): Promise<{ ok: true } | { ok: false; erro: string }> {
-  if (a.conteudo.length > LIMITE_IMAGEM[qual]) return { ok: false, erro: qual === "marca" ? "A marca passa de 512 KB: use um arquivo menor (um PNG quadrado de 200 a 400 px basta)." : "A foto passa de 2 MB mesmo reduzida: use uma versão menor." };
+  if (a.conteudo.length > LIMITE_IMAGEM[qual]) return { ok: false, erro: qual === "marca" ? `A marca passa de 512 KB: use um arquivo menor (um PNG quadrado ${TAMANHO_SUGERIDO_DA_MARCA} basta).` : "A foto passa de 2 MB mesmo reduzida: use uma versão menor." };
   const comPequena = qual === "capa" && pequena?.conteudo.length ? pequena : null;
   if (comPequena && (comPequena.conteudo.length > LIMITE_MINIATURA || !tipoDaImagem(comPequena.conteudo))) return { ok: false, erro: ERRO_CAPA_PEQUENA };
   try {

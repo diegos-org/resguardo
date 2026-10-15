@@ -7,7 +7,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
-import { cabecalhoPng } from "./icone.testing";
+import { cabecalhoPng, pngFicticio } from "./icone.testing";
 import { definirImagemSite, lerImagensSite, tirarImagemSite } from "./imagens-site";
 import {
   ASSUNTO_CONSULTA,
@@ -145,9 +145,15 @@ describe("site público (M7.1)", () => {
 
   it("ícone da aba (M7.18): a marca enviada só quando é PNG quadrado; JPG, retângulo ou nenhuma, os ícones da marca do estudo", async () => {
     expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: "/marca.png", icone: null });
-    await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: cabecalhoPng(256, 256) }, null);
+    await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: pngFicticio(256, 256) }, null);
     let marca = (await lerImagensSite(db, org)).marca;
-    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: `/imagens-site/${marca}`, icone: { url: `/imagens-site/${marca}`, lado: 256 } });
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: `/imagens-site/${marca}`, icone: { url: `/imagens-site/${marca}`, lado: 256, atalho: true } });
+    // Com transparência (ou sem conferir): a aba usa a marca enviada, o atalho do celular não.
+    for (const conteudo of [pngFicticio(256, 256, { tipoDeCor: 6 }), cabecalhoPng(256, 256)]) {
+      await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo }, null);
+      marca = (await lerImagensSite(db, org)).marca;
+      expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: `/imagens-site/${marca}`, icone: { url: `/imagens-site/${marca}`, lado: 256, atalho: false } });
+    }
     // A marca continua no topo e no rodapé; só o ícone volta ao do estudo.
     for (const conteudo of [Uint8Array.from({ length: 32 }, (_, i) => [0xff, 0xd8, 0xff, 0xe0][i] ?? 1), cabecalhoPng(400, 200)]) {
       await definirImagemSite(db, org, "marca", { nome: "marca", conteudo }, null);

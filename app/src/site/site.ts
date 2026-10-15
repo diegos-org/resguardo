@@ -61,7 +61,8 @@ export type ConteudoSite = {
   /**
    * Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). `previa`
    * (M7.13): a versão pequena da capa, para a prévia dos links (sem ela, a grande). `icone` (M7.18): a marca enviada como
-   * ícone da aba, só quando ela serve (PNG quadrado, `./icone`); null = os ícones da marca do estudo. Os dois opcionais só
+   * ícone da aba, só quando ela serve (PNG quadrado, `./icone`), e se ela serve também no atalho do celular (sem
+   * transparência); null = os ícones da marca do estudo. Os dois opcionais só
    * para os testes.
    */
   imagens: { capa: string | null; marca: string; previa?: string | null; icone?: IconeEnviado | null };
@@ -122,7 +123,7 @@ export async function conteudoDoSite(db: Db): Promise<ConteudoSite | null> {
       capa: imagens.capa && enderecoImagemSite(imagens.capa),
       marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO,
       previa: imagens.capa ? enderecoImagemSite(imagens.capaPequena ?? imagens.capa) : null,
-      icone: imagens.marca && icone?.serve ? { url: enderecoImagemSite(imagens.marca), lado: icone.lado } : null,
+      icone: imagens.marca && icone?.serve ? { url: enderecoImagemSite(imagens.marca), lado: icone.lado, atalho: icone.fundo === "opaco" } : null,
     },
     identidade: { razaoSocial: empresa.razaoSocial, cnpj: empresa.cnpj, endereco: empresa.endereco },
     site: empresa.site,

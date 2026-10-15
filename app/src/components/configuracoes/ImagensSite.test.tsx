@@ -40,7 +40,15 @@ describe("marca enviada que não serve de ícone da aba (M7.18)", () => {
     expect(html({ marca: null, notaIcone: NOTA })).not.toContain(NOTA);
   });
 
-  it("o texto da tela diz que a marca também é o ícone da aba e do atalho, quando é um PNG quadrado", () => {
-    expect(html()).toContain("e também o ícone da aba do navegador e do atalho na tela do celular, quando é um PNG quadrado");
+  it("o texto da tela diz onde a marca é o ícone (só nas páginas do site) e quando (PNG quadrado; no atalho, sem transparência)", () => {
+    const h = html();
+    expect(h).toContain(
+      "Nas páginas do site, ela também é o ícone da aba do navegador, quando é um PNG quadrado, e do atalho na tela do celular, quando é um PNG quadrado sem transparência; o painel e os portais ficam sempre com a marca do estudo.",
+    );
+  });
+
+  it("o rótulo do envio sugere o PNG quadrado e o tamanho (o mesmo texto do erro de quem passa de 512 KB) e diz que JPG não vira ícone da aba", () => {
+    expect(html()).toContain("Trocar a marca (PNG quadrado, de 200 a 400 px de lado, até 512 KB; em JPG, ela aparece no topo e no rodapé, mas não na aba)");
+    expect(html()).not.toContain("PNG ou JPG quadrado");
   });
 });

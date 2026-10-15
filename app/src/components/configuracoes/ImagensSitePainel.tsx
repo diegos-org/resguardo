@@ -6,7 +6,8 @@ import { ImagensSite } from "./ImagensSite";
 
 /**
  * Configurações → Site, parte "Imagens do site" (M7.6): foto da capa e marca; o aviso da capa sem a versão leve (M7.13) e a
- * nota da marca enviada que não serve de ícone da aba (M7.18, pela mesma conferência que o site usa).
+ * nota da marca enviada que não serve de ícone da aba ou do atalho do celular (M7.18, pela mesma conferência que o site
+ * usa).
  */
 export async function ImagensSitePainel({ organizacaoId }: { organizacaoId: string }) {
   const db = getDb();

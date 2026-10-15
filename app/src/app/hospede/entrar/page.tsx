@@ -3,9 +3,10 @@ import styles from "@/components/site/site.module.css";
 import { Moldura } from "@/components/site/Moldura";
 import { correioDoAmbiente } from "@/email/correio";
 import { entrarHospede, pedirCodigoHospedeAcao } from "@/hospede/acoes";
-import { carregarSite, metadadosDoSite } from "@/site/pagina";
+import { carregarSite, metadadosDeMinhaReserva } from "@/site/pagina";
 
-export const generateMetadata = () => metadadosDoSite("Minha reserva");
+// M7.18: o ícone da aba fica com a marca do estudo, como nos outros portais.
+export const generateMetadata = () => metadadosDeMinhaReserva();
 
 const MENSAGENS: Record<string, string> = {
   "email-vazio": "Informe seu e-mail.",

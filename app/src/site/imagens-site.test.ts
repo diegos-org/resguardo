@@ -8,7 +8,9 @@ import type { Db } from "@/db/types";
 import { CACHE_FOTO_PUBLICA } from "@/imoveis/fotos-entrega";
 import { LIMITE_FOTO, LIMITE_MINIATURA } from "@/imoveis/fotos-regras";
 import { historicoDe } from "@/auditoria/auditoria";
-import { cabecalhoPng } from "./icone.testing";
+import { BYTES_LIDOS_DA_MARCA } from "./icone";
+import { cabecalhoPng, pngFicticio } from "./icone.testing";
+import { TAMANHO_SUGERIDO_DA_MARCA } from "./marca";
 import { apagarImagemSite, definirImagemSite, entregarImagemSite, ERRO_CAPA_PEQUENA, guardarImagemSite, iconeDaMarcaEnviada, imagensEmUso, LIMITE_IMAGEM, lerImagensSite, tirarImagemSite } from "./imagens-site";
 
 // Imagens fictícias: só os primeiros bytes contam para o tipo.
@@ -150,13 +152,23 @@ describe("versão pequena da capa, para a prévia dos links (M7.13)", () => {
 describe("a marca enviada como ícone da aba (M7.18)", () => {
   const marcaAtual = async () => (await lerImagensSite(db, org)).marca;
 
-  it("sem marca enviada, nada a conferir; PNG quadrado serve, com o lado do arquivo", async () => {
+  it("sem marca enviada, nada a conferir; PNG quadrado serve, com o lado do arquivo e se tem transparência", async () => {
     expect(await iconeDaMarcaEnviada(db, org, null)).toBeNull();
-    // Um PNG fictício bem maior que o cabeçalho: só o começo dele importa.
-    const png = new Uint8Array(4096);
-    png.set(cabecalhoPng(300, 300));
-    expect(await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: png }, null)).toEqual({ ok: true });
-    expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: true, lado: 300 });
+    // Um PNG fictício com bem mais que o cabeçalho: só o começo dele importa.
+    expect(await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: pngFicticio(300, 300, { antes: [{ nome: "pHYs", tamanho: 4096 }] }) }, null)).toEqual({ ok: true });
+    expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: true, lado: 300, fundo: "opaco" });
+    await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: pngFicticio(300, 300, { tipoDeCor: 6 }) }, null);
+    expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: true, lado: 300, fundo: "transparente" });
+  });
+
+  it("lê o começo do arquivo até a imagem (tRNS antes dela), e não mais que os bytes combinados", async () => {
+    // Paleta com transparência depois de informações extras: o tRNS ainda dentro do que se lê.
+    const antes = BYTES_LIDOS_DA_MARCA - 200;
+    await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: pngFicticio(256, 256, { tipoDeCor: 3, antes: [{ nome: "iTXt", tamanho: antes }, { nome: "tRNS", tamanho: 4 }] }) }, null);
+    expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: true, lado: 256, fundo: "transparente" });
+    // A imagem começa depois dos bytes lidos: a transparência fica sem conferir (o atalho usa a do estudo, com aviso).
+    await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: pngFicticio(256, 256, { antes: [{ nome: "iTXt", tamanho: BYTES_LIDOS_DA_MARCA }] }) }, null);
+    expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: true, lado: 256, fundo: "incerto" });
   });
 
   it("JPG ou PNG retangular: não serve, com o motivo (o painel avisa; o site usa a marca do estudo)", async () => {
@@ -166,10 +178,20 @@ describe("a marca enviada como ícone da aba (M7.18)", () => {
     expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: false, motivo: "quadrada", largura: 400, altura: 200 });
   });
 
+  it("marca acima de 512 KB: recusada com o tamanho sugerido, o mesmo texto do rótulo do envio no painel", async () => {
+    const grande = new Uint8Array(LIMITE_IMAGEM.marca + 1);
+    grande.set(pngFicticio(300, 300));
+    expect(TAMANHO_SUGERIDO_DA_MARCA).toBe("de 200 a 400 px de lado");
+    expect(await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: grande }, null)).toEqual({
+      ok: false,
+      erro: "A marca passa de 512 KB: use um arquivo menor (um PNG quadrado de 200 a 400 px de lado basta).",
+    });
+  });
+
   it("só o arquivo da própria organização: o id de outra (ou um arquivo que sumiu) não tem medidas conferíveis", async () => {
-    await definirImagemSite(db, outraOrg, "marca", { nome: "marca.png", conteudo: cabecalhoPng(300, 300) }, null);
+    await definirImagemSite(db, outraOrg, "marca", { nome: "marca.png", conteudo: pngFicticio(300, 300) }, null);
     const daOutra = (await lerImagensSite(db, outraOrg)).marca;
-    expect(await iconeDaMarcaEnviada(db, outraOrg, daOutra)).toEqual({ serve: true, lado: 300 });
+    expect(await iconeDaMarcaEnviada(db, outraOrg, daOutra)).toEqual({ serve: true, lado: 300, fundo: "opaco" });
     expect(await iconeDaMarcaEnviada(db, org, daOutra)).toEqual({ serve: false, motivo: "medidas" });
   });
 });

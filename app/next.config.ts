@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { regrasForaDosBuscadores } from "./src/site/fora-dos-buscadores";
+import { MARCA_PADRAO } from "./src/site/marca";
 import { politicaDaPaginaDePagamento } from "./src/site/politica-de-frames";
 
 const nextConfig: NextConfig = {
@@ -21,6 +22,14 @@ const nextConfig: NextConfig = {
       // Páginas pessoais e internas fora dos buscadores (M7.10); a lista fica em src/site/fora-dos-buscadores.ts. As
       // regras se somam: a cotação recebe as duas.
       ...regrasForaDosBuscadores(),
+    ];
+  },
+  async rewrites() {
+    return [
+      // M7.18: o navegador pede /favicon.ico sozinho quando a página não declara ícone (um PDF, uma foto aberta direto).
+      // Recebe o arquivo da marca do estudo, o mesmo ícone do layout raiz (src/site/icone.ts), sem passar pela página não
+      // encontrada nem pelo banco.
+      { source: "/favicon.ico", destination: MARCA_PADRAO },
     ];
   },
 };

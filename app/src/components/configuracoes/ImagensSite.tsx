@@ -6,6 +6,7 @@ import { type FormEvent, useRef, useState, useTransition } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { ErroFoto, nomeJpg, reduzirFoto } from "@/imoveis/reduzir-foto";
 import { enviarImagemSiteAcao, type ResultadoImagemSite, tirarImagemSiteAcao } from "@/site/acoes-imagens-site";
+import { TAMANHO_SUGERIDO_DA_MARCA } from "@/site/marca";
 import styles from "../formularios.module.css";
 
 type Aviso = { ok: boolean; texto: string } | null;
@@ -18,7 +19,8 @@ export const AVISO_CAPA_SEM_PREVIA =
  * Foto da capa e marca do site (M7.6). A foto da capa é reduzida no navegador antes de subir (pode ser a original do
  * celular); a marca sobe como está, para o PNG transparente continuar transparente. `capaSemPrevia` (M7.13): a capa
  * enviada antes da versão leve da prévia dos links — a tela avisa e pede para enviar a foto de novo. `notaIcone` (M7.18):
- * a marca enviada não serve de ícone da aba (não é PNG quadrado) — a tela diz que a aba usa a marca do estudo e por quê.
+ * a marca enviada não serve de ícone da aba (não é PNG quadrado) ou do atalho do celular (tem transparência) — a tela diz
+ * o que usa a marca do estudo e por quê.
  */
 export function ImagensSite({
   capa,
@@ -84,8 +86,8 @@ export function ImagensSite({
       </h2>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
         A foto da capa fica atrás do título da página inicial e aparece na prévia quando alguém manda o link do site pelo WhatsApp ou pelas redes; sem foto, a capa fica no fundo verde e a prévia sai sem imagem (nunca uma imagem genérica). Use só fotos que você tem direito de
-        usar. A marca é o ícone ao lado do nome, no topo e no rodapé, e também o ícone da aba do navegador e do atalho na tela do celular, quando é um PNG quadrado; enquanto você não enviar
-        outra, vale a do estudo visual.
+        usar. A marca é o ícone ao lado do nome, no topo e no rodapé. Nas páginas do site, ela também é o ícone da aba do navegador, quando é um PNG quadrado, e do atalho na tela do
+        celular, quando é um PNG quadrado sem transparência; o painel e os portais ficam sempre com a marca do estudo. Enquanto você não enviar outra, vale a do estudo visual.
       </p>
       {aviso && (
         <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? styles.sucesso : styles.erro}>
@@ -144,7 +146,7 @@ export function ImagensSite({
           )}
           <form onSubmit={(ev) => enviar(ev, "marca")} className={styles.form} aria-label="Enviar marca">
             <label>
-              Trocar a marca (PNG ou JPG quadrado, até 512 KB)
+              {`Trocar a marca (PNG quadrado, ${TAMANHO_SUGERIDO_DA_MARCA}, até 512 KB; em JPG, ela aparece no topo e no rodapé, mas não na aba)`}
               <input ref={entradaMarca} type="file" accept="image/png,image/jpeg" disabled={ocupado} />
             </label>
             <div className={styles.acoes}>
