@@ -64,6 +64,8 @@ descrição (por exemplo "Dias leves entre a praia e os restaurantes."). O siste
   abertura (site)".
 - **Só do painel:** a frase é sua. A importação de reservas e nenhuma outra leitura de fora preenchem, trocam ou apagam
   a frase.
+- **Ficha aberta desde antes:** se uma ficha de imóvel estava aberta desde antes desta mudança (sem o campo novo) e for
+  salva, a frase já escrita não se perde.
 - **Leitor de tela:** a frase entra como um título da página, logo abaixo do nome da casa, sem pular nível.
 - **Aba Anúncios:** o quadro do site de cada imóvel mostra a frase junto do título e da descrição. Sem frase, ele diz
   "Não cadastrada" e mostra a frase que o cartão e a prévia do link estão usando no lugar.

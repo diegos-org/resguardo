@@ -23,7 +23,11 @@ export async function salvarImovel(_anterior: EstadoFormImovel, form: FormData):
   const id = form.get("id");
   try {
     if (typeof id === "string" && id) {
-      const salvo = await atualizarImovel(getDb(), sessao.organizacaoId, id, resultado.dados, sessao.usuarioId);
+      // A ficha aberta antes de a frase existir (M7.17) não manda o campo: a frase gravada fica como estava, em vez de ser
+      // apagada. Campo enviado vazio continua apagando.
+      const { frase, ...semFrase } = resultado.dados;
+      const dados = form.has("frase") ? { ...semFrase, frase } : semFrase;
+      const salvo = await atualizarImovel(getDb(), sessao.organizacaoId, id, dados, sessao.usuarioId);
       if (!salvo) return { mensagem: "Imóvel não encontrado." };
     } else {
       await criarImovel(getDb(), sessao.organizacaoId, resultado.dados, sessao.usuarioId);
