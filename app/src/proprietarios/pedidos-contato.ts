@@ -12,17 +12,24 @@
  * desfazem sozinhos: spam (mesmo com o e-mail de outra pessoa) não trava ninguém por mais que a janela, e ninguém precisa
  * arquivar nada para o formulário voltar a funcionar. O pedido não guarda IP; a origem só entra na conta temporária de
  * tentativas (a mesma do login), apagada depois de um dia parada.
+ *
+ * Autorização (M7.14): o pedido guarda, no mesmo insert, quando o envio com a caixa marcada chegou ao servidor (relógio
+ * do servidor, o mesmo `criadoEm`), a versão e o texto exato dela, com o nome da empresa lido no envio (`./autorizacao`).
+ * O texto gravado é sempre o do servidor; o formulário manda só a marca do texto que mostrou, e marca que não confere
+ * (texto mudou depois que a página abriu) é recusada.
  */
 import { and, asc, count, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { emailValido } from "@/acesso/codigo-email";
 import { normalizarEmail } from "@/acesso/entrada";
 import { apagarContasVelhas, contarNaJanela, type Limite } from "@/acesso/senha";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { lerEmpresa } from "@/configuracoes/empresa";
 import { pedidosContatoProprietario, type SituacaoPedidoContato, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
 import { uuidValido } from "@/lib/ids";
+import { conferirAutorizacao, ERRO_AUTORIZACAO_MUDOU, marcaDoFormulario, type TextoAutorizacao } from "./autorizacao";
 import { ERRO_TELEFONE_DDD, telefoneComDddValido } from "./documento";
 
 /** Pedidos com o mesmo e-mail em 24 horas (o e-mail não é conferido: o teto passa sozinho, ninguém fica bloqueado). */
@@ -54,6 +61,8 @@ export type DadosPedidoContato = {
   quartos: number | null;
   anunciaHoje: boolean | null;
   mensagem: string;
+  /** Marca do texto da autorização que o formulário mostrou (campo escondido). Só é conferida: o texto gravado vem do servidor. */
+  marcaAutorizacao: string;
 };
 /** Erros por nome do campo do formulário. */
 export type CampoPedidoContato = "nome" | "email" | "telefone" | "bairro" | "cidade" | "quartos" | "anunciaHoje" | "mensagem" | "consentimento";
@@ -108,7 +117,7 @@ export function validarPedidoContato(e: Entrada): { ok: true; dados: DadosPedido
   if (e.consentimento !== "on" && e.consentimento !== true) erros.consentimento = "É preciso autorizar o uso dos dados para a gente responder.";
 
   if (Object.keys(erros).length) return { ok: false, erros };
-  return { ok: true, dados: { nome, email, telefone, bairro, cidade, quartos, anunciaHoje, mensagem } };
+  return { ok: true, dados: { nome, email, telefone, bairro, cidade, quartos, anunciaHoje, mensagem, marcaAutorizacao: marcaDoFormulario(e) } };
 }
 
 /** Como os quartos aparecem no painel e no e-mail da equipe (o formulário oferece até "4 ou mais"). */
@@ -131,11 +140,14 @@ export const ERRO_LIMITE_POR_EMAIL = "Já recebemos seus pedidos de hoje e vamos
 export const ERRO_LIMITE_ORIGEM = "Recebemos muitos pedidos deste endereço de internet. Tente de novo daqui a uma hora ou fale com a gente pelo WhatsApp ou pelo e-mail do site.";
 export const ERRO_LIMITE_TOTAL = "Recebemos muitos pedidos agora há pouco. Tente de novo daqui a uma hora ou fale com a gente pelo WhatsApp ou pelo e-mail do site.";
 
-export type ResultadoRegistro = { ok: true; pedido: PedidoContato } | { ok: false; erro: string };
+/** `autorizacao`: o texto da caixa mudou depois que a página abriu; é o texto atual, para o formulário mostrar. */
+export type ResultadoRegistro = { ok: true; pedido: PedidoContato } | { ok: false; erro: string; autorizacao?: TextoAutorizacao };
 
 /**
  * Grava o pedido como "novo", respeitando os tetos. `origem` = endereço de quem enviou (ver `origemDoPedido`); sem ele,
  * só valem os outros tetos. Os tetos por e-mail e por hora da organização são conferidos e gravados sob a mesma trava.
+ * Junto, no mesmo insert, o registro da autorização: agora, a versão e o texto atual da caixa, com o nome da empresa lido
+ * nesta transação — se a marca do formulário não for a desse texto, nada é gravado.
  */
 export async function registrarPedidoContato(db: Db, organizacaoId: string, dados: DadosPedidoContato, agora: Date, origem: string | null = null): Promise<ResultadoRegistro> {
   const email = normalizarEmail(dados.email);
@@ -159,9 +171,22 @@ export async function registrarPedidoContato(db: Db, organizacaoId: string, dado
         .then((r) => r[0].n);
     if ((await desde(UM_DIA_MS, eq(pedidosContatoProprietario.email, email))) >= MAX_POR_EMAIL_POR_DIA) return { ok: false as const, erro: ERRO_LIMITE_POR_EMAIL };
     if ((await desde(UMA_HORA_MS)) >= MAX_POR_HORA) return { ok: false as const, erro: ERRO_LIMITE_TOTAL };
+    const { marcaAutorizacao, ...campos } = dados;
+    // O texto que se grava é o do servidor, com o nome da empresa de agora (o mesmo que a página mostra).
+    const { ok: confere, autorizacao } = conferirAutorizacao("contato", (await lerEmpresa(tx, organizacaoId)).nome, marcaAutorizacao);
+    if (!confere) return { ok: false as const, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao };
     const [pedido] = await tx
       .insert(pedidosContatoProprietario)
-      .values({ organizacaoId, ...dados, email, situacao: "novo", criadoEm: agora })
+      .values({
+        organizacaoId,
+        ...campos,
+        email,
+        situacao: "novo",
+        criadoEm: agora,
+        autorizadoEm: agora,
+        autorizacaoVersao: autorizacao.versao,
+        autorizacaoTexto: autorizacao.texto,
+      })
       .returning();
     return { ok: true as const, pedido };
   });

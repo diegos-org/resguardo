@@ -3,6 +3,7 @@ import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
+import { AutorizacaoRegistrada } from "@/components/proprietarios/AutorizacaoRegistrada";
 import { getDb } from "@/db/client";
 import { arquivarPedidoAcao, marcarRespondidoAcao } from "@/proprietarios/acoes-contatos";
 import { soDigitos } from "@/proprietarios/documento";
@@ -113,6 +114,10 @@ export default async function PedidosContato({ searchParams }: PageProps<"/paine
               <dd style={{ margin: 0, whiteSpace: "pre-wrap" }}>{p.mensagem || "—"}</dd>
               <dt>Recebido em</dt>
               <dd style={{ margin: 0 }}>{quando(p.criadoEm)}</dd>
+              <dt>Autorização</dt>
+              <dd style={{ margin: 0 }}>
+                <AutorizacaoRegistrada registro={p} />
+              </dd>
             </dl>
             <form action={marcarRespondidoAcao} className={styles.linha} style={{ alignItems: "flex-end" }} aria-label={`Tratar o pedido de ${p.nome}`}>
               <input type="hidden" name="id" value={p.id} />
@@ -149,6 +154,7 @@ export default async function PedidosContato({ searchParams }: PageProps<"/paine
                 <th>Quando</th>
                 <th>Por</th>
                 <th>Nota</th>
+                <th>Autorização</th>
                 <th>Ação</th>
               </tr>
             </thead>
@@ -167,6 +173,9 @@ export default async function PedidosContato({ searchParams }: PageProps<"/paine
                   <td>{p.decididoEm ? quando(p.decididoEm) : "—"}</td>
                   <td>{p.decididoPorNome ?? "—"}</td>
                   <td style={{ whiteSpace: "pre-wrap" }}>{p.nota || "—"}</td>
+                  <td>
+                    <AutorizacaoRegistrada registro={p} />
+                  </td>
                   <td>
                     {p.situacao === "respondido" && (
                       <form action={arquivarPedidoAcao} aria-label={`Arquivar o pedido de ${p.nome}`}>

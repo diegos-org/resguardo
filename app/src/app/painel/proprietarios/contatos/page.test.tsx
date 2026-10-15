@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
+import { SEM_REGISTRO_AUTORIZACAO } from "@/proprietarios/autorizacao";
 import type { PedidoContatoComAutor } from "@/proprietarios/pedidos-contato";
 import Page from "./page";
 
@@ -26,8 +27,16 @@ const pedido = (over: Partial<PedidoContatoComAutor> = {}): PedidoContatoComAuto
   decididoEm: null,
   decididoPor: null,
   decididoPorNome: null,
+  autorizadoEm: null,
+  autorizacaoVersao: null,
+  autorizacaoTexto: null,
   ...over,
 });
+/** O registro da autorização (M7.14), como o servidor grava. */
+const TEXTO = "Autorizo o uso destes dados só para a Sua Casa Exemplo me responder sobre a gestão do imóvel.";
+const autorizado = { autorizadoEm: new Date("2026-10-15T15:30:00Z"), autorizacaoVersao: 1, autorizacaoTexto: TEXTO };
+/** Como o React escreve o texto no HTML (as aspas e os acentos não mudam; só & < > " são escapados). */
+const registroNoHtml = `Autorizado em 15/10/2026, 12:30 (texto da versão 1): “${TEXTO}”`;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -121,4 +130,18 @@ it("fila grande: mostra uma página por vez, com o total e os links para as outr
   // Até 30, sem navegação.
   m.listar.mockResolvedValue({ novos: [pedido()], totalNovos: 1, decididos: [] });
   expect(await html()).not.toContain("Páginas dos pedidos novos");
+});
+
+it("autorização (M7.14): mostra quando, a versão e o texto que a pessoa marcou; pedido de antes aparece como sem registro", async () => {
+  m.listar.mockResolvedValue({
+    novos: [pedido({ ...autorizado }), pedido({ id: "00000000-0000-4000-8000-0000000000a2", nome: "Antigo Exemplo" })],
+    totalNovos: 2,
+    decididos: [pedido({ id: "00000000-0000-4000-8000-0000000000b2", nome: "Beto Exemplo", situacao: "respondido", decididoEm: new Date("2026-10-15T16:00:00Z"), ...autorizado })],
+  });
+  const h = await html();
+  // Horário de Brasília, no cartão do novo e na tabela dos já tratados.
+  expect(h.split(registroNoHtml)).toHaveLength(3);
+  expect(h.split(SEM_REGISTRO_AUTORIZACAO)).toHaveLength(2);
+  expect(h).toContain("<th>Autorização</th>");
+  expect(h).toContain("<dt>Autorização</dt>");
 });

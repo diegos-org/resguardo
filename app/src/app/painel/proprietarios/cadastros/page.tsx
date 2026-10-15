@@ -2,6 +2,7 @@ import Link from "next/link";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
+import { AutorizacaoRegistrada } from "@/components/proprietarios/AutorizacaoRegistrada";
 import { DecisaoCadastro } from "@/components/proprietarios/DecisaoCadastro";
 import { getDb } from "@/db/client";
 import { aprovarCadastroAcao, recusarCadastroAcao } from "@/marketplace/acoes";
@@ -73,6 +74,10 @@ export default async function CadastrosMarketplace() {
               </dd>
               <dt>Recebido em</dt>
               <dd>{data(c.criadoEm)}</dd>
+              <dt>Autorização</dt>
+              <dd>
+                <AutorizacaoRegistrada registro={c} />
+              </dd>
             </dl>
             <DecisaoCadastro id={c.id} nome={c.nome} aprovar={aprovarCadastroAcao} recusar={recusarCadastroAcao} />
           </section>
@@ -88,6 +93,7 @@ export default async function CadastrosMarketplace() {
                 <th>Proprietário</th>
                 <th>Decisão</th>
                 <th>Quando</th>
+                <th>Autorização</th>
               </tr>
             </thead>
             <tbody>
@@ -97,6 +103,9 @@ export default async function CadastrosMarketplace() {
                   <td>{c.proprietarioId ? <Link href={`/painel/proprietarios/${c.proprietarioId}`}>{c.nome}</Link> : c.nome}</td>
                   <td>{c.situacao === "aprovado" ? "Aprovado" : `Recusado: ${c.motivoRecusa}`}</td>
                   <td>{c.decididoEm ? data(c.decididoEm) : "—"}</td>
+                  <td>
+                    <AutorizacaoRegistrada registro={c} />
+                  </td>
                 </tr>
               ))}
             </tbody>
