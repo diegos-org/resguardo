@@ -10,8 +10,9 @@ import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { metadadosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
 import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
-import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
+import { FotoProvisoria, Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
+import { tituloDaSecao } from "@/configuracoes/textos-site";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
 import { lugaresDoSite } from "@/site/bairro";
@@ -154,9 +155,18 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
             )}
           </section>
         </div>
+        {/* Cartão da consulta (M7.16): olho, título e frase de Configurações → Textos do site (olho e frase vazios não
+            aparecem; título vazio volta ao texto inicial). */}
         <aside id="planejar" className={styles.lateral} aria-labelledby="titulo-planejar">
-          <p className={styles.olho}>Planeje sua estadia</p>
-          <h2 id="titulo-planejar">Consultar disponibilidade</h2>
+          {conteudo.textos.planejarOlho && <p className={styles.olho}>{conteudo.textos.planejarOlho}</p>}
+          <h2 id="titulo-planejar">
+            <TextoComDestaque texto={tituloDaSecao(conteudo.textos, "planejarTitulo")} />
+          </h2>
+          {conteudo.textos.planejarTexto && (
+            <p className={styles.texto} style={{ margin: 0 }}>
+              {conteudo.textos.planejarTexto}
+            </p>
+          )}
           <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" comPagamento={gate.ok} />
         </aside>
       </div>

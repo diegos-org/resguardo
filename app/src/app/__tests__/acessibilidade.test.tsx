@@ -334,7 +334,7 @@ beforeEach(() => {
   m.imoveis.mockResolvedValue([imovel]);
   m.imovel.mockResolvedValue(imovel);
   m.tem.mockResolvedValue(true);
-  m.bairro.mockResolvedValue({ titulo: "O Leblon a pé", subtitulo: "", lugares: [{ nome: "Praia fictícia", distancia: "2 min", frase: "", foto: null }] });
+  m.bairro.mockResolvedValue({ olho: "O bairro à sua porta", titulo: "O Leblon a pé", subtitulo: "", lugares: [{ nome: "Praia fictícia", distancia: "2 min", frase: "", foto: null }] });
   m.disponibilidade.mockResolvedValue(disponivel);
   m.portao.mockResolvedValue({ ok: false });
   m.pix.mockResolvedValue(false);
@@ -525,7 +525,7 @@ describe("ordem dos títulos sem saltos (M7.11)", () => {
       expect(h?.className, titulo).toBe(styles.tituloFicha);
     }
     // Sem datas no link, sem o bairro e sem camas: continua sem salto.
-    m.bairro.mockResolvedValue({ titulo: "", subtitulo: "", lugares: [] });
+    m.bairro.mockResolvedValue({ olho: "", titulo: "", subtitulo: "", lugares: [] });
     m.imovel.mockResolvedValue({ ...imovel, camas: [], comodidades: [] });
     expect(saltos(niveis(renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }) as never))))).toEqual([]);
   });

@@ -6,13 +6,13 @@ import site from "./site.module.css";
 /**
  * "O bairro à sua porta" no fim da ficha do imóvel (M7.6, estudo Sage): filete, olho, título, subtítulo e um cartão por
  * lugar (foto quando houver, nome, frase curta e distância). Sem foto, o cartão fica só com o texto — nunca uma imagem
- * genérica. Sem lugar, a seção não aparece.
+ * genérica. Sem lugar, a seção não aparece. O olho (M7.16) e o subtítulo em branco não deixam parágrafo vazio.
  */
-export function BairroAPorta({ titulo, subtitulo, lugares }: BairroPublico) {
+export function BairroAPorta({ olho, titulo, subtitulo, lugares }: BairroPublico) {
   if (!lugares.length) return null;
   return (
     <section className={css.secao} aria-labelledby="titulo-bairro">
-      <p className={`${site.olho} ${css.olho}`}>O bairro à sua porta</p>
+      {olho && <p className={`${site.olho} ${css.olho}`}>{olho}</p>}
       <h2 id="titulo-bairro" className={css.titulo}>
         {titulo}
       </h2>

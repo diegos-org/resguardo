@@ -25,7 +25,7 @@ const atualizar = () => revalidatePath("/painel/configuracoes/site");
 
 export async function salvarTextosBairroAcao(form: FormData): Promise<ResultadoBairro> {
   const s = await sessaoEditora();
-  const r = await salvarTextosBairro(getDb(), s.organizacaoId, { titulo: texto(form, "titulo"), subtitulo: texto(form, "subtitulo") }, s.usuarioId);
+  const r = await salvarTextosBairro(getDb(), s.organizacaoId, { olho: texto(form, "olho"), titulo: texto(form, "titulo"), subtitulo: texto(form, "subtitulo") }, s.usuarioId);
   atualizar();
   return r;
 }

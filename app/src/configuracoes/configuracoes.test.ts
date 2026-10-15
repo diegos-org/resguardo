@@ -285,6 +285,30 @@ describe("textos do site", () => {
     await gravarConfig(db, org, "textos_site", { titulo: "T", sobre: "Benefício antigo", porque: "" }, null);
     expect((await lerTextosSite(db, org)).porque).toBe("");
   });
+
+  it("títulos e frases que eram fixos no código (M7.16): nunca salvos, o texto de antes; salvos vazios, vazios (a página esconde o olho e a frase e volta o título ao inicial)", async () => {
+    // Textos gravados antes do M7.16 (sem as chaves novas): valem os textos que o site já mostrava.
+    await gravarConfig(db, org, "textos_site", { titulo: "T", vitrineTexto: "Vitrine." }, null);
+    expect(await lerTextosSite(db, org)).toMatchObject({
+      comoReservarOlho: "Passo a passo",
+      comoReservarTitulo: "Como reservar",
+      catalogoTitulo: "Nossas casas",
+      catalogoTexto: "Escolha um apartamento para ver o que ele oferece e consultar as datas.",
+      planejarOlho: "Planeje sua estadia",
+      planejarTitulo: "Consultar disponibilidade",
+      planejarTexto: "",
+      resumoOlho: "Sua estadia, sem surpresas",
+      resumoTitulo: "Resumo da viagem",
+      resumoTexto: "Escolha o apartamento, as datas e quantas pessoas.",
+      contatoOlho: "Fale com a gente",
+      contatoTitulo: "Contato",
+    });
+    // Salvos pela tela (todos os campos vão juntos): o salvo, até vazio.
+    const v = validarTextosSite({ ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "Encontre sua casa *no Leblon.*", catalogoTexto: "", resumoOlho: "", planejarTexto: "Frase fictícia do cartão." });
+    if (!v.ok) throw new Error("inválido");
+    expect(await salvarTextosSite(db, org, v.textos, admin)).toBe(true);
+    expect(await lerTextosSite(db, org)).toMatchObject({ catalogoTitulo: "Encontre sua casa *no Leblon.*", catalogoTexto: "", resumoOlho: "", planejarTexto: "Frase fictícia do cartão.", resumoTitulo: "Resumo da viagem" });
+  });
 });
 
 describe("usuários da equipe", () => {

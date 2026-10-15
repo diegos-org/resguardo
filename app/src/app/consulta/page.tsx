@@ -5,6 +5,7 @@ import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site
 import { CabecalhoBusca, ResultadosBusca } from "@/components/site/ResultadosBusca";
 import { BotaoContato, SemCasas, textoSemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
+import { tituloDaSecao } from "@/configuracoes/textos-site";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
 import { buscarEmTodasAsCasas } from "@/site/busca";
@@ -105,6 +106,9 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   // `BotaoContato` de sempre, com o rótulo do envio tirado do mesmo link (`externo`: WhatsApp).
   const canal = canalDeContato(conteudo);
   const envio = prontoParaEnviar && r?.ok ? contatoDoSite(conteudo, { mensagem: r.texto, assunto: ASSUNTO_CONSULTA }) : null;
+  // Frase do Resumo da viagem antes da consulta (M7.16): o texto de "Como reservar", quando preenchido (como desde o
+  // M7.1), senão a frase própria do quadro; as duas vazias, nenhuma.
+  const fraseDoResumo = textos.comoReservar || textos.resumoTexto;
   return (
     <Moldura conteudo={conteudo}>
       {cabecalho(true)}
@@ -117,14 +121,18 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
         <div className={styles.consultaForm}>
           <FormConsulta imoveis={todos} valores={pedido} erros={erros} hoje={hojeMinimo} canal={canal} comPagamento={gate.ok} />
         </div>
+        {/* Olho, título e frase do quadro em Configurações → Textos do site (M7.16): olho e frase vazios não aparecem;
+            título vazio volta ao texto inicial. */}
         <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
-          <p className={styles.olho}>Sua estadia, sem surpresas</p>
-          <h2 id="titulo-resumo">Resumo da viagem</h2>
+          {textos.resumoOlho && <p className={styles.olho}>{textos.resumoOlho}</p>}
+          <h2 id="titulo-resumo">
+            <TextoComDestaque texto={tituloDaSecao(textos, "resumoTitulo")} />
+          </h2>
           {disponibilidade ? (
             <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel?.fuso ?? "America/Sao_Paulo"} nivel={3} comPagamento={comPix} />
           ) : (
             <>
-              <p className={styles.texto}>{textos.comoReservar || "Escolha o apartamento, as datas e quantas pessoas."}</p>
+              {fraseDoResumo && <p className={styles.texto}>{fraseDoResumo}</p>}
               <dl className={styles.resumo}>
                 <dt>Estadia</dt>
                 <dd>a confirmar</dd>

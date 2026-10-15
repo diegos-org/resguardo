@@ -83,10 +83,17 @@ describe("prévia dos links do site (M7.13)", () => {
     expect(meta.twitter).toMatchObject({ card: "summary" });
   });
 
-  it("Nossas casas: a frase da vitrine de casas da página inicial; sem ela, o subtítulo do site", async () => {
-    expect(await metadadosCatalogo()).toMatchObject({ title: "Nossas casas — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.vitrineTexto });
-    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, vitrineTexto: "" } }));
+  it("Nossas casas (M7.16): a frase da própria página, a de Textos do site (não mais a da vitrine da página inicial); sem ela, o subtítulo do site", async () => {
+    expect(await metadadosCatalogo()).toMatchObject({ title: "Nossas casas — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.catalogoTexto });
+    expect(TEXTOS_SITE_INICIAIS.catalogoTexto).toBe("Escolha um apartamento para ver o que ele oferece e consultar as datas.");
+    // A frase editada no painel é a mesma da página; a da vitrine não entra mais aqui.
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTexto: "Frase fictícia de Nossas casas.", vitrineTexto: "Vitrine fictícia." } }));
+    expect((await metadadosCatalogo()).description).toBe("Frase fictícia de Nossas casas.");
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTexto: "" } }));
     expect((await metadadosCatalogo()).description).toBe(TEXTOS_SITE_INICIAIS.subtitulo);
+    // O título da aba é o nome da página no menu, mesmo com outro título na página.
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "Encontre sua casa *no Leblon.*" } }));
+    expect((await metadadosCatalogo()).title).toBe("Nossas casas — Casa Exemplo");
   });
 
   it("site sem nenhuma casa publicada (M7.8): Nossas casas, a consulta e a busca descrevem o aviso do site sem casas, o que a página mostra", async () => {

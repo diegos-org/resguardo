@@ -15,8 +15,8 @@ export default async function TextosSite() {
   return (
     <>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 }}>
-        Os textos do site público (página inicial, consulta, rodapé, a página não encontrada e o aviso de quando o site não tem nenhuma casa publicada, o pagamento
-        na página da cotação e o cancelamento e a alteração da reserva paga pelo site). As
+        Os textos do site público (página inicial, Nossas casas, o cartão da consulta na página de cada casa, consulta, rodapé, a página não encontrada e o aviso
+        de quando o site não tem nenhuma casa publicada, o pagamento na página da cotação e o cancelamento e a alteração da reserva paga pelo site). As
         datas, os horários, os valores e a versão da política são escritos pelo sistema; aqui ficam só as frases. O que aparece de cada apartamento vem do cadastro do
         imóvel (marcado como público); o WhatsApp da consulta é o telefone em Empresa.
       </p>
