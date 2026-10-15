@@ -53,10 +53,11 @@ export function useSairSemPublicar(alterado: boolean): () => void {
       e.returnValue = "";
     };
     // Na captura do documento: roda antes do <Link> (que ouve na raiz do React) e, se Diego desistir, ele nem fica sabendo.
+    // Desistiu: o clique para aqui, também para a proteção do outro formulário da tela (que ouve o mesmo documento).
     const clicar = (e: MouseEvent) => {
       if (!cliqueQueSai(e) || confirmar(e)) return;
       e.preventDefault();
-      e.stopPropagation();
+      e.stopImmediatePropagation();
     };
     // Na captura da janela: roda antes do roteador do Next. Desistiu? A tela volta para o histórico, como se não tivesse saído.
     const voltar = (e: PopStateEvent) => {

@@ -262,3 +262,23 @@ it("duas caixas mudadas na mesma tela: o link pergunta uma vez só", () => {
   // Confirmou: fechar no caminho não pergunta de novo.
   expect(sair()).toBe(false);
 });
+
+it("duas caixas mudadas na mesma tela: desistir de sair pelo link pergunta uma vez só e não navega", () => {
+  const navegar = vi.fn((e: { preventDefault: () => void }) => e.preventDefault());
+  render(
+    <>
+      <Link href="/painel/configuracoes/empresa" onClick={navegar}>
+        Empresa
+      </Link>
+      <FormAutorizacaoProprietario {...props()} />
+      <FormAutorizacaoProprietario {...props({ formulario: "cadastro", titulo: "Cadastro do marketplace", valor: TEXTOS_ORIGEM_AUTORIZACAO.cadastro })} />
+    </>,
+  );
+  const [contato, cadastro] = screen.getAllByRole("textbox", { name: /^Texto da caixa/ });
+  fireEvent.change(contato, { target: { value: "Texto novo do contato." } });
+  fireEvent.change(cadastro, { target: { value: "Texto novo do cadastro." } });
+  const confirmar = vi.spyOn(window, "confirm").mockReturnValue(false);
+  fireEvent.click(screen.getByRole("link", { name: "Empresa" }));
+  expect(confirmar).toHaveBeenCalledTimes(1);
+  expect(navegar).not.toHaveBeenCalled();
+});
