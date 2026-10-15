@@ -6,6 +6,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
+import { definirImagemSite, lerImagensSite } from "./imagens-site";
 import {
   ASSUNTO_CONSULTA,
   CASA_FORA_DO_SITE,
@@ -112,6 +113,20 @@ describe("site público (M7.1)", () => {
     const empresa = { nome: "Sua Casa Exemplo", razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", email: "", telefone: "", endereco: "Rua Fictícia, 100", encarregado: "", site: "", chavePix: "" };
     await salvarEmpresa(db, org, empresa, null);
     expect((await conteudoDoSite(db))?.identidade).toEqual({ razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", endereco: "Rua Fictícia, 100" });
+  });
+
+  it("prévia dos links (M7.13): o campo Site da empresa e a capa do site, na versão pequena quando houver", async () => {
+    expect(await conteudoDoSite(db)).toMatchObject({ site: "", imagens: { capa: null, previa: null } });
+    const empresa = { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", encarregado: "", site: "https://casa-exemplo.vercel.app", chavePix: "" };
+    await salvarEmpresa(db, org, empresa, null);
+    const jpg = (n: number) => Uint8Array.from({ length: 32 }, (_, i) => [0xff, 0xd8, 0xff, 0xe0][i] ?? n);
+    await definirImagemSite(db, org, "capa", { nome: "capa.jpg", conteudo: jpg(1) }, null, { nome: "capa-pequena.jpg", conteudo: jpg(2) });
+    const { capa, capaPequena } = await lerImagensSite(db, org);
+    expect(await conteudoDoSite(db)).toMatchObject({ site: "https://casa-exemplo.vercel.app", imagens: { capa: `/imagens-site/${capa}`, previa: `/imagens-site/${capaPequena}` } });
+    // Capa sem a versão pequena: a prévia usa a grande.
+    await definirImagemSite(db, org, "capa", { nome: "capa.jpg", conteudo: jpg(3) }, null);
+    const sem = await lerImagensSite(db, org);
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ capa: `/imagens-site/${sem.capa}`, previa: `/imagens-site/${sem.capa}` });
   });
 
   it("número do WhatsApp a partir do telefone do cadastro", () => {

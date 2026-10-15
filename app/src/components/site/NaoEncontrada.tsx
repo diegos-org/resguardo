@@ -3,7 +3,7 @@ import { TEXTOS_SITE_INICIAIS, type TextosSite } from "@/configuracoes/textos-si
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { type ConteudoSite, temCasaNoSite } from "@/site/site";
 import { Moldura } from "./Moldura";
-import { SemCasas } from "./SemCasas";
+import { SemCasas, textoSemCasas } from "./SemCasas";
 import styles from "./site.module.css";
 
 /** "pagina": endereço que não existe no site; "casa": link de uma casa que não existe ou saiu do site. */
@@ -67,8 +67,14 @@ export async function PaginaNaoEncontrada({ tipo }: { tipo: TipoNaoEncontrada })
   return <NaoEncontrada conteudo={conteudo} tipo={tipo} temCasas={temCasas} />;
 }
 
-/** Título da aba da página não encontrada: "Página não encontrada — Nome da empresa". */
+/**
+ * Título da aba da página não encontrada: "Página não encontrada — Nome da empresa"; a descrição (M7.13) é o que a
+ * página mostra: a frase dela (vazia = a do site) ou, sem nenhuma casa no site, o aviso do site sem casas, pela mesma
+ * conferência curta da página (`temCasaNoSite`, com `cache`: uma leitura só por requisição).
+ */
 export async function metadadosDaNaoEncontrada(tipo: TipoNaoEncontrada) {
-  const { conteudo } = await carregarSite();
-  return metadadosDoSite(textosDaNaoEncontrada(conteudo?.textos ?? null, tipo).titulo);
+  const { db, conteudo } = await carregarSite();
+  const { titulo, texto } = textosDaNaoEncontrada(conteudo?.textos ?? null, tipo);
+  const temCasas = conteudo ? await temCasaNoSite(db, conteudo.organizacaoId) : false;
+  return metadadosDoSite(titulo, { descricao: conteudo && !temCasas ? textoSemCasas(conteudo.textos) : texto });
 }

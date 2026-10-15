@@ -8,6 +8,7 @@
  * direta e cotação ficam para o M7.2/M8.
  */
 import { and, asc, eq } from "drizzle-orm";
+import { cache } from "react";
 import { lerEmpresa } from "@/configuracoes/empresa";
 import { lerTextosSite, type TextosSite } from "@/configuracoes/textos-site";
 import { imoveis, imoveisDetalhes, organizacoes } from "@/db/schema";
@@ -51,8 +52,16 @@ export type ConteudoSite = {
   /** Número do WhatsApp da empresa (só dígitos, com DDI) ou null se não há telefone no cadastro. */
   whatsapp: string | null;
   email: string;
-  /** Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). */
-  imagens: { capa: string | null; marca: string };
+  /**
+   * Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). `previa`
+   * (M7.13): a versão pequena da capa, para a prévia dos links (sem ela, a grande); opcional só para os testes.
+   */
+  imagens: { capa: string | null; marca: string; previa?: string | null };
+  /**
+   * Campo "Site" de Configurações → Empresa (M7.13): a base dos endereços completos da prévia dos links e do endereço
+   * principal das páginas (`baseDoSite`, em ./compartilhamento). Opcional só para os testes.
+   */
+  site?: string;
   /**
    * Identificação da empresa no rodapé (M7.4, Decreto 7.962, art. 2º): os dados atuais de Configurações → Empresa. As
    * páginas legais mostram os dados congelados na versão; o rodapé, sempre os de agora. Opcional só para os testes.
@@ -96,8 +105,13 @@ export async function conteudoDoSite(db: Db): Promise<ConteudoSite | null> {
     textos,
     whatsapp: numeroWhatsapp(empresa.telefone),
     email: empresa.email,
-    imagens: { capa: imagens.capa && enderecoImagemSite(imagens.capa), marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO },
+    imagens: {
+      capa: imagens.capa && enderecoImagemSite(imagens.capa),
+      marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO,
+      previa: imagens.capa ? enderecoImagemSite(imagens.capaPequena ?? imagens.capa) : null,
+    },
     identidade: { razaoSocial: empresa.razaoSocial, cnpj: empresa.cnpj, endereco: empresa.endereco },
+    site: empresa.site,
   };
 }
 
@@ -167,23 +181,31 @@ async function comFotos(db: Db, organizacaoId: string, linhas: Linha[]): Promise
 /** Quais imóveis aparecem no site: os públicos e ativos da organização do site (a lista, a página e a conferência leem daqui). */
 const noSite = (organizacaoId: string) => and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.publico, true), eq(imoveis.ativo, true));
 
-/** Imóveis que aparecem no site: públicos e ativos, pelo código. */
-export async function imoveisDoSite(db: Db, organizacaoId: string): Promise<ImovelPublico[]> {
+/**
+ * Imóveis que aparecem no site: públicos e ativos, pelo código. Com `cache` do React (M7.13), os metadados e a página da
+ * mesma requisição (a consulta e Nossas casas, que olham a lista para saber se há casa no site) leem o banco uma vez só
+ * (com o mesmo `db`, o de `carregarSite`); fora de uma página, lê sempre.
+ */
+export const imoveisDoSite = cache(async function imoveisDoSite(db: Db, organizacaoId: string): Promise<ImovelPublico[]> {
   const linhas = await db.select(colunasPublicas).from(imoveis).leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id)).where(noSite(organizacaoId)).orderBy(asc(imoveis.codigo));
   return comFotos(db, organizacaoId, linhas);
-}
+});
 
 /**
  * Se há alguma casa no site (M7.8), sem montar a lista nem buscar fotos: a página não encontrada só precisa disso para
  * decidir entre "Conhecer as casas" e o aviso do site sem casas (um endereço errado, até de robô, faz uma leitura curta).
+ * Com `cache` (M7.13): os metadados da página não encontrada (a frase da prévia) e a própria página leem uma vez só.
  */
-export async function temCasaNoSite(db: Db, organizacaoId: string): Promise<boolean> {
+export const temCasaNoSite = cache(async function temCasaNoSite(db: Db, organizacaoId: string): Promise<boolean> {
   const [l] = await db.select({ id: imoveis.id }).from(imoveis).where(noSite(organizacaoId)).limit(1);
   return !!l;
-}
+});
 
-/** Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. */
-export async function imovelDoSite(db: Db, organizacaoId: string, codigo: string): Promise<ImovelPublico | null> {
+/**
+ * Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. Com `cache` (M7.13): os
+ * metadados da página da casa (a prévia do link) e a própria página leem o banco uma vez só na mesma requisição.
+ */
+export const imovelDoSite = cache(async function imovelDoSite(db: Db, organizacaoId: string, codigo: string): Promise<ImovelPublico | null> {
   if (!/^[\w-]{1,40}$/.test(codigo)) return null;
   const [l] = await db
     .select(colunasPublicas)
@@ -191,7 +213,7 @@ export async function imovelDoSite(db: Db, organizacaoId: string, codigo: string
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
     .where(and(noSite(organizacaoId), eq(imoveis.codigo, codigo)));
   return l ? (await comFotos(db, organizacaoId, [l]))[0] : null;
-}
+});
 
 export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string };
 /** Nomes aceitos no endereço: os do site e os do contrato de links já divulgado (`property`, `checkin`…). */

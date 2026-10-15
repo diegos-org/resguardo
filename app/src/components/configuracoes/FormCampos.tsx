@@ -4,7 +4,8 @@ import { useActionState } from "react";
 import type { EstadoForm } from "@/configuracoes/acoes";
 import styles from "../formularios.module.css";
 
-export type Campo = { nome: string; rotulo: string; limite: number; linhas?: number; tipo?: string; dica?: string; obrigatorio?: boolean };
+/** `nota`: um aviso curto sobre o valor salvo (ex.: o campo "Site", M7.13), abaixo da dica. */
+export type Campo = { nome: string; rotulo: string; limite: number; linhas?: number; tipo?: string; dica?: string; nota?: string | null; obrigatorio?: boolean };
 
 /** Formulário simples de campos de texto (empresa, textos do site), com erros por campo. */
 export function FormCampos({
@@ -41,6 +42,11 @@ export function FormCampos({
             {c.rotulo}
             {c.linhas && c.linhas > 1 ? <textarea rows={c.linhas} {...props} /> : <input type={c.tipo ?? "text"} {...props} />}
             {c.dica && <span style={{ fontSize: "0.8125rem" }}>{c.dica}</span>}
+            {c.nota && (
+              <span role="note" style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>
+                {c.nota}
+              </span>
+            )}
             {erro && (
               <span className={styles.erro} id={`erro-${c.nome}`}>
                 {erro}
