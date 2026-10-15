@@ -580,13 +580,23 @@ describe('faixa "Prévia de teste" no topo (M7.12)', () => {
   it("com a faixa no topo (layout raiz, na prévia), o Pular para o conteúdo continua o primeiro focável das molduras", async () => {
     vi.stubEnv("VERCEL_ENV", "preview");
     try {
-      const comFaixa = (miolo: React.ReactNode) => dom(renderToStaticMarkup(RootLayout({ children: miolo } as LayoutProps<"/">)));
+      // O documento inteiro, como no navegador: o que o React põe no <head> (ex.: o preload das fotos dos cartões da busca)
+      // fica lá, e a conferência olha o <body>.
+      const comFaixa = (miolo: React.ReactNode) =>
+        new DOMParser().parseFromString(renderToStaticMarkup(RootLayout({ children: miolo } as LayoutProps<"/">)), "text/html").body;
       const paginas = [
         comFaixa(<Moldura conteudo={conteudo}>{<h1>Oi</h1>}</Moldura>),
         comFaixa(<MolduraBase>{<h1>Erro</h1>}</MolduraBase>),
         comFaixa(<MolduraPortal empresa="Sua Casa Exemplo" titulo="Portal do proprietário">{<h1>Portal</h1>}</MolduraPortal>),
         comFaixa(await Consulta(props({}, pedido) as never)),
+        // Sua busca (M7.9): a lista das casas e, com o site sem casas, o aviso; a página nova fica na mesma moldura.
+        comFaixa(await Consulta(props({}, busca) as never)),
       ];
+      m.imoveis.mockResolvedValue([]);
+      m.tem.mockResolvedValue(false);
+      paginas.push(comFaixa(await Consulta(props({}, busca) as never)));
+      expect(paginas[4].querySelector("h2")?.textContent).toBe("1 casa na sua busca");
+      expect(paginas[5].querySelector(`.${styles.semCasas}`)).not.toBeNull();
       for (const raiz of paginas) {
         expect(raiz.firstElementChild?.textContent).toBe(TEXTO_FAIXA_PREVIA);
         expect(raiz.firstElementChild?.querySelector(FOCAVEIS)).toBeNull();
