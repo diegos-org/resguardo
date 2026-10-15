@@ -9,9 +9,10 @@
  *    publicar é decisão separada, no cadastro do imóvel) e o convite do portal para aquele e-mail.
  *    Recusar guarda o motivo. Nada vira conta, imóvel ou anúncio sem essa revisão.
  *
- * Autorização (M7.14): o envio do passo 2 guarda, no mesmo insert, quando a caixa foi marcada, a versão e o texto exato
- * dela (`proprietarios/autorizacao`). O texto gravado é sempre o do servidor; o formulário manda só a marca do texto que
- * mostrou, e marca que não confere (texto mudou depois que a página abriu) é recusada.
+ * Autorização (M7.14): o envio do passo 2 guarda, no mesmo insert, quando o envio com a caixa marcada chegou ao servidor
+ * (relógio do servidor, o mesmo `criadoEm`), a versão e o texto exato dela (`proprietarios/autorizacao`). O texto gravado é
+ * sempre o do servidor; o formulário manda só a marca do texto que mostrou, e marca que não confere (texto mudou depois
+ * que a página abriu) é recusada.
  */
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { emitirCodigo, emailValido, type OpcoesCodigo, type ResultadoPedido, verificarCodigo } from "@/acesso/codigo-email";

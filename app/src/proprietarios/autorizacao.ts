@@ -3,18 +3,21 @@
  *
  * Os dois formulários públicos para proprietários — o pedido de contato para a gestão completa (M7.7) e o cadastro do
  * marketplace (M12.3) — têm uma caixa obrigatória de autorização do uso dos dados. Pela LGPD, quem prova o
- * consentimento é a empresa: cada envio guarda, na mesma linha e na mesma gravação, a data e a hora, a versão do texto e
- * o texto exato da caixa, montado pelo servidor a partir desta definição (nunca o que vem do navegador).
+ * consentimento é a empresa: cada envio guarda, na mesma linha e na mesma gravação, a data e a hora em que o envio com a
+ * caixa marcada chegou ao servidor (relógio do servidor, igual à do envio; a hora do clique na caixa, no navegador, não é
+ * registrada), a versão do texto e o texto exato da caixa, montado pelo servidor a partir desta definição (nunca o que
+ * vem do navegador).
  *
  * O texto de cada caixa vive só aqui: o formulário mostra e o servidor grava a partir da mesma definição. Texto novo é
  * versão nova (o teste guarda o texto de cada versão já usada); os envios antigos continuam com o texto que valia,
- * porque o registro leva o texto inteiro. No pedido de contato o texto tem o nome da empresa (Configurações → Empresa),
- * lido de novo no envio. O formulário manda só a marca do texto que mostrou (campo escondido): se o nome ou a versão
- * mudou depois que a página abriu, o servidor recusa e devolve o texto novo, para a pessoa ler e marcar de novo — o
- * registro é sempre do texto que ela viu.
+ * porque o registro leva o texto inteiro (editar o texto pelo painel, com versão a cada mudança, é o M7.15 do ROADMAP).
+ * No pedido de contato o texto tem o nome da empresa (Configurações → Empresa), lido de novo no envio. O formulário manda
+ * só a marca do texto que mostrou (campo escondido): se o nome ou a versão mudou depois que a página abriu, o servidor
+ * recusa e devolve o texto novo, para a pessoa ler e marcar de novo — o registro é sempre do texto que ela viu.
  *
- * Não guarda IP nem navegador (pergunta para o advogado, no GUIA-DIEGO). Envios anteriores a este item ficam sem registro,
- * e o painel diz isso em vez de preencher com um palpite.
+ * Não guarda IP nem navegador (pergunta para o advogado, no GUIA-DIEGO). Envios anteriores à publicação deste item ficam
+ * sem registro, e o painel diz isso em vez de preencher com um palpite. O aviso não traz data: o registro começa quando
+ * a mudança entra no ar, não no dia em que foi escrita (a primeira data real sai do banco, `min(autorizado_em)`).
  *
  * Módulo puro (sem banco): o formulário do site, que roda no navegador, também o importa.
  */
@@ -76,8 +79,8 @@ export const ERRO_AUTORIZACAO_MUDOU = "O texto da autorização mudou depois que
 /** Colunas do registro em cada envio (pedido de contato e cadastro do marketplace). */
 export type RegistroAutorizacao = { autorizadoEm: Date | null; autorizacaoVersao: number | null; autorizacaoTexto: string | null };
 
-/** O que o painel mostra para envio sem registro: só os anteriores a este item (o banco exige os três juntos). */
-export const SEM_REGISTRO_AUTORIZACAO = "Sem registro: enviado antes de o sistema guardar a autorização (mudança de 15/10/2026). A caixa já era obrigatória.";
+/** O que o painel mostra para envio sem registro: só os anteriores a este item (o banco exige os três juntos). Sem data fixa. */
+export const SEM_REGISTRO_AUTORIZACAO = "Sem registro: enviado antes de o sistema passar a guardar a autorização. A caixa já era obrigatória.";
 
 /** O registro de um envio, ou null quando não há (nunca completado com um palpite). */
 export function lerRegistroAutorizacao(r: RegistroAutorizacao): { em: Date; versao: number; texto: string } | null {

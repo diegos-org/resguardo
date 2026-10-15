@@ -1325,9 +1325,10 @@ export const cadastrosMarketplace = pgTable(
     imovelId: uuid("imovel_id").references(() => imoveis.id),
     criadoEm: criadoEm(),
     /**
-     * Autorização da caixa obrigatória do formulário (M7.14, 15/10/2026): quando, a versão e o texto exato que a pessoa
-     * marcou, montado pelo servidor (`proprietarios/autorizacao.ts`), gravados no mesmo insert do envio. Os três juntos
-     * ou nenhum; nenhum = enviado antes deste item (o painel avisa, sem palpite). Sem IP nem navegador.
+     * Autorização da caixa obrigatória do formulário (M7.14, 15/10/2026): `autorizadoEm` é quando o envio com a caixa
+     * marcada chegou ao servidor (relógio do servidor, igual a `criadoEm`; a hora do clique no navegador não é guardada);
+     * com a versão e o texto exato da caixa, montado pelo servidor (`proprietarios/autorizacao.ts`), no mesmo insert do
+     * envio. Os três juntos ou nenhum; nenhum = enviado antes deste item (o painel avisa, sem palpite). Sem IP nem navegador.
      */
     autorizadoEm: timestamp("autorizado_em", { withTimezone: true }),
     autorizacaoVersao: integer("autorizacao_versao"),
@@ -1376,9 +1377,10 @@ export const pedidosContatoProprietario = pgTable(
     decididoEm: timestamp("decidido_em", { withTimezone: true }),
     decididoPor: uuid("decidido_por").references(() => usuarios.id, { onDelete: "set null" }),
     /**
-     * Autorização da caixa obrigatória do formulário (M7.14, 15/10/2026): quando, a versão e o texto exato que a pessoa
-     * marcou, montado pelo servidor (`proprietarios/autorizacao.ts`), gravados no mesmo insert do envio. Os três juntos
-     * ou nenhum; nenhum = enviado antes deste item (o painel avisa, sem palpite). Sem IP nem navegador.
+     * Autorização da caixa obrigatória do formulário (M7.14, 15/10/2026): `autorizadoEm` é quando o envio com a caixa
+     * marcada chegou ao servidor (relógio do servidor, igual a `criadoEm`; a hora do clique no navegador não é guardada);
+     * com a versão e o texto exato da caixa, montado pelo servidor (`proprietarios/autorizacao.ts`), no mesmo insert do
+     * envio. Os três juntos ou nenhum; nenhum = enviado antes deste item (o painel avisa, sem palpite). Sem IP nem navegador.
      */
     autorizadoEm: timestamp("autorizado_em", { withTimezone: true }),
     autorizacaoVersao: integer("autorizacao_versao"),

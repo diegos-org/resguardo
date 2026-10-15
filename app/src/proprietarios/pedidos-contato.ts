@@ -13,9 +13,10 @@
  * arquivar nada para o formulário voltar a funcionar. O pedido não guarda IP; a origem só entra na conta temporária de
  * tentativas (a mesma do login), apagada depois de um dia parada.
  *
- * Autorização (M7.14): o pedido guarda, no mesmo insert, quando a caixa foi marcada, a versão e o texto exato dela, com
- * o nome da empresa lido no envio (`./autorizacao`). O texto gravado é sempre o do servidor; o formulário manda só a
- * marca do texto que mostrou, e marca que não confere (texto mudou depois que a página abriu) é recusada.
+ * Autorização (M7.14): o pedido guarda, no mesmo insert, quando o envio com a caixa marcada chegou ao servidor (relógio
+ * do servidor, o mesmo `criadoEm`), a versão e o texto exato dela, com o nome da empresa lido no envio (`./autorizacao`).
+ * O texto gravado é sempre o do servidor; o formulário manda só a marca do texto que mostrou, e marca que não confere
+ * (texto mudou depois que a página abriu) é recusada.
  */
 import { and, asc, count, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { emailValido } from "@/acesso/codigo-email";

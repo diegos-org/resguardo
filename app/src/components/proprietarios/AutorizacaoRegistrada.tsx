@@ -5,8 +5,8 @@ const quando = (d: Date) =>
 
 /**
  * O registro da autorização de um envio de "Anuncie seu imóvel" (M7.14), nos pedidos de contato e nos cadastros pelo
- * site: quando (horário de Brasília), a versão e o texto exato que a pessoa marcou. Envio de antes do registro: o aviso,
- * sem preencher nada.
+ * site: quando o envio com a caixa marcada chegou ao servidor (horário de Brasília), a versão e o texto exato da caixa.
+ * Envio de antes do registro: o aviso, sem preencher nada.
  */
 export function AutorizacaoRegistrada({ registro }: { registro: RegistroAutorizacao }) {
   const r = lerRegistroAutorizacao(registro);

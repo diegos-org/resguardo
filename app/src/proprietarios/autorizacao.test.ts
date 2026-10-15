@@ -67,6 +67,8 @@ describe("texto da autorização dos proprietários (M7.14)", () => {
     expect(lerRegistroAutorizacao({ autorizadoEm: em, autorizacaoVersao: null, autorizacaoTexto: "Texto." })).toBeNull();
     expect(lerRegistroAutorizacao({ autorizadoEm: em, autorizacaoVersao: 1, autorizacaoTexto: "" })).toBeNull();
     expect(SEM_REGISTRO_AUTORIZACAO).toContain("Sem registro");
-    expect(SEM_REGISTRO_AUTORIZACAO).toContain("15/10/2026");
+    expect(SEM_REGISTRO_AUTORIZACAO).toContain("A caixa já era obrigatória.");
+    // Sem data fixa: o registro começa quando a mudança entra no ar, não no dia em que foi escrita.
+    expect(SEM_REGISTRO_AUTORIZACAO).not.toMatch(/\d{1,2}\/\d{1,2}/);
   });
 });

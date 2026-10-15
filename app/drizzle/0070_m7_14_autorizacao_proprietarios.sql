@@ -1,7 +1,8 @@
 -- M7.14 (registro da autorização dos proprietários nos formulários de "Anuncie seu imóvel"). Idempotente como a 0067 a
 -- 0069: o banco das prévias é compartilhado e as migrações entram por hash, então rodar estas instruções de novo não pode
--- falhar nem mudar nada. No pedido de contato e no cadastro do marketplace: quando a caixa foi marcada, a versão e o texto
--- exato dela (os três juntos ou nenhum). Os envios de antes ficam sem nenhum dos três: nada é preenchido com palpite.
+-- falhar nem mudar nada. No pedido de contato e no cadastro do marketplace: quando o envio com a caixa marcada chegou ao
+-- servidor, a versão e o texto exato dela (os três juntos ou nenhum). Os envios de antes ficam sem nenhum dos três: nada é
+-- preenchido com palpite.
 ALTER TABLE "cadastros_marketplace" ADD COLUMN IF NOT EXISTS "autorizado_em" timestamp with time zone;
 --> statement-breakpoint
 ALTER TABLE "cadastros_marketplace" ADD COLUMN IF NOT EXISTS "autorizacao_versao" integer;

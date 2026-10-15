@@ -247,6 +247,8 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
     const m0070 = todas[70];
     expect(m0070.sql.join("\n")).toContain('"autorizacao_texto"');
+    // Só até a 0070 (as seguintes terão o próprio teste): uma migração nova não muda as contas deste.
+    const ate0070 = todas.slice(0, 71);
     expect(await aplicarMigracoesPendentes(executar, todas.slice(0, 70))).toBe(70);
     const um = async <T,>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows[0];
     const { id: org } = (await um<{ id: string }>("insert into organizacoes (nome) values ('Org') returning id"))!;
@@ -261,7 +263,7 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     const { rows: [p] } = await pedido();
     const { rows: [c] } = await cadastro();
 
-    expect(await aplicarMigracoesPendentes(executar, todas)).toBe(1);
+    expect(await aplicarMigracoesPendentes(executar, ate0070)).toBe(1);
     const sql = "select autorizado_em as em, autorizacao_versao as v, autorizacao_texto as t from %s where id = $1";
     expect(await um(sql.replace("%s", "pedidos_contato_proprietario"), [p.id])).toEqual({ em: null, v: null, t: null });
     expect(await um(sql.replace("%s", "cadastros_marketplace"), [c.id])).toEqual({ em: null, v: null, t: null });
@@ -291,6 +293,6 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     for (const instrucao of m0070.sql) await db.exec(instrucao);
     expect({ colunas: await colunas(), restricoes: await restricoes(), tabelas: await tabelas() }).toEqual(antes);
     await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0070.hash]);
-    expect(await aplicarMigracoesPendentes(executar, todas)).toBe(1);
+    expect(await aplicarMigracoesPendentes(executar, ate0070)).toBe(1);
   }, 120_000);
 });
