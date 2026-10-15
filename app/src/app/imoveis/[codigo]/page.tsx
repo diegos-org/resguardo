@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BairroAPorta } from "@/components/site/BairroAPorta";
 import { altDaCapa } from "@/components/site/CapaDoImovel";
-import { fraseDoImovel, olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
+import { olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { FormConsulta } from "@/components/site/FormConsulta";
@@ -18,6 +18,7 @@ import { lugaresDoSite } from "@/site/bairro";
 import { linkDaCasa } from "@/site/link-da-casa";
 import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
+import { fraseDoImovel } from "@/site/frase-do-imovel";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
@@ -32,7 +33,7 @@ export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]"
   // ./not-found.tsx, para não depender só do título da not-found (que o Next pode trocar pelo do layout).
   if (!i) return metadadosDaNaoEncontrada("casa");
   // Prévia do link (M7.13): o nome, a frase do cartão (`fraseDoImovel`: a frase de abertura da casa, M7.17, ou a primeira
-  // frase da descrição) e a versão pequena da capa da casa
+  // frase da descrição; sem descrição, bairro e cidade) e a versão pequena da capa da casa
   // (sem foto, sem imagem: nunca a capa do site no lugar). O endereço principal é o da casa, sem as datas do link.
   const capa = i.fotos[0];
   return metadadosDoSite(i.nome, {

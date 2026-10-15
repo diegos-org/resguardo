@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
+import { NOTAS_PRECO_SITE } from "@/components/anuncios/QuadroAnuncios";
 import Page from "./page";
 const m = vi.hoisted(() => ({ sessao: vi.fn(), listar: vi.fn(), site: vi.fn(), db: vi.fn(), redirect: vi.fn(), fotos: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
@@ -17,8 +18,8 @@ beforeEach(() => {
   m.site.mockResolvedValue("org");
   m.fotos.mockResolvedValue(new Map([["im", 3]]));
   m.listar.mockResolvedValue([
-    { id: "im", codigo: "T1", nome: "Studio fictício", descricao: "Do site", ativo: true, publico: true, precoBase: 10000, anuncios: [], vinculos: [{ canal: "airbnb", idExterno: "123" }] },
-    { id: "arq", codigo: "ARQ", nome: "Arquivado", descricao: "", ativo: false, publico: true, precoBase: null, anuncios: [], vinculos: [] },
+    { id: "im", codigo: "T1", nome: "Studio fictício", bairro: "Leblon", cidade: "Rio de Janeiro", descricao: "Do site", frase: "", ativo: true, publico: true, precoBase: 10000, fontePrecos: "scl", anuncios: [], vinculos: [{ canal: "airbnb", idExterno: "123" }] },
+    { id: "arq", codigo: "ARQ", nome: "Arquivado", bairro: "", cidade: "Rio de Janeiro", descricao: "", frase: "", ativo: false, publico: true, precoBase: null, fontePrecos: "beds24", anuncios: [], vinculos: [] },
   ]);
 });
 const html = async (params = {}) => renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve(params) }));
@@ -35,7 +36,8 @@ it("operação lê sem formulários de edição; ID não significa publicação"
   const h = await html();
   expect(h).toContain("Anúncios T1"); expect(h).not.toContain("Anúncios ARQ");
   expect(h).toContain("Não conferido"); expect(h).toContain("Vínculo não comprova publicação");
-  expect(h).toContain("Preço interno de referência");
+  // Nota do preço base pela fonte de preços (M7.17): com SCL, é a base da noite no site.
+  expect(h).toContain(NOTAS_PRECO_SITE.scl);
   expect(h).not.toContain("Editar referência do");
   // Fotos reais do site (M7.3): quantas há, ou o aviso de que ainda não há.
   expect(h).toContain("3 fotos reais na galeria (a primeira é a capa).");
@@ -58,5 +60,7 @@ it("mantém seleção explícita e arquivados sem dar link para site de outra em
 it("não anuncia diferenças quando faltam referências; permite incluir arquivados", async () => {
   const h = await html({ arquivados: "sim" });
   expect(h).toContain("Anúncios ARQ"); expect(h).not.toContain("Diferenças para conferir");
+  // O arquivado tem preços do Beds24: a nota diz que o preço base fica só como referência.
+  expect(h).toContain(NOTAS_PRECO_SITE.beds24);
   expect(h).toContain("canais não conferidos ainda precisam");
 });

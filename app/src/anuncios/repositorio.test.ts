@@ -45,6 +45,13 @@ it("preserva vínculos, dados do site e arquivados, sem inferir anúncio dos IDs
   expect(i.precoBase).toBe(34500);
   expect(i.vinculos[0].idExterno).toBe("FAKE");
 });
+it("traz o que o cartão Site precisa (M7.17): bairro e cidade para a frase do cartão e a fonte de preços para a nota", async () => {
+  await db.update(imoveis).set({ bairro: "Leblon", cidade: "Rio de Janeiro" }).where(eq(imoveis.id, imovel));
+  // Sem ficha de detalhes, a fonte é a padrão do cadastro.
+  expect((await listarAnuncios(db, org))[0]).toMatchObject({ bairro: "Leblon", cidade: "Rio de Janeiro", fontePrecos: "scl", precoBase: null });
+  await db.insert(imoveisDetalhes).values({ organizacaoId: org, imovelId: imovel, precoBase: 34500, fontePrecos: "beds24" });
+  expect((await listarAnuncios(db, org))[0]).toMatchObject({ fontePrecos: "beds24", precoBase: 34500 });
+});
 it("recusa formulário desatualizado e não perde a alteração anterior", async () => {
   await salvarAnuncio(db, org, imovel, entrada, null);
   expect(await salvarAnuncio(db, org, imovel, { ...entrada, titulo: "Sobrescrever" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("outra tela") });

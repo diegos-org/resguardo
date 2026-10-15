@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { anuncios, idsExternos, imoveis, imoveisDetalhes } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { DETALHES_VAZIOS } from "@/imoveis/detalhes";
 import { uuidValido } from "@/lib/ids";
 import { validarAnuncio } from "./regras";
 
@@ -9,14 +10,15 @@ export type Anuncio = typeof anuncios.$inferSelect;
 export async function listarAnuncios(db: Db, org: string) {
   // Consultas em lote: não cresce o número de consultas conforme a quantidade de imóveis.
   const [lista, referencias, vinculos] = await Promise.all([
-    db.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome, descricao: imoveis.descricao, frase: imoveis.frase, ativo: imoveis.ativo, publico: imoveis.publico, precoBase: imoveisDetalhes.precoBase })
+    db.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome, bairro: imoveis.bairro, cidade: imoveis.cidade, descricao: imoveis.descricao, frase: imoveis.frase, ativo: imoveis.ativo, publico: imoveis.publico, precoBase: imoveisDetalhes.precoBase, fontePrecos: imoveisDetalhes.fontePrecos })
       .from(imoveis).leftJoin(imoveisDetalhes, and(eq(imoveisDetalhes.imovelId, imoveis.id), eq(imoveisDetalhes.organizacaoId, org)))
       .where(eq(imoveis.organizacaoId, org)).orderBy(asc(imoveis.codigo)),
     db.select().from(anuncios).where(eq(anuncios.organizacaoId, org)),
     db.select({ imovelId: idsExternos.imovelId, canal: idsExternos.canal, idExterno: idsExternos.idExterno })
       .from(idsExternos).where(and(eq(idsExternos.organizacaoId, org), inArray(idsExternos.canal, ["airbnb", "booking"]))),
   ]);
-  return lista.map(i => ({ ...i, anuncios: referencias.filter(a => a.imovelId === i.id), vinculos: vinculos.filter(v => v.imovelId === i.id) }));
+  // Sem a ficha de detalhes, a fonte de preços é a padrão do cadastro, como em `fontesDePrecosDosImoveis`.
+  return lista.map(i => ({ ...i, fontePrecos: i.fontePrecos ?? DETALHES_VAZIOS.fontePrecos, anuncios: referencias.filter(a => a.imovelId === i.id), vinculos: vinculos.filter(v => v.imovelId === i.id) }));
 }
 
 export async function salvarAnuncio(db: Db, org: string, imovelId: string, e: Record<string, unknown>, autorId: string | null): Promise<{ ok: true } | { ok: false; erro: string }> {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { fraseDoImovel } from "@/site/frase-do-imovel";
 import type { ImovelPublico } from "@/site/site";
 import { CapaDoImovel } from "./CapaDoImovel";
 import { comodidadesDoCartao, IconeComodidade } from "./IconeComodidade";
@@ -12,19 +13,6 @@ export function resumoImovel(i: ImovelPublico): string {
     i.banheiros ? `${i.banheiros} ${i.banheiros === 1 ? "banheiro" : "banheiros"}` : null,
   ].filter(Boolean);
   return partes.join(" · ");
-}
-
-/**
- * A frase do cartão da vitrine e da prévia do link (M7.13) — uma regra, um lugar: a frase de abertura da casa (M7.17,
- * escrita na ficha do imóvel) quando houver; sem ela, a primeira frase da descrição (até 120 caracteres); sem descrição,
- * bairro e cidade.
- */
-export function fraseDoImovel(i: Pick<ImovelPublico, "frase" | "descricao" | "bairro" | "cidade">): string {
-  const propria = i.frase.trim();
-  if (propria) return propria;
-  const frase = i.descricao.trim().split(/(?<=[.!?])\s+/)[0] ?? "";
-  if (frase) return frase.length > 120 ? `${frase.slice(0, 119).trimEnd()}…` : frase;
-  return [i.bairro, i.cidade].filter(Boolean).join(", ");
 }
 
 /** "Olho" do cartão: bairro e código do imóvel, em maiúsculas pelo CSS. */

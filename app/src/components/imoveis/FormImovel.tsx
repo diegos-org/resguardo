@@ -76,9 +76,10 @@ export function FormImovel({ acao, id, inicial = {} }: Props) {
         <input name="frase" defaultValue={inicial.frase} maxLength={LIMITE_FRASE} {...invalido("frase")} />
         {/* Dentro do rótulo, como a dica dos campos de Configurações (FormCampos). */}
         <span style={{ fontSize: "0.8125rem" }}>
-          Abre a página da casa no site, em letra grande, acima da descrição; vai também para o cartão da vitrine e para a
-          prévia do link. Até {LIMITE_FRASE} caracteres, numa linha só. Em branco, nada aparece e o cartão usa a primeira frase
-          da descrição.
+          Abre a página da casa no site, em letra grande, acima da descrição; vai também para o cartão da casa (nas vitrines
+          do site e da página para proprietários) e para a prévia do link. Até {LIMITE_FRASE} caracteres, numa linha só. Em
+          branco, nada aparece acima da descrição, e o cartão e a prévia usam a primeira frase da descrição (sem descrição, o
+          bairro e a cidade); a aba Anúncios mostra qual.
         </span>
         {erro("frase")}
       </label>

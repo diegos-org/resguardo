@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CartaoImovel, fraseDoImovel, seloDoImovel } from "@/components/site/CartaoImovel";
+import { CartaoImovel, seloDoImovel } from "@/components/site/CartaoImovel";
 import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import { PASSO_VITRINE_MS, VitrineCasas } from "@/components/site/VitrineCasas";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import { fraseDoImovel } from "@/site/frase-do-imovel";
 import type { ImovelPublico } from "@/site/site";
 
 const imovel: ImovelPublico = {

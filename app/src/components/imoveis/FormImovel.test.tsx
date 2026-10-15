@@ -36,6 +36,11 @@ describe("FormImovel", () => {
     expect(rotulo.textContent).toContain("Frase de abertura (site)");
     expect(rotulo.textContent).toContain("acima da descrição");
     expect(rotulo.textContent).toContain("Em branco, nada aparece");
+    // O que o cartão usa sem frase, inteiro (como `fraseDoImovel`): a descrição e, sem ela, bairro e cidade; e os lugares
+    // onde o cartão aparece, inclusive a vitrine da página para proprietários.
+    const dica = rotulo.textContent!.replace(/\s+/g, " ");
+    expect(dica).toContain("a primeira frase da descrição (sem descrição, o bairro e a cidade)");
+    expect(dica).toContain("nas vitrines do site e da página para proprietários");
   });
 
   it("frase de abertura: a edição mostra a gravada e o erro do servidor fica ligado ao campo", async () => {
