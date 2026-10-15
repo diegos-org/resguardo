@@ -5,7 +5,20 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { and, eq } from "drizzle-orm";
 import { gravarConfig } from "./armazem";
-import { type DefinicaoDocumento, lerVersoes, mensagemVersaoMudou, normalizarSecoes, publicarVersao, secoesIguais, validarSecoes, versaoAtual, versoesDe } from "./documentos-versionados";
+import {
+  type DefinicaoDocumento,
+  lerVersoes,
+  mensagemVersaoMudou,
+  normalizarSecoes,
+  publicarVersao,
+  secoesIguais,
+  validarSecoes,
+  versaoAtual,
+  versaoDeOrigem,
+  versaoEmVigor,
+  versoesComOrigem,
+  versoesDe,
+} from "./documentos-versionados";
 
 // Documento de mentira numa chave livre: duas seções e um campo próprio gravado em cada versão.
 type Extra = { selo: string };
@@ -110,5 +123,42 @@ describe("documento versionado genérico (M7.4, motor do M5.6)", () => {
     expect(await lerVersoes(db, DOC, outra)).toEqual([]);
     expect(await publicarVersao(db, DOC, outra, { a: "dela", b: "" }, null, "2026-10-06", 0, com("s"))).toMatchObject({ ok: true, versao: { numero: 1 } });
     expect((await lerVersoes(db, DOC, org)).map((v) => v.numero)).toEqual([1, 2, 3]);
+  });
+
+  it("versão de origem (M7.15): vale sem nada publicado, sem data; o mesmo texto não cria versão; a primeira publicada é a seguinte a ela", async () => {
+    const COM_ORIGEM: DefinicaoDocumento<"a" | "b", Extra> = { ...DOC, chave: "politica_privacidade", origem: { numero: 1, secoes: { a: "um", b: "" }, selo: "s" } };
+    const origem = { numero: 1, data: "", autorId: null, secoes: { a: "um", b: "" }, selo: "s" };
+    expect(versaoDeOrigem(DOC)).toBeNull();
+    expect(versaoEmVigor(DOC, [])).toBeNull();
+    expect(versaoDeOrigem(COM_ORIGEM)).toEqual(origem);
+    expect(versaoEmVigor(COM_ORIGEM, [])).toEqual(origem);
+    expect(versoesComOrigem(DOC, [])).toEqual([]);
+    expect(versoesComOrigem(COM_ORIGEM, [])).toEqual([origem]);
+    // Mensagem de recusa sem data quando a versão em vigor é a de origem.
+    expect(mensagemVersaoMudou(origem)).toBe("Enquanto você editava, a versão 1 foi publicada por outra pessoa. Recarregue a página, confira o texto atual e publique de novo.");
+
+    // O mesmo texto da origem: nada é gravado (nem configuração nem histórico), e o resultado é a própria origem.
+    expect(await publicarVersao(db, COM_ORIGEM, org, { a: "um", b: "" }, admin, "2026-10-15", 1, com("s"))).toEqual({ ok: true, mudou: false, versao: origem });
+    expect(await db.select().from(configuracoes).where(eq(configuracoes.organizacaoId, org))).toEqual([]);
+    expect(await db.select().from(auditoria).where(eq(auditoria.organizacaoId, org))).toEqual([]);
+    // O formulário que diz "nada em vigor" (base 0) é recusado: a versão em vigor é a 1, a de origem.
+    expect(await publicarVersao(db, COM_ORIGEM, org, { a: "outro", b: "" }, admin, "2026-10-15", 0, com("s"))).toMatchObject({ ok: false, atual: origem });
+    // Texto diferente sobre a origem: a versão 2, datada; só ela vai para o banco.
+    expect(await publicarVersao(db, COM_ORIGEM, org, { a: "dois", b: "" }, admin, "2026-10-15", 1, com("s"))).toEqual({
+      ok: true,
+      mudou: true,
+      versao: { numero: 2, data: "2026-10-15", autorId: admin, secoes: { a: "dois", b: "" }, selo: "s" },
+    });
+    const [linha] = await db.select().from(configuracoes).where(and(eq(configuracoes.organizacaoId, org), eq(configuracoes.chave, COM_ORIGEM.chave)));
+    expect((linha.valor as { versoes: unknown[] }).versoes).toEqual([{ numero: 2, data: "2026-10-15", autorId: admin, secoes: { a: "dois", b: "" }, selo: "s" }]);
+    const publicadas = await lerVersoes(db, COM_ORIGEM, org);
+    expect(versoesComOrigem(COM_ORIGEM, publicadas).map((v) => [v.numero, v.data])).toEqual([[1, ""], [2, "2026-10-15"]]);
+    expect(versaoEmVigor(COM_ORIGEM, publicadas)?.numero).toBe(2);
+    // O histórico registra a mudança a partir do texto da origem.
+    expect((await historicoDe(db, org, "configuracao", org)).map((h) => h.mudancas)).toEqual([{ versao: [1, 2], "secao.a": ["um", "dois"] }]);
+    // Voltar ao texto da origem é versão nova (a 3), com o mesmo texto da 1: o número conta a história, não o texto.
+    expect(await publicarVersao(db, COM_ORIGEM, org, { a: "um", b: "" }, admin, "2026-10-16", 2, com("s"))).toMatchObject({ ok: true, mudou: true, versao: { numero: 3 } });
+    // Sem origem, o mesmo documento numera do 1, como sempre.
+    expect(await publicarVersao(db, DOC, org, { a: "um", b: "" }, admin, "2026-10-15", 0, com("s"))).toMatchObject({ ok: true, versao: { numero: 1 } });
   });
 });

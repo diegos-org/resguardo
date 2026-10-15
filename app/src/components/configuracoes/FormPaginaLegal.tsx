@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useDeferredValue, useEffect, useRef, useState } from "react";
+import { useActionState, useDeferredValue, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import { DocumentoLegal } from "@/components/site/DocumentoLegal";
@@ -25,6 +25,7 @@ import {
   textoLimitaArrependimento,
 } from "@/configuracoes/paginas-legais-texto";
 import styles from "../formularios.module.css";
+import { useSairSemPublicar } from "./useSairSemPublicar";
 
 type Props = {
   documento: Documento;
@@ -48,23 +49,6 @@ const br = (d: string) => d.split("-").reverse().join("/");
 const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } as const;
 const PRAZO_PADRAO = 14;
 
-const SAIR = "Sair sem publicar? O texto mudado aqui se perde.";
-
-/**
- * Clique que tira desta tela na mesma aba: um link para outra página (abas de Configurações, menu do painel, os links
- * daqui). Não contam o que abre em outra aba ou janela, o que baixa um arquivo e o link que só rola esta página (#).
- */
-function cliqueQueSai(e: MouseEvent): boolean {
-  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return false;
-  const a = e.target instanceof Element ? e.target.closest("a[href]") : null;
-  if (!a || a.hasAttribute("download") || !["", "_self"].includes(a.getAttribute("target") ?? "")) return false;
-  const destino = new URL(a.getAttribute("href") ?? "", window.location.href);
-  if (destino.protocol !== "http:" && destino.protocol !== "https:") return false;
-  return !(destino.hash && mesmaPagina(destino, new URL(window.location.href)));
-}
-
-const mesmaPagina = (a: URL, b: URL) => a.origin === b.origin && a.pathname === b.pathname && a.search === b.search;
-
 /** Prazo digitado, se for um número inteiro de dias dentro do limite (a mesma conferência da publicação). */
 function diasDoCampo(t: string): number | null {
   const n = /^\d{1,3}$/.test(t.trim()) ? Number(t.trim()) : Number.NaN;
@@ -87,60 +71,21 @@ export function FormPaginaLegal({ documento, atual, valores, dias, arrependiment
   const [secoes, setSecoes] = useState<Record<string, string>>(() => Object.fromEntries(def.secoes.map((s) => [s.chave, valores[s.chave] ?? ""])));
   const [diasTexto, setDiasTexto] = useState(diasIniciais);
   const [limiteArrependimento, setLimiteArrependimento] = useState(limiteInicial);
-  // Diego já confirmou sair sem publicar (não pergunta de novo no caminho); volta a proteger quando ele edita outra vez.
-  const saidaConfirmada = useRef(false);
   const alterado =
     def.secoes.some((s) => (secoes[s.chave] ?? "").trim() !== (valores[s.chave] ?? "").trim()) || diasTexto.trim() !== diasIniciais || (cancelamento && limiteArrependimento !== limiteInicial);
 
-  // Sem rascunho guardado: sair com o texto mudado pede confirmação. Fechar ou recarregar passa pelo aviso do navegador;
-  // os links do painel (<Link>, que trocam de tela sem recarregar) e o Voltar/Avançar do navegador não passam, e por isso
-  // são parados aqui antes de o roteador agir.
-  useEffect(() => {
-    if (!alterado) return;
-    saidaConfirmada.current = false;
-    // Esta tela no histórico, para voltar a ela se Diego desistir de sair pelo Voltar do navegador.
-    const aqui = { url: window.location.href, estado: window.history.state as unknown };
-    const confirmar = () => {
-      if (saidaConfirmada.current) return true;
-      saidaConfirmada.current = window.confirm(SAIR);
-      return saidaConfirmada.current;
-    };
-    const avisar = (e: BeforeUnloadEvent) => {
-      if (saidaConfirmada.current) return;
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    // Na captura do documento: roda antes do <Link> (que ouve na raiz do React) e, se Diego desistir, ele nem fica sabendo.
-    const clicar = (e: MouseEvent) => {
-      if (!cliqueQueSai(e) || confirmar()) return;
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    // Na captura da janela: roda antes do roteador do Next. Desistiu? A tela volta para o histórico, como se não tivesse saído.
-    const voltar = (e: PopStateEvent) => {
-      if (mesmaPagina(new URL(window.location.href), new URL(aqui.url)) || confirmar()) return;
-      e.stopImmediatePropagation();
-      window.history.pushState(aqui.estado, "", aqui.url);
-    };
-    window.addEventListener("beforeunload", avisar);
-    document.addEventListener("click", clicar, true);
-    window.addEventListener("popstate", voltar, true);
-    return () => {
-      window.removeEventListener("beforeunload", avisar);
-      document.removeEventListener("click", clicar, true);
-      window.removeEventListener("popstate", voltar, true);
-    };
-  }, [alterado]);
+  // Sem rascunho guardado: sair com o texto mudado pede confirmação (link, Voltar do navegador, fechar ou recarregar).
+  const rearmar = useSairSemPublicar(alterado);
   const editarSecao = (chave: string, valor: string) => {
-    saidaConfirmada.current = false;
+    rearmar();
     setSecoes((atuais) => ({ ...atuais, [chave]: valor }));
   };
   const editarDias = (valor: string) => {
-    saidaConfirmada.current = false;
+    rearmar();
     setDiasTexto(valor);
   };
   const editarLimite = (valor: boolean) => {
-    saidaConfirmada.current = false;
+    rearmar();
     setLimiteArrependimento(valor);
   };
 

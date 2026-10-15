@@ -1,25 +1,34 @@
 /**
- * Autorização dos proprietários nos formulários de "Anuncie seu imóvel" (M7.14, 15/10/2026).
+ * Autorização dos proprietários nos formulários de "Anuncie seu imóvel" (M7.14, 15/10/2026; texto editável no M7.15).
  *
  * Os dois formulários públicos para proprietários — o pedido de contato para a gestão completa (M7.7) e o cadastro do
  * marketplace (M12.3) — têm uma caixa obrigatória de autorização do uso dos dados. Pela LGPD, quem prova o
  * consentimento é a empresa: cada envio guarda, na mesma linha e na mesma gravação, a data e a hora em que o envio com a
  * caixa marcada chegou ao servidor (relógio do servidor, igual à do envio; a hora do clique na caixa, no navegador, não é
- * registrada), a versão do texto e o texto exato da caixa, montado pelo servidor a partir desta definição (nunca o que
- * vem do navegador).
+ * registrada), a versão do texto e o texto exato da caixa, montado pelo servidor (nunca o que vem do navegador).
  *
- * O texto de cada caixa vive só aqui: o formulário mostra e o servidor grava a partir da mesma definição. Texto novo é
- * versão nova (o teste guarda o texto de cada versão já usada); os envios antigos continuam com o texto que valia,
- * porque o registro leva o texto inteiro (editar o texto pelo painel, com versão a cada mudança, é o M7.15 do ROADMAP).
- * No pedido de contato o texto tem o nome da empresa (Configurações → Empresa), lido de novo no envio. O formulário manda
- * só a marca do texto que mostrou (campo escondido): se o nome ou a versão mudou depois que a página abriu, o servidor
- * recusa e devolve o texto novo, para a pessoa ler e marcar de novo — o registro é sempre do texto que ela viu.
+ * Mudou em 15/10/2026 (M7.15). Antes: o texto de cada caixa era fixo aqui, com a versão controlada por um teste (texto
+ * novo pedia versão nova no código). Depois: o texto é editado no painel (Configurações → Autorização dos proprietários)
+ * e cada publicação vira uma versão numerada e datada, pelo motor de `configuracoes/documentos-versionados.ts` (o do
+ * "Como funciona" e das páginas legais); a leitura e a publicação ficam em `configuracoes/autorizacao-proprietarios.ts`.
+ * A versão 1 de cada caixa continua sendo o texto daqui (`TEXTOS_ORIGEM_AUTORIZACAO`), o mesmo que o M7.14 mostrou e
+ * gravou como "versão 1": vale enquanto nada for publicado no painel, sem migração nem data inventada, e a primeira
+ * publicação é a versão 2 — nunca há duas "versão 1" diferentes. Motivo: "Tudo editável pelo painel" (Diego, 24/09), e
+ * é dos textos que Diego deve querer mudar depois da conversa com o advogado. Objetivo: a prova do consentimento
+ * continuar exata (versão e texto que a pessoa viu) com o texto nas mãos de Diego.
  *
- * Não guarda IP nem navegador (pergunta para o advogado, no GUIA-DIEGO). Envios anteriores à publicação deste item ficam
- * sem registro, e o painel diz isso em vez de preencher com um palpite. O aviso não traz data: o registro começa quando
- * a mudança entra no ar, não no dia em que foi escrita (a primeira data real sai do banco, `min(autorizado_em)`).
+ * O formulário mostra e o servidor grava a versão em vigor, lida de um lugar só; os envios antigos continuam com o texto
+ * que valia, porque o registro leva o texto inteiro (nunca é reescrito). `{empresa}` no texto vira o nome da empresa de
+ * Configurações → Empresa, lido de novo a cada página e a cada envio (como no M7.14: o nome não é congelado na versão, e
+ * trocar o nome não cria versão; o texto gravado leva o nome daquele momento). O formulário manda só a marca do texto
+ * que mostrou (campo escondido): se a versão em vigor ou o nome mudou depois que a página abriu, o servidor recusa e
+ * devolve o texto novo, para a pessoa ler e marcar de novo — o registro é sempre do texto que ela viu.
  *
- * Módulo puro (sem banco): o formulário do site, que roda no navegador, também o importa.
+ * Não guarda IP nem navegador (pergunta para o advogado, no GUIA-DIEGO). Envios anteriores ao M7.14 ficam sem registro,
+ * e o painel diz isso em vez de preencher com um palpite. O aviso não traz data: o registro começa quando a mudança
+ * entra no ar, não no dia em que foi escrita (a primeira data real sai do banco, `min(autorizado_em)`).
+ *
+ * Módulo puro (sem banco): o formulário do site e o do painel, que rodam no navegador, também o importam.
  */
 
 export const FORMULARIOS_PROPRIETARIO = ["contato", "cadastro"] as const;
@@ -28,16 +37,22 @@ export type FormularioProprietario = (typeof FORMULARIOS_PROPRIETARIO)[number];
 /** Campo escondido do formulário com a marca do texto que a pessoa viu ao lado da caixa. */
 export const CAMPO_AUTORIZACAO = "autorizacao";
 
-export type DefinicaoAutorizacao = { versao: number; modelo: string };
+/** Número da versão de origem: o texto do M7.14, que vale enquanto nada for publicado no painel. */
+export const VERSAO_ORIGEM_AUTORIZACAO = 1;
 
 /**
- * O texto atual de cada caixa; `{empresa}` vira o nome da empresa. Mudou o texto? Suba a versão e acrescente o texto
- * novo na lista de versões do teste (`autorizacao.test.ts`), sem tirar as anteriores.
+ * A versão 1 de cada caixa: o texto que o M7.14 mostrou e gravou como "versão 1". Fixo para sempre (o teste guarda):
+ * mudá-lo aqui criaria duas "versão 1" diferentes. Texto novo se publica no painel, como versão nova.
  */
-export const TEXTOS_AUTORIZACAO: Record<FormularioProprietario, DefinicaoAutorizacao> = {
-  contato: { versao: 1, modelo: "Autorizo o uso destes dados só para a {empresa} me responder sobre a gestão do imóvel." },
-  cadastro: { versao: 1, modelo: "Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo." },
-};
+export const TEXTOS_ORIGEM_AUTORIZACAO: Readonly<Record<FormularioProprietario, string>> = Object.freeze({
+  contato: "Autorizo o uso destes dados só para a {empresa} me responder sobre a gestão do imóvel.",
+  cadastro: "Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo.",
+});
+
+/** Único marcador do texto: vira o nome da empresa. */
+export const MARCADOR_EMPRESA = "{empresa}";
+/** Tamanho máximo do texto de uma caixa (com o marcador, antes de virar o nome). */
+export const LIMITE_TEXTO_AUTORIZACAO = 500;
 
 /** O texto como aparece ao lado da caixa, a versão dele e a marca que o formulário devolve no envio. */
 export type TextoAutorizacao = { versao: number; texto: string; marca: string };
@@ -52,20 +67,65 @@ function impressao(texto: string): string {
   return h.toString(36);
 }
 
-/** O texto atual da caixa do formulário, com o nome da empresa. */
-export function textoDaAutorizacao(formulario: FormularioProprietario, empresa: string): TextoAutorizacao {
-  const { versao, modelo } = TEXTOS_AUTORIZACAO[formulario];
-  const texto = modelo.replaceAll("{empresa}", empresa.trim() || "empresa");
+/**
+ * `{empresa}` vira o nome da empresa; sem nome cadastrado, a frase continua legível ("para a empresa me responder"). O
+ * nome entra por uma função, e não como texto de substituição: assim `$&`, `$'` e afins no nome ficam como estão (no
+ * texto de substituição, o JavaScript os trocaria por pedaços do modelo, e o texto gravado não seria o nome cadastrado).
+ */
+export function preencherEmpresaNaAutorizacao(modelo: string, empresa: string): string {
+  const nome = empresa.trim() || "empresa";
+  return modelo.replaceAll(MARCADOR_EMPRESA, () => nome);
+}
+
+/** O texto de uma versão como aparece ao lado da caixa, com o nome da empresa, e a marca dele. */
+export function montarAutorizacao(versao: number, modelo: string, empresa: string): TextoAutorizacao {
+  const texto = preencherEmpresaNaAutorizacao(modelo, empresa);
   return { versao, texto, marca: `v${versao}.${impressao(texto)}` };
 }
 
+/** O texto da versão de origem (1) da caixa, com o nome da empresa: o que vale enquanto nada for publicado no painel. */
+export const autorizacaoDeOrigem = (formulario: FormularioProprietario, empresa: string): TextoAutorizacao =>
+  montarAutorizacao(VERSAO_ORIGEM_AUTORIZACAO, TEXTOS_ORIGEM_AUTORIZACAO[formulario], empresa);
+
 /**
- * Confere, no servidor, se a marca enviada é a do texto atual. Sempre devolve o texto atual: é o que se grava (quando
- * confere) ou o que o formulário passa a mostrar (quando não confere).
+ * Caracteres de controle e invisíveis (inclusive os que invertem a direção do texto): o que se vê seria outro texto.
+ * Por classe Unicode, com a flag `u`, para valer também fora do plano básico: controles (Cc), formatação (Cf: hífen
+ * suave, direção do texto, espaços de largura zero, BOM, os caracteres TAG U+E0000–E007F e os de formatação musical
+ * U+1D173–1D17A), separadores de linha e de parágrafo (Zl, Zp) e os preenchimentos que não aparecem (U+2065, ainda sem
+ * uso no Unicode e já recusado antes; os de Hangul U+115F, U+1160, U+3164 e U+FFA0).
  */
-export function conferirAutorizacao(formulario: FormularioProprietario, empresa: string, marcaEnviada: string): { ok: boolean; autorizacao: TextoAutorizacao } {
-  const autorizacao = textoDaAutorizacao(formulario, empresa);
-  return { ok: marcaEnviada === autorizacao.marca, autorizacao };
+const INVISIVEIS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u2065\u115f\u1160\u3164\uffa0]/u;
+
+export const ERROS_TEXTO_AUTORIZACAO = {
+  vazio: "Escreva o texto da caixa: ela é obrigatória (é a autorização que a LGPD pede) e não pode ficar vazia.",
+  linhas: "Escreva o texto numa linha só: ao lado da caixa ele aparece corrido, sem quebra de linha.",
+  invisivel: "O texto tem um caractere invisível ou de controle (comum ao colar de outro programa). Apague o trecho colado e digite de novo.",
+  marcacao: "O texto é puro: sem os sinais < e > (marcação de página não funciona aqui e apareceria como está).",
+  chaves: "Use chaves só no marcador {empresa}, que vira o nome da empresa. Não há outros marcadores neste texto.",
+} as const;
+
+/**
+ * O texto como seria publicado: sem espaço nas pontas e com espaços seguidos virando um só (é como a página mostra). É
+ * nele que vale o limite de `LIMITE_TEXTO_AUTORIZACAO` caracteres, e é ele que o contador do painel mede.
+ */
+export const limparTextoAutorizacao = (bruto: unknown): string =>
+  (typeof bruto === "string" ? bruto : "").replace(/\r\n?/g, "\n").trim().replace(/[ \t]+/g, " ");
+
+/**
+ * Confere o texto de uma caixa antes de publicar (no painel, enquanto se digita, e de novo no servidor), já limpo
+ * (`limparTextoAutorizacao`): vazio, quebra de linha, caractere invisível, `<`/`>`, chave fora do `{empresa}` e mais de
+ * `LIMITE_TEXTO_AUTORIZACAO` caracteres são recusados com o motivo. O campo do painel não corta o texto colado: o que
+ * passa do limite aparece aqui, como aviso, em vez de sumir sem ninguém ver.
+ */
+export function validarTextoAutorizacao(bruto: unknown): { ok: true; texto: string } | { ok: false; erro: string } {
+  const t = limparTextoAutorizacao(bruto);
+  if (!t) return { ok: false, erro: ERROS_TEXTO_AUTORIZACAO.vazio };
+  if (t.length > LIMITE_TEXTO_AUTORIZACAO) return { ok: false, erro: `Máximo de ${LIMITE_TEXTO_AUTORIZACAO} caracteres (o texto tem ${t.length}).` };
+  if (t.includes("\n")) return { ok: false, erro: ERROS_TEXTO_AUTORIZACAO.linhas };
+  if (INVISIVEIS.test(t)) return { ok: false, erro: ERROS_TEXTO_AUTORIZACAO.invisivel };
+  if (/[<>]/.test(t)) return { ok: false, erro: ERROS_TEXTO_AUTORIZACAO.marcacao };
+  if (/[{}]/.test(t.replaceAll(MARCADOR_EMPRESA, ""))) return { ok: false, erro: ERROS_TEXTO_AUTORIZACAO.chaves };
+  return { ok: true, texto: t };
 }
 
 /** A marca que o formulário mandou (campo escondido), limpa e com tamanho limitado; ausente vira vazio (não confere). */
@@ -79,7 +139,7 @@ export const ERRO_AUTORIZACAO_MUDOU = "O texto da autorização mudou depois que
 /** Colunas do registro em cada envio (pedido de contato e cadastro do marketplace). */
 export type RegistroAutorizacao = { autorizadoEm: Date | null; autorizacaoVersao: number | null; autorizacaoTexto: string | null };
 
-/** O que o painel mostra para envio sem registro: só os anteriores a este item (o banco exige os três juntos). Sem data fixa. */
+/** O que o painel mostra para envio sem registro: só os anteriores ao M7.14 (o banco exige os três juntos). Sem data fixa. */
 export const SEM_REGISTRO_AUTORIZACAO = "Sem registro: enviado antes de o sistema passar a guardar a autorização. A caixa já era obrigatória.";
 
 /** O registro de um envio, ou null quando não há (nunca completado com um palpite). */

@@ -4,11 +4,12 @@
  */
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { autorizacaoEmVigor, publicarTextoAutorizacao } from "@/configuracoes/autorizacao-proprietarios";
 import { salvarEmpresa } from "@/configuracoes/empresa";
 import { organizacoes, pedidosContatoProprietario } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { ERRO_AUTORIZACAO_MUDOU, textoDaAutorizacao } from "@/proprietarios/autorizacao";
+import { autorizacaoDeOrigem, ERRO_AUTORIZACAO_MUDOU } from "@/proprietarios/autorizacao";
 
 const m = vi.hoisted(() => ({ db: null as unknown as Db, org: "", depois: vi.fn() }));
 vi.mock("@/db/client", () => ({ getDb: () => m.db }));
@@ -46,7 +47,7 @@ const formulario = (over: Record<string, string> = {}) => {
     mensagem: "",
     site: "",
     consentimento: "on",
-    autorizacao: textoDaAutorizacao("contato", "Sua Casa Exemplo").marca,
+    autorizacao: autorizacaoDeOrigem("contato", "Sua Casa Exemplo").marca,
     ...over,
   };
   for (const [k, v] of Object.entries(campos)) f.set(k, v);
@@ -74,7 +75,7 @@ it("com a caixa marcada: grava quando e o texto do servidor; texto mandado pelo 
 
 it("nome da empresa mudou depois que a página abriu: mostra o texto novo com a caixa desmarcada, sem gravar; marcando de novo, grava o texto novo", async () => {
   await salvarEmpresa(m.db, m.org, { nome: "Casa Nova Exemplo", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", encarregado: "", site: "", chavePix: "" }, null);
-  const novo = textoDaAutorizacao("contato", "Casa Nova Exemplo");
+  const novo = autorizacaoDeOrigem("contato", "Casa Nova Exemplo");
   const r = await pedirContatoProprietarioAcao({}, formulario());
   expect(r).toEqual({
     erros: { consentimento: ERRO_AUTORIZACAO_MUDOU },
@@ -88,4 +89,17 @@ it("nome da empresa mudou depois que a página abriu: mostra o texto novo com a 
   expect(m.depois).not.toHaveBeenCalled();
   expect(await pedirContatoProprietarioAcao(r, formulario({ autorizacao: novo.marca }))).toEqual({ ok: true });
   expect(await linhas()).toEqual([expect.objectContaining({ autorizacaoTexto: novo.texto })]);
+});
+
+it("versão nova publicada no painel (M7.15): a página aberta antes é recusada com o texto novo; a marca que a página lê agora grava a versão nova", async () => {
+  const daPaginaAntiga = await autorizacaoEmVigor(m.db, m.org, "contato");
+  expect(daPaginaAntiga).toEqual(autorizacaoDeOrigem("contato", "Sua Casa Exemplo"));
+  expect(await publicarTextoAutorizacao(m.db, m.org, "contato", "Autorizo a {empresa} a me responder (texto fictício da versão 2).", null, "2026-10-15", 1)).toMatchObject({ ok: true });
+  const daPagina = await autorizacaoEmVigor(m.db, m.org, "contato");
+  expect(daPagina).toMatchObject({ versao: 2, texto: "Autorizo a Sua Casa Exemplo a me responder (texto fictício da versão 2)." });
+  const r = await pedirContatoProprietarioAcao({}, formulario({ autorizacao: daPaginaAntiga.marca }));
+  expect(r).toMatchObject({ erros: { consentimento: ERRO_AUTORIZACAO_MUDOU }, autorizacao: daPagina });
+  expect(await linhas()).toEqual([]);
+  expect(await pedirContatoProprietarioAcao(r, formulario({ autorizacao: daPagina.marca }))).toEqual({ ok: true });
+  expect(await linhas()).toEqual([expect.objectContaining({ autorizacaoVersao: 2, autorizacaoTexto: daPagina.texto })]);
 });
