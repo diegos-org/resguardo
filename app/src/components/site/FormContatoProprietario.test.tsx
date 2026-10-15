@@ -98,6 +98,41 @@ it("texto da autorização mudou depois que a página abriu: mostra o texto devo
   expect((document.querySelector('input[name="autorizacao"]') as HTMLInputElement).value).toBe(novo.marca);
 });
 
+it("o texto muda de novo depois da primeira recusa, com os mesmos valores devolvidos: a caixa que a pessoa marcou volta desmarcada", async () => {
+  const recusa = (autorizacao: { versao: number; texto: string; marca: string }) => ({
+    mensagem: "Confira os campos destacados.",
+    erros: { consentimento: "O texto da autorização mudou depois que a página abriu. Leia o texto ao lado da caixa e marque de novo." },
+    valores: { nome: "Maria Exemplo", consentimento: "" },
+    autorizacao,
+  });
+  const acao = vi
+    .fn()
+    .mockResolvedValueOnce(recusa({ versao: 2, texto: "Texto fictício da versão 2.", marca: "v2.abc" }))
+    .mockResolvedValueOnce(recusa({ versao: 3, texto: "Texto fictício da versão 3.", marca: "v3.def" }));
+  const marcaEnviada = () => (document.querySelector('input[name="autorizacao"]') as HTMLInputElement).value;
+  render(<FormContatoProprietario empresa="Sua Casa Exemplo" autorizacao={DA_PAGINA} acao={acao} />);
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(marcaEnviada()).toBe("v2.abc"));
+  fireEvent.click(screen.getByRole("checkbox"));
+  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(marcaEnviada()).toBe("v3.def"));
+  expect((acao.mock.calls[1][1] as FormData).get("consentimento")).toBe("on");
+  const caixa = screen.getByRole("checkbox") as HTMLInputElement;
+  expect(caixa.closest("label")?.textContent).toContain("Texto fictício da versão 3.");
+  // A marca da versão 3 só vai junto de uma caixa marcada depois que a pessoa viu o texto da versão 3.
+  expect(caixa.checked).toBe(false);
+});
+
+it("a página volta com outro texto da autorização sem a pessoa enviar: a caixa já marcada volta desmarcada", () => {
+  const { rerender } = render(<FormContatoProprietario empresa="Sua Casa Exemplo" autorizacao={DA_PAGINA} acao={vi.fn()} />);
+  fireEvent.click(screen.getByRole("checkbox"));
+  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
+  rerender(<FormContatoProprietario empresa="Sua Casa Exemplo" autorizacao={{ versao: 2, texto: "Texto fictício da versão 2.", marca: "v2.abc" }} acao={vi.fn()} />);
+  expect((document.querySelector('input[name="autorizacao"]') as HTMLInputElement).value).toBe("v2.abc");
+  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
+});
+
 it("erro do servidor: marca os campos, liga a mensagem ao campo e devolve o que foi digitado", async () => {
   const acao = vi.fn().mockResolvedValue({
     mensagem: "Confira os campos destacados.",

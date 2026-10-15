@@ -49,6 +49,40 @@ it("texto mudou depois que a página abriu: mostra o texto devolvido pelo servid
   expect(marcaEnviada()).toBe("v2.abc");
 });
 
+it("o texto muda de novo depois da primeira recusa, com os mesmos valores devolvidos: a caixa que a pessoa marcou volta desmarcada", async () => {
+  const recusa = (autorizacao: { versao: number; texto: string; marca: string }) => ({
+    mensagem: "Confira os campos destacados.",
+    erros: { consentimento: "O texto da autorização mudou depois que a página abriu. Leia o texto ao lado da caixa e marque de novo." },
+    valores: { nome: "Maria Exemplo", consentimento: "" },
+    autorizacao,
+  });
+  const enviar = vi
+    .fn()
+    .mockResolvedValueOnce(recusa({ versao: 2, texto: "Texto fictício da versão 2.", marca: "v2.abc" }))
+    .mockResolvedValueOnce(recusa({ versao: 3, texto: "Texto fictício da versão 3.", marca: "v3.def" }));
+  render(<FormCadastro enviar={enviar} autorizacao={autorizacaoDeOrigem("cadastro", "Sua Casa Exemplo")} />);
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(marcaEnviada()).toBe("v2.abc"));
+  fireEvent.click(screen.getByRole("checkbox"));
+  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(marcaEnviada()).toBe("v3.def"));
+  expect((enviar.mock.calls[1][1] as FormData).get("consentimento")).toBe("on");
+  const caixa = screen.getByRole("checkbox") as HTMLInputElement;
+  expect(caixa.closest("label")?.textContent).toContain("Texto fictício da versão 3.");
+  // A marca da versão 3 só vai junto de uma caixa marcada depois que a pessoa viu o texto da versão 3.
+  expect(caixa.checked).toBe(false);
+});
+
+it("a página volta com outro texto da autorização sem a pessoa enviar: a caixa já marcada volta desmarcada", () => {
+  const { rerender } = render(<FormCadastro enviar={vi.fn()} autorizacao={autorizacaoDeOrigem("cadastro", "Sua Casa Exemplo")} />);
+  fireEvent.click(screen.getByRole("checkbox"));
+  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
+  rerender(<FormCadastro enviar={vi.fn()} autorizacao={{ versao: 2, texto: "Texto fictício da versão 2.", marca: "v2.abc" }} />);
+  expect(marcaEnviada()).toBe("v2.abc");
+  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
+});
+
 it("versão publicada no painel (M7.15): a caixa mostra o texto dessa versão e o envio leva a marca dela", async () => {
   const v2 = { versao: 2, texto: "Autorizo a Sua Casa Exemplo a analisar o cadastro (texto fictício da versão 2).", marca: "v2.fict" };
   const enviar = vi.fn().mockResolvedValue({ mensagem: "Confira os campos destacados." });

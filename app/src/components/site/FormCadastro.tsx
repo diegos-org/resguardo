@@ -118,7 +118,8 @@ export function FormCadastro({ enviar, autorizacao: daPagina }: { enviar: Acao; 
 
       <input type="hidden" name={CAMPO_AUTORIZACAO} value={autorizacao.marca} />
       <label className={styles.opcao}>
-        <input type="checkbox" name="consentimento" defaultChecked={v("consentimento") === "on"} /> {autorizacao.texto}
+        {/* A caixa é do texto ao lado: se o texto muda, ela volta desmarcada (a chave é a marca do texto). */}
+        <input key={autorizacao.marca} type="checkbox" name="consentimento" defaultChecked={v("consentimento") === "on"} /> {autorizacao.texto}
         {erro("consentimento")}
       </label>
       {estado.mensagem && (
