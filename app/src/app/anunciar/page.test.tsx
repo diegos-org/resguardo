@@ -5,14 +5,22 @@ import { MERCADO_VAZIO, TEXTOS_PROPRIETARIOS_INICIAIS } from "@/configuracoes/pa
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import Page from "./page";
 
-const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), textos: vi.fn(), mercado: vi.fn(), comoFunciona: vi.fn(), correio: vi.fn() }));
+const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), textos: vi.fn(), mercado: vi.fn(), comoFunciona: vi.fn(), correio: vi.fn(), autorizacao: vi.fn() }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis }));
 vi.mock("@/configuracoes/pagina-proprietarios", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/pagina-proprietarios")>()), lerTextosProprietarios: m.textos, lerMercado: m.mercado }));
 vi.mock("@/configuracoes/como-funciona", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/como-funciona")>()), lerComoFunciona: m.comoFunciona }));
 vi.mock("@/email/correio", () => ({ correioDoAmbiente: m.correio }));
 vi.mock("@/marketplace/acoes", () => ({ entrarCadastroAcao: vi.fn(), pedirCodigoCadastroAcao: vi.fn() }));
-vi.mock("@/components/site/FormContatoProprietario", () => ({ FormContatoProprietario: ({ empresa }: { empresa: string }) => <form aria-label="Pedir contato para a gestão completa">{empresa}</form> }));
+// O texto da caixa de autorização em vigor (M7.15), lido pela página no servidor e passado ao formulário.
+vi.mock("@/configuracoes/autorizacao-proprietarios", () => ({ autorizacaoEmVigor: m.autorizacao }));
+vi.mock("@/components/site/FormContatoProprietario", () => ({
+  FormContatoProprietario: ({ empresa, autorizacao }: { empresa: string; autorizacao: { versao: number; texto: string; marca: string } }) => (
+    <form aria-label="Pedir contato para a gestão completa">
+      {empresa}|{autorizacao.texto}|{autorizacao.marca}
+    </form>
+  ),
+}));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 
 const imovel = { codigo: "403", fuso: "America/Sao_Paulo", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", frase: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null, fotos: [] };
@@ -28,6 +36,7 @@ beforeEach(() => {
   m.mercado.mockResolvedValue(MERCADO_VAZIO);
   m.comoFunciona.mockResolvedValue([]);
   m.correio.mockReturnValue({ nome: "memoria" });
+  m.autorizacao.mockResolvedValue({ versao: 2, texto: "Texto fictício da versão 2.", marca: "v2.fict" });
 });
 afterEach(() => {
   if (segredo === undefined) delete process.env.AUTH_SECRET;
@@ -53,7 +62,9 @@ it("página inteira: capa, as duas formas de trabalhar, como gerimos, vitrine, p
   expect(h).toContain('id="contato"');
   expect(h).toContain('aria-label="Pedir contato para a gestão completa"');
   // O nome é o de Configurações → Empresa (o mesmo que o servidor lê no envio para conferir o texto da autorização, M7.14).
-  expect(h).toContain(">Casa Exemplo</form>");
+  expect(h).toContain(">Casa Exemplo|Texto fictício da versão 2.|v2.fict</form>");
+  // O texto da caixa é a versão em vigor da organização do site (a mesma que o servidor confere no envio).
+  expect(m.autorizacao).toHaveBeenCalledWith({}, "org", "contato");
   expect(h).toContain('id="marketplace"');
   expect(h).toContain('aria-label="Confirmar e-mail"');
   // Sem números de mercado e sem "Como funciona" publicado, essas seções não aparecem.

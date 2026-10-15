@@ -18,5 +18,7 @@ export const ABAS_CONFIG: readonly { slug: string; titulo: string; exige: Acao }
   // Termos de uso, Política de privacidade e Política de cancelamento do site (M7.4), versionados.
   { slug: "paginas-legais", titulo: "Páginas legais do site", exige: "configuracao:editar" },
   { slug: "pagina-proprietarios", titulo: "Página para proprietários", exige: "configuracao:editar" },
+  // Texto das caixas de autorização dos dois formulários de "Anuncie seu imóvel" (M7.15), versionado como as páginas legais.
+  { slug: "autorizacao-proprietarios", titulo: "Autorização dos proprietários", exige: "configuracao:editar" },
   { slug: "como-funciona", titulo: "Como funciona (proprietário)", exige: "configuracao:editar" },
 ];
