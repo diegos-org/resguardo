@@ -170,6 +170,10 @@ describe("mensagens da alteração prontas para copiar (painel)", () => {
     expect(m.proposta).toMatchObject({ textoBase: true, falta: [] });
     expect(m.proposta?.texto).toContain(`Preparamos a alteração da sua reserva ${x.reservaCodigo}`);
     expect(m.proposta?.texto).toContain(`${SITE}/reservar/${x.codigo}`);
+    // O campo "Site" pela regra única da prévia dos links (M7.13): com http, o link falta, nunca sai um link http.
+    await salvarEmpresa(db, c.org, { ...(await lerEmpresa(db, c.org)), site: "http://www.exemplo.com.br" }, null);
+    expect((await mensagensDaAlteracao(db, c.org, resultado.alteracaoId, minutos(21))).proposta).toMatchObject({ texto: null, falta: ["link"] });
+    await salvarEmpresa(db, c.org, { ...(await lerEmpresa(db, c.org)), site: SITE }, null);
     expect(m.confirmada).toBeNull();
     expect(m.devolvida).toBeNull();
     await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25) });

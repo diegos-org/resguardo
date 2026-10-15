@@ -140,6 +140,12 @@ describe("mensagens prontas para copiar no painel (M8.2c)", () => {
     // Sem o endereço do site em Configurações → Empresa: o link falta.
     await salvarEmpresa(db, c.org, { ...(await lerEmpresa(db, c.org)), site: "" }, null);
     expect((await mensagensDoCancelamento(db, c.org, x.reservaId, minutos(70))).recebido).toEqual({ texto: null, falta: ["link"], textoBase: true });
+    // O campo lido pela mesma regra da prévia dos links (M7.13): sem https, com parâmetros ou com o caminho de uma página,
+    // o link também falta (nunca um link quebrado, como `…/?a=1/reservar/…`).
+    for (const site of ["http://www.exemplo.com.br", "https://www.exemplo.com.br/?a=1", "https://www.exemplo.com.br/imoveis/403"]) {
+      await salvarEmpresa(db, c.org, { ...(await lerEmpresa(db, c.org)), site }, null);
+      expect((await mensagensDoCancelamento(db, c.org, x.reservaId, minutos(70))).recebido).toEqual({ texto: null, falta: ["link"], textoBase: true });
+    }
     await salvarEmpresa(db, c.org, { ...(await lerEmpresa(db, c.org)), site: SITE }, null);
     // Decidida com a devolução ainda pedida: a decisão, sem a devolução feita; confirmada, as duas.
     c.provedor.respostaDevolucao = "pedida";

@@ -80,6 +80,7 @@ import { formatBRL } from "@/lib/money";
 import { marcarAvisadoDaAlteracao, type MensagemDaAlteracao } from "@/pagamentos/alteracao";
 import { canceladaPelaDisputa, marcarAvisado, type MensagemAoHospede } from "@/pagamentos/cancelamento";
 import { type AlteracaoParaHospede, alteracaoParaMensagem, vistaDaCotacaoParaHospede } from "@/pagamentos/consultas";
+import { linkDoSite } from "@/site/compartilhamento";
 import { textoDaAlteracao, textoDoCancelamento } from "@/site/pagamento-vista";
 
 export { NOMES_TIPO };
@@ -331,7 +332,6 @@ async function dadosDoCancelamento(db: Db, organizacaoId: string, a: AlvoCancela
   const texto = vista ? textoDoCancelamento(vista, textos, a.fuso) : null;
   const c = vista?.cancelamento ?? null;
   const devolvido = c?.direito === "integral" ? (c.valorConfirmado ?? c.valor) : null;
-  const site = empresa.site.trim().replace(/\/+$/, "");
   const noites = Math.round((Date.parse(a.checkout) - Date.parse(a.checkin)) / 86_400_000);
   const valores: Record<Variavel, string> = {
     hospede: a.nome.trim(),
@@ -348,7 +348,8 @@ async function dadosDoCancelamento(db: Db, organizacaoId: string, a: AlvoCancela
     valor: devolvido !== null && devolvido !== undefined ? formatBRL(devolvido) : "",
     data: c?.devolucaoEm ? dataNoFuso(c.devolucaoEm, a.fuso) : "",
     comovolta: texto?.comoVolta ?? "",
-    link: site ? `${site}/reservar/${a.cotacaoCodigo}` : "",
+    // O campo "Site" pela regra única da prévia dos links (M7.13): sem um endereço https válido, o link falta.
+    link: linkDoSite(empresa.site, `/reservar/${a.cotacaoCodigo}`),
     // Só nas mensagens da alteração (recusada nas do cancelamento ao escolher o modelo).
     alteracao: "",
   };
@@ -778,7 +779,6 @@ export function prazoDaMensagemDaAlteracao(
 /** Os valores das variáveis para uma alteração: as da reserva e as da alteração (`{alteracao}` e, na devolução feita, o valor, o dia e como volta). */
 function valoresDaAlteracao(a: AlvoAlteracao, v: AlteracaoParaHospede, empresa: { nome: string; site: string }, textos: TextosSite): Record<Variavel, string> {
   const texto = textoDaAlteracao(v, textos, a.codigo, a.fuso);
-  const site = empresa.site.trim().replace(/\/+$/, "");
   const noites = Math.round((Date.parse(a.checkout) - Date.parse(a.checkin)) / 86_400_000);
   const d = v.devolucao?.estado === "feita" ? v.devolucao : null;
   return {
@@ -797,7 +797,8 @@ function valoresDaAlteracao(a: AlvoAlteracao, v: AlteracaoParaHospede, empresa: 
     valor: d ? formatBRL(d.valorConfirmado ?? d.valor) : "",
     data: d?.em ? dataNoFuso(d.em, a.fuso) : "",
     comovolta: d ? (texto.comoVolta ?? "") : "",
-    link: site ? `${site}/reservar/${a.cotacaoCodigo}` : "",
+    // O campo "Site" pela regra única da prévia dos links (M7.13): sem um endereço https válido, o link falta.
+    link: linkDoSite(empresa.site, `/reservar/${a.cotacaoCodigo}`),
     alteracao: texto.resumo,
   };
 }

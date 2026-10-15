@@ -3,7 +3,7 @@ import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import { CabecalhoBusca, ResultadosBusca } from "@/components/site/ResultadosBusca";
-import { BotaoContato, SemCasas } from "@/components/site/SemCasas";
+import { BotaoContato, SemCasas, textoSemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
@@ -17,8 +17,19 @@ import { ASSUNTO_CONSULTA, AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato,
 /** Busca em todas as casas (M7.9): o pedido tem datas, mas nenhuma casa escolhida ("Todas as casas"). */
 const ehBusca = (p: { imovel: string; entrada: string; saida: string }) => !p.imovel && !!(p.entrada || p.saida);
 
+/**
+ * Prévia do link (M7.13): a frase que a própria página mostra (Configurações → Textos do site) — na consulta, a frase
+ * abaixo do título; na busca em todas as casas, o aviso acima das casas (vazio = a descrição do site); sem nenhuma casa
+ * no site (M7.8), o aviso do site sem casas, que as duas mostram no lugar — e, só na consulta, o endereço principal sem
+ * as datas, as pessoas e a casa do link. A busca não indica endereço principal: com o da consulta, o Facebook trocaria a
+ * prévia dela pela da consulta. A lista de casas é a mesma da página (`imoveisDoSite`, com `cache`: uma leitura só).
+ */
 export async function generateMetadata({ searchParams }: PageProps<"/consulta">) {
-  return metadadosDoSite(ehBusca(lerPedidoConsulta(await searchParams)) ? "Sua busca" : "Consulta");
+  const { db, conteudo } = await carregarSite();
+  const busca = ehBusca(lerPedidoConsulta(await searchParams));
+  const semCasas = conteudo ? !(await imoveisDoSite(db, conteudo.organizacaoId)).length : false;
+  const descricao = conteudo && (semCasas ? textoSemCasas(conteudo.textos) : busca ? conteudo.textos.buscaAviso : conteudo.textos.consultaTexto);
+  return metadadosDoSite(busca ? "Sua busca" : "Consulta", { descricao, caminho: busca ? undefined : "/consulta" });
 }
 
 export default async function Consulta({ searchParams }: PageProps<"/consulta">) {

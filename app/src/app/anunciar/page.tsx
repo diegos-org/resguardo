@@ -15,7 +15,12 @@ import { entrarCadastroAcao, pedirCodigoCadastroAcao } from "@/marketplace/acoes
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imoveisDoSite } from "@/site/site";
 
-export const generateMetadata = () => metadadosDoSite("Anuncie seu imóvel");
+/** Prévia do link (M7.13): a frase da capa da página (Configurações → Página para proprietários) e a capa do site. */
+export async function generateMetadata() {
+  const { db, conteudo } = await carregarSite();
+  const textos = conteudo ? await lerTextosProprietarios(db, conteudo.organizacaoId) : null;
+  return metadadosDoSite("Anuncie seu imóvel", { descricao: textos?.subtitulo });
+}
 
 const MENSAGENS: Record<string, string> = {
   "email-vazio": "Informe seu e-mail.",
