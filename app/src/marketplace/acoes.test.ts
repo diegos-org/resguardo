@@ -8,7 +8,8 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { cadastrosMarketplace, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { ERRO_AUTORIZACAO_MUDOU, TEXTOS_AUTORIZACAO, textoDaAutorizacao } from "@/proprietarios/autorizacao";
+import { publicarTextoAutorizacao } from "@/configuracoes/autorizacao-proprietarios";
+import { autorizacaoDeOrigem, ERRO_AUTORIZACAO_MUDOU, montarAutorizacao } from "@/proprietarios/autorizacao";
 
 const m = vi.hoisted(() => ({ db: null as unknown as Db, org: "", apagar: vi.fn() }));
 vi.mock("@/db/client", () => ({ getDb: () => m.db }));
@@ -57,7 +58,7 @@ const formulario = (over: Record<string, string> = {}) => {
     imovel_descricao: "",
     anuncio: "novo",
     consentimento: "on",
-    autorizacao: textoDaAutorizacao("cadastro", "Sua Casa Exemplo").marca,
+    autorizacao: autorizacaoDeOrigem("cadastro", "Sua Casa Exemplo").marca,
     ...over,
   };
   for (const [k, v] of Object.entries(campos)) f.set(k, v);
@@ -82,19 +83,14 @@ it("com a caixa marcada: grava quando e o texto do servidor e segue para a pági
 });
 
 it("texto mudou depois que a página abriu: mostra o texto novo com a caixa desmarcada, sem gravar; marcando de novo, grava", async () => {
-  // A página abriu com a versão 1; antes do envio, entrou uma versão nova do texto.
-  const definicao = TEXTOS_AUTORIZACAO.cadastro;
-  const marcaDaPagina = textoDaAutorizacao("cadastro", "Sua Casa Exemplo").marca;
-  TEXTOS_AUTORIZACAO.cadastro = { versao: 2, modelo: "Texto fictício da versão 2 do cadastro." };
-  try {
-    const novo = textoDaAutorizacao("cadastro", "Sua Casa Exemplo");
-    const r = await enviarCadastroAcao({}, formulario({ autorizacao: marcaDaPagina }));
-    expect(r).toMatchObject({ erros: { consentimento: ERRO_AUTORIZACAO_MUDOU }, mensagem: "Confira os campos destacados.", valores: { nome: "Maria Exemplo", consentimento: "" }, autorizacao: novo });
-    expect(await linhas()).toEqual([]);
-    expect(m.apagar).not.toHaveBeenCalled();
-    await expect(enviarCadastroAcao(r, formulario({ autorizacao: novo.marca }))).rejects.toThrow("redirecionou para /anunciar/enviado");
-    expect(await linhas()).toEqual([expect.objectContaining({ autorizacaoVersao: 2, autorizacaoTexto: "Texto fictício da versão 2 do cadastro." })]);
-  } finally {
-    TEXTOS_AUTORIZACAO.cadastro = definicao;
-  }
+  // A página abriu com a versão 1; antes do envio, saiu no painel a versão 2 do texto (M7.15).
+  const marcaDaPagina = autorizacaoDeOrigem("cadastro", "Sua Casa Exemplo").marca;
+  expect(await publicarTextoAutorizacao(m.db, m.org, "cadastro", "Texto fictício da versão 2 do cadastro.", null, "2026-10-15", 1)).toMatchObject({ ok: true });
+  const novo = montarAutorizacao(2, "Texto fictício da versão 2 do cadastro.", "Sua Casa Exemplo");
+  const r = await enviarCadastroAcao({}, formulario({ autorizacao: marcaDaPagina }));
+  expect(r).toMatchObject({ erros: { consentimento: ERRO_AUTORIZACAO_MUDOU }, mensagem: "Confira os campos destacados.", valores: { nome: "Maria Exemplo", consentimento: "" }, autorizacao: novo });
+  expect(await linhas()).toEqual([]);
+  expect(m.apagar).not.toHaveBeenCalled();
+  await expect(enviarCadastroAcao(r, formulario({ autorizacao: novo.marca }))).rejects.toThrow("redirecionou para /anunciar/enviado");
+  expect(await linhas()).toEqual([expect.objectContaining({ autorizacaoVersao: 2, autorizacaoTexto: "Texto fictício da versão 2 do cadastro." })]);
 });

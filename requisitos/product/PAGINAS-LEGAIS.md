@@ -17,6 +17,9 @@
 > "Anuncie seu imóvel" registram a autorização: data e hora do envio com a caixa marcada (relógio do servidor), versão
 > e texto exato da caixa; e o texto-base da Política de privacidade cita esse registro na linha dos proprietários (falha
 > "Formulários de proprietários", em "Pontos a conferir", e "Fora deste item", abaixo).
+> **Desde o M7.15 (feito em 15/10/2026)**, o texto dessas duas caixas é editado no painel (Configurações → Autorização
+> dos proprietários), com versão numerada e datada a cada publicação, pelo mesmo motor de versões destas páginas; a
+> versão 1 é o texto de antes, que vem do código enquanto nada for publicado (mesmo ponto, abaixo).
 
 Código: `app/src/configuracoes/documentos-versionados.ts` (motor de versões, o mesmo do "Como
 funciona"), `paginas-legais-texto.ts` (regras puras: campos, blocos do texto, prazo do reembolso,
@@ -349,6 +352,28 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Alteração de reserv
   conseguir provar o consentimento). Objetivo: ter a prova sem mudar o texto da caixa. Continua para o advogado: se é
   preciso guardar também o IP ou o navegador de quem marcou (hoje não se guarda nenhum dos dois, como no aceite do
   hóspede, em "Dados pessoais"). Texto das caixas editável no painel, com versão a cada mudança: M7.15 do ROADMAP.
+  **Texto das caixas, mudou em 15/10/2026 (M7.15).** Antes: o texto de cada caixa era fixo no código
+  (`app/src/proprietarios/autorizacao.ts`), com a versão controlada por um teste (texto novo pedia versão nova no
+  código). Depois: cada caixa é um documento do motor de versões (`app/src/configuracoes/documentos-versionados.ts`, o
+  destas páginas e do "Como funciona"), numa chave de configuração própria (`autorizacao_contato` e
+  `autorizacao_cadastro`), editado em Configurações → Autorização dos proprietários; cada publicação com texto diferente
+  é a versão seguinte, datada, com autor e histórico de auditoria. A versão 1 continua sendo o texto de antes
+  (`TEXTOS_ORIGEM_AUTORIZACAO`, fixo e guardado por teste), a "versão de origem" do motor: vale enquanto nada for
+  publicado, sem migração nem data inventada, e a primeira publicação é a versão 2 — não há duas "versão 1"
+  diferentes, e os envios já gravados como versão 1 têm o texto dela. O nome da empresa continua entrando pelo marcador
+  `{empresa}`, trocado no servidor a cada página e a cada envio (não é congelado na versão; o texto gravado leva o nome
+  daquele momento). Publicar recusa texto vazio (a caixa é obrigatória), mais de 500 caracteres, quebra de linha,
+  caractere invisível ou de controle (também os de fora do plano básico do Unicode, como os caracteres TAG), `<`/`>` e
+  chave fora do `{empresa}` (texto puro). O campo do painel não corta o texto colado: o que passa de 500 caracteres
+  (contados depois de juntar os espaços seguidos, como o contador mostra) vira aviso, com o tamanho. A tela segue a D6:
+  sem rascunho guardado, prévia ao vivo e aviso de "sair sem publicar" (a proteção destas páginas, agora num lugar só,
+  `components/configuracoes/useSairSemPublicar.ts`, usada pelos dois formulários). Se outra versão entra em vigor
+  enquanto há texto mudado no campo, o texto fica, com aviso, e só publica depois de Diego escolher entre usar o texto da
+  versão nova ou continuar com o dele; a base enviada é sempre a versão de que o texto do campo partiu. Formulário e servidor leem a
+  versão em vigor de um lugar só (`app/src/configuracoes/autorizacao-proprietarios.ts`), com a mesma conferência da
+  marca do M7.14; os registros gravados não mudam. Motivo: "Tudo editável pelo painel" (Diego, 24/09), e é dos textos
+  que mudam depois da conversa com o advogado. Objetivo: Diego ajustar o texto sem código, com a prova do consentimento
+  continuando exata (versão e texto que a pessoa viu).
   **Texto-base da Política de privacidade, mudou em 15/10/2026 (M7.14, ajuste da revisão).** Antes: a linha
   "Proprietários que nos procuram pelo site" dizia "nome, e-mail, telefone, dados do imóvel (no cadastro, também o
   endereço e os links dos anúncios) e a mensagem enviada". Depois: "..., a mensagem enviada e o registro da autorização
@@ -380,7 +405,8 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Alteração de reserv
 - Registro do consentimento nos formulários dos proprietários. **Feito em 15/10/2026 no M7.14**, valendo a partir da
   publicação (data e hora do envio com a caixa marcada, versão e texto exato da caixa, nos dois formulários; ver
   "Formulários de proprietários", em "Pontos a conferir"). O IP e o navegador continuam fora, à espera do advogado; o
-  texto das caixas editável no painel é o M7.15.
+  texto das caixas editável no painel é o M7.15 (**feito em 15/10/2026**: Configurações → Autorização dos proprietários,
+  com versão a cada publicação; mesmo ponto).
 - O cartão (feito no M8.2b, 9/10/2026, com a mesma caixa e a mesma conferência).
 - Lista das versões aceitas em Minha reserva (a página `/reservar/<código>` já mostra).
 - Mapa do site e robots. As páginas pessoais e internas (cotação, Minha reserva, convite, entrada, painel, portal, equipe e as etapas do cadastro do proprietário, inclusive a do código, que mostra o e-mail da pessoa) já saem dos buscadores desde o M7.10 (14/10/2026), pelo cabeçalho do `next.config.ts`; falta a decisão de Diego sobre as páginas públicas.

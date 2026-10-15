@@ -5,7 +5,8 @@ import { auditoria, organizacoes, pedidosContatoProprietario, tentativasLogin, u
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria } from "@/email/correio";
-import { ERRO_AUTORIZACAO_MUDOU, TEXTOS_AUTORIZACAO, textoDaAutorizacao } from "./autorizacao";
+import { publicarTextoAutorizacao } from "@/configuracoes/autorizacao-proprietarios";
+import { autorizacaoDeOrigem, ERRO_AUTORIZACAO_MUDOU, montarAutorizacao } from "./autorizacao";
 import {
   arquivarPedido,
   avisarEquipe,
@@ -35,7 +36,7 @@ let ana: string;
 const agora = new Date("2026-10-08T15:00:00Z");
 const depois = new Date("2026-10-09T12:00:00Z");
 /** Marca do texto da caixa que a página mostra, com o nome de cada empresa fictícia (M7.14). */
-const marca = (empresa = "Sua Casa Exemplo") => textoDaAutorizacao("contato", empresa).marca;
+const marca = (empresa = "Sua Casa Exemplo") => autorizacaoDeOrigem("contato", empresa).marca;
 const MARCA_OUTRA = marca("Outra Empresa");
 const TEXTO_V1 = "Autorizo o uso destes dados só para a Sua Casa Exemplo me responder sobre a gestão do imóvel.";
 
@@ -249,7 +250,7 @@ describe("registro da autorização (M7.14)", () => {
     for (const enviada of [TEXTO_V1, "v1.qualquer", ""]) {
       const w = validarPedidoContato(form({ email: "outra@exemplo.com", autorizacao: enviada }));
       if (!w.ok) throw new Error("form inválido");
-      expect(await registrarPedidoContato(db, org, w.dados, agora)).toEqual({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: textoDaAutorizacao("contato", "Sua Casa Exemplo") });
+      expect(await registrarPedidoContato(db, org, w.dados, agora)).toEqual({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: autorizacaoDeOrigem("contato", "Sua Casa Exemplo") });
     }
     const sem = validarPedidoContato(form({ email: "sem@exemplo.com", autorizacao: undefined }));
     if (!sem.ok) throw new Error("form inválido");
@@ -267,20 +268,21 @@ describe("registro da autorização (M7.14)", () => {
     expect(await registrarPedidoContato(db, org, dados({ marcaAutorizacao: marca("Casa Nova Exemplo") }), agora)).toMatchObject({ ok: true, pedido: { autorizacaoTexto: novo } });
   });
 
-  it("versão nova do texto (ou nome novo da empresa) não muda os registros antigos", async () => {
+  it("versão nova do texto publicada no painel (M7.15) ou nome novo da empresa: a marca antiga é recusada, o envio grava a versão nova e os registros antigos não mudam", async () => {
     const antigo = await registrar();
-    const definicao = TEXTOS_AUTORIZACAO.contato;
     const marcaV1 = marca();
-    // Simula uma versão nova no código.
-    TEXTOS_AUTORIZACAO.contato = { versao: 2, modelo: "Texto fictício da versão 2: autorizo a {empresa} a me responder." };
-    try {
-      // A marca da versão 1 deixa de valer.
-      expect(await registrarPedidoContato(db, org, dados({ email: "v1@exemplo.com", marcaAutorizacao: marcaV1 }), depois)).toMatchObject({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: { versao: 2 } });
-      const v2 = await registrar({ email: "v2@exemplo.com", marcaAutorizacao: marca() }, org, depois);
-      expect(v2).toMatchObject({ autorizacaoVersao: 2, autorizacaoTexto: "Texto fictício da versão 2: autorizo a Sua Casa Exemplo a me responder.", autorizadoEm: depois });
-    } finally {
-      TEXTOS_AUTORIZACAO.contato = definicao;
-    }
+    const modeloV2 = "Texto fictício da versão 2: autorizo a {empresa} a me responder.";
+    expect(await publicarTextoAutorizacao(db, org, "contato", modeloV2, ana, "2026-10-09", 1)).toMatchObject({ ok: true, versao: { numero: 2 } });
+    const v2 = montarAutorizacao(2, modeloV2, "Sua Casa Exemplo");
+    // A marca da versão 1 (página aberta antes da publicação) deixa de valer: recusa com o texto novo, sem gravar.
+    expect(await registrarPedidoContato(db, org, dados({ email: "v1@exemplo.com", marcaAutorizacao: marcaV1 }), depois)).toEqual({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: v2 });
+    expect(await registrar({ email: "v2@exemplo.com", marcaAutorizacao: v2.marca }, org, depois)).toMatchObject({
+      autorizacaoVersao: 2,
+      autorizacaoTexto: "Texto fictício da versão 2: autorizo a Sua Casa Exemplo a me responder.",
+      autorizadoEm: depois,
+    });
+    // A outra organização continua na versão 1 dela.
+    expect(await registrarPedidoContato(db, outra, dados({ email: "outra@exemplo.com", marcaAutorizacao: MARCA_OUTRA }), depois)).toMatchObject({ ok: true, pedido: { autorizacaoVersao: 1 } });
     await salvarEmpresa(db, org, { nome: "Casa Nova Exemplo", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", encarregado: "", site: "", chavePix: "" }, null);
     const { novos } = await listarPedidosContato(db, org);
     expect(novos.find((p) => p.id === antigo.id)).toMatchObject({ autorizadoEm: agora, autorizacaoVersao: 1, autorizacaoTexto: TEXTO_V1 });

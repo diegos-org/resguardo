@@ -5,6 +5,11 @@
  * suas seções e os seus campos próprios gravados na versão (ex.: o nome da empresa no "Como funciona"; os dados da
  * empresa e o prazo do reembolso nas páginas legais), e o motor cuida do resto: leitura tolerante, publicação sob a
  * trava da chave, recusa quando outra pessoa publicou no meio, versão nova só quando algo mudou e o histórico.
+ *
+ * Versão de origem (M7.15): um documento cujo texto já estava em uso, fixo no código, antes de ficar editável (o texto das
+ * caixas de autorização dos proprietários, do M7.14) declara esse texto como `origem`. Ela vale enquanto nada foi
+ * publicado, não é gravada (nem ganha data inventada) e conta na numeração: a primeira publicação é a seguinte a ela, e
+ * publicar o mesmo texto dela não cria versão. Assim não existem duas "versão 1" diferentes.
  */
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import type { Db } from "@/db/types";
@@ -12,7 +17,10 @@ import { dataValida } from "@/reservas/regras";
 import { type ChaveConfig, gravarConfig, lerConfig, travarConfig } from "./armazem";
 
 export type DefinicaoSecao<S extends string> = { chave: S; titulo: string; dica: string; limite: number };
+/** `data`: AAAA-MM-DD da publicação; vazia só na versão de origem (`origem` da definição), que nunca foi publicada no banco. */
 export type VersaoDocumento<S extends string, E extends object> = { numero: number; data: string; autorId: string | null; secoes: Record<S, string> } & E;
+/** O texto que já estava em uso, fixo no código, antes de o documento ficar editável (ver o começo deste arquivo). */
+export type VersaoDeOrigem<S extends string, E extends object> = { numero: number; secoes: Record<S, string> } & E;
 export type DefinicaoDocumento<S extends string, E extends object> = {
   /** Chave da configuração que guarda `{ versoes: [...] }`: uma chave por documento (trava e numeração próprias). */
   chave: ChaveConfig;
@@ -23,6 +31,11 @@ export type DefinicaoDocumento<S extends string, E extends object> = {
   lerExtra: (gravado: Record<string, unknown>) => E;
   /** O que mudou nesses campos, para o histórico; vazio = iguais (mesmo texto e mesmos campos = nenhuma versão nova). */
   mudancasDoExtra: (antes: E | null, depois: E) => Record<string, [unknown, unknown]>;
+  /**
+   * Versão que vale enquanto nada foi publicado (só para documento que já estava em uso antes de ficar editável). Fixa
+   * para sempre: é o que já foi mostrado e registrado com esse número.
+   */
+  origem?: VersaoDeOrigem<S, E>;
 };
 /** Só as seções da definição (validação e comparação não precisam do resto). */
 type ComSecoes<S extends string> = { secoes: readonly DefinicaoSecao<S>[] };
@@ -57,6 +70,21 @@ export function versoesDe<S extends string, E extends object>(def: DefinicaoDocu
 
 export const versaoAtual = <V>(versoes: readonly V[]): V | null => versoes.at(-1) ?? null;
 
+/** A versão de origem da definição como versão do documento: sem data (nunca publicada) e sem autor; null se não há. */
+export function versaoDeOrigem<S extends string, E extends object>(def: DefinicaoDocumento<S, E>): VersaoDocumento<S, E> | null {
+  return def.origem ? ({ ...def.origem, data: "", autorId: null } as VersaoDocumento<S, E>) : null;
+}
+
+/** A versão em vigor: a última publicada ou, sem nenhuma publicada, a de origem (null se o documento não tem origem). */
+export const versaoEmVigor = <S extends string, E extends object>(def: DefinicaoDocumento<S, E>, versoes: readonly VersaoDocumento<S, E>[]): VersaoDocumento<S, E> | null =>
+  versaoAtual(versoes) ?? versaoDeOrigem(def);
+
+/** Todas as versões, da mais antiga para a mais nova, com a de origem (se houver) na frente das publicadas. */
+export function versoesComOrigem<S extends string, E extends object>(def: DefinicaoDocumento<S, E>, versoes: readonly VersaoDocumento<S, E>[]): VersaoDocumento<S, E>[] {
+  const origem = versaoDeOrigem(def);
+  return origem ? [origem, ...versoes] : [...versoes];
+}
+
 export const secoesIguais = <S extends string>(def: ComSecoes<S>, a: Record<S, string>, b: Record<S, string>): boolean => def.secoes.every((s) => a[s.chave] === b[s.chave]);
 
 /**
@@ -88,12 +116,14 @@ export type ResultadoPublicacao<V> = { ok: true; mudou: boolean; versao: V } | {
 
 /** Recusa quando outra pessoa publicou enquanto o formulário estava aberto. */
 export function mensagemVersaoMudou(atual: { numero: number; data: string } | null): string {
-  return `Enquanto você editava, a versão ${atual?.numero ?? 0} foi publicada por outra pessoa${atual ? ` em ${atual.data.split("-").reverse().join("/")}` : ""}. Recarregue a página, confira o texto atual e publique de novo.`;
+  return `Enquanto você editava, a versão ${atual?.numero ?? 0} foi publicada por outra pessoa${atual?.data ? ` em ${atual.data.split("-").reverse().join("/")}` : ""}. Recarregue a página, confira o texto atual e publique de novo.`;
 }
 
 /**
  * Publica uma versão nova (número seguinte, datada de hoje) quando algum texto ou campo próprio mudou; tudo igual não
- * cria versão. `versaoBase`: a versão que o formulário mostrava (0 = nenhuma); se outra pessoa publicou no meio, a
+ * cria versão. Sem nada publicado, a base é a versão de origem, se a definição tiver uma (a primeira publicada é a
+ * seguinte a ela; o mesmo texto dela não cria versão, e o resultado devolve a de origem, sem data).
+ * `versaoBase`: a versão que o formulário mostrava (0 = nenhuma); se outra pessoa publicou no meio, a
  * publicação é recusada em vez de passar por cima do texto dela (quem edita recarrega, confere e publica de novo).
  * `extraAoPublicar` lê, dentro da transação e sob a trava, os campos próprios que a versão congela — ou recusa a
  * publicação (nada é gravado). As versões anteriores são regravadas como estão no banco, e não como a leitura tolerante
@@ -114,7 +144,7 @@ export async function publicarVersao<S extends string, E extends object>(
     await travarConfig(tx, organizacaoId, def.chave);
     const gravado = await lerConfig(tx, organizacaoId, def.chave);
     const versoes = versoesDe(def, gravado);
-    const atual = versaoAtual(versoes);
+    const atual = versaoEmVigor(def, versoes);
     if (versaoBase !== undefined && (atual?.numero ?? 0) !== versaoBase) return { ok: false as const, erro: mensagemVersaoMudou(atual), atual };
     const e = await extraAoPublicar(tx);
     if (!e.ok) return { ok: false as const, erro: e.erro, atual, ...(e.erros ? { erros: e.erros } : {}) };
