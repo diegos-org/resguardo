@@ -8,7 +8,8 @@ import type { Db } from "@/db/types";
 import { CACHE_FOTO_PUBLICA } from "@/imoveis/fotos-entrega";
 import { LIMITE_FOTO, LIMITE_MINIATURA } from "@/imoveis/fotos-regras";
 import { historicoDe } from "@/auditoria/auditoria";
-import { apagarImagemSite, definirImagemSite, entregarImagemSite, ERRO_CAPA_PEQUENA, guardarImagemSite, imagensEmUso, LIMITE_IMAGEM, lerImagensSite, tirarImagemSite } from "./imagens-site";
+import { cabecalhoPng } from "./icone.testing";
+import { apagarImagemSite, definirImagemSite, entregarImagemSite, ERRO_CAPA_PEQUENA, guardarImagemSite, iconeDaMarcaEnviada, imagensEmUso, LIMITE_IMAGEM, lerImagensSite, tirarImagemSite } from "./imagens-site";
 
 // Imagens fictícias: só os primeiros bytes contam para o tipo.
 const jpg = (n = 1, tamanho = 32) => Uint8Array.from({ length: tamanho }, (_, i) => [0xff, 0xd8, 0xff, 0xe0][i] ?? n);
@@ -143,5 +144,32 @@ describe("versão pequena da capa, para a prévia dos links (M7.13)", () => {
     expect(await existe(capa.capa)).toBe(false);
     expect(await existe(capa.capaPequena)).toBe(false);
     expect(await existe(depois.marca)).toBe(true);
+  });
+});
+
+describe("a marca enviada como ícone da aba (M7.18)", () => {
+  const marcaAtual = async () => (await lerImagensSite(db, org)).marca;
+
+  it("sem marca enviada, nada a conferir; PNG quadrado serve, com o lado do arquivo", async () => {
+    expect(await iconeDaMarcaEnviada(db, org, null)).toBeNull();
+    // Um PNG fictício bem maior que o cabeçalho: só o começo dele importa.
+    const png = new Uint8Array(4096);
+    png.set(cabecalhoPng(300, 300));
+    expect(await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: png }, null)).toEqual({ ok: true });
+    expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: true, lado: 300 });
+  });
+
+  it("JPG ou PNG retangular: não serve, com o motivo (o painel avisa; o site usa a marca do estudo)", async () => {
+    await definirImagemSite(db, org, "marca", { nome: "marca.jpg", conteudo: jpg(3) }, null);
+    expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: false, motivo: "formato" });
+    await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: cabecalhoPng(400, 200) }, null);
+    expect(await iconeDaMarcaEnviada(db, org, await marcaAtual())).toEqual({ serve: false, motivo: "quadrada", largura: 400, altura: 200 });
+  });
+
+  it("só o arquivo da própria organização: o id de outra (ou um arquivo que sumiu) não tem medidas conferíveis", async () => {
+    await definirImagemSite(db, outraOrg, "marca", { nome: "marca.png", conteudo: cabecalhoPng(300, 300) }, null);
+    const daOutra = (await lerImagensSite(db, outraOrg)).marca;
+    expect(await iconeDaMarcaEnviada(db, outraOrg, daOutra)).toEqual({ serve: true, lado: 300 });
+    expect(await iconeDaMarcaEnviada(db, org, daOutra)).toEqual({ serve: false, motivo: "medidas" });
   });
 });

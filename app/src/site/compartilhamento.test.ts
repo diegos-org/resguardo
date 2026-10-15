@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import { baseConfirmada, baseDoSite, descricaoDoSite, enderecoDoSistema, linkDoSite, metadadosDaPagina, notaDoCampoSite } from "./compartilhamento";
+import { ICONES_PADRAO } from "./icone";
 import type { ConteudoSite } from "./site";
 
 // Dados fictícios.
@@ -164,6 +165,22 @@ describe("metadados e prévia dos links de cada página (M7.13)", () => {
     const m = metadadosDaPagina(conteudo({ nomeEmpresa: "  " }), "Consulta");
     expect(m.title).toBe("Consulta");
     expect(m.openGraph).not.toHaveProperty("siteName");
+  });
+
+  it("ícone da aba (M7.18): a marca enviada que serve de ícone, em toda página do site; sem ela, a do estudo; a prévia do link não muda", () => {
+    const icone = { url: "/imagens-site/marca", lado: 256 };
+    const comMarca = conteudo({ imagens: { capa: "/imagens-site/capa", marca: "/imagens-site/marca", previa: "/imagens-site/capa-pequena", icone } });
+    for (const m of [metadadosDaPagina(comMarca, undefined, {}, HOST), metadadosDaPagina(comMarca, "Studio Exemplo", { imagem: FOTO, caminho: "/imoveis/403" }, HOST)])
+      expect(m.icons).toEqual({
+        icon: [{ url: "/imagens-site/marca", type: "image/png", sizes: "256x256" }],
+        apple: [{ url: "/imagens-site/marca", type: "image/png", sizes: "256x256" }],
+      });
+    // Marca enviada que não serve (icone null) ou nenhuma enviada: os ícones da marca do estudo.
+    expect(metadadosDaPagina(conteudo({ imagens: { ...comMarca.imagens, icone: null } }), undefined, {}, HOST).icons).toBe(ICONES_PADRAO);
+    expect(metadadosDaPagina(conteudo(), "Consulta", {}, HOST).icons).toBe(ICONES_PADRAO);
+    // A prévia do link (M7.13) é a mesma com e sem a marca como ícone.
+    const semIcone = (meta: ReturnType<typeof metadadosDaPagina>) => ({ ...meta, icons: undefined });
+    expect(semIcone(metadadosDaPagina(comMarca, undefined, {}, HOST))).toEqual(semIcone(metadadosDaPagina(conteudo(), undefined, {}, HOST)));
   });
 
   it("site em configuração: só o título e a descrição-base, sem prévia", () => {

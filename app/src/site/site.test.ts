@@ -7,7 +7,8 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
-import { definirImagemSite, lerImagensSite } from "./imagens-site";
+import { cabecalhoPng } from "./icone.testing";
+import { definirImagemSite, lerImagensSite, tirarImagemSite } from "./imagens-site";
 import {
   ASSUNTO_CONSULTA,
   CASA_FORA_DO_SITE,
@@ -140,6 +141,21 @@ describe("site público (M7.1)", () => {
     await definirImagemSite(db, org, "capa", { nome: "capa.jpg", conteudo: jpg(3) }, null);
     const sem = await lerImagensSite(db, org);
     expect((await conteudoDoSite(db))?.imagens).toMatchObject({ capa: `/imagens-site/${sem.capa}`, previa: `/imagens-site/${sem.capa}` });
+  });
+
+  it("ícone da aba (M7.18): a marca enviada só quando é PNG quadrado; JPG, retângulo ou nenhuma, os ícones da marca do estudo", async () => {
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: "/marca.png", icone: null });
+    await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: cabecalhoPng(256, 256) }, null);
+    let marca = (await lerImagensSite(db, org)).marca;
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: `/imagens-site/${marca}`, icone: { url: `/imagens-site/${marca}`, lado: 256 } });
+    // A marca continua no topo e no rodapé; só o ícone volta ao do estudo.
+    for (const conteudo of [Uint8Array.from({ length: 32 }, (_, i) => [0xff, 0xd8, 0xff, 0xe0][i] ?? 1), cabecalhoPng(400, 200)]) {
+      await definirImagemSite(db, org, "marca", { nome: "marca", conteudo }, null);
+      marca = (await lerImagensSite(db, org)).marca;
+      expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: `/imagens-site/${marca}`, icone: null });
+    }
+    await tirarImagemSite(db, org, "marca", null);
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: "/marca.png", icone: null });
   });
 
   it("número do WhatsApp a partir do telefone do cadastro", () => {

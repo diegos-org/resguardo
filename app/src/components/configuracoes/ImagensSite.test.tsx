@@ -27,3 +27,20 @@ describe("imagens do site no painel: capa enviada antes da versão leve da prév
     expect(h).toContain("a prévia sai sem imagem (nunca uma imagem genérica)");
   });
 });
+
+describe("marca enviada que não serve de ícone da aba (M7.18)", () => {
+  const NOTA = "A aba do navegador e o atalho na tela do celular mostram a marca do estudo, e não esta: o ícone só usa a marca enviada quando ela é um PNG quadrado, e esta não é PNG.";
+
+  it("mostra a nota junto da marca enviada; sem nota (a marca serve) ou sem marca enviada (vale a do estudo), nenhuma", () => {
+    const h = html({ marca: "/imagens-site/m1", notaIcone: NOTA });
+    expect(h).toContain(NOTA);
+    expect(h.indexOf(NOTA)).toBeGreaterThan(h.indexOf("Marca enviada por você."));
+    expect(h.indexOf(NOTA)).toBeLessThan(h.indexOf("Trocar a marca"));
+    expect(html({ marca: "/imagens-site/m1" })).not.toContain("A aba do navegador");
+    expect(html({ marca: null, notaIcone: NOTA })).not.toContain(NOTA);
+  });
+
+  it("o texto da tela diz que a marca também é o ícone da aba e do atalho, quando é um PNG quadrado", () => {
+    expect(html()).toContain("e também o ícone da aba do navegador e do atalho na tela do celular, quando é um PNG quadrado");
+  });
+});
