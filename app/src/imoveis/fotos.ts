@@ -199,9 +199,10 @@ export async function quantasFotos(db: Db, organizacaoId: string): Promise<Map<s
 }
 
 /**
- * Medidas já lidas, por arquivo (M7.19). O conteúdo de um arquivo nunca muda depois de gravado (foto trocada é outro
- * arquivo, com outro id), então cada um é lido uma vez só enquanto o servidor estiver de pé, e não a cada visita à
- * página da casa. O tamanho é limitado para não crescer sem fim: passou do limite, começa de novo.
+ * Medidas já lidas, por organização e arquivo (M7.19). O conteúdo de um arquivo nunca muda depois de gravado (foto
+ * trocada é outro arquivo, com outro id), então cada um é lido uma vez só enquanto o servidor estiver de pé, e não a
+ * cada visita à página da casa. A organização entra na chave: o que uma leu não vale para outra, como no banco. O
+ * tamanho é limitado para não crescer sem fim: passou do limite, começa de novo.
  */
 const medidasLidas = new Map<string, Medidas | null>();
 const MAXIMO_MEDIDAS_GUARDADAS = 5000;
@@ -210,8 +211,9 @@ const MAXIMO_MEDIDAS_GUARDADAS = 5000;
 async function medidasDosArquivos(db: Db, organizacaoId: string, ids: readonly string[]): Promise<Map<string, Medidas | null>> {
   const achadas = new Map<string, Medidas | null>();
   const faltam: string[] = [];
+  const chave = (id: string) => `${organizacaoId}:${id}`;
   for (const id of new Set(ids)) {
-    const guardada = medidasLidas.get(id);
+    const guardada = medidasLidas.get(chave(id));
     if (guardada !== undefined) achadas.set(id, guardada);
     else faltam.push(id);
   }
@@ -224,7 +226,7 @@ async function medidasDosArquivos(db: Db, organizacaoId: string, ids: readonly s
   for (const l of linhas) {
     const medidas = medidasDaImagem(new Uint8Array(l.inicio));
     achadas.set(l.id, medidas);
-    medidasLidas.set(l.id, medidas);
+    medidasLidas.set(chave(l.id), medidas);
   }
   return achadas;
 }

@@ -216,17 +216,19 @@ export const temCasaNoSite = cache(async function temCasaNoSite(db: Db, organiza
 
 /**
  * Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. Com `cache` (M7.13): os
- * metadados da página da casa (a prévia do link) e a própria página leem o banco uma vez só na mesma requisição. As fotos
- * vêm com as medidas das duas versões (M7.19), para a galeria da página deixar o navegador escolher entre elas.
+ * metadados da página da casa (a prévia do link) e a própria página leem o banco uma vez só na mesma requisição, desde
+ * que as duas chamem com os mesmos argumentos. Com `"galeria"` (só a página da casa, M7.19), as fotos vêm com as
+ * medidas das duas versões, para a galeria deixar o navegador escolher entre elas; sem, como antes (o redirecionamento
+ * dos links antigos e a consulta só precisam do código e do nome, e não leem o começo dos arquivos).
  */
-export const imovelDoSite = cache(async function imovelDoSite(db: Db, organizacaoId: string, codigo: string): Promise<ImovelPublico | null> {
+export const imovelDoSite = cache(async function imovelDoSite(db: Db, organizacaoId: string, codigo: string, para?: "galeria"): Promise<ImovelPublico | null> {
   if (!/^[\w-]{1,40}$/.test(codigo)) return null;
   const [l] = await db
     .select(colunasPublicas)
     .from(imoveis)
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
     .where(and(noSite(organizacaoId), eq(imoveis.codigo, codigo)));
-  return l ? (await comFotos(db, organizacaoId, [l], { medidas: true }))[0] : null;
+  return l ? (await comFotos(db, organizacaoId, [l], { medidas: para === "galeria" }))[0] : null;
 });
 
 export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string };

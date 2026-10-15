@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Sessao } from "@/acesso/politica";
 import { historicoDe } from "@/auditoria/auditoria";
-import { arquivos, imoveis, organizacoes } from "@/db/schema";
+import { arquivos, fotosImoveis, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CACHE_FOTO_PUBLICA, entregarFoto } from "./fotos-entrega";
@@ -101,12 +101,35 @@ describe("medidas das fotos pelos primeiros bytes (M7.19)", () => {
       null,
     ]);
     expect(comMedidas[0]).toMatchObject({ grande: `/fotos/${deitada.id}`, pequena: `/fotos/${deitada.id}/pequena` });
-    // De novo (as medidas já lidas ficam guardadas): o mesmo resultado.
+    // De novo: as medidas já lidas ficam guardadas na memória, sem ler o banco outra vez. Para conferir, o começo dos
+    // arquivos no banco vira bytes ilegíveis (o sistema nunca troca o conteúdo de um arquivo; aqui, à mão), e as medidas
+    // continuam as mesmas.
+    await db.update(arquivos).set({ conteudo: Buffer.from(jpg(7, 64)) }).where(eq(arquivos.organizacaoId, org));
     expect((await fotosParaOSite(db, org, [a], { medidas: true })).get(a)).toEqual(comMedidas);
     // Sem pedir (as listas de casas), nenhuma foto traz medidas.
     expect(((await fotosParaOSite(db, org, [a])).get(a) ?? []).some((f) => "medidas" in f)).toBe(false);
-    // Outra organização não lê as medidas destas fotos.
+    // Outra organização não vê estas fotos.
     expect(await fotosParaOSite(db, outraOrg, [a], { medidas: true })).toEqual(new Map());
+  });
+
+  it("outra organização não lê as medidas dos arquivos desta: nem pelo banco, nem pelo que esta já leu", async () => {
+    // Uma foto da outra organização apontando para arquivos desta: o sistema nunca grava assim; aqui, à mão.
+    const arquivo = async (conteudo: Uint8Array) =>
+      (await db.insert(arquivos).values({ organizacaoId: org, nome: "f.jpg", tipo: "image/jpeg", tamanho: conteudo.length, conteudo: Buffer.from(conteudo) }).returning())[0].id;
+    const daOutra = async (arquivoId: string, miniaturaId: string) => {
+      await db.delete(fotosImoveis).where(eq(fotosImoveis.imovelId, deOutra));
+      await db.insert(fotosImoveis).values({ organizacaoId: outraOrg, imovelId: deOutra, arquivoId, miniaturaId, ordem: 0 });
+      return ((await fotosParaOSite(db, outraOrg, [deOutra], { medidas: true })).get(deOutra) ?? []).map((f) => f.medidas ?? null);
+    };
+    // Arquivos que ninguém leu ainda: o banco só entrega o começo dos arquivos da própria organização.
+    expect(await daOutra(await arquivo(jpgComMedidas(2000, 1500)), await arquivo(jpgComMedidas(800, 600)))).toEqual([null]);
+    // Arquivos que esta organização já leu (as medidas ficam na memória): o que ela leu não vale para a outra.
+    const f = await subir(a, 1, { conteudo: jpgComMedidas(2000, 1500), miniatura: jpgComMedidas(800, 600) });
+    if (!f.ok) throw new Error("foto");
+    expect((await fotosParaOSite(db, org, [a], { medidas: true })).get(a)?.[0]?.medidas).toEqual({ grande: { largura: 2000, altura: 1500 }, pequena: { largura: 800, altura: 600 } });
+    const [lida] = await db.select().from(fotosImoveis).where(eq(fotosImoveis.id, f.id));
+    await db.delete(fotosImoveis).where(eq(fotosImoveis.id, f.id));
+    expect(await daOutra(lida.arquivoId, lida.miniaturaId ?? "")).toEqual([null]);
   });
 });
 

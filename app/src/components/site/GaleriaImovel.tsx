@@ -1,7 +1,7 @@
 "use client";
 
 import Image, { getImageProps } from "next/image";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { FotoPublica, Medidas } from "@/imoveis/fotos-regras";
 import styles from "./site.module.css";
 
@@ -45,10 +45,15 @@ export function srcsetDaFoto(foto: FotoPublica, proporcao: number): string | und
  * A foto em destaque: a mesma imagem que o next/image montava (mesmos estilos de "fill", recorte e texto alternativo),
  * agora com o `srcset` e o `sizes` (o next/image não aceita `srcset` próprio e, sem o otimizador, não monta um). O
  * otimizador da Vercel fica desligado: as fotos saem das rotas /fotos/<id> e /fotos/<id>/pequena, com o cache de uma
- * hora do M7.3. Como no next/image, o texto alternativo só aparece se a foto não carregar.
+ * hora do M7.3. Como no next/image, o texto alternativo só aparece se a foto não carregar. Também quando a falha vem
+ * antes de a página ficar interativa: o React não repete esse aviso, então, ao montar, a foto que já terminou sem
+ * imagem (`complete` e largura zero) conta como falha, sem pedir a foto de novo.
  */
 function FotoPrincipal({ foto, alt, uma }: { foto: FotoPublica; alt: string; uma: boolean }) {
   const [falhou, setFalhou] = useState<string | null>(null);
+  const aoMontar = useCallback((img: HTMLImageElement | null) => {
+    if (img?.complete && img.naturalWidth === 0) setFalhou(img.getAttribute("src"));
+  }, []);
   const srcSet = srcsetDaFoto(foto, uma ? PROPORCAO_QUADRO.uma : PROPORCAO_QUADRO.varias);
   const { props } = getImageProps({ src: foto.grande, alt, fill: true, unoptimized: true, loading: "eager", className: styles.fotoReal });
   const { src, style, ...resto } = props;
@@ -56,9 +61,10 @@ function FotoPrincipal({ foto, alt, uma }: { foto: FotoPublica; alt: string; uma
     // eslint-disable-next-line @next/next/no-img-element
     <img
       {...resto}
+      ref={aoMontar}
       alt={alt}
-      style={falhou === foto.grande ? { ...style, color: undefined } : style}
-      onError={() => setFalhou(foto.grande)}
+      style={falhou === src ? { ...style, color: undefined } : style}
+      onError={() => setFalhou(src)}
       // `sizes` e `srcSet` antes do `src`, como no next/image: o React grava nessa ordem, e o Safari começaria a baixar a
       // grande antes de saber das versões.
       sizes={srcSet ? (uma ? SIZES_GALERIA.uma : SIZES_GALERIA.varias) : undefined}

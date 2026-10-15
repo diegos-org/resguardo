@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act } from "react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GaleriaImovel, SIZES_GALERIA } from "@/components/site/GaleriaImovel";
+import { GaleriaImovel, PROPORCAO_QUADRO, SIZES_GALERIA } from "@/components/site/GaleriaImovel";
 import styles from "@/components/site/site.module.css";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import type { FotoPublica } from "@/imoveis/fotos-regras";
 import type { ConteudoSite, ImovelPublico } from "@/site/site";
-import PaginaImovel from "../imoveis/[codigo]/page";
+import PaginaImovel, { generateMetadata } from "../imoveis/[codigo]/page";
 import Inicio from "../page";
 
 /**
@@ -96,12 +100,44 @@ const props = (params: Record<string, string>) => ({ params: Promise.resolve(par
 const paginaDaCasa = async () => renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }) as never));
 const emDestaque = (raiz: HTMLElement) => raiz.querySelector<HTMLImageElement>(`.${styles.galeriaPrincipal} img`);
 
+/** As regras de um CSS, na ordem do arquivo: o seletor, o `@media` em que está (ou null) e as declarações. */
+function regrasDoCss(css: string) {
+  const texto = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const regras: { media: string | null; seletor: string; declaracoes: Record<string, string> }[] = [];
+  let media: string | null = null;
+  let aberta: { seletor: string; inicio: number } | null = null;
+  for (const t of texto.matchAll(/([^{}]+)\{|\}/g)) {
+    const cabeca = t[1]?.trim();
+    if (cabeca?.startsWith("@media")) media = cabeca;
+    else if (cabeca !== undefined) aberta = { seletor: cabeca, inicio: (t.index ?? 0) + t[0].length };
+    else if (aberta) {
+      const corpo = texto.slice(aberta.inicio, t.index);
+      const declaracoes = Object.fromEntries(
+        corpo
+          .split(";")
+          .map((d) => d.split(":"))
+          .filter((d) => d.length > 1)
+          .map(([k, ...v]) => [k.trim(), v.join(":").trim()]),
+      );
+      regras.push({ media, seletor: aberta.seletor, declaracoes });
+      aberta = null;
+    } else media = null;
+  }
+  return regras;
+}
+
 describe("fotos mais leves (M7.19)", () => {
   it("página da casa: a foto em destaque com as duas versões e o sizes do quadro; capa do site, cartões e miniaturas como antes; nada do otimizador", async () => {
     const html = await paginaDaCasa();
     const foto = emDestaque(dom(html));
     expect(foto?.getAttribute("srcset")).toBe("/fotos/f1/pequena 800w, /fotos/f1 2000w");
     expect(foto?.getAttribute("sizes")).toBe(SIZES_GALERIA.varias);
+    // A página da casa e a prévia do link pedem as fotos com as medidas, com os mesmos argumentos (uma leitura só).
+    await generateMetadata(props({ codigo: "403" }) as never);
+    expect(m.imovel.mock.calls).toEqual([
+      [{}, "org", "403", "galeria"],
+      [{}, "org", "403", "galeria"],
+    ]);
     // A mesma imagem de antes: a grande como `src`, o texto alternativo, o recorte e os estilos de "fill" do next/image.
     expect(foto?.getAttribute("src")).toBe("/fotos/f1");
     expect(foto?.getAttribute("alt")).toBe("Sala");
@@ -157,8 +193,44 @@ describe("fotos mais leves (M7.19)", () => {
     expect(await versoes([semPequena, fotos[0]])).toEqual(["/fotos/f5", null, null]);
     // Pequena que não é menor que a grande (foto original pequena): não há o que escolher.
     expect(await versoes([{ ...fotos[0], medidas: medidas(700, 500, 700, 500) }, fotos[1]])).toEqual(["/fotos/f1", null, null]);
-    // Uma foto só: o quadro 16:9 da largura toda (4:3 cobre a largura inteira).
+    // Uma foto só: o quadro 16:9 da largura toda. A 4:3 cobre a largura inteira; a 16:9 também (no quadro 3:2 seria
+    // 675w); num panorama 2:1, só a altura × 16/9 aparece (400 × 16/9 ≈ 711; 1000 × 16/9 ≈ 1778).
     expect(await versoes([fotos[0]])).toEqual(["/fotos/f1", "/fotos/f1/pequena 800w, /fotos/f1 2000w", SIZES_GALERIA.uma]);
+    expect(await versoes([fotos[2]])).toEqual(["/fotos/f3", "/fotos/f3/pequena 800w, /fotos/f3 2000w", SIZES_GALERIA.uma]);
+    const panorama = { grande: "/fotos/f6", pequena: "/fotos/f6/pequena", legenda: "", medidas: medidas(2000, 1000, 800, 400) };
+    expect(await versoes([panorama])).toEqual(["/fotos/f6", "/fotos/f6/pequena 711w, /fotos/f6 1778w", SIZES_GALERIA.uma]);
+  });
+
+  it("o sizes é a largura do quadro na tela, tirada do CSS da página: as contas batem com o site.module.css", () => {
+    // O texto exato: um valor menor que o real deixaria a foto borrada (o navegador escolheria a pequena sem bastar).
+    expect(SIZES_GALERIA).toEqual({
+      // Até 600 px: uma coluna, com 20 px de respiro de cada lado. Até 1240 px: o miolo tem a tela toda menos 5vw de cada
+      // lado (90vw), e cada uma das duas colunas tem a metade menos metade dos 12 px entre elas (45vw - 6px). Acima, o
+      // miolo para em 1240 px e o respiro cresce: o quadro só diminui, então vale o de 1240 px ((1116 - 12) / 2 = 552).
+      varias: "(max-width: 600px) calc(100vw - 40px), (max-width: 1240px) calc(45vw - 6px), 552px",
+      // Uma foto só: a largura toda do miolo (90vw; 1240 - 2 × 62 = 1116 px acima de 1240 px).
+      uma: "(max-width: 600px) calc(100vw - 40px), (max-width: 1240px) 90vw, 1116px",
+    });
+    expect(PROPORCAO_QUADRO).toEqual({ varias: 3 / 2, uma: 16 / 9 });
+    // E os valores de onde as contas saíram, no CSS: se um deles mudar, o sizes e as proporções têm de mudar junto.
+    const regras = regrasDoCss(readFileSync(join(process.cwd(), "src/components/site/site.module.css"), "utf8"));
+    const LAYOUT = ["width", "max-width", "padding", "padding-left", "padding-right", "padding-inline", "gap", "column-gap", "grid-template-columns", "aspect-ratio", "box-sizing"];
+    const doQuadro = regras
+      .filter((r) => [".miolo", ".galeria", ".galeriaUma", ".galeriaPrincipal", ".galeriaUma .galeriaPrincipal"].includes(r.seletor))
+      .map((r) => ({ ...r, declaracoes: Object.fromEntries(Object.entries(r.declaracoes).filter(([k]) => LAYOUT.includes(k))) }))
+      .filter((r) => Object.keys(r.declaracoes).length);
+    expect(doQuadro).toEqual([
+      { media: null, seletor: ".miolo", declaracoes: { width: "100%", "max-width": "1240px", padding: "20px max(5vw, 20px) 56px" } },
+      { media: null, seletor: ".galeria", declaracoes: { "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr)", gap: "12px" } },
+      { media: null, seletor: ".galeriaPrincipal", declaracoes: { "aspect-ratio": "3 / 2" } },
+      { media: null, seletor: ".galeriaUma", declaracoes: { "grid-template-columns": "minmax(0, 1fr)" } },
+      { media: null, seletor: ".galeriaUma .galeriaPrincipal", declaracoes: { "aspect-ratio": "16 / 9" } },
+      { media: "@media (max-width: 600px)", seletor: ".galeria", declaracoes: { "grid-template-columns": "1fr" } },
+      { media: "@media (max-width: 600px)", seletor: ".miolo", declaracoes: { padding: "16px 20px 40px" } },
+    ]);
+    // O respiro conta dentro da largura máxima do miolo (box-sizing de todo o site).
+    const globais = regrasDoCss(readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8"));
+    expect(globais.find((r) => r.seletor === "*" && r.media === null)?.declaracoes["box-sizing"]).toBe("border-box");
   });
 
   it("trocar de foto troca as versões e o sizes da foto em destaque, e a foto sem medidas volta a ter só a grande", () => {
@@ -171,6 +243,35 @@ describe("fotos mais leves (M7.19)", () => {
     fireEvent.click(galeria.getByRole("button", { name: "Ver a foto 4" }));
     const semMedidas = galeria.getByRole("img", { name: "Foto 4 de Studio Exemplo" });
     expect([semMedidas.getAttribute("src"), semMedidas.getAttribute("srcset"), semMedidas.getAttribute("sizes")]).toEqual(["/fotos/f4", null, null]);
+  });
+
+  it("foto que falhou antes de a página ficar interativa também mostra o texto alternativo; a que carregou, não", async () => {
+    // O HTML do servidor chega e o navegador pede a foto antes do JavaScript: se ela falha nesse meio tempo, o React não
+    // repete o aviso de erro ao assumir a página. Ao montar, a foto que já terminou sem imagem conta como falha.
+    const ambiente = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const antes = ambiente.IS_REACT_ACT_ENVIRONMENT;
+    ambiente.IS_REACT_ACT_ENVIRONMENT = true;
+    const assumir = async (terminou: boolean, largura: number) => {
+      const raiz = document.createElement("div");
+      raiz.innerHTML = renderToString(<GaleriaImovel nome="Studio Exemplo" fotos={fotos} />);
+      document.body.append(raiz);
+      const img = raiz.querySelector<HTMLImageElement>(`.${styles.galeriaPrincipal} img`);
+      if (!img) throw new Error("foto");
+      Object.defineProperty(img, "complete", { configurable: true, get: () => terminou });
+      Object.defineProperty(img, "naturalWidth", { configurable: true, get: () => largura });
+      const pagina = await act(async () => hydrateRoot(raiz, <GaleriaImovel nome="Studio Exemplo" fotos={fotos} />));
+      const cor = img.style.color;
+      act(() => pagina.unmount());
+      raiz.remove();
+      return cor;
+    };
+    try {
+      expect(await assumir(true, 0)).toBe("");
+      expect(await assumir(true, 800)).toBe("transparent");
+      expect(await assumir(false, 0)).toBe("transparent");
+    } finally {
+      ambiente.IS_REACT_ACT_ENVIRONMENT = antes;
+    }
   });
 
   it("foto que não carrega mostra o texto alternativo, como no next/image; a próxima foto volta ao normal", () => {

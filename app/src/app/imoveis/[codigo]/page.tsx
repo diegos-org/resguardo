@@ -28,8 +28,8 @@ export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]"
   const { codigo } = await params;
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return metadadosDoSite(undefined);
-  // A mesma leitura da página (com `cache`, uma vez só por requisição).
-  const i = await imovelDoSite(db, conteudo.organizacaoId, codigo);
+  // A mesma leitura da página (com `cache`, uma vez só por requisição: por isso, os mesmos argumentos, com "galeria").
+  const i = await imovelDoSite(db, conteudo.organizacaoId, codigo, "galeria");
   // Casa que não existe ou saiu do site (M7.8): o título da aba é o da "Casa não encontrada" já aqui, o mesmo de
   // ./not-found.tsx, para não depender só do título da not-found (que o Next pode trocar pelo do layout).
   if (!i) return metadadosDaNaoEncontrada("casa");
@@ -50,7 +50,8 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   const pedido = lerPedidoConsulta(await searchParams);
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return <SiteEmConfiguracao />;
-  const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo), imoveisDoSite(db, conteudo.organizacaoId)]);
+  // Com as medidas das fotos (M7.19), para a galeria; a mesma leitura dos metadados acima.
+  const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo, "galeria"), imoveisDoSite(db, conteudo.organizacaoId)]);
   if (!imovel) notFound();
   const bairro = await lugaresDoSite(db, conteudo.organizacaoId, imovel.bairro);
   // "Hoje" no fuso do imóvel, o mesmo que a disponibilidade usa.
