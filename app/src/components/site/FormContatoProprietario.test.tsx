@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { textoDaAutorizacao } from "@/proprietarios/autorizacao";
 import { FormContatoProprietario } from "./FormContatoProprietario";
 
 const m = vi.hoisted(() => ({ acaoPadrao: vi.fn() }));
@@ -64,7 +65,35 @@ it("envia o que foi digitado e, dando certo, troca o formulário pela confirmaç
     mensagem: "Apartamento fictício.",
     site: "",
     consentimento: "on",
+    // Só a marca do texto que a página mostrou (M7.14): o texto gravado é o do servidor.
+    autorizacao: textoDaAutorizacao("contato", "Sua Casa Exemplo").marca,
   });
+});
+
+it("texto da autorização mudou depois que a página abriu: mostra o texto devolvido pelo servidor, com a caixa desmarcada e a marca nova (M7.14)", async () => {
+  const novo = textoDaAutorizacao("contato", "Casa Nova Exemplo");
+  const acao = vi.fn().mockResolvedValue({
+    mensagem: "Confira os campos destacados.",
+    erros: { consentimento: "O texto da autorização mudou depois que a página abriu. Leia o texto ao lado da caixa e marque de novo." },
+    valores: { nome: "Maria Exemplo", consentimento: "" },
+    autorizacao: novo,
+  });
+  render(<FormContatoProprietario empresa="Sua Casa Exemplo" acao={acao} />);
+  expect((document.querySelector('input[name="autorizacao"]') as HTMLInputElement).value).toBe(textoDaAutorizacao("contato", "Sua Casa Exemplo").marca);
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Confira os campos destacados."));
+  const caixa = screen.getByRole("checkbox") as HTMLInputElement;
+  expect(caixa.checked).toBe(false);
+  expect(caixa.closest("label")?.textContent).toContain("Autorizo o uso destes dados só para a Casa Nova Exemplo me responder sobre a gestão do imóvel.");
+  expect(document.getElementById(caixa.getAttribute("aria-describedby")!)?.textContent).toContain("O texto da autorização mudou");
+  expect((document.querySelector('input[name="autorizacao"]') as HTMLInputElement).value).toBe(novo.marca);
+  expect(document.body.textContent).not.toContain("para a Sua Casa Exemplo me responder");
+  // Um erro seguinte (sem o texto) não volta ao texto antigo da página.
+  acao.mockResolvedValueOnce({ mensagem: "Confira os campos destacados.", erros: { telefone: "Telefone com DDD." }, valores: { nome: "Maria Exemplo", telefone: "9", consentimento: "on" } });
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(screen.getByLabelText(/^Telefone \(WhatsApp\)/).getAttribute("aria-invalid")).toBe("true"));
+  expect(screen.getByRole("checkbox").closest("label")?.textContent).toContain("para a Casa Nova Exemplo me responder");
+  expect((document.querySelector('input[name="autorizacao"]') as HTMLInputElement).value).toBe(novo.marca);
 });
 
 it("erro do servidor: marca os campos, liga a mensagem ao campo e devolve o que foi digitado", async () => {

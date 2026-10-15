@@ -52,6 +52,8 @@ it("página inteira: capa, as duas formas de trabalhar, como gerimos, vitrine, p
   // Pedido de contato (formulário próprio) com o nome da empresa, e o cadastro do marketplace (passo 1: e-mail).
   expect(h).toContain('id="contato"');
   expect(h).toContain('aria-label="Pedir contato para a gestão completa"');
+  // O nome é o de Configurações → Empresa (o mesmo que o servidor lê no envio para conferir o texto da autorização, M7.14).
+  expect(h).toContain(">Casa Exemplo</form>");
   expect(h).toContain('id="marketplace"');
   expect(h).toContain('aria-label="Confirmar e-mail"');
   // Sem números de mercado e sem "Como funciona" publicado, essas seções não aparecem.
