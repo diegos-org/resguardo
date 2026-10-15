@@ -2,7 +2,7 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
-import { type AmbienteDoSistema, ambienteDeTeste, ambienteDoSistema } from "@/sistema/ambiente";
+import { type AmbienteDoSistema, ambienteDeTeste, ambienteDoSistema, deployDeProducao, type MotivoDaProducao, motivoDaProducao } from "@/sistema/ambiente";
 import { producaoSemChaves, TEXTO_PRODUCAO_SEM_CHAVES } from "@/sistema/servicos";
 
 const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
@@ -13,6 +13,14 @@ const CONEXAO: Record<SituacaoMercadoPago["situacao"], string> = {
   producao_travada: "Ambiente de produção do Mercado Pago: travado nesta fase (só teste)",
   desligado: "Desligado",
 };
+/** As chaves de teste fora do ambiente de teste sem ser o deploy de produção (`motivoDaProducao`): sem afirmar o deploy. */
+const SO_NAS_PREVIAS_FORA_DO_DEPLOY = "Chaves configuradas, mas aqui conta como produção: o teste do pagamento roda nas prévias";
+
+function conexao(mp: SituacaoMercadoPago, env: NodeJS.ProcessEnv): string {
+  if (producaoSemChaves(mp, env)) return TEXTO_PRODUCAO_SEM_CHAVES;
+  const texto = mp.situacao === "so_nas_previas" && !deployDeProducao(env) ? SO_NAS_PREVIAS_FORA_DO_DEPLOY : CONEXAO[mp.situacao];
+  return mp.motivo ? `${texto}: ${mp.motivo}` : texto;
+}
 
 function contaDeTeste(mp: SituacaoMercadoPago): string {
   if (mp.situacao !== "teste") return "Não conferida: só é conferida no ambiente de teste, nas prévias.";
@@ -21,17 +29,25 @@ function contaDeTeste(mp: SituacaoMercadoPago): string {
   return "Não deu para conferir agora no Mercado Pago: nenhuma cobrança é feita até conferir.";
 }
 
-const ONDE: Record<AmbienteDoSistema, string> = { producao: "deploy de produção", previa: "prévia da Vercel", desenvolvimento: "computador de desenvolvimento" };
+/** Onde roda; na produção, se é o deploy de produção ou se só conta como produção (sem afirmar um deploy que não é). */
+const ONDE: Record<AmbienteDoSistema | MotivoDaProducao, string> = {
+  previa: "prévia da Vercel",
+  desenvolvimento: "computador de desenvolvimento",
+  deploy: "deploy de produção",
+  vercel_inesperado: "conta como produção (VERCEL_ENV inesperado, nem preview nem development)",
+  node_env_producao: "conta como produção (fora da Vercel, com NODE_ENV=production)",
+  producao: "conta como produção",
+};
 
 /**
  * MERCADOPAGO_AMBIENTE e onde o sistema está rodando (o teste só roda fora do deploy de produção), pela mesma regra do
  * pagamento (`ambienteDoSistema`, M7.12): um VERCEL_ENV inesperado, ou fora da Vercel com NODE_ENV=production, conta
- * como produção, como no pagamento.
+ * como produção, como no pagamento — e a linha diz que só conta como produção, sem chamar de deploy de produção.
  */
 export function textoAmbiente(env: NodeJS.ProcessEnv): string {
   const a = ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE);
   const mp = a === "teste" ? "teste" : a === "producao" ? "produção (travado nesta fase)" : "valor inválido em MERCADOPAGO_AMBIENTE (desligado)";
-  return `${mp} · ${ONDE[ambienteDoSistema(env)]}`;
+  return `${mp} · ${ONDE[motivoDaProducao(env) ?? ambienteDoSistema(env)]}`;
 }
 
 /** Prefixo de uma chave do Mercado Pago (TEST- ou APP_USR-); null quando falta ou é outro (nunca a chave). */
@@ -59,7 +75,7 @@ export function MercadoPagoIntegracao({ mp, env }: { mp: SituacaoMercadoPago; en
   // Fora do deploy de produção (prévia ou computador), o Mercado Pago não alcança este endereço.
   const naPrevia = ambienteDeTeste(env);
   const linhas: [string, string][] = [
-    ["Conexão", producaoSemChaves(mp, env) ? TEXTO_PRODUCAO_SEM_CHAVES : mp.motivo ? `${CONEXAO[mp.situacao]}: ${mp.motivo}` : CONEXAO[mp.situacao]],
+    ["Conexão", conexao(mp, env)],
     ["Conta de teste", contaDeTeste(mp)],
     ["Ambiente", textoAmbiente(env)],
     ["Segredo do webhook", mp.segredoWebhook ? "Configurado (MERCADOPAGO_WEBHOOK_SECRET)" : "Falta MERCADOPAGO_WEBHOOK_SECRET: todo aviso do Mercado Pago é recusado"],

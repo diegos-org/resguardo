@@ -36,7 +36,11 @@ prévia** — antes (estudo, `.preview`): "Prévia privada · Reservas e pagamen
 e texto `#404537`, fora dos tokens; agora: `.scl-previa` em `globals.css`, `--scl-areia` com texto `--scl-tinta`
 (10,66:1), 11px (10px até 600px), 8px × 16px, centralizada, no topo de toda página (layout raiz: site, páginas do
 hóspede, portais, painel e telas de erro), só fora do deploy de produção (`app/src/sistema/ambiente.ts`), com o texto
-"Prévia de teste · não é o site de verdade · nenhuma cobrança real"; motivo: o texto do estudo deixou de ser verdade (o
+"Prévia de teste · não é o site de verdade · nenhuma cobrança real"; com a faixa, a moldura logo abaixo (site, portais e
+painel, que têm `min-height: 100vh`) ocupa só o resto da tela, para as páginas curtas não ganharem uma rolagem que a
+produção não tem (`body:has(> .scl-previa)` em coluna e a moldura com `flex: 1 0 auto; min-height: 0`, sem altura fixa,
+porque no celular estreito o texto pode ter duas linhas; na produção, sem a faixa, nada disso se aplica; ajuste da
+revisão em 15/10, conferido por teste do CSS e ainda não em navegador); motivo: o texto do estudo deixou de ser verdade (o
 pagamento de teste está ligado nas prévias) e as cores dele não eram tokens; objetivo: quem testa não confundir a prévia
 com o site de verdade, dizendo só o que o código garante.
 Aprovado por Diego em 4/10/2026: adotar o visual do estudo do "Sage" (site público,

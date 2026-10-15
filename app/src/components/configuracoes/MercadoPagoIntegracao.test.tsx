@@ -15,6 +15,8 @@ const mp = (o: Partial<SituacaoMercadoPago> = {}): SituacaoMercadoPago => ({
   ...o,
 });
 const env = (v: Record<string, string>) => v as unknown as NodeJS.ProcessEnv;
+/** Contam como produção sem ser o deploy de produção (`motivoDaProducao`). */
+const SO_CONTAM_COMO_PRODUCAO: Record<string, string>[] = [{ VERCEL_ENV: "staging" }, { NODE_ENV: "production" }];
 
 it("na prévia: conexão, conta de teste conferida, ambiente, segredo, último aviso, recusadas, endereço com copiar e a nota do Conferir agora", () => {
   const h = renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={env({ VERCEL_ENV: "preview", MERCADOPAGO_AMBIENTE: "teste" })} />);
@@ -70,12 +72,34 @@ it("M7.12: onde roda pela mesma regra do pagamento (ambienteDoSistema): VERCEL_E
   expect(textoAmbiente(env({ VERCEL_ENV: "preview" }))).toBe("teste · prévia da Vercel");
   expect(textoAmbiente(env({ VERCEL_ENV: "development" }))).toBe("teste · computador de desenvolvimento");
   expect(textoAmbiente(env({ NODE_ENV: "development" }))).toBe("teste · computador de desenvolvimento");
-  // Antes, estes dois diziam "computador de desenvolvimento" enquanto o pagamento já os tratava como produção.
-  expect(textoAmbiente(env({ VERCEL_ENV: "staging" }))).toBe("teste · deploy de produção");
-  expect(textoAmbiente(env({ NODE_ENV: "production" }))).toBe("teste · deploy de produção");
+  expect(textoAmbiente(env({ VERCEL_ENV: "production" }))).toBe("teste · deploy de produção");
+  // Antes, estes dois diziam "computador de desenvolvimento" enquanto o pagamento já os tratava como produção. Agora dizem
+  // que contam como produção, e por quê, sem chamar de deploy de produção o que não é.
+  expect(textoAmbiente(env({ VERCEL_ENV: "staging" }))).toBe("teste · conta como produção (VERCEL_ENV inesperado, nem preview nem development)");
+  expect(textoAmbiente(env({ NODE_ENV: "production" }))).toBe("teste · conta como produção (fora da Vercel, com NODE_ENV=production)");
+  for (const e of SO_CONTAM_COMO_PRODUCAO) expect(textoAmbiente(env(e))).not.toContain("deploy de produção");
   // A nota do "Conferir agora" só fora da produção, pela mesma regra.
   const nota = "aqui use Conferir agora";
   expect(renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={env({ VERCEL_ENV: "development" })} />)).toContain(nota);
   expect(renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={env({ VERCEL_ENV: "staging" })} />)).not.toContain(nota);
   expect(renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={env({ NODE_ENV: "production" })} />)).not.toContain(nota);
+});
+
+it("revisão do M7.12: onde só conta como produção, a linha Conexão também não afirma o deploy de produção", () => {
+  const linhas = (o: Partial<SituacaoMercadoPago>, e: Record<string, string>) => renderToStaticMarkup(<MercadoPagoIntegracao mp={mp({ contaDeTeste: null, ...o })} env={env(e)} />);
+  // Chaves de teste configuradas fora do ambiente de teste.
+  expect(linhas({ situacao: "so_nas_previas" }, { VERCEL_ENV: "production" })).toContain("Chaves configuradas, mas aqui é o deploy de produção: o teste do pagamento roda nas prévias");
+  for (const e of SO_CONTAM_COMO_PRODUCAO) {
+    const h = linhas({ situacao: "so_nas_previas" }, e);
+    expect(h).toContain("Chaves configuradas, mas aqui conta como produção: o teste do pagamento roda nas prévias");
+    expect(h).not.toContain("deploy de produção");
+  }
+  // Sem as chaves: o aviso "Deploy de produção: ..." só no deploy de verdade; onde só conta como produção, segue desligado.
+  const semChaves = { situacao: "desligado" as const, motivo: "Falta configurar MERCADOPAGO_ACCESS_TOKEN." };
+  expect(linhas(semChaves, { VERCEL_ENV: "production", MERCADOPAGO_AMBIENTE: "teste" })).toContain("Deploy de produção: o teste do pagamento roda nas prévias");
+  for (const e of SO_CONTAM_COMO_PRODUCAO) {
+    const h = linhas(semChaves, { ...e, MERCADOPAGO_AMBIENTE: "teste" });
+    expect(h).toContain("Desligado: Falta configurar MERCADOPAGO_ACCESS_TOKEN.");
+    expect(h).not.toContain("deploy de produção");
+  }
 });

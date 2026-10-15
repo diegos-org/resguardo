@@ -526,6 +526,23 @@ describe('faixa "Prévia de teste" no topo (M7.12)', () => {
     expect(FOCO_CLARO.test(faixa) || FOCO_LARANJA.test(faixa)).toBe(false);
   });
 
+  it("com a faixa, a moldura de baixo ocupa o resto da tela (sem rolagem a mais nas páginas curtas); sem ela, nada muda", () => {
+    // As molduras seguem com uma tela inteira de altura (100vh): é o que, somado à faixa, passaria do fim da tela.
+    for (const [arquivo, seletor] of [["components/site/site.module.css", ".pagina"], ["components/portal/portal.module.css", ".pagina"], ["components/painel/painel.module.css", ".estrutura"]])
+      expect(valor(regra(ler(arquivo), seletor), "min-height"), arquivo).toBe("100vh");
+    // Só com a faixa (:has): o corpo, que já tem uma tela de altura, vira coluna, e o que vem logo depois da faixa cresce
+    // até o fim dela, sem os 100vh da moldura (sem altura fixa: no celular a faixa pode ter duas linhas).
+    expect(valor(regra(GLOBAL, "body"), "min-height")).toBe("100vh");
+    const corpo = regra(GLOBAL, "body:has(> .scl-previa)");
+    expect([valor(corpo, "display"), valor(corpo, "flex-direction")]).toEqual(["flex", "column"]);
+    const moldura = regra(GLOBAL, "body:has(> .scl-previa) > .scl-previa + *");
+    expect([valor(moldura, "flex"), valor(moldura, "min-height")]).toEqual(["1 0 auto", "0"]);
+    expect(moldura).not.toMatch(/calc|(^|[;\s])height\s*:/);
+    // Na produção (sem a faixa), o corpo segue como era: nenhuma regra solta muda o display dele.
+    expect(valor(regra(GLOBAL, "body"), "display")).toBeUndefined();
+    expect(regras(GLOBAL).filter((r) => /(^|,\s*)body\s*(,|$)/.test(r.seletor) && /display/.test(r.corpo))).toEqual([]);
+  });
+
   it("com a faixa no topo (layout raiz, na prévia), o Pular para o conteúdo continua o primeiro focável das molduras", async () => {
     vi.stubEnv("VERCEL_ENV", "preview");
     try {

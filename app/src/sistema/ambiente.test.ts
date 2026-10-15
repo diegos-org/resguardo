@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ambienteDeTeste, ambienteDoSistema } from "./ambiente";
+import { ambienteDeTeste, ambienteDoSistema, deployDeProducao, motivoDaProducao } from "./ambiente";
 
 const env = (v: Record<string, string>) => v as unknown as NodeJS.ProcessEnv;
 
@@ -32,11 +32,27 @@ describe("onde o sistema roda (M7.12): uma regra só para a faixa e o pagamento"
     expect(casos([{ VERCEL_ENV: "production" }, { VERCEL_ENV: "staging" }, { NODE_ENV: "production" }])).toEqual([false, false, false]);
   });
 
+  it("por que conta como produção (revisão do M7.12): o deploy de verdade ou só pela regra, sem chamar de deploy o que não é", () => {
+    expect(motivoDaProducao(env({ VERCEL_ENV: "production" }))).toBe("deploy");
+    expect(motivoDaProducao(env({ VERCEL_ENV: " production ", NODE_ENV: "development" }))).toBe("deploy");
+    for (const v of ["staging", "Preview", "prod"]) expect(motivoDaProducao(env({ VERCEL_ENV: v })), v).toBe("vercel_inesperado");
+    expect(motivoDaProducao(env({ NODE_ENV: "production" }))).toBe("node_env_producao");
+    expect(motivoDaProducao(env({ VERCEL_ENV: "  ", NODE_ENV: "production" }))).toBe("node_env_producao");
+    // Fora da produção, nenhum motivo.
+    const foraDaProducao: Record<string, string>[] = [{ VERCEL_ENV: "preview" }, { VERCEL_ENV: "development" }, {}, { NODE_ENV: "development" }];
+    for (const v of foraDaProducao) expect(motivoDaProducao(env(v))).toBeNull();
+    // deployDeProducao: só o deploy de verdade.
+    const casos: Record<string, string>[] = [{ VERCEL_ENV: "production" }, { VERCEL_ENV: "staging" }, { NODE_ENV: "production" }, { VERCEL_ENV: "preview" }, {}];
+    expect(casos.map((v) => deployDeProducao(env(v)))).toEqual([true, false, false, false, false]);
+  });
+
   it("sem argumento, lê o process.env de agora", () => {
     vi.stubEnv("VERCEL_ENV", "preview");
     expect(ambienteDeTeste()).toBe(true);
     vi.stubEnv("VERCEL_ENV", "production");
     expect(ambienteDeTeste()).toBe(false);
     expect(ambienteDoSistema()).toBe("producao");
+    expect(deployDeProducao()).toBe(true);
+    expect(motivoDaProducao()).toBe("deploy");
   });
 });

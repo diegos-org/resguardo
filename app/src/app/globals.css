@@ -175,6 +175,20 @@ main[tabindex="-1"]:focus {
   }
 }
 
+/* Com a faixa, a moldura logo abaixo dela (site, portais e painel têm min-height: 100vh) passaria do fim da tela pela
+   altura da faixa, e toda página curta ganharia uma rolagem que a produção não tem. Só quando a faixa existe (:has): o
+   corpo vira coluna (o body já tem min-height: 100vh) e a moldura ocupa o resto da tela, sem os 100vh dela. Sem altura
+   fixa: no celular estreito o texto da faixa pode ter duas linhas. Na produção, sem a faixa, nada disto se aplica. */
+body:has(> .scl-previa) {
+  display: flex;
+  flex-direction: column;
+}
+
+body:has(> .scl-previa) > .scl-previa + * {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+
 /* Texto só para quem usa leitor de tela (ex.: "abre em nova janela"): fora da tela, mas lido. */
 .scl-so-leitor {
   position: absolute;

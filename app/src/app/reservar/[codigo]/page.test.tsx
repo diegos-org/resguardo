@@ -55,6 +55,9 @@ const GATE_NAO = { ok: false, motivo: "desligado", texto: "desligado" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // O ambiente fica fixo (a prévia), sem depender do VERCEL_ENV de quem roda os testes: a nota de teste da cotação depende
+  // dele desde o M7.12. Os casos fora do ambiente de teste estão em "uma faixa só", no fim.
+  vi.stubEnv("VERCEL_ENV", "preview");
   m.site.mockResolvedValue({ db: {}, conteudo });
   m.portao.mockResolvedValue(GATE_NAO);
   m.pixPossivel.mockResolvedValue(false);
@@ -68,6 +71,7 @@ beforeEach(() => {
   m.cartaoNoSite.mockResolvedValue(false);
   m.pagarComCartao.mockResolvedValue({});
 });
+afterEach(() => vi.unstubAllEnvs());
 const html = async (codigo = "COT-ABCDEFGH") => renderToStaticMarkup(await Page({ params: Promise.resolve({ codigo }) } as PageProps<"/reservar/[codigo]">));
 
 describe("página da cotação com o pagamento no site (M8.2a)", () => {
@@ -76,7 +80,7 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     expect(m.verCotacao).not.toHaveBeenCalled();
   });
 
-  it("sem o Pix oferecido: o fluxo de hoje (prazo, WhatsApp, 'nenhum pagamento é feito no site') e sem faixa de teste", async () => {
+  it("sem o Pix oferecido: o fluxo de hoje (prazo, WhatsApp, 'nenhum pagamento é feito no site') e sem a nota de teste", async () => {
     const h = await html();
     expect(h).toContain("Datas seguradas");
     expect(h).toContain("Fale com a equipe para confirmar a reserva");
@@ -94,7 +98,7 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     m.pixPossivel.mockResolvedValue(true);
     h = await html();
     expect(m.pixPossivel).toHaveBeenLastCalledWith({}, "org", { imovel: { id: cotacao.imovelId }, checkin: "2026-10-12", checkout: "2026-10-15", situacao: "disponivel", total: 182400 }, GATE_OK);
-    // No ambiente de teste (o destes testes), a faixa do layout raiz diz "nenhuma cobrança real" (M7.12): sem a nota daqui.
+    // Na prévia (o ambiente fixado destes testes), a faixa do layout raiz diz "nenhuma cobrança real" (M7.12): sem a nota daqui.
     expect(h).not.toContain("Ambiente de teste");
     expect(h).toContain("Nada é cobrado ao segurar: o Pix aparece logo depois");
     expect(h).toContain("Nada é cobrado ao segurar as datas: o pagamento é por Pix");
@@ -102,7 +106,7 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     expect(h).not.toContain("Nenhum pagamento é feito");
   });
 
-  it("datas seguradas com o Pix oferecido: Pix em destaque e primeiro (antes do resumo), Gerar Pix, WhatsApp como opção, faixa de teste", async () => {
+  it("datas seguradas com o Pix oferecido: Pix em destaque e primeiro (antes do resumo), Gerar Pix, WhatsApp como opção, sem a nota local (a faixa do layout cobre)", async () => {
     m.portao.mockResolvedValue(GATE_OK);
     m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pagar" }));
     const h = await html();
@@ -137,8 +141,8 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     expect(h).toContain('src="data:image/png;base64,RkFMU08="');
     expect(h).toContain("Este Pix vale até <strong>12:30</strong>");
     expect(h).toContain("Pode fechar e voltar por este link");
-    // Sem as chaves agora (portão fechado), o pagamento de teste já criado: no ambiente de teste, a faixa do layout raiz
-    // basta (M7.12); a nota local fica para o caso que ela não cobre (ver "uma faixa só", abaixo).
+    // Sem as chaves agora (portão fechado), o pagamento de teste já criado: na prévia, a faixa do layout raiz basta
+    // (M7.12); a nota local fica para o caso que ela não cobre (ver "uma faixa só", abaixo).
     expect(h).not.toContain("Ambiente de teste");
   });
 
@@ -468,7 +472,6 @@ describe("alteração da reserva paga pelo site (M8.2d)", () => {
 });
 
 describe("uma faixa só na página da cotação (M7.12)", () => {
-  afterEach(() => vi.unstubAllEnvs());
   const NOTA = "Ambiente de teste: nenhuma cobrança real.";
   const pix = { copiaECola: "000201PIXFICTICIO", imagem: "data:image/png;base64,RkFMU08=", link: null, expiraEm: holdAte.toISOString() };
 
@@ -483,6 +486,18 @@ describe("uma faixa só na página da cotação (M7.12)", () => {
       expect(h, `${variavel}=${valor}`).toContain("Pague com Pix");
       expect(h, `${variavel}=${valor}`).not.toContain(NOTA);
     }
+  });
+
+  it("fora do ambiente de teste, portão fechado e sem pagamento (o deploy de produção de hoje): sem a nota", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    const h = await html();
+    expect(m.portao).toHaveBeenCalled();
+    expect(h).toContain("Nenhum pagamento é feito no site por enquanto.");
+    expect(h).not.toContain("Ambiente de teste");
+    // Com o portão aberto ali (o que o pagamento não deixa acontecer na produção), a nota voltaria: a faixa não está lá.
+    m.portao.mockResolvedValue(GATE_OK);
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pagar" }));
+    expect(await html()).toContain(NOTA);
   });
 
   it("fora do ambiente de teste (sem a faixa): um pagamento de teste já criado ainda mostra a nota local", async () => {
