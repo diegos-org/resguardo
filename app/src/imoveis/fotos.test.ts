@@ -7,7 +7,8 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CACHE_FOTO_PUBLICA, entregarFoto } from "./fotos-entrega";
 import { capaDoRelatorio, conteudoDaFoto, fotosParaOSite, guardarFoto, legendarFoto, listarFotos, moverFoto, removerFoto, usarComoCapa } from "./fotos";
-import { LIMITE_FOTO, LIMITE_MINIATURA, MAXIMO_FOTOS, medidasReduzidas, tipoDaImagem } from "./fotos-regras";
+import { BYTES_DAS_MEDIDAS, LIMITE_FOTO, LIMITE_MINIATURA, MAXIMO_FOTOS, medidasDaImagem, medidasReduzidas, tipoDaImagem } from "./fotos-regras";
+import { blocoExif, blocoJpg, jpgComMedidas, pngComMedidas } from "./fotos-testing";
 
 // Imagens fictícias: só os primeiros bytes contam para o tipo (um número no fim para diferenciar uma da outra).
 const jpg = (n = 1, tamanho = 32) => Uint8Array.from({ length: tamanho }, (_, i) => [0xff, 0xd8, 0xff, 0xe0][i] ?? n);
@@ -47,6 +48,65 @@ describe("regras das fotos (M7.3)", () => {
     expect(medidasReduzidas(3024, 4032, 800)).toEqual({ largura: 600, altura: 800 });
     expect(medidasReduzidas(640, 480, 2000)).toEqual({ largura: 640, altura: 480 });
     expect(medidasReduzidas(0, 480, 2000)).toEqual({ largura: 0, altura: 0 });
+  });
+});
+
+describe("medidas das fotos pelos primeiros bytes (M7.19)", () => {
+  it("JPG comum e progressivo, PNG: largura e altura do próprio arquivo (a foto em pé tem 600 de largura, não 800)", () => {
+    expect(medidasDaImagem(jpgComMedidas(2000, 1500))).toEqual({ largura: 2000, altura: 1500 });
+    expect(medidasDaImagem(jpgComMedidas(600, 800, { quadro: 0xc2 }))).toEqual({ largura: 600, altura: 800 });
+    expect(medidasDaImagem(pngComMedidas(1200, 800))).toEqual({ largura: 1200, altura: 800 });
+  });
+
+  it("acha as medidas depois de um perfil de cor grande e de bytes de preenchimento; a tabela de Huffman (C4) não é o quadro", () => {
+    const perfil = blocoJpg(0xe2, Array.from({ length: 3200 }, (_, i) => i & 0xff));
+    const huffman = blocoJpg(0xc4, [0, 1, 2, 3]);
+    expect(medidasDaImagem(jpgComMedidas(800, 533, { antes: [perfil, [0xff, 0xff], huffman] }))).toEqual({ largura: 800, altura: 533 });
+  });
+
+  it("orientação da câmera de 5 a 8 troca largura e altura, nas duas ordens de bytes; um bloco XMP depois do Exif não desfaz", () => {
+    expect(medidasDaImagem(jpgComMedidas(2000, 1500, { antes: [blocoExif(6)] }))).toEqual({ largura: 1500, altura: 2000 });
+    expect(medidasDaImagem(jpgComMedidas(2000, 1500, { antes: [blocoExif(8, true)] }))).toEqual({ largura: 1500, altura: 2000 });
+    expect(medidasDaImagem(jpgComMedidas(2000, 1500, { antes: [blocoExif(3)] }))).toEqual({ largura: 2000, altura: 1500 });
+    expect(medidasDaImagem(jpgComMedidas(2000, 1500, { antes: [blocoExif(1, true)] }))).toEqual({ largura: 2000, altura: 1500 });
+    const xmp = blocoJpg(0xe1, [...new TextEncoder().encode("http://ns.adobe.com/xap/1.0/"), 0, 1, 2]);
+    expect(medidasDaImagem(jpgComMedidas(2000, 1500, { antes: [blocoExif(6), xmp] }))).toEqual({ largura: 1500, altura: 2000 });
+  });
+
+  it("sem as medidas no trecho lido, nada (nunca um palpite): cortado antes do quadro, dados antes do quadro, medida zero, não é imagem", () => {
+    const longo = jpgComMedidas(2000, 1500, { antes: [blocoJpg(0xe2, Array.from({ length: BYTES_DAS_MEDIDAS }, () => 7))] });
+    expect(medidasDaImagem(longo.subarray(0, BYTES_DAS_MEDIDAS))).toBeNull();
+    expect(medidasDaImagem(longo)).toEqual({ largura: 2000, altura: 1500 });
+    const semQuadro = Uint8Array.from([0xff, 0xd8, ...blocoJpg(0xe0, [0, 0]), ...blocoJpg(0xda, [1, 2, 3]), ...blocoJpg(0xc0, [8, 0, 10, 0, 10, 1])]);
+    expect(medidasDaImagem(semQuadro)).toBeNull();
+    expect(medidasDaImagem(jpgComMedidas(0, 1500))).toBeNull();
+    expect(medidasDaImagem(jpg())).toBeNull();
+    expect(medidasDaImagem(pngComMedidas(1200, 800).subarray(0, 20))).toBeNull();
+    expect(medidasDaImagem(new TextEncoder().encode("GIF89a..."))).toBeNull();
+    expect(medidasDaImagem(new Uint8Array())).toBeNull();
+  });
+
+  it("fotos do site com as medidas das duas versões só quando pedidas (a página da casa), lidas do começo de cada arquivo", async () => {
+    // Deitada, em pé (a pequena com 600 de largura), sem versão pequena e com o começo ilegível.
+    const deitada = await subir(a, 1, { conteudo: jpgComMedidas(2000, 1500), miniatura: jpgComMedidas(800, 600) });
+    const emPe = await subir(a, 2, { conteudo: jpgComMedidas(1500, 2000), miniatura: jpgComMedidas(600, 800) });
+    const semPequena = await subir(a, 3, { conteudo: jpgComMedidas(2000, 1500), miniatura: null });
+    const ilegivel = await subir(a, 4, { conteudo: jpgComMedidas(2000, 1500), miniatura: jpg(9, 64) });
+    if (!deitada.ok || !emPe.ok || !semPequena.ok || !ilegivel.ok) throw new Error("foto");
+    const comMedidas = (await fotosParaOSite(db, org, [a], { medidas: true })).get(a) ?? [];
+    expect(comMedidas.map((f) => f.medidas ?? null)).toEqual([
+      { grande: { largura: 2000, altura: 1500 }, pequena: { largura: 800, altura: 600 } },
+      { grande: { largura: 1500, altura: 2000 }, pequena: { largura: 600, altura: 800 } },
+      null,
+      null,
+    ]);
+    expect(comMedidas[0]).toMatchObject({ grande: `/fotos/${deitada.id}`, pequena: `/fotos/${deitada.id}/pequena` });
+    // De novo (as medidas já lidas ficam guardadas): o mesmo resultado.
+    expect((await fotosParaOSite(db, org, [a], { medidas: true })).get(a)).toEqual(comMedidas);
+    // Sem pedir (as listas de casas), nenhuma foto traz medidas.
+    expect(((await fotosParaOSite(db, org, [a])).get(a) ?? []).some((f) => "medidas" in f)).toBe(false);
+    // Outra organização não lê as medidas destas fotos.
+    expect(await fotosParaOSite(db, outraOrg, [a], { medidas: true })).toEqual(new Map());
   });
 });
 

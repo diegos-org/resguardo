@@ -181,8 +181,13 @@ function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
   };
 }
 
-async function comFotos(db: Db, organizacaoId: string, linhas: Linha[]): Promise<ImovelPublico[]> {
-  const fotos = await fotosParaOSite(db, organizacaoId, linhas.map((l) => l.id).filter((id): id is string => !!id));
+async function comFotos(db: Db, organizacaoId: string, linhas: Linha[], opcoes: { medidas?: boolean } = {}): Promise<ImovelPublico[]> {
+  const fotos = await fotosParaOSite(
+    db,
+    organizacaoId,
+    linhas.map((l) => l.id).filter((id): id is string => !!id),
+    opcoes,
+  );
   return linhas.map((l) => publico(l, (l.id && fotos.get(l.id)) || []));
 }
 
@@ -211,7 +216,8 @@ export const temCasaNoSite = cache(async function temCasaNoSite(db: Db, organiza
 
 /**
  * Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. Com `cache` (M7.13): os
- * metadados da página da casa (a prévia do link) e a própria página leem o banco uma vez só na mesma requisição.
+ * metadados da página da casa (a prévia do link) e a própria página leem o banco uma vez só na mesma requisição. As fotos
+ * vêm com as medidas das duas versões (M7.19), para a galeria da página deixar o navegador escolher entre elas.
  */
 export const imovelDoSite = cache(async function imovelDoSite(db: Db, organizacaoId: string, codigo: string): Promise<ImovelPublico | null> {
   if (!/^[\w-]{1,40}$/.test(codigo)) return null;
@@ -220,7 +226,7 @@ export const imovelDoSite = cache(async function imovelDoSite(db: Db, organizaca
     .from(imoveis)
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
     .where(and(noSite(organizacaoId), eq(imoveis.codigo, codigo)));
-  return l ? (await comFotos(db, organizacaoId, [l]))[0] : null;
+  return l ? (await comFotos(db, organizacaoId, [l], { medidas: true }))[0] : null;
 });
 
 export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string };

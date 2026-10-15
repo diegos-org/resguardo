@@ -7,6 +7,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
+import { jpgComMedidas } from "@/imoveis/fotos-testing";
 import { definirImagemSite, lerImagensSite } from "./imagens-site";
 import {
   ASSUNTO_CONSULTA,
@@ -91,6 +92,17 @@ describe("site público (M7.1)", () => {
     expect((await imovelDoSite(db, org, "403"))?.fotos).toEqual(s.fotos);
     // O id do imóvel (usado só para buscar as fotos) nunca vai para o objeto público.
     expect(JSON.stringify(s)).not.toContain(studio);
+  });
+
+  it("medidas das fotos (M7.19): só a página da casa traz as das duas versões; as listas, não (o cartão usa sempre a pequena)", async () => {
+    const f = await guardarFoto(db, org, { imovelId: studio, arquivo: { nome: "a.jpg", conteudo: jpgComMedidas(2000, 1333) }, miniatura: jpgComMedidas(800, 533) }, null);
+    if (!f.ok) throw new Error("foto");
+    const casa = await imovelDoSite(db, org, "403");
+    expect(casa?.fotos).toEqual([{ grande: `/fotos/${f.id}`, pequena: `/fotos/${f.id}/pequena`, legenda: "", medidas: { grande: { largura: 2000, altura: 1333 }, pequena: { largura: 800, altura: 533 } } }]);
+    const lista = await imoveisDoSite(db, org);
+    expect(lista.find((i) => i.codigo === "403")?.fotos).toEqual([{ grande: `/fotos/${f.id}`, pequena: `/fotos/${f.id}/pequena`, legenda: "" }]);
+    // Nem as medidas levam o id do imóvel ou do arquivo para o objeto público.
+    expect(JSON.stringify(casa)).not.toContain(studio);
   });
 
   it("frase de abertura (M7.17): vazia em todo imóvel até ser escrita; a lista e a página leem a gravada, só das casas do site", async () => {
