@@ -295,4 +295,37 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0070.hash]);
     expect(await aplicarMigracoesPendentes(executar, ate0070)).toBe(1);
   }, 120_000);
+
+  it("a 0071 (M7.17, frase de abertura) aplica sobre imóveis de antes com a frase vazia, sem texto preenchido, e é idempotente", async () => {
+    const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
+    const m0071 = todas[71];
+    expect(m0071.sql.join("\n")).toContain('"frase"');
+    // Só até a 0071 (as seguintes terão o próprio teste): uma migração nova não muda as contas deste.
+    const ate0071 = todas.slice(0, 72);
+    expect(await aplicarMigracoesPendentes(executar, todas.slice(0, 71))).toBe(71);
+    const { rows: [{ id: org }] } = await db.query<{ id: string }>("insert into organizacoes (nome) values ('Org') returning id");
+    // Um imóvel de antes da frase, com descrição (dados fictícios).
+    const { rows: [antigo] } = await db.query<{ id: string }>("insert into imoveis (organizacao_id, codigo, nome, descricao) values ($1, '403', 'Studio Fictício', 'Descrição fictícia. Segunda frase.') returning id", [org]);
+
+    expect(await aplicarMigracoesPendentes(executar, ate0071)).toBe(1);
+    const frase = async (id: string) => (await db.query<{ frase: string; descricao: string }>("select frase, descricao from imoveis where id = $1", [id])).rows[0];
+    // Nada é copiado da descrição: a frase fica vazia até ser escrita no painel.
+    expect(await frase(antigo.id)).toEqual({ frase: "", descricao: "Descrição fictícia. Segunda frase." });
+    const { rows: [novo] } = await db.query<{ id: string }>("insert into imoveis (organizacao_id, codigo, nome) values ($1, '102', 'Outro Fictício') returning id", [org]);
+    expect((await frase(novo.id)).frase).toBe("");
+    await expect(db.query("update imoveis set frase = null where id = $1", [novo.id])).rejects.toThrow();
+
+    const coluna = async () =>
+      (await db.query<{ tipo: string; nulo: string; padrao: string }>("select data_type as tipo, is_nullable as nulo, column_default as padrao from information_schema.columns where table_name = 'imoveis' and column_name = 'frase'")).rows;
+    const antes = { coluna: await coluna(), tabelas: await tabelas() };
+    expect(antes.coluna).toEqual([{ tipo: "text", nulo: "NO", padrao: "''::text" }]);
+    // A instrução de novo (banco compartilhado das prévias): nada muda, nem a frase já escrita.
+    await db.query("update imoveis set frase = 'Frase fictícia.' where id = $1", [antigo.id]);
+    for (const instrucao of m0071.sql) await db.exec(instrucao);
+    expect({ coluna: await coluna(), tabelas: await tabelas() }).toEqual(antes);
+    expect((await frase(antigo.id)).frase).toBe("Frase fictícia.");
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0071.hash]);
+    expect(await aplicarMigracoesPendentes(executar, ate0071)).toBe(1);
+    expect((await frase(antigo.id)).frase).toBe("Frase fictícia.");
+  }, 120_000);
 });

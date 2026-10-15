@@ -1,9 +1,12 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { organizacoes } from "@/db/schema";
+import { historicoDe } from "@/auditoria/auditoria";
+import { organizacoes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { atualizarImovel, CodigoDuplicado, criarImovel, listarImoveis, obterImovel, opcoesDeFiltro } from "./repositorio";
-import { type DadosImovel } from "./validacao";
+import { type DadosImovel, validarImovel } from "./validacao";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -23,6 +26,7 @@ const dados = (over: Partial<DadosImovel> = {}): DadosImovel => ({
   quartos: 1,
   banheiros: 1,
   descricao: "",
+  frase: "",
   ...over,
 });
 
@@ -68,5 +72,63 @@ describe("repositório de imóveis", () => {
     expect(await atualizarImovel(db, outraOrg, a.id, dados({ nome: "Invasão" }), null)).toBeNull();
     expect((await obterImovel(db, org, a.id))?.nome).toBe("Teste 1");
     expect(await obterImovel(db, org, "não-é-uuid")).toBeNull();
+  });
+
+  it("frase de abertura (M7.17): grava pelo formulário, edita, apaga e cada mudança sai no histórico da ficha com o autor", async () => {
+    const [{ id: autor }] = await db.insert(usuarios).values({ organizacaoId: org, email: "autora@example.com", nome: "Autora Fictícia", papel: "admin" }).returning();
+    // O caminho do painel: o formulário passa pela validação (que apara a frase) e vai inteiro para o repositório.
+    const formulario = { codigo: "t1", nome: "Teste 1", ativo: "on", descricao: "Descrição fictícia.", frase: "  Um refúgio fictício para dois.  " };
+    const v = validarImovel(formulario);
+    if (!v.ok) throw new Error("fixture");
+    const im = await criarImovel(db, org, v.dados, autor);
+    expect(im.frase).toBe("Um refúgio fictício para dois.");
+    // Imóvel criado sem frase: vazia, nunca um texto de exemplo.
+    const sem = validarImovel({ codigo: "t2", nome: "Teste 2" });
+    if (!sem.ok) throw new Error("fixture");
+    expect((await criarImovel(db, org, sem.dados, autor)).frase).toBe("");
+
+    const editar = async (frase: string, extra: Record<string, string> = {}) => {
+      const r = validarImovel({ ...formulario, ...extra, frase });
+      if (!r.ok) throw new Error("fixture");
+      return atualizarImovel(db, org, im.id, r.dados, autor);
+    };
+    expect((await editar("Dias leves fictícios."))?.frase).toBe("Dias leves fictícios.");
+    expect((await obterImovel(db, org, im.id))?.frase).toBe("Dias leves fictícios.");
+    // Salvar de novo sem mudar nada não registra; mudar só a descrição não mexe na frase.
+    await editar("Dias leves fictícios.");
+    expect((await editar("Dias leves fictícios.", { descricao: "Outra descrição fictícia." }))?.frase).toBe("Dias leves fictícios.");
+    expect((await editar(""))?.frase).toBe("");
+
+    const h = await historicoDe(db, org, "imovel", im.id);
+    expect(h.map((l) => [l.acao, l.mudancas.frase ?? null])).toEqual([
+      ["imovel.editar", ["Dias leves fictícios.", ""]],
+      ["imovel.editar", null],
+      ["imovel.editar", ["Um refúgio fictício para dois.", "Dias leves fictícios."]],
+      ["imovel.criar", [null, "Um refúgio fictício para dois."]],
+    ]);
+    expect(h[1].mudancas).toEqual({ descricao: ["Descrição fictícia.", "Outra descrição fictícia."] });
+    expect(h.every((l) => l.autor === "Autora Fictícia")).toBe(true);
+  });
+
+  it("só o cadastro grava a tabela de imóveis: nenhuma sincronização ou importação (Beds24, planilha, marketplace) escreve a frase", () => {
+    // O cadastro (este repositório) é o único que grava; o apoio dos testes do pagamento monta um cenário fictício.
+    const PERMITIDOS = ["src/imoveis/repositorio.ts", "src/pagamentos/testes.ts"];
+    const raiz = process.cwd();
+    const achados: string[] = [];
+    (function varrer(dir: string) {
+      for (const nome of readdirSync(dir)) {
+        const caminho = join(dir, nome);
+        const rel = relative(raiz, caminho).split(sep).join("/");
+        if (statSync(caminho).isDirectory()) varrer(caminho);
+        else if (/\.(ts|tsx|mts)$/.test(nome) && !/\.test\.tsx?$/.test(nome) && !PERMITIDOS.includes(rel)) {
+          const codigo = readFileSync(caminho, "utf8");
+          if (/\.(insert|update|delete)\(\s*(schema\.)?imoveis\s*\)/.test(codigo) || /\b(update|insert into|delete from)\s+"?imoveis"?\b/i.test(codigo)) achados.push(rel);
+        }
+      }
+    })(join(raiz, "src"));
+    (function varrer(dir: string) {
+      for (const nome of readdirSync(dir)) if (/\.(ts|mts)$/.test(nome) && /\.(insert|update|delete)\(\s*imoveis\s*\)/.test(readFileSync(join(dir, nome), "utf8"))) achados.push(`scripts/${nome}`);
+    })(join(raiz, "scripts"));
+    expect(achados).toEqual([]);
   });
 });

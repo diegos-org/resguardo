@@ -17,6 +17,7 @@ const casa = (codigo: string, capacidade: number | null): ImovelPublico => ({
   quartos: 1,
   banheiros: 1,
   descricao: "",
+  frase: "",
   camas: [],
   comodidades: [],
   regrasCasa: "",

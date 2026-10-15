@@ -73,7 +73,8 @@ export async function atualizarImovel(
   db: Db,
   organizacaoId: string,
   id: string,
-  dados: DadosImovel,
+  // Sem `frase` (a ficha aberta antes do M7.17 não manda o campo), a frase gravada fica como estava.
+  dados: Omit<DadosImovel, "frase"> & { frase?: string },
   autorId: string | null,
 ): Promise<Imovel | null> {
   if (!uuidValido(id)) return null;

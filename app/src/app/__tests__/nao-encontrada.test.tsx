@@ -35,6 +35,7 @@ const imovel: ImovelPublico = {
   quartos: 0,
   banheiros: 1,
   descricao: "",
+  frase: "",
   camas: [],
   comodidades: [],
   regrasCasa: "",

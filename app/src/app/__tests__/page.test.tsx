@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CartaoImovel, fraseDoImovel, seloDoImovel } from "@/components/site/CartaoImovel";
+import { CartaoImovel, seloDoImovel } from "@/components/site/CartaoImovel";
 import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import { PASSO_VITRINE_MS, VitrineCasas } from "@/components/site/VitrineCasas";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import { fraseDoImovel } from "@/site/frase-do-imovel";
 import type { ImovelPublico } from "@/site/site";
 
 const imovel: ImovelPublico = {
@@ -19,6 +20,7 @@ const imovel: ImovelPublico = {
   quartos: 0,
   banheiros: 1,
   descricao: "",
+  frase: "",
   camas: [],
   comodidades: [],
   regrasCasa: "",
@@ -150,6 +152,23 @@ describe("site público (M7.1)", () => {
     // Sem capacidade cadastrada, o resumo do cadastro (nada inventado).
     render(<CartaoImovel imovel={{ ...imovel, capacidade: null }} />);
     expect(screen.getByRole("link").textContent).toContain("studio · 1 banheiro");
+  });
+
+  it("cartão (M7.17): a frase de abertura da casa quando houver, inteira, no lugar da primeira frase da descrição", () => {
+    const comDescricao = { ...imovel, descricao: "Primeira frase fictícia da descrição. Segunda frase." };
+    // Sem frase de abertura (só espaços conta como vazia), vale a descrição, como antes.
+    for (const frase of ["", "   "]) expect(fraseDoImovel({ ...comDescricao, frase })).toBe("Primeira frase fictícia da descrição.");
+    // Com frase, ela vence a descrição e o bairro, inteira: nem cortada na primeira frase nem no tamanho (o cadastro já
+    // limita a 120 caracteres).
+    expect(fraseDoImovel({ ...comDescricao, frase: "Dias leves fictícios. Noites tranquilas." })).toBe("Dias leves fictícios. Noites tranquilas.");
+    const longa = `Frase fictícia de abertura, ${"bem ".repeat(21)}longa.`;
+    expect(longa).toHaveLength(118);
+    expect(fraseDoImovel({ ...comDescricao, frase: longa })).toBe(longa);
+    expect(fraseDoImovel({ ...imovel, frase: "Só a frase fictícia." })).toBe("Só a frase fictícia.");
+    render(<CartaoImovel imovel={{ ...comDescricao, frase: "Só a frase fictícia." }} />);
+    const cartao = screen.getByRole("link");
+    expect(cartao.textContent).toContain("Só a frase fictícia.");
+    expect(cartao.textContent).not.toContain("Primeira frase fictícia da descrição.");
   });
 
   it("cartão da vitrine (M7.6): selo com tipo e bairro sobre a foto e até quatro ícones de comodidades, na ordem do que mais pesa", () => {

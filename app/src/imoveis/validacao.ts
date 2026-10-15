@@ -13,7 +13,12 @@ export type DadosImovel = {
   quartos: number | null;
   banheiros: number | null;
   descricao: string;
+  /** M7.17: frase de abertura da casa no site; vazia = nada aparece. */
+  frase: string;
 };
+
+/** Tamanho máximo da frase de abertura (M7.17): o mesmo limite no formulário e no servidor. */
+export const LIMITE_FRASE = 120;
 
 export type ErrosImovel = Partial<Record<keyof DadosImovel, string>>;
 export type ResultadoValidacao = { ok: true; dados: DadosImovel } | { ok: false; erros: ErrosImovel };
@@ -64,6 +69,11 @@ export function validarImovel(entrada: Entrada): ResultadoValidacao {
   const descricao = texto(entrada.descricao);
   if (descricao.length > 5000) erros.descricao = "Máximo de 5000 caracteres.";
 
+  // A frase vira um título na página da casa: uma linha só, espaços das pontas aparados; vazia é permitida.
+  const frase = texto(entrada.frase);
+  if (/[\r\n\u2028\u2029]/.test(frase)) erros.frase = "Escreva a frase numa linha só, sem quebra de linha.";
+  else if (frase.length > LIMITE_FRASE) erros.frase = `Máximo de ${LIMITE_FRASE} caracteres (a frase tem ${frase.length}).`;
+
   if (Object.keys(erros).length > 0) return { ok: false, erros };
   return {
     ok: true,
@@ -80,6 +90,7 @@ export function validarImovel(entrada: Entrada): ResultadoValidacao {
       quartos: valores.quartos,
       banheiros: valores.banheiros,
       descricao,
+      frase,
     },
   };
 }

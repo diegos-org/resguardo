@@ -24,6 +24,7 @@ const dados: DadosImovel = {
   quartos: null,
   banheiros: null,
   descricao: "",
+  frase: "",
 };
 
 beforeEach(async () => {
