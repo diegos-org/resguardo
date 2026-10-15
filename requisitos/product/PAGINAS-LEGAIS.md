@@ -13,6 +13,9 @@
 > da nova, a que vier primeiro, o pagamento da diferença aceita os Termos e a Privacidade em vigor e mantém a
 > política da reserva, e a devolução de parte do valor espera a liberação do pagamento (seção "Para o M8.2d — feito
 > em 10/10/2026").
+> **Desde o M7.14 (15/10/2026)**, os dois formulários de proprietários de "Anuncie seu imóvel" registram a
+> autorização: data e hora, versão e texto exato da caixa (falha "Formulários de proprietários", em "Pontos a
+> conferir", e "Fora deste item", abaixo).
 
 Código: `app/src/configuracoes/documentos-versionados.ts` (motor de versões, o mesmo do "Como
 funciona"), `paginas-legais-texto.ts` (regras puras: campos, blocos do texto, prazo do reembolso,
@@ -332,6 +335,15 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Alteração de reserv
   equipe também precisam de uma regra para apagar.
 - Formulários de proprietários: a caixa de autorização é obrigatória, mas o sistema não registra a
   autorização (data e versão do texto). Pela LGPD, quem prova o consentimento é a empresa.
+  **Mudou em 15/10/2026 (M7.14).** Antes: o pedido de contato (M7.7) e o cadastro do marketplace (M12.3) só
+  aceitavam o envio com a caixa marcada, mas guardavam apenas os dados e a hora do envio, sem a autorização. Depois:
+  cada envio guarda, na mesma gravação, a data e a hora em que a caixa foi marcada, a versão do texto e o texto exato
+  que a pessoa viu (no pedido de contato, com o nome da empresa daquele momento), montado pelo servidor a partir de um
+  lugar só (`app/src/proprietarios/autorizacao.ts`); se o texto mudou depois que a página abriu, o envio é recusado e
+  a pessoa vê o texto novo para marcar de novo. Os envios de antes ficam sem registro, e o painel diz isso ("Sem
+  registro"), sem palpite. Motivo: esta falha (a empresa precisa conseguir provar o consentimento). Objetivo: ter a
+  prova sem mudar o texto da caixa nem a política. Continua para o advogado: se é preciso guardar também o IP ou o
+  navegador de quem marcou (hoje não se guarda nenhum dos dois, como no aceite do hóspede, em "Dados pessoais").
 - Cookies: só os necessários, sem análise de audiência nem publicidade, por isso sem faixa pedindo
   autorização. Se entrar uma ferramenta de análise ou de anúncio, a política e o site mudam antes.
 
@@ -352,7 +364,9 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Alteração de reserv
 - Botão de arrependimento em Minha reserva: feito no M8.2c como pedido ("Pedir o cancelamento").
 - Rotina de prazo de guarda dos dados do hóspede.
 - Guarda de 6 meses dos registros de acesso (Marco Civil).
-- Registro do consentimento nos formulários dos proprietários.
+- Registro do consentimento nos formulários dos proprietários. **Feito em 15/10/2026 no M7.14** (data, hora, versão e
+  texto exato da caixa, nos dois formulários; ver "Formulários de proprietários", em "Pontos a conferir"). O IP e o
+  navegador continuam fora, à espera do advogado.
 - O cartão (feito no M8.2b, 9/10/2026, com a mesma caixa e a mesma conferência).
 - Lista das versões aceitas em Minha reserva (a página `/reservar/<código>` já mostra).
 - Mapa do site e robots. As páginas pessoais e internas (cotação, Minha reserva, convite, entrada, painel, portal, equipe e as etapas do cadastro do proprietário, inclusive a do código, que mostra o e-mail da pessoa) já saem dos buscadores desde o M7.10 (14/10/2026), pelo cabeçalho do `next.config.ts`; falta a decisão de Diego sobre as páginas públicas.

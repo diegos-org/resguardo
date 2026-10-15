@@ -6,6 +6,7 @@ import { origemDoPedido } from "@/acesso/senha";
 import { enderecoDaRequisicao } from "@/convites/email";
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
+import type { TextoAutorizacao } from "@/proprietarios/autorizacao";
 import {
   avisarEquipe,
   CAMPOS_PEDIDO_CONTATO,
@@ -16,8 +17,11 @@ import {
 } from "@/proprietarios/pedidos-contato";
 import { organizacaoDoSite } from "./site";
 
-/** Estado do formulário "Pedir contato" (página Anuncie seu imóvel, M7.7). `valores` refaz o formulário depois de um erro. */
-export type EstadoContatoProprietario = { ok?: true; mensagem?: string; erros?: ErrosPedidoContato; valores?: Record<string, string> };
+/**
+ * Estado do formulário "Pedir contato" (página Anuncie seu imóvel, M7.7). `valores` refaz o formulário depois de um erro.
+ * `autorizacao` (M7.14): o texto atual da caixa, quando ele mudou depois que a página abriu (o formulário passa a mostrá-lo).
+ */
+export type EstadoContatoProprietario = { ok?: true; mensagem?: string; erros?: ErrosPedidoContato; valores?: Record<string, string>; autorizacao?: TextoAutorizacao };
 
 /** Página do painel onde a equipe vê os pedidos (vai no e-mail de aviso). */
 const PAGINA_PAINEL = "/painel/proprietarios/contatos";
@@ -36,6 +40,8 @@ export async function pedirContatoProprietarioAcao(_estado: EstadoContatoProprie
   if (!organizacaoId) return { mensagem: "O pedido de contato ainda não está disponível por aqui. Fale com a gente pelo WhatsApp ou pelo e-mail do site.", valores };
   const h = await headers();
   const r = await registrarPedidoContato(db, organizacaoId, v.dados, new Date(), origemDoPedido(h));
+  // O texto da autorização mudou depois que a página abriu: mostra o texto novo, com a caixa desmarcada, para marcar de novo.
+  if (!r.ok && r.autorizacao) return { erros: { consentimento: r.erro }, mensagem: "Confira os campos destacados.", valores: { ...valores, consentimento: "" }, autorizacao: r.autorizacao };
   if (!r.ok) return { mensagem: r.erro, valores };
   const link = enderecoDaRequisicao(h, PAGINA_PAINEL);
   const correio = correioDoAmbiente();

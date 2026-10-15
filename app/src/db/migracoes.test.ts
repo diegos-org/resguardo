@@ -173,7 +173,9 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     ))!;
     const { id: dev } = (await um<{ id: string }>("insert into devolucoes_pagamento (organizacao_id, pagamento_id, motivo, valor, situacao, origem) values ($1, $2, 'cancelamento', 110000, 'recusada', 'cancelamento') returning id", [org, p]))!;
 
-    expect(await aplicarMigracoesPendentes(executar, todas)).toBe(1);
+    // Só até a 0069 (as seguintes têm o próprio teste).
+    const ate0069 = todas.slice(0, 70);
+    expect(await aplicarMigracoesPendentes(executar, ate0069)).toBe(1);
     expect(await tabelas()).toEqual(expect.arrayContaining(["contestacoes_pagamento", "eventos_contestacao"]));
     // A linha antiga continua igual: sem busca tardia e sem disputa ligada.
     expect(await um("select contestacoes_buscadas_em as b from pagamentos where id = $1", [p])).toEqual({ b: null });
@@ -238,6 +240,57 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     for (const instrucao of m0069.sql) await db.exec(instrucao);
     expect({ colunas: await colunas(), restricoes: await restricoes(), indices: await indices(), linhas: await linhas(), tabelas: await tabelas() }).toEqual(antes);
     await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0069.hash]);
+    expect(await aplicarMigracoesPendentes(executar, ate0069)).toBe(1);
+  }, 120_000);
+
+  it("a 0070 (M7.14, autorização dos proprietários) aplica sobre pedidos e cadastros de antes sem preencher nada, recusa registro pela metade e é idempotente", async () => {
+    const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
+    const m0070 = todas[70];
+    expect(m0070.sql.join("\n")).toContain('"autorizacao_texto"');
+    expect(await aplicarMigracoesPendentes(executar, todas.slice(0, 70))).toBe(70);
+    const um = async <T,>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows[0];
+    const { id: org } = (await um<{ id: string }>("insert into organizacoes (nome) values ('Org') returning id"))!;
+    // Um pedido e um cadastro de antes do registro (dados fictícios).
+    const pedido = (extra = "", valores = "", params: unknown[] = []) =>
+      db.query<{ id: string }>(`insert into pedidos_contato_proprietario (organizacao_id, nome, email, telefone, bairro, cidade${extra}) values ($1, 'Pessoa Fictícia', 'pessoa@example.com', '(21) 90000-0000', 'Ipanema', 'Rio de Janeiro'${valores}) returning id`, [org, ...params]);
+    const cadastro = (extra = "", valores = "", params: unknown[] = []) =>
+      db.query<{ id: string }>(
+        `insert into cadastros_marketplace (organizacao_id, email, nome, telefone, imovel, anuncio${extra}) values ($1, 'dona@example.com', 'Dona Fictícia', '(21) 90000-0001', '{"nome":"Apto","bairro":"Leblon","cidade":"Rio de Janeiro","endereco":"Rua Fictícia, 1","capacidade":2,"quartos":1,"banheiros":1,"descricao":""}'::jsonb, 'novo'${valores}) returning id`,
+        [org, ...params],
+      );
+    const { rows: [p] } = await pedido();
+    const { rows: [c] } = await cadastro();
+
+    expect(await aplicarMigracoesPendentes(executar, todas)).toBe(1);
+    const sql = "select autorizado_em as em, autorizacao_versao as v, autorizacao_texto as t from %s where id = $1";
+    expect(await um(sql.replace("%s", "pedidos_contato_proprietario"), [p.id])).toEqual({ em: null, v: null, t: null });
+    expect(await um(sql.replace("%s", "cadastros_marketplace"), [c.id])).toEqual({ em: null, v: null, t: null });
+    // Os três juntos ou nenhum, nas duas tabelas (um CHECK que dá null passaria: por isso o "is not null" de cada um).
+    const em = new Date("2026-10-15T15:00:00Z");
+    for (const novo of [pedido, cadastro]) {
+      await expect(novo(", autorizado_em", ", $2", [em])).rejects.toThrow();
+      await expect(novo(", autorizado_em, autorizacao_versao", ", $2, 1", [em])).rejects.toThrow();
+      await expect(novo(", autorizacao_versao, autorizacao_texto", ", 1, 'Texto fictício.'")).rejects.toThrow();
+      await expect(novo(", autorizado_em, autorizacao_versao, autorizacao_texto", ", $2, 0, 'Texto fictício.'", [em])).rejects.toThrow();
+      await expect(novo(", autorizado_em, autorizacao_versao, autorizacao_texto", ", $2, 1, ''", [em])).rejects.toThrow();
+      await novo(", autorizado_em, autorizacao_versao, autorizacao_texto", ", $2, 1, 'Texto fictício.'", [em]);
+    }
+
+    const colunas = async () =>
+      (await db.query<{ c: string }>("select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'public' and table_name in ('pedidos_contato_proprietario', 'cadastros_marketplace') order by 1")).rows.map((x) => x.c);
+    const restricoes = async () => (await db.query<{ n: string }>("select conname as n from pg_constraint where conname like '%_autorizacao' order by 1")).rows.map((x) => x.n);
+    const antes = { colunas: await colunas(), restricoes: await restricoes(), tabelas: await tabelas() };
+    expect(antes.colunas).toEqual(
+      expect.arrayContaining([
+        "pedidos_contato_proprietario.autorizado_em", "pedidos_contato_proprietario.autorizacao_versao", "pedidos_contato_proprietario.autorizacao_texto",
+        "cadastros_marketplace.autorizado_em", "cadastros_marketplace.autorizacao_versao", "cadastros_marketplace.autorizacao_texto",
+      ]),
+    );
+    expect(antes.restricoes).toEqual(["cadastros_marketplace_autorizacao", "pedidos_contato_proprietario_autorizacao"]);
+    // As instruções de novo, uma a uma (banco compartilhado das prévias): nada muda.
+    for (const instrucao of m0070.sql) await db.exec(instrucao);
+    expect({ colunas: await colunas(), restricoes: await restricoes(), tabelas: await tabelas() }).toEqual(antes);
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0070.hash]);
     expect(await aplicarMigracoesPendentes(executar, todas)).toBe(1);
   }, 120_000);
 });

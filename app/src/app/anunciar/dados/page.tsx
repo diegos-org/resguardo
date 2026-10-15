@@ -21,7 +21,7 @@ export default async function DadosCadastro() {
           <h1>Dados do seu imóvel</h1>
         </header>
         <p className={styles.miudo}>E-mail confirmado: {email}. O endereço exato fica só com a nossa equipe; nada aparece no site antes da análise.</p>
-        <FormCadastro enviar={enviarCadastroAcao} />
+        <FormCadastro enviar={enviarCadastroAcao} empresa={conteudo?.nomeEmpresa ?? ""} />
       </section>
     </Moldura>
   );
