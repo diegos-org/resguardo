@@ -17,7 +17,8 @@ import { TIPOS_CAMA, type TipoCama } from "@/imoveis/cadastro-opcoes";
 import { type FotoPublica, fotosParaOSite } from "@/imoveis/fotos";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
-import { enderecoImagemSite, lerImagensSite } from "./imagens-site";
+import type { IconeEnviado } from "./icone";
+import { enderecoImagemSite, iconeDaMarcaEnviada, lerImagensSite } from "./imagens-site";
 import { MARCA_PADRAO } from "./marca";
 
 export type ImovelPublico = {
@@ -59,9 +60,12 @@ export type ConteudoSite = {
   email: string;
   /**
    * Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). `previa`
-   * (M7.13): a versão pequena da capa, para a prévia dos links (sem ela, a grande); opcional só para os testes.
+   * (M7.13): a versão pequena da capa, para a prévia dos links (sem ela, a grande). `icone` (M7.18): a marca enviada como
+   * ícone da aba, só quando ela serve (PNG quadrado, `./icone`), e se ela serve também no atalho do celular (sem
+   * transparência); null = os ícones da marca do estudo. Os dois opcionais só
+   * para os testes.
    */
-  imagens: { capa: string | null; marca: string; previa?: string | null };
+  imagens: { capa: string | null; marca: string; previa?: string | null; icone?: IconeEnviado | null };
   /**
    * Campo "Site" de Configurações → Empresa (M7.13): a base dos endereços completos da prévia dos links e do endereço
    * principal das páginas (`baseDoSite`, em ./compartilhamento). Opcional só para os testes.
@@ -103,7 +107,12 @@ export function numeroWhatsapp(telefone: string): string | null {
 export async function conteudoDoSite(db: Db): Promise<ConteudoSite | null> {
   const organizacaoId = await organizacaoDoSite(db);
   if (!organizacaoId) return null;
-  const [textos, empresa, imagens] = await Promise.all([lerTextosSite(db, organizacaoId), lerEmpresa(db, organizacaoId), lerImagensSite(db, organizacaoId)]);
+  const [textos, empresa, { imagens, icone }] = await Promise.all([
+    lerTextosSite(db, organizacaoId),
+    lerEmpresa(db, organizacaoId),
+    // A marca enviada serve de ícone? Só o começo do arquivo dela é lido (M7.18).
+    lerImagensSite(db, organizacaoId).then(async (imagens) => ({ imagens, icone: await iconeDaMarcaEnviada(db, organizacaoId, imagens.marca) })),
+  ]);
   return {
     organizacaoId,
     nomeEmpresa: empresa.nome,
@@ -114,6 +123,7 @@ export async function conteudoDoSite(db: Db): Promise<ConteudoSite | null> {
       capa: imagens.capa && enderecoImagemSite(imagens.capa),
       marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO,
       previa: imagens.capa ? enderecoImagemSite(imagens.capaPequena ?? imagens.capa) : null,
+      icone: imagens.marca && icone?.serve ? { url: enderecoImagemSite(imagens.marca), lado: icone.lado, atalho: icone.fundo === "opaco" } : null,
     },
     identidade: { razaoSocial: empresa.razaoSocial, cnpj: empresa.cnpj, endereco: empresa.endereco },
     site: empresa.site,

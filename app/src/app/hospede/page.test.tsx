@@ -11,7 +11,7 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("@/hospede/sessao-atual", () => ({ emailDoHospede: m.email }));
-vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
+vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDeMinhaReserva: vi.fn() }));
 vi.mock("@/hospede/portal", async (original) => ({ ...(await original<typeof import("@/hospede/portal")>()), reservasDoHospede: m.reservas }));
 vi.mock("@/hospede/cancelamento", async (original) => ({ ...(await original<typeof import("@/hospede/cancelamento")>()), cancelamentoNoPortal: m.cancelamento }));
 vi.mock("@/hospede/acoes", () => ({ pedirCancelamentoAcao: vi.fn(), sairHospede: vi.fn() }));

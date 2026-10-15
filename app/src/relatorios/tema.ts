@@ -1,6 +1,8 @@
 /**
  * Cores do relatório em PDF (M5.7): os mesmos valores dos tokens do M7.5 (`requisitos/product/DESIGN.md` é a fonte;
  * `src/app/globals.css` os usa na tela). Uma lista só, para o PDF e o site não divergirem. Nenhuma cor fixa fora daqui.
+ * Também a cor da barra do navegador no celular (M7.18, `viewport` do layout raiz: `floresta`); um teste confere que ela
+ * é o valor de `--scl-floresta` em globals.css.
  */
 export const TEMA = {
   floresta: "#505b46",
