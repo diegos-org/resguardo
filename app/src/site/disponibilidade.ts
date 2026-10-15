@@ -18,7 +18,7 @@ import type { Db } from "@/db/types";
 import { listarPeriodos } from "@/imoveis/detalhes";
 import { type Cotacao, cotarNoites, diasEntre, verificarEstadia } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
-import { descontoDoSite } from "@/marketplace/precos";
+import { descontoDoSite, type PrecosMarketplace } from "@/marketplace/precos";
 import { lerPrecosMarketplace } from "@/marketplace/precos-config";
 import { situacaoEfetiva } from "@/pagamentos/alteracao-regras";
 import { alteracaoEmCarencia, cotacaoEmCarencia } from "@/pagamentos/andamento";
@@ -63,8 +63,24 @@ export const fechadaNaLeitura = (o: Pick<ObservacaoPlano, "bloqueio" | "livres">
 export const noiteOcupada = (l: Pick<LinhaPlano, "livresSeguidas" | "observacao" | "enviado">, limite: number) =>
   l.livresSeguidas === 0 || (leituraAtual(l, limite) && fechadaNaLeitura(l.observacao!));
 
+/**
+ * Motivo da consulta quando a capacidade da casa não foi cadastrada. Exportado para a busca em todas as casas (M7.9),
+ * que mostra no cartão a linha "Capacidade não informada" no lugar dele (um aviso só por cartão).
+ */
+export const MOTIVO_SEM_CAPACIDADE = "A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.";
+
 /** As noites [checkin, checkout) de uma reserva que a cotação não conta como ocupadas (a da alteração, M8.2d). */
 export type EstadiaPropria = { reservaId: string; checkin: string; checkout: string };
+
+/**
+ * Configurações que a consulta lê (Calendário e Marketplace). A busca em todas as casas (M7.9) lê uma vez e passa para
+ * cada casa, em vez de ler de novo a cada uma; sem ela, a consulta lê sozinha.
+ */
+export type ConfigDaConsulta = { regras: RegrasCalendario; precos: PrecosMarketplace };
+export async function lerConfigDaConsulta(db: Db, organizacaoId: string): Promise<ConfigDaConsulta> {
+  const [regras, precos] = await Promise.all([lerRegrasCalendario(db, organizacaoId), lerPrecosMarketplace(db, organizacaoId)]);
+  return { regras, precos };
+}
 
 /**
  * Disponibilidade e valor da estadia pedida. `o.propria` (M8.2d, cotação de uma alteração): a reserva sai do plano (as
@@ -75,8 +91,9 @@ export type EstadiaPropria = { reservaId: string; checkin: string; checkout: str
  * com a reserva, e a alteração vale até a entrada: as regras de quando se pode reservar e do dia em que se pode entrar ou
  * sair (antecedência, horizonte, dias de entrada e de saída, restrição de entrada e de saída do Beds24) valem só na data
  * nova; sem mudar as datas (só pessoas ou valor), o mínimo e o máximo de noites também não contam (a estadia é a mesma).
+ * `o.config` (M7.9): as configurações já lidas, para a busca em todas as casas não as ler de novo a cada casa.
  */
-export async function consultarDisponibilidade(db: Db, organizacaoId: string, p: PedidoConsulta, agora = new Date(), o: { propria?: EstadiaPropria } = {}): Promise<Disponibilidade> {
+export async function consultarDisponibilidade(db: Db, organizacaoId: string, p: PedidoConsulta, agora = new Date(), o: { propria?: EstadiaPropria; config?: ConfigDaConsulta } = {}): Promise<Disponibilidade> {
   const vazio = (situacao: SituacaoDisponibilidade, motivos: string[], noites = 0): Disponibilidade => ({ situacao, motivos, noites, cotacao: null, leituraEm: null });
   const [imovel] = /^[\w-]{1,40}$/.test(p.imovel)
     ? await db.select({ id: imoveis.id, fuso: imoveis.fuso, capacidade: imoveis.capacidade }).from(imoveis).where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, p.imovel), eq(imoveis.publico, true), eq(imoveis.ativo, true)))
@@ -94,7 +111,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   if (erros.length) return vazio("invalida", erros);
 
   const noites = diasEntre(p.entrada, p.saida);
-  const [regras, precos] = await Promise.all([lerRegrasCalendario(db, organizacaoId), lerPrecosMarketplace(db, organizacaoId)]);
+  const { regras, precos } = o.config ?? (await lerConfigDaConsulta(db, organizacaoId));
   if (noites > regras.site.maximoNoitesConsulta) return vazio("a_confirmar", [`Para estadias acima de ${regras.site.maximoNoitesConsulta} noites, fale com a equipe.`], noites);
   // O plano cobre as noites e o dia de saída: a restrição de saída e o último envio do SCL daquela data
   // vêm do mesmo lugar que os das noites.
@@ -197,7 +214,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   if (aConfirmar) avisos.push("Ainda não conferimos a agenda mais recente para essas datas: confirmamos na conversa.");
   // Capacidade não cadastrada: não dá para saber se as pessoas cabem, então nada é confirmado por omissão.
   const semCapacidade = !imovel.capacidade;
-  if (semCapacidade) avisos.push("A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.");
+  if (semCapacidade) avisos.push(MOTIVO_SEM_CAPACIDADE);
   if (total === null) avisos.push(semPrecoNaFonte ? "O preço dessas datas ainda não foi confirmado: confirmamos na conversa." : "O valor dessas datas é confirmado na conversa.");
   return {
     situacao: aConfirmar || semCapacidade || semPrecoNaFonte ? "a_confirmar" : "disponivel",

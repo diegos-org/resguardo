@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { ImovelPublico } from "@/site/site";
 import { CapaDoImovel } from "./CapaDoImovel";
 import { comodidadesDoCartao, IconeComodidade } from "./IconeComodidade";
@@ -31,15 +32,30 @@ export function seloDoImovel(i: Pick<ImovelPublico, "quartos" | "bairro" | "cida
 
 /**
  * Cartão sálvia do apartamento (vitrine da página inicial e catálogo), como no estudo: foto com selo, ícones e capacidade.
- * `nivel` (M7.11): o título é h3 na vitrine, abaixo do h2 da faixa, e h2 em Nossas casas, logo abaixo do h1 — o mesmo
- * visual nos dois, para a ordem dos títulos não saltar um nível.
+ * Na busca em todas as casas (M7.9): `href` com as datas e as pessoas, a situação da casa em `children` e outra chamada.
+ * `nivel` (M7.11): o título é h3 na vitrine e na busca, abaixo do h2 da faixa ou da lista, e h2 em Nossas casas, logo
+ * abaixo do h1 — o mesmo visual em todos, para a ordem dos títulos não saltar um nível.
  */
-export function CartaoImovel({ imovel, carregarCedo = false, nivel = 3 }: { imovel: ImovelPublico; carregarCedo?: boolean; nivel?: 2 | 3 }) {
+export function CartaoImovel({
+  imovel,
+  carregarCedo = false,
+  nivel = 3,
+  href,
+  chamada = "Conheça a casa →",
+  children,
+}: {
+  imovel: ImovelPublico;
+  carregarCedo?: boolean;
+  nivel?: 2 | 3;
+  href?: string;
+  chamada?: string;
+  children?: ReactNode;
+}) {
   const Titulo = nivel === 2 ? "h2" : "h3";
   const selo = seloDoImovel(imovel);
   const icones = comodidadesDoCartao(imovel.comodidades);
   return (
-    <Link href={`/imoveis/${encodeURIComponent(imovel.codigo)}`} className={styles.cartaoCasa}>
+    <Link href={href ?? `/imoveis/${encodeURIComponent(imovel.codigo)}`} className={styles.cartaoCasa}>
       <div className={styles.cartaoFoto}>
         <CapaDoImovel nome={imovel.nome} fotos={imovel.fotos} sizes="(max-width: 600px) 100vw, 360px" carregarCedo={carregarCedo} />
         {selo && imovel.fotos.length > 0 && <span className={styles.selo}>{selo}</span>}
@@ -60,9 +76,10 @@ export function CartaoImovel({ imovel, carregarCedo = false, nivel = 3 }: { imov
             </div>
           )}
         </div>
+        {children}
         <div className={styles.cartaoRodape}>
           <span>{imovel.capacidade ? `Até ${imovel.capacidade} ${imovel.capacidade === 1 ? "hóspede" : "hóspedes"}` : resumoImovel(imovel)}</span>
-          <span>Conheça a casa →</span>
+          <span>{chamada}</span>
         </div>
       </div>
     </Link>

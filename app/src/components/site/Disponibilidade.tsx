@@ -1,8 +1,9 @@
 import type { Disponibilidade as Resultado } from "@/site/disponibilidade";
 import styles from "./site.module.css";
 
-const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const TITULO: Record<Resultado["situacao"], string> = { disponivel: "Disponível", indisponivel: "Indisponível nessas datas", a_confirmar: "Disponibilidade a confirmar", invalida: "Confira os dados" };
+export const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** Nome da situação para o visitante (a página da casa e os cartões da busca em todas as casas, M7.9, usam o mesmo). */
+export const TITULO_DA_SITUACAO: Record<Resultado["situacao"], string> = { disponivel: "Disponível", indisponivel: "Indisponível nessas datas", a_confirmar: "Disponibilidade a confirmar", invalida: "Confira os dados" };
 const quando = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
 
 /**
@@ -32,7 +33,7 @@ export function Disponibilidade({
   const dataBr = (d: string) => d.split("-").reverse().join("/");
   return (
     <section className={styles.bloco} aria-label="Disponibilidade e valor">
-      <Titulo>{TITULO[r.situacao]}</Titulo>
+      <Titulo>{TITULO_DA_SITUACAO[r.situacao]}</Titulo>
       {r.noites > 0 && (
         <p className={styles.miudo}>
           {dataBr(entrada)} a {dataBr(saida)} · {r.noites} {r.noites === 1 ? "noite" : "noites"}
