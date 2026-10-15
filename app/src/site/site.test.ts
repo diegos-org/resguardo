@@ -7,7 +7,10 @@ import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
 import {
+  ASSUNTO_CONSULTA,
+  CASA_FORA_DO_SITE,
   canalDeContato,
+  conferirDatasEPessoas,
   contatoDoSite,
   conteudoDoSite,
   destinoDoLinkAntigo,
@@ -15,6 +18,7 @@ import {
   imovelDoSite,
   imoveisDoSite,
   lerPedidoConsulta,
+  mensagemDaBusca,
   metadadosDeAcesso,
   tituloDoSite,
   linkWhatsapp,
@@ -160,27 +164,32 @@ describe("site público (M7.1)", () => {
     expect(metadadosDeAcesso(null, "Entrar", "Descrição da tela.")).toEqual({ title: "Entrar", description: "Descrição da tela." });
   });
 
-  it("links antigos /property/<código>: levam à página do imóvel só com os critérios de estadia válidos", async () => {
+  it("links antigos /property/<código>: levam à página do imóvel só com os critérios de estadia válidos; casa fora do site, à consulta", async () => {
     const imovel = await imovelDoSite(db, org, "403");
     const q = (o: Record<string, string>) => new URLSearchParams(o);
     const valido = { checkin: "2026-10-10", checkout: "2026-10-12", guests: "2" };
     // 25/09/2026, 12:00 em São Paulo.
     const agora = new Date("2026-09-25T15:00:00Z");
-    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), imovel, agora)).toEqual({
+    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), "403", imovel, agora)).toEqual({
       status: 308,
       destino: "/imoveis/403?checkin=2026-10-10&checkout=2026-10-12&guests=2",
     });
-    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), imovel, agora)).toEqual({ status: 308, destino: "/imoveis/403" });
+    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), "403", imovel, agora)).toEqual({ status: 308, destino: "/imoveis/403" });
     for (const ruim of [{ guests: "5" }, { checkin: "2026-02-30" }, { checkout: "2026-10-10" }, { guests: "2e0" }, { checkin: "2020-01-01" }])
-      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q({ guests: "2" }), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q(valido), null, agora)).toEqual({ status: 404 });
+      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), "403", imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q({ guests: "2" }), "403", imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), "403", imovel, agora)).toMatchObject({ status: 400 });
+    // Casa que não está (mais) no site (M7.9): a consulta, com o aviso, e as datas e pessoas do link (cada uma uma vez).
+    expect(destinoDoLinkAntigo(q(valido), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303&entrada=2026-10-10&saida=2026-10-12&hospedes=2" });
+    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303" });
+    expect(destinoDoLinkAntigo(new URLSearchParams("checkin=2026-10-10&checkin=2026-10-11&guests=2"), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303&hospedes=2" });
+    expect(destinoDoLinkAntigo(q(valido), "../x?y", null, agora)).toEqual({ status: 307, destino: "/consulta?entrada=2026-10-10&saida=2026-10-12&hospedes=2" });
+    expect(destinoDoLinkAntigo(q({}), "a b", null, agora)).toEqual({ status: 307, destino: "/consulta" });
     // "Hoje" no fuso do imóvel: 00:30 em São Paulo (03:30Z) ainda é dia 9 em Rio Branco, então entrada em 9/10 é válida lá.
     const madrugada = new Date("2026-10-10T03:30:00Z");
     const hojeLink = { checkin: "2026-10-09", checkout: "2026-10-12", guests: "2" };
-    expect(destinoDoLinkAntigo(q(hojeLink), imovel, madrugada)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q(hojeLink), { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
+    expect(destinoDoLinkAntigo(q(hojeLink), "403", imovel, madrugada)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q(hojeLink), "403", { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
   });
 });
 
@@ -231,6 +240,32 @@ describe("contatoDoSite (M7.8)", () => {
     expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " })).toEqual({ href: "mailto:contato@exemplo.com?subject=Contato%20pelo%20site", rotulo: "Enviar um e-mail", externo: false });
     expect(contatoDoSite({ whatsapp: null, email: "  " })).toBeNull();
   });
+
+  it("com uma mensagem, ela vai no WhatsApp e no corpo do e-mail; o canal e os rótulos não mudam", () => {
+    const texto = mensagemDaBusca({ entrada: "2099-10-12", saida: "2099-10-15" }, 2);
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "contato@exemplo.com" }, { mensagem: texto })).toEqual({ href: linkWhatsapp("5521900000000", texto), rotulo: "Falar pelo WhatsApp", externo: true });
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " }, { mensagem: texto })).toEqual({
+      href: `mailto:contato@exemplo.com?subject=Contato%20pelo%20site&body=${encodeURIComponent(texto)}`,
+      rotulo: "Enviar um e-mail",
+      externo: false,
+    });
+    expect(contatoDoSite({ whatsapp: null, email: "" }, { mensagem: texto })).toBeNull();
+  });
+
+  it("com o assunto da consulta (a busca do M7.9, com ou sem casas no site, e o envio da consulta): só o assunto do e-mail muda", () => {
+    const texto = mensagemDaBusca({ entrada: "2099-10-12", saida: "2099-10-15" }, 2);
+    expect(ASSUNTO_CONSULTA).toBe("Consulta de disponibilidade");
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " }, { mensagem: texto, assunto: ASSUNTO_CONSULTA })).toEqual({
+      href: `mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade&body=${encodeURIComponent(texto)}`,
+      rotulo: "Enviar um e-mail",
+      externo: false,
+    });
+    // Sem mensagem (a busca com datas erradas no site sem casas): o assunto da consulta, sem corpo.
+    expect(contatoDoSite({ whatsapp: null, email: "contato@exemplo.com" }, { assunto: ASSUNTO_CONSULTA })?.href).toBe("mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade");
+    // O WhatsApp não tem assunto: o mesmo link com ou sem ele.
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "" }, { mensagem: texto, assunto: ASSUNTO_CONSULTA })).toEqual(contatoDoSite({ whatsapp: "5521900000000", email: "" }, { mensagem: texto }));
+    expect(contatoDoSite({ whatsapp: null, email: "" }, { assunto: ASSUNTO_CONSULTA })).toBeNull();
+  });
 });
 
 describe("hojeMaisCedo", () => {
@@ -240,5 +275,31 @@ describe("hojeMaisCedo", () => {
     expect(hojeMaisCedo([{ fuso: "America/Sao_Paulo" }, { fuso: "America/Rio_Branco" }], agora)).toBe("2026-10-11");
     expect(hojeMaisCedo([{ fuso: "America/Sao_Paulo" }], agora)).toBe("2026-10-12");
     expect(hojeMaisCedo([], agora)).toBe("2026-10-12");
+  });
+});
+
+describe("busca em todas as casas (M7.9): a conferência e a mensagem sem casa", () => {
+  it("datas e pessoas conferidas como na consulta de uma casa, sem exigir a casa; a capacidade fica para cada casa", () => {
+    const base = { entrada: "2026-10-10", saida: "2026-10-13", hospedes: "12" };
+    expect(conferirDatasEPessoas(base, "2026-09-25")).toEqual({ erros: {}, hospedes: 12 });
+    expect(conferirDatasEPessoas({ ...base, entrada: "2026-09-01" }, "2026-09-25").erros).toEqual({ entrada: "A entrada não pode ser antes de hoje." });
+    expect(conferirDatasEPessoas({ ...base, saida: "2026-10-10" }, "2026-09-25").erros).toEqual({ saida: "A saída precisa ser depois da entrada." });
+    expect(conferirDatasEPessoas({ entrada: "", saida: "x", hospedes: "0" }, "2026-09-25").erros).toEqual({ entrada: "Informe a data de entrada.", saida: "Informe a data de saída.", hospedes: "Informe quantas pessoas." });
+    expect(conferirDatasEPessoas({ ...base, hospedes: "2e0" }, "2026-09-25")).toMatchObject({ erros: { hospedes: "Informe quantas pessoas." } });
+    // A consulta de uma casa continua com o erro da casa primeiro e a capacidade dela.
+    expect(Object.keys((montarConsulta({ imovel: "", ...base, entrada: "" }, null, "2026-09-25") as { erros: object }).erros)).toEqual(["imovel", "entrada"]);
+  });
+
+  it("casa pedida que não está no site (link antigo): o erro diz isso e oferece buscar em todas, sem pedir para escolher uma casa", () => {
+    const base = { entrada: "2026-10-10", saida: "2026-10-13", hospedes: "2" };
+    expect(montarConsulta({ imovel: "303", ...base }, null, "2026-09-25")).toEqual({ ok: false, erros: { imovel: CASA_FORA_DO_SITE } });
+    expect(CASA_FORA_DO_SITE).toBe("Essa casa não está mais no site. Escolha outra ou busque em todas as casas.");
+    // Sem casa nenhuma pedida, continua o pedido de escolher.
+    expect(montarConsulta({ imovel: " ", ...base }, null, "2026-09-25")).toEqual({ ok: false, erros: { imovel: "Escolha um apartamento." } });
+  });
+
+  it("mensagem para a equipe com as datas e as pessoas, sem casa e sem valor", () => {
+    expect(mensagemDaBusca({ entrada: "2026-10-10", saida: "2026-10-13" }, 3)).toBe("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 10/10/2026 · Saída: 13/10/2026 · 3 pessoas.");
+    expect(mensagemDaBusca({ entrada: "2026-10-10", saida: "2026-10-11" }, 1)).toContain("· 1 pessoa.");
   });
 });

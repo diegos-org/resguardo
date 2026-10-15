@@ -29,12 +29,19 @@ const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), imovel: vi.fn(), 
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel, temCasaNoSite: m.tem }));
 vi.mock("@/site/bairro", async (orig) => ({ ...(await orig<typeof import("@/site/bairro")>()), lugaresDoSite: m.bairro }));
-vi.mock("@/site/disponibilidade", () => ({ consultarDisponibilidade: m.disponibilidade }));
+// A busca em todas as casas (M7.9) lê as configurações uma vez e consulta cada casa pela mesma `consultarDisponibilidade`.
+vi.mock("@/site/disponibilidade", async (orig) => ({
+  ...(await orig<typeof import("@/site/disponibilidade")>()),
+  consultarDisponibilidade: m.disponibilidade,
+  lerConfigDaConsulta: vi.fn(async () => ({})),
+}));
 vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, pixPossivel: m.pix }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NAO_ENCONTRADA");
   },
+  // A troca de casa no envio do "Planeje sua estadia" (M7.9), na página do imóvel.
+  useRouter: () => ({ push: vi.fn() }),
 }));
 vi.mock("next/link", () => ({
   default: ({ children, href, ...resto }: { children: React.ReactNode; href: string; className?: string; "aria-label"?: string }) => (
@@ -305,6 +312,8 @@ const conteudo: ConteudoSite = {
 };
 const disponivel = { situacao: "disponivel", motivos: [], noites: 3, cotacao: { diarias: 135000, limpeza: 25000, hospedeExtra: 0, valorCheio: 160000, desconto: 6400, total: 153600 }, leituraEm: new Date("2026-10-01T09:15:00Z") };
 const pedido = { imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" };
+/** Busca em todas as casas (M7.9): as datas e as pessoas, sem casa escolhida. */
+const busca = { entrada: pedido.entrada, saida: pedido.saida, hospedes: pedido.hospedes };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -329,8 +338,21 @@ const telas = async () => ({
   "Nossas casas": renderToStaticMarkup(await Catalogo()),
   "página do imóvel": renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }, pedido) as never)),
   consulta: renderToStaticMarkup(await Consulta(props({}, pedido) as never)),
+  "Sua busca": renderToStaticMarkup(await Consulta(props({}, busca) as never)),
   "não encontrada": renderToStaticMarkup(await NaoEncontradaNoSite()),
 });
+/** As telas com o site sem nenhuma casa publicada (M7.8), como na produção hoje; a busca mostra o mesmo aviso (M7.9). */
+const telasSemCasas = async () => {
+  m.imoveis.mockResolvedValue([]);
+  m.tem.mockResolvedValue(false);
+  return {
+    "página inicial": renderToStaticMarkup(await Inicio()),
+    "Nossas casas": renderToStaticMarkup(await Catalogo()),
+    consulta: renderToStaticMarkup(await Consulta(props({}) as never)),
+    "Sua busca": renderToStaticMarkup(await Consulta(props({}, busca) as never)),
+    "não encontrada": renderToStaticMarkup(await NaoEncontradaNoSite()),
+  };
+};
 
 /** Níveis dos títulos na ordem da página. */
 const niveis = (html: string) => [...dom(html).querySelectorAll("h1, h2, h3, h4, h5, h6")].map((h) => Number(h.tagName[1]));
@@ -411,10 +433,8 @@ describe("áreas claras dentro das faixas verdes do site, nas telas (M7.11)", ()
           for (const c of claras) if ([...conteiner.querySelectorAll(`.${styles[c]}`)].some((el) => el.querySelector(FOCAVEIS))) achadas.add(c);
     };
     for (const html of Object.values(await telas())) procurar(html);
-    // Sem casas publicadas, como na produção hoje.
-    m.imoveis.mockResolvedValue([]);
-    m.tem.mockResolvedValue(false);
-    for (const html of [renderToStaticMarkup(await Inicio()), renderToStaticMarkup(await Catalogo()), renderToStaticMarkup(await Consulta(props({}) as never)), renderToStaticMarkup(await NaoEncontradaNoSite())]) procurar(html);
+    // Sem casas publicadas, como na produção hoje (a busca também).
+    for (const html of Object.values(await telasSemCasas())) procurar(html);
     expect([...achadas].filter((c) => !classesDoSite(CLAROS_DENTRO_DE_VERDE).includes(c))).toEqual([]);
     // E a lista não fica velha: o aviso sem casas aparece de fato dentro da faixa verde das casas, com o botão do contato.
     expect([...achadas]).toContain("semCasas");
@@ -442,14 +462,16 @@ describe("links que abrem outra janela avisam quem usa leitor de tela (M7.11)", 
     // A mensagem da consulta pelo WhatsApp (botão com texto): o aviso no fim do link, só para o leitor de tela.
     expect([...dom(t.consulta).querySelectorAll("a")].find((a) => a.textContent?.startsWith("Enviar pelo WhatsApp"))?.textContent).toBe(`Enviar pelo WhatsApp↗ ${aviso}`);
     expect(contar(t.consulta)).toBe(2);
-    // Sem casas: o contato do site também abre o WhatsApp.
-    m.imoveis.mockResolvedValue([]);
-    m.tem.mockResolvedValue(false);
-    const semCasas = [renderToStaticMarkup(await Inicio()), renderToStaticMarkup(await NaoEncontradaNoSite())];
-    for (const html of semCasas) {
-      expect(contar(html)).toBe(2);
-      expect(semAviso(html)).toEqual([]);
+    // Sua busca (M7.9): o botão do contato, ao lado das casas, também abre o WhatsApp (o botão flutuante e ele).
+    expect(contar(t["Sua busca"])).toBe(2);
+    expect([...dom(t["Sua busca"]).querySelectorAll(`.${styles.contatoBusca} a`)].map((a) => a.textContent)).toEqual([`Falar pelo WhatsApp↗ ${aviso}`]);
+    // Sem casas: o contato do site também abre o WhatsApp (na busca, com as datas e as pessoas na mensagem).
+    const semCasas = await telasSemCasas();
+    for (const tela of ["página inicial", "não encontrada", "Sua busca"] as const) {
+      expect(contar(semCasas[tela]), tela).toBe(2);
+      expect(semAviso(semCasas[tela]), tela).toEqual([]);
     }
+    for (const [tela, html] of Object.entries(semCasas)) expect(semAviso(html), tela).toEqual([]);
     // Cotação, segurar as datas e o aceite das páginas legais (antes de pagar e já feito).
     const aceite: AceiteNaPagina = { versoes: { termos: 2, privacidade: 1, cancelamento: 3 }, aceito: null, resumo: [{ tipo: "paragrafo", texto: "RESUMO" }], prazo: { tipo: "integral_ate", data: "2099-10-01" } };
     const pecas = [
@@ -505,9 +527,21 @@ describe("ordem dos títulos sem saltos (M7.11)", () => {
 
   it("capa, Nossas casas, consulta e não encontrada: nenhuma tela salta um nível", async () => {
     for (const [tela, html] of Object.entries(await telas())) expect(saltos(niveis(html)), tela).toEqual([]);
+    for (const [tela, html] of Object.entries(await telasSemCasas())) expect(saltos(niveis(html)), tela).toEqual([]);
+  });
+
+  it("Sua busca (M7.9): o h1 do cabeçalho da busca, o h2 da lista de casas e o nome de cada casa em h3, no visual do cartão", async () => {
+    m.imoveis.mockResolvedValue([imovel, { ...imovel, codigo: "404", nome: "Casa Exemplo" }]);
+    const lista = renderToStaticMarkup(await Consulta(props({}, busca) as never));
+    expect(niveis(lista)).toEqual([1, 2, 3, 3]);
+    expect(dom(lista).querySelector("h2")?.textContent).toBe("2 casas na sua busca");
+    for (const h of dom(lista).querySelectorAll("h3")) expect(h.className).toBe(styles.cartaoTitulo);
+    // Nenhuma casa para o grupo, datas erradas e o site sem casas: só o h1 do cabeçalho da busca, sem salto.
+    for (const pedidoBusca of [{ ...busca, hospedes: "9" }, { ...busca, saida: busca.entrada }]) {
+      const html = renderToStaticMarkup(await Consulta(props({}, pedidoBusca) as never));
+      expect(niveis(html), JSON.stringify(pedidoBusca)).toEqual([1]);
+    }
     m.imoveis.mockResolvedValue([]);
-    m.tem.mockResolvedValue(false);
-    for (const html of [renderToStaticMarkup(await Inicio()), renderToStaticMarkup(await Catalogo()), renderToStaticMarkup(await Consulta(props({}) as never)), renderToStaticMarkup(await NaoEncontradaNoSite())])
-      expect(saltos(niveis(html))).toEqual([]);
+    expect(niveis(renderToStaticMarkup(await Consulta(props({}, busca) as never)))).toEqual([1]);
   });
 });
