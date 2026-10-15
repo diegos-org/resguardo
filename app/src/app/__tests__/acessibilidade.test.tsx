@@ -4,7 +4,9 @@ import { join, relative, sep } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TEXTO_FAIXA_PREVIA } from "@/components/FaixaPrevia";
+import stylesPainel from "@/components/painel/painel.module.css";
 import { MolduraPortal } from "@/components/portal/MolduraPortal";
+import stylesPortal from "@/components/portal/portal.module.css";
 import { AVISO_NOVA_JANELA, ID_CONTEUDO, ROTULO_PULAR } from "@/components/site/Acessibilidade";
 import { AceiteFeito, BlocoAceite } from "@/components/site/BlocoAceite";
 import { BotaoContato } from "@/components/site/Cotacao";
@@ -21,13 +23,14 @@ import PaginaImovel from "../imoveis/[codigo]/page";
 import Catalogo from "../imoveis/page";
 import NaoEncontradaNoSite from "../not-found";
 import Inicio from "../page";
+import PainelLayout from "../painel/layout";
 
 /**
  * M7.11 — acessibilidade do site público, das páginas do hóspede e dos portais (levantamento de 14/10): o contorno de
  * foco visível também sobre os verdes, a miniatura escolhida da galeria, o "Pular para o conteúdo", o aviso dos links que
  * abrem outra janela e a ordem dos títulos. Os contrastes saem dos valores dos tokens em globals.css, sem cor repetida aqui.
  */
-const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), imovel: vi.fn(), tem: vi.fn(), bairro: vi.fn(), disponibilidade: vi.fn(), portao: vi.fn(), pix: vi.fn() }));
+const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), imovel: vi.fn(), tem: vi.fn(), bairro: vi.fn(), disponibilidade: vi.fn(), portao: vi.fn(), pix: vi.fn(), sessao: vi.fn(), empresa: vi.fn() }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis, imovelDoSite: m.imovel, temCasaNoSite: m.tem }));
 vi.mock("@/site/bairro", async (orig) => ({ ...(await orig<typeof import("@/site/bairro")>()), lugaresDoSite: m.bairro }));
@@ -38,12 +41,20 @@ vi.mock("@/site/disponibilidade", async (orig) => ({
   lerConfigDaConsulta: vi.fn(async () => ({})),
 }));
 vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, pixPossivel: m.pix }));
+// O layout do painel (faixa da prévia, M7.12): a sessão, o nome da empresa e o banco simulados; nada é lido de verdade.
+vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
+vi.mock("@/acesso/auth", () => ({ signOut: vi.fn() }));
+vi.mock("@/configuracoes/empresa", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/empresa")>()), nomeDaEmpresa: m.empresa }));
+vi.mock("@/db/client", async (orig) => ({ ...(await orig<typeof import("@/db/client")>()), getDb: vi.fn(() => ({})) }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NAO_ENCONTRADA");
   },
   // A troca de casa no envio do "Planeje sua estadia" (M7.9), na página do imóvel.
   useRouter: () => ({ push: vi.fn() }),
+  // O menu do painel (faixa da prévia, M7.12).
+  usePathname: () => "/painel",
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock("next/link", () => ({
   default: ({ children, href, ...resto }: { children: React.ReactNode; href: string; className?: string; "aria-label"?: string }) => (
@@ -577,33 +588,45 @@ describe('faixa "Prévia de teste" no topo (M7.12)', () => {
     expect(regras(GLOBAL).filter((r) => /(^|,\s*)body\s*(,|$)/.test(r.seletor) && /display/.test(r.corpo))).toEqual([]);
   });
 
-  it("com a faixa no topo (layout raiz, na prévia), o Pular para o conteúdo continua o primeiro focável das molduras", async () => {
+  it("com a faixa no topo (layout raiz, na prévia), logo depois dela vem a moldura de 100vh e o Pular para o conteúdo continua o primeiro focável", async () => {
     vi.stubEnv("VERCEL_ENV", "preview");
     try {
       // O documento inteiro, como no navegador: o que o React põe no <head> (ex.: o preload das fotos dos cartões da busca)
-      // fica lá, e a conferência olha o <body>.
+      // fica lá, e a conferência olha o <body>. No HTML do Next (16.3.6, conferido num build mínimo em 15/10), o corpo
+      // começa por um <div hidden> dos metadados, antes da faixa e nunca entre ela e a moldura; os scripts vêm no fim.
       const comFaixa = (miolo: React.ReactNode) =>
         new DOMParser().parseFromString(renderToStaticMarkup(RootLayout({ children: miolo } as LayoutProps<"/">)), "text/html").body;
-      const paginas = [
-        comFaixa(<Moldura conteudo={conteudo}>{<h1>Oi</h1>}</Moldura>),
-        comFaixa(<MolduraBase>{<h1>Erro</h1>}</MolduraBase>),
-        comFaixa(<MolduraPortal empresa="Sua Casa Exemplo" titulo="Portal do proprietário">{<h1>Portal</h1>}</MolduraPortal>),
-        comFaixa(await Consulta(props({}, pedido) as never)),
+      // Cada página com a moldura que a regra do CSS espera logo depois da faixa (`.scl-previa + *` em globals.css).
+      const paginas: [string, HTMLElement, string][] = [
+        ["moldura do site", comFaixa(<Moldura conteudo={conteudo}>{<h1>Oi</h1>}</Moldura>), styles.pagina],
+        ["moldura do site sem o banco", comFaixa(<MolduraBase>{<h1>Erro</h1>}</MolduraBase>), styles.pagina],
+        ["moldura dos portais", comFaixa(<MolduraPortal empresa="Sua Casa Exemplo" titulo="Portal do proprietário">{<h1>Portal</h1>}</MolduraPortal>), stylesPortal.pagina],
+        ["consulta", comFaixa(await Consulta(props({}, pedido) as never)), styles.pagina],
         // Sua busca (M7.9): a lista das casas e, com o site sem casas, o aviso; a página nova fica na mesma moldura.
-        comFaixa(await Consulta(props({}, busca) as never)),
+        ["Sua busca", comFaixa(await Consulta(props({}, busca) as never)), styles.pagina],
       ];
       m.imoveis.mockResolvedValue([]);
       m.tem.mockResolvedValue(false);
-      paginas.push(comFaixa(await Consulta(props({}, busca) as never)));
-      expect(paginas[4].querySelector("h2")?.textContent).toBe("1 casa na sua busca");
-      expect(paginas[5].querySelector(`.${styles.semCasas}`)).not.toBeNull();
-      for (const raiz of paginas) {
-        expect(raiz.firstElementChild?.textContent).toBe(TEXTO_FAIXA_PREVIA);
-        expect(raiz.firstElementChild?.querySelector(FOCAVEIS)).toBeNull();
+      paginas.push(["Sua busca sem casas", comFaixa(await Consulta(props({}, busca) as never)), styles.pagina]);
+      expect(paginas[4][1].querySelector("h2")?.textContent).toBe("1 casa na sua busca");
+      expect(paginas[5][1].querySelector(`.${styles.semCasas}`)).not.toBeNull();
+      for (const [tela, raiz, moldura] of paginas) {
+        expect(raiz.firstElementChild?.textContent, tela).toBe(TEXTO_FAIXA_PREVIA);
+        expect(raiz.firstElementChild?.querySelector(FOCAVEIS), tela).toBeNull();
+        expect(raiz.firstElementChild?.nextElementSibling?.className, tela).toBe(moldura);
         const pular = primeiroFocavel(raiz);
-        expect(pular?.textContent).toBe(ROTULO_PULAR);
-        expect(pular?.getAttribute("href")).toBe(`#${ID_CONTEUDO}`);
+        expect(pular?.textContent, tela).toBe(ROTULO_PULAR);
+        expect(pular?.getAttribute("href"), tela).toBe(`#${ID_CONTEUDO}`);
       }
+      // Painel (layout dele, com a sessão e o nome da empresa simulados): também a moldura de 100vh logo depois da faixa.
+      // Ele não tem o Pular para o conteúdo (ficou fora do M7.11).
+      m.sessao.mockResolvedValue({ usuarioId: "u-1", organizacaoId: "org-1", papel: "admin", imovelIds: [] });
+      m.empresa.mockResolvedValue("Sua Casa Exemplo");
+      const painel = comFaixa(await PainelLayout({ children: <h1>Início</h1> } as LayoutProps<"/painel">));
+      expect(painel.firstElementChild?.textContent).toBe(TEXTO_FAIXA_PREVIA);
+      expect(painel.firstElementChild?.querySelector(FOCAVEIS)).toBeNull();
+      expect(painel.firstElementChild?.nextElementSibling?.className).toBe(stylesPainel.estrutura);
+      expect(painel.querySelector("h1")?.textContent).toBe("Início");
     } finally {
       vi.unstubAllEnvs();
     }

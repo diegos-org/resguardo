@@ -31,7 +31,7 @@ visível em qualquer fundo do site, dos portais e do painel; (7) **14/10/2026 (M
 escolhida da galeria** — antes: contorno de 2px em `--scl-dourado` (1,93:1 sobre o creme, 2,04:1 sobre o
 papel); agora: anel de 3px em `--scl-dourado-escuro` por dentro da borda (5,64:1 / 5,94:1), com o
 contorno do foco por fora, a 5px, sem os dois se sobreporem; motivo e objetivo: a foto escolhida
-reconhecível sem depender da cor fraca, e o foco distinto da escolha; (8) **14/10/2026 (M7.12), faixa da
+reconhecível sem depender da cor fraca, e o foco distinto da escolha; (8) **15/10/2026 (M7.12), faixa da
 prévia** — antes (estudo, `.preview`): "Prévia privada · Reservas e pagamentos ainda não estão habilitados", fundo `#e3d9c3`
 e texto `#404537`, fora dos tokens; agora: `.scl-previa` em `globals.css`, `--scl-areia` com texto `--scl-tinta`
 (10,66:1), 11px (10px até 600px), 8px × 16px, centralizada, no topo de toda página (layout raiz: site, páginas do
@@ -40,7 +40,8 @@ hóspede, portais, painel e telas de erro), só fora do deploy de produção (`a
 painel, que têm `min-height: 100vh`) ocupa só o resto da tela, para as páginas curtas não ganharem uma rolagem que a
 produção não tem (`body:has(> .scl-previa)` em coluna e a moldura com `flex: 1 0 auto; min-height: 0`, sem altura fixa,
 porque no celular estreito o texto pode ter duas linhas; na produção, sem a faixa, nada disso se aplica; ajuste da
-revisão em 15/10, conferido por teste do CSS e ainda não em navegador); motivo: o texto do estudo deixou de ser verdade (o
+revisão em 15/10, conferido por teste do CSS e da ordem das páginas, com a moldura logo depois da faixa, e ainda não em
+navegador); motivo: o texto do estudo deixou de ser verdade (o
 pagamento de teste está ligado nas prévias) e as cores dele não eram tokens; objetivo: quem testa não confundir a prévia
 com o site de verdade, dizendo só o que o código garante.
 Aprovado por Diego em 4/10/2026: adotar o visual do estudo do "Sage" (site público,
@@ -121,7 +122,7 @@ texto corrido**.
 ## Componentes do site (referência: `prototipos/acervo-visual-2026-10/site-publico`)
 
 - **Cabeçalho** verde-floresta com logotipo (ícone + "Sua Casa *Leblon*", itálico em `--scl-dourado` a 24px), "Nossas casas" e o
-  botão contornado "Planeje sua estadia ↗". Faixa fina acima quando for prévia privada (implementada em 14/10/2026, M7.12,
+  botão contornado "Planeje sua estadia ↗". Faixa fina acima quando for prévia privada (implementada em 15/10/2026, M7.12,
   só fora do deploy de produção e em todas as páginas, não só no site: desvio 8).
 - **Capa** com foto do Leblon, gradiente escuro à direita, "olho" pequeno em maiúsculas, título em
   duas linhas e frase curta.
