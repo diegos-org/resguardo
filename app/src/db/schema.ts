@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { type AnyPgColumn, boolean, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, boolean, check, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import type { CodigoDevolucao, ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
 import type {
@@ -1324,8 +1324,25 @@ export const cadastrosMarketplace = pgTable(
     proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
     imovelId: uuid("imovel_id").references(() => imoveis.id),
     criadoEm: criadoEm(),
+    /**
+     * Autorização da caixa obrigatória do formulário (M7.14, 15/10/2026): `autorizadoEm` é quando o envio com a caixa
+     * marcada chegou ao servidor (relógio do servidor, igual a `criadoEm`; a hora do clique no navegador não é guardada);
+     * com a versão e o texto exato da caixa, montado pelo servidor (`proprietarios/autorizacao.ts`), no mesmo insert do
+     * envio. Os três juntos ou nenhum; nenhum = enviado antes deste item (o painel avisa, sem palpite). Sem IP nem navegador.
+     */
+    autorizadoEm: timestamp("autorizado_em", { withTimezone: true }),
+    autorizacaoVersao: integer("autorizacao_versao"),
+    autorizacaoTexto: text("autorizacao_texto"),
   },
-  (t) => [index("cadastros_marketplace_org").on(t.organizacaoId, t.situacao, t.criadoEm), index("cadastros_marketplace_email").on(t.email)],
+  (t) => [
+    index("cadastros_marketplace_org").on(t.organizacaoId, t.situacao, t.criadoEm),
+    index("cadastros_marketplace_email").on(t.email),
+    // Registro da autorização inteiro ou nenhum (M7.14); "is not null" explícito porque um CHECK que dá null passa.
+    check(
+      "cadastros_marketplace_autorizacao",
+      sql`(${t.autorizadoEm} is null and ${t.autorizacaoVersao} is null and ${t.autorizacaoTexto} is null) or (${t.autorizadoEm} is not null and ${t.autorizacaoVersao} is not null and ${t.autorizacaoTexto} is not null and ${t.autorizacaoVersao} > 0 and ${t.autorizacaoTexto} <> '')`,
+    ),
+  ],
 );
 
 // ---------------------------------------------------------------------------
@@ -1359,12 +1376,26 @@ export const pedidosContatoProprietario = pgTable(
     criadoEm: criadoEm(),
     decididoEm: timestamp("decidido_em", { withTimezone: true }),
     decididoPor: uuid("decidido_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /**
+     * Autorização da caixa obrigatória do formulário (M7.14, 15/10/2026): `autorizadoEm` é quando o envio com a caixa
+     * marcada chegou ao servidor (relógio do servidor, igual a `criadoEm`; a hora do clique no navegador não é guardada);
+     * com a versão e o texto exato da caixa, montado pelo servidor (`proprietarios/autorizacao.ts`), no mesmo insert do
+     * envio. Os três juntos ou nenhum; nenhum = enviado antes deste item (o painel avisa, sem palpite). Sem IP nem navegador.
+     */
+    autorizadoEm: timestamp("autorizado_em", { withTimezone: true }),
+    autorizacaoVersao: integer("autorizacao_versao"),
+    autorizacaoTexto: text("autorizacao_texto"),
   },
   (t) => [
     index("pedidos_contato_proprietario_org").on(t.organizacaoId, t.situacao, t.criadoEm),
     // Tetos do formulário público: por e-mail em 24 h e no total por hora.
     index("pedidos_contato_proprietario_email").on(t.organizacaoId, t.email, t.criadoEm),
     index("pedidos_contato_proprietario_criado").on(t.organizacaoId, t.criadoEm),
+    // Registro da autorização inteiro ou nenhum (M7.14); "is not null" explícito porque um CHECK que dá null passa.
+    check(
+      "pedidos_contato_proprietario_autorizacao",
+      sql`(${t.autorizadoEm} is null and ${t.autorizacaoVersao} is null and ${t.autorizacaoTexto} is null) or (${t.autorizadoEm} is not null and ${t.autorizacaoVersao} is not null and ${t.autorizacaoTexto} is not null and ${t.autorizacaoVersao} > 0 and ${t.autorizacaoTexto} <> '')`,
+    ),
   ],
 );
 

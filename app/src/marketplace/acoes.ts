@@ -11,6 +11,7 @@ import { enderecoDaRequisicao, enviarEmailConvite } from "@/convites/email";
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
 import { criarToken } from "@/lib/token-assinado";
+import type { TextoAutorizacao } from "@/proprietarios/autorizacao";
 import { organizacaoDoSite } from "@/site/site";
 import { COOKIE_CADASTRO, emailDoCadastro, INICIO_CADASTRO, VALIDADE_SESSAO_CADASTRO_MS } from "./sessao";
 import { aprovarCadastro, type ErrosCadastro, enviarCadastro, pedirCodigoCadastro, recusarCadastro, validarCadastro, verificarCodigoCadastro } from "./cadastro";
@@ -57,7 +58,8 @@ export async function entrarCadastroAcao(form: FormData): Promise<void> {
   redirect(`${INICIO}/dados`);
 }
 
-export type EstadoCadastro = { erros?: ErrosCadastro; mensagem?: string; valores?: Record<string, string> };
+/** `autorizacao` (M7.14): o texto atual da caixa, quando ele mudou depois que a página abriu (o formulário passa a mostrá-lo). */
+export type EstadoCadastro = { erros?: ErrosCadastro; mensagem?: string; valores?: Record<string, string>; autorizacao?: TextoAutorizacao };
 
 export async function enviarCadastroAcao(_a: EstadoCadastro, form: FormData): Promise<EstadoCadastro> {
   const email = await emailDoCadastro();
@@ -69,6 +71,8 @@ export async function enviarCadastroAcao(_a: EstadoCadastro, form: FormData): Pr
   const organizacaoId = await organizacaoDoSite(db);
   if (!organizacaoId) return { mensagem: "O cadastro ainda não está disponível. Fale com a gente pelo contato do site.", valores };
   const r = await enviarCadastro(db, organizacaoId, email, v.dados, new Date());
+  // O texto da autorização mudou depois que a página abriu: mostra o texto novo, com a caixa desmarcada, para marcar de novo.
+  if (!r.ok && r.autorizacao) return { erros: { consentimento: r.erro }, mensagem: "Confira os campos destacados.", valores: { ...valores, consentimento: "" }, autorizacao: r.autorizacao };
   if (!r.ok) return { mensagem: r.erro, valores };
   (await cookies()).delete({ name: COOKIE, path: INICIO });
   redirect(`${INICIO}/enviado`);

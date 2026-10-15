@@ -209,6 +209,9 @@ describe("textos-base das páginas legais (M7.4)", () => {
     const pagamento = /- Pagamento: ([^\n]+)/.exec(RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto)![1];
     expect(pagamento).toContain("no cartão, também a bandeira, o número de parcelas, o valor pago com os juros e o resultado da verificação do banco, nunca o número do cartão");
     expect(pagamento).not.toMatch(/últimos dígitos|final do cartão/);
+    // M7.14: os formulários de proprietários guardam o registro da autorização; a linha deles diz isso.
+    const proprietarios = /- Proprietários que nos procuram pelo site: ([^\n]+)/.exec(RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto)![1];
+    expect(proprietarios).toContain("o registro da autorização dada no formulário (o texto autorizado, a versão dele e a data e a hora do envio)");
   });
 });
 
