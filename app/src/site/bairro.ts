@@ -143,7 +143,10 @@ const noLugar = (id: string, mudar: (l: Lugar) => Lugar) => (c: ConfigBairro) =>
 export async function salvarTextosBairro(db: Db, organizacaoId: string, entrada: Record<string, unknown>, autorId: string | null): Promise<ResultadoBairro> {
   const v = validarTextosBairro(entrada);
   if (!v.ok) return { ok: false, erro: "Confira os campos destacados.", erros: v.erros };
-  return alterar(db, organizacaoId, autorId, (c) => ({ ...c, ...v.textos }));
+  // Campo que não veio no envio fica como estava, em vez de ser apagado: é a tela aberta antes de ele existir (o olho,
+  // antes do M7.16), salva depois da publicação.
+  const vieram = (Object.keys(v.textos) as (keyof TextosBairro)[]).filter((k) => typeof entrada[k] === "string");
+  return alterar(db, organizacaoId, autorId, (c) => ({ ...c, ...Object.fromEntries(vieram.map((k) => [k, v.textos[k]])) }));
 }
 
 /** Lugar novo no fim da lista (sem foto; a foto sobe depois, um pedido por foto). */

@@ -17,7 +17,7 @@ import { publicarComoFunciona, validarSecoes } from "./como-funciona";
 import { publicarPaginaLegal } from "./paginas-legais";
 import { DOCUMENTOS_LEGAIS, type DocumentoLegal, PAGINAS_LEGAIS, validarPaginaLegal } from "./paginas-legais-texto";
 import { type ErrosMercado, salvarMercado, salvarTextosProprietarios, type TextosProprietarios, validarMercado, validarTextosProprietarios } from "./pagina-proprietarios";
-import { salvarTextosSite, type TextosSite, validarTextosSite } from "./textos-site";
+import { lerTextosSite, salvarTextosSite, type TextosSite, validarTextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe } from "./usuarios";
 
 /** `valores`: o que foi digitado, devolvido quando há erro (o React limpa o formulário após enviar). */
@@ -54,7 +54,9 @@ export async function salvarRegrasAcao(_a: EstadoForm, form: FormData): Promise<
 
 export async function salvarTextosAcao(_a: EstadoForm<Partial<TextosSite>>, form: FormData): Promise<EstadoForm<Partial<TextosSite>>> {
   const sessao = await sessaoConfig();
-  const v = validarTextosSite(campos(form));
+  // Campo que não veio no envio fica como estava, em vez de ser apagado: é a tela aberta antes de ele existir (os títulos
+  // e frases do M7.16, por exemplo), salva depois da publicação. Campo enviado vazio continua sendo apagado.
+  const v = validarTextosSite({ ...(await lerTextosSite(getDb(), sessao.organizacaoId)), ...campos(form) });
   if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
   const mudou = await salvarTextosSite(getDb(), sessao.organizacaoId, v.textos, sessao.usuarioId);
   revalidatePath("/painel/configuracoes/site");

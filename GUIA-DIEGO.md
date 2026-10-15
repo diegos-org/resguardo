@@ -63,7 +63,8 @@ código. Agora eles estão em **Configurações → Textos do site**, cada um pe
 
 Como funciona:
 
-- **Nada muda até você editar.** Cada campo já vem com o texto que o site mostra hoje.
+- **Nada muda até você editar.** Cada campo já vem com o texto que o site mostra hoje. Se a tela estava aberta desde
+  antes desta mudança e você salvar, os campos novos (que essa tela antiga não tem) ficam como estavam.
 - **Apagar:** a linha pequena ou a frase apagada some do site, sem deixar espaço vazio. O título apagado volta ao
   texto de hoje, porque a página não pode ficar sem título.
 - **Itálico:** nos títulos, a parte entre asteriscos sai em itálico, como nos outros títulos (por exemplo,

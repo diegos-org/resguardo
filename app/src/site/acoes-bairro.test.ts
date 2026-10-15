@@ -62,6 +62,17 @@ describe("salvar os textos de O bairro à sua porta pela ação do painel", () =
     expect(await lerBairro(m.db, org)).toMatchObject({ olho: TEXTOS_BAIRRO_INICIAIS.olho, titulo: TEXTOS_BAIRRO_INICIAIS.titulo });
   });
 
+  it("tela aberta antes do M7.16 (o formulário não manda o olho): o olho fica como estava, e o título e o subtítulo são gravados", async () => {
+    await salvarTextosBairroAcao(formulario({ olho: "Perto de casa fictício", titulo: "Título fictício do bairro.", subtitulo: "" }));
+    expect(await salvarTextosBairroAcao(formulario({ titulo: "Outro título fictício.", subtitulo: "Outro subtítulo fictício." }))).toEqual({ ok: true, mudou: true });
+    expect(await lerBairro(m.db, org)).toMatchObject({ olho: "Perto de casa fictício", titulo: "Outro título fictício.", subtitulo: "Outro subtítulo fictício." });
+  });
+
+  it("olho nunca salvo e ausente do formulário: continua o de antes do M7.16", async () => {
+    await salvarTextosBairroAcao(formulario({ titulo: "Título fictício do bairro.", subtitulo: "" }));
+    expect((await lerBairro(m.db, org)).olho).toBe(TEXTOS_BAIRRO_INICIAIS.olho);
+  });
+
   it("quem não edita as configurações: recusado no servidor, nada é gravado", async () => {
     m.sessao = { ...m.sessao, papel: "operacao" };
     await expect(salvarTextosBairroAcao(formulario({ olho: "Olho forjado", titulo: "Título forjado.", subtitulo: "" }))).rejects.toThrow(AcessoNegado);
