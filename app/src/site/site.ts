@@ -31,6 +31,11 @@ export type ImovelPublico = {
   quartos: number | null;
   banheiros: number | null;
   descricao: string;
+  /**
+   * Frase de abertura da casa (M7.17), escrita na ficha do imóvel: título acima da descrição na página da casa e, pela
+   * `fraseDoImovel`, a frase do cartão e da prévia do link. Vazia = a página não mostra nada no lugar.
+   */
+  frase: string;
   /** Ex.: ["1 cama Queen", "1 Sofá-cama"]. */
   camas: string[];
   comodidades: string[];
@@ -136,6 +141,7 @@ const colunasPublicas = {
   quartos: imoveis.quartos,
   banheiros: imoveis.banheiros,
   descricao: imoveis.descricao,
+  frase: imoveis.frase,
   camas: imoveisDetalhes.camas,
   comodidades: imoveisDetalhes.comodidades,
   regrasCasa: imoveisDetalhes.regrasCasa,
@@ -160,6 +166,8 @@ function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
     quartos: l.quartos,
     banheiros: l.banheiros,
     descricao: l.descricao ?? "",
+    // Aparada aqui também (o cadastro já apara): só espaços não viram um título vazio na página da casa.
+    frase: (l.frase ?? "").trim(),
     camas: descreverCamas(l.camas ?? {}),
     comodidades: l.comodidades ?? [],
     regrasCasa: l.regrasCasa ?? "",

@@ -301,6 +301,7 @@ const imovel: ImovelPublico = {
   quartos: 0,
   banheiros: 1,
   descricao: "Frase fictícia do apartamento.",
+  frase: "",
   camas: ["1 cama de casal"],
   comodidades: ["Wi-Fi", "Comodidade sem ícone"],
   regrasCasa: "",
@@ -528,6 +529,37 @@ describe("ordem dos títulos sem saltos (M7.11)", () => {
     m.bairro.mockResolvedValue({ olho: "", titulo: "", subtitulo: "", lugares: [] });
     m.imovel.mockResolvedValue({ ...imovel, camas: [], comodidades: [] });
     expect(saltos(niveis(renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }) as never))))).toEqual([]);
+  });
+
+  it("frase de abertura da casa (M7.17): h2 em serifa logo acima da descrição, sem salto; sem frase, nada no lugar", async () => {
+    const frase = "Dias leves fictícios entre a praia e os restaurantes.";
+    m.imovel.mockResolvedValue({ ...imovel, frase });
+    const comDatas = renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }, pedido) as never));
+    // Um h2 a mais que a página sem frase (o teste acima), no mesmo nível das partes da ficha.
+    expect(niveis(comDatas)).toEqual([1, 2, 2, 2, 2, 2, 2, 2, 2, 3]);
+    expect(saltos(niveis(comDatas))).toEqual([]);
+    const h = [...dom(comDatas).querySelectorAll("h2")].find((e) => e.textContent === frase);
+    expect(h?.className).toBe(styles.fraseDaCasa);
+    // Acima da descrição, logo depois da disponibilidade das datas do link.
+    expect(h?.nextElementSibling?.textContent).toBe(imovel.descricao);
+    expect(h?.nextElementSibling?.className).toBe(styles.texto);
+    // Sem datas no link, é a primeira coisa da coluna do texto.
+    const semDatas = dom(renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }) as never)));
+    expect(semDatas.querySelector(`.${styles.editorial}`)?.firstElementChild?.textContent).toBe(frase);
+    // Frase sem descrição: a frase aparece sozinha, sem parágrafo vazio.
+    m.imovel.mockResolvedValue({ ...imovel, frase, descricao: "" });
+    const soFrase = dom(renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }) as never)));
+    expect(soFrase.querySelector(`.${styles.fraseDaCasa}`)?.textContent).toBe(frase);
+    expect(soFrase.querySelector(`.${styles.editorial} > .${styles.texto}`)).toBeNull();
+    // Sem frase (o padrão de todo imóvel): nenhum título no lugar e a descrição abre a coluna, como antes.
+    m.imovel.mockResolvedValue(imovel);
+    const semFrase = dom(renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }) as never)));
+    expect(semFrase.querySelector(`.${styles.fraseDaCasa}`)).toBeNull();
+    expect(semFrase.querySelector(`.${styles.editorial}`)?.firstElementChild?.textContent).toBe(imovel.descricao);
+    // A serifa vem do h2 do site (globals.css): a regra da frase não troca a fonte, só o tamanho e o espaço.
+    const css = ler("components/site/site.module.css");
+    expect(valor(regra(css, ".editorial .fraseDaCasa"), "font-family")).toBeUndefined();
+    expect(valor(regra(GLOBAL, "h1, h2, h3"), "font-family")).toBe("var(--font-serif)");
   });
 
   it("Nossas casas: o título de cada casa é h2, logo abaixo do h1 (na vitrine da capa, h3 abaixo do h2 da faixa), com o mesmo visual", async () => {

@@ -498,6 +498,13 @@
       "when": 1792043913845,
       "tag": "0070_m7_14_autorizacao_proprietarios",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792074778842,
+      "tag": "0071_m7_17_frase_do_imovel",
+      "breakpoints": true
     }
   ]
 }

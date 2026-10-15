@@ -63,6 +63,20 @@ describe("Beds24 → banco (M3.3)", () => {
     expect(JSON.stringify(await ultimasSincronizacoes(db, org))).not.toMatch(/Pessoa Fictícia|fake@example/);
   });
 
+  it("a frase de abertura do imóvel (M7.17) é só do SCL: importar não preenche, não troca e não apaga", async () => {
+    const ficha = async () => (await db.select({ frase: imoveis.frase, descricao: imoveis.descricao, nome: imoveis.nome }).from(imoveis).where(eq(imoveis.id, im)))[0];
+    // Sem frase, a importação não traz nenhuma (nem o nome do quarto do Beds24).
+    expect(await rodar()).toMatchObject({ ok: true, criadas: 1 });
+    expect(await ficha()).toEqual({ frase: "", descricao: "", nome: "Imóvel fictício" });
+    // Com frase escrita no painel, outra importação (com reserva mudada) não mexe nela nem no histórico do imóvel.
+    await db.update(imoveis).set({ frase: "Frase fictícia de abertura.", descricao: "Descrição fictícia." }).where(eq(imoveis.id, im));
+    leitor.bookings = [booking({ price: 1700 })];
+    leitor.properties = [{ id: 10, currency: "BRL", roomTypes: [{ id: 20, name: "Outro nome fictício no Beds24" }] }];
+    expect(await rodar()).toMatchObject({ ok: true, atualizadas: 1 });
+    expect(await ficha()).toEqual({ frase: "Frase fictícia de abertura.", descricao: "Descrição fictícia.", nome: "Imóvel fictício" });
+    expect(await historicoDe(db, org, "imovel", im)).toEqual([]);
+  });
+
   it("reaproveita a reserva CSV e preserva código, anotações, contato manual e histórico", async () => {
     const c = await csv();
     if (!c.ok) throw new Error("fixture");

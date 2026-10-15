@@ -13,6 +13,8 @@ const ROTULOS: Record<string, string> = {
   quartos: "Quartos",
   banheiros: "Banheiros",
   descricao: "Descrição",
+  // M7.17: o mesmo nome do campo na ficha do imóvel.
+  frase: "Frase de abertura (site)",
   tipo: "Tipo",
   documento: "CPF/CNPJ",
   email: "E-mail",

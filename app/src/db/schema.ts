@@ -128,6 +128,11 @@ export const imoveis = pgTable(
     quartos: integer("quartos"),
     banheiros: integer("banheiros"),
     descricao: text("descricao").notNull().default(""),
+    /**
+     * M7.17: frase de abertura da casa no site (acima da descrição, no cartão da vitrine e na prévia do link). Só do SCL:
+     * escrita na ficha do imóvel, nenhuma importação a preenche. Vazia = nada aparece (o cartão usa a descrição).
+     */
+    frase: text("frase").notNull().default(""),
     criadoEm: criadoEm(),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   },

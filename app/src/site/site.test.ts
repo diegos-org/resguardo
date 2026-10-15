@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { salvarEmpresa } from "@/configuracoes/empresa";
 import { salvarTextosSite, TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
@@ -90,6 +91,18 @@ describe("site público (M7.1)", () => {
     expect((await imovelDoSite(db, org, "403"))?.fotos).toEqual(s.fotos);
     // O id do imóvel (usado só para buscar as fotos) nunca vai para o objeto público.
     expect(JSON.stringify(s)).not.toContain(studio);
+  });
+
+  it("frase de abertura (M7.17): vazia em todo imóvel até ser escrita; a lista e a página leem a gravada, só das casas do site", async () => {
+    expect((await imoveisDoSite(db, org)).map((i) => i.frase)).toEqual(["", ""]);
+    await db.update(imoveis).set({ frase: "Frase fictícia de abertura." }).where(eq(imoveis.id, studio));
+    await db.update(imoveis).set({ frase: "Frase de uma casa fora do site." }).where(eq(imoveis.codigo, "buzios"));
+    expect((await imoveisDoSite(db, org)).map((i) => [i.codigo, i.frase])).toEqual([["102", ""], ["403", "Frase fictícia de abertura."]]);
+    expect(await imovelDoSite(db, org, "403")).toMatchObject({ frase: "Frase fictícia de abertura.", descricao: "Studio fictício." });
+    expect(await imovelDoSite(db, org, "buzios")).toBeNull();
+    // Só espaços (gravados fora do formulário, que já apara) contam como sem frase.
+    await db.update(imoveis).set({ frase: "   " }).where(eq(imoveis.id, studio));
+    expect((await imovelDoSite(db, org, "403"))?.frase).toBe("");
   });
 
   it("página do imóvel: só se for público e ativo", async () => {

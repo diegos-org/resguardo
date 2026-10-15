@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { fraseDoImovel } from "@/site/frase-do-imovel";
 import type { ImovelPublico } from "@/site/site";
 import { CapaDoImovel } from "./CapaDoImovel";
 import { comodidadesDoCartao, IconeComodidade } from "./IconeComodidade";
@@ -12,13 +13,6 @@ export function resumoImovel(i: ImovelPublico): string {
     i.banheiros ? `${i.banheiros} ${i.banheiros === 1 ? "banheiro" : "banheiros"}` : null,
   ].filter(Boolean);
   return partes.join(" · ");
-}
-
-/** Primeira frase da descrição (até 120 caracteres) para o cartão; sem descrição, bairro e cidade. */
-export function fraseDoImovel(i: Pick<ImovelPublico, "descricao" | "bairro" | "cidade">): string {
-  const frase = i.descricao.trim().split(/(?<=[.!?])\s+/)[0] ?? "";
-  if (frase) return frase.length > 120 ? `${frase.slice(0, 119).trimEnd()}…` : frase;
-  return [i.bairro, i.cidade].filter(Boolean).join(", ");
 }
 
 /** "Olho" do cartão: bairro e código do imóvel, em maiúsculas pelo CSS. */
