@@ -17,7 +17,7 @@ import { publicarComoFunciona, validarSecoes } from "./como-funciona";
 import { publicarPaginaLegal } from "./paginas-legais";
 import { DOCUMENTOS_LEGAIS, type DocumentoLegal, PAGINAS_LEGAIS, validarPaginaLegal } from "./paginas-legais-texto";
 import { type ErrosMercado, salvarMercado, salvarTextosProprietarios, type TextosProprietarios, validarMercado, validarTextosProprietarios } from "./pagina-proprietarios";
-import { salvarTextosSite, type TextosSite, validarTextosSite } from "./textos-site";
+import { salvarTextosSiteDoFormulario, type TextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe } from "./usuarios";
 
 /** `valores`: o que foi digitado, devolvido quando há erro (o React limpa o formulário após enviar). */
@@ -54,11 +54,11 @@ export async function salvarRegrasAcao(_a: EstadoForm, form: FormData): Promise<
 
 export async function salvarTextosAcao(_a: EstadoForm<Partial<TextosSite>>, form: FormData): Promise<EstadoForm<Partial<TextosSite>>> {
   const sessao = await sessaoConfig();
-  const v = validarTextosSite(campos(form));
-  if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
-  const mudou = await salvarTextosSite(getDb(), sessao.organizacaoId, v.textos, sessao.usuarioId);
+  // Campo que não veio no envio fica como estava (a tela aberta antes de ele existir); ver `salvarTextosSiteDoFormulario`.
+  const r = await salvarTextosSiteDoFormulario(getDb(), sessao.organizacaoId, campos(form), sessao.usuarioId);
+  if (!r.ok) return { erros: r.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
   revalidatePath("/painel/configuracoes/site");
-  return { ok: true, aviso: mudou ? "Salvo." : "Nada mudou." };
+  return { ok: true, aviso: r.mudou ? "Salvo." : "Nada mudou." };
 }
 
 /** Página para proprietários do site (M7.7): textos. */

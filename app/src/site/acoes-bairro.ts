@@ -25,7 +25,9 @@ const atualizar = () => revalidatePath("/painel/configuracoes/site");
 
 export async function salvarTextosBairroAcao(form: FormData): Promise<ResultadoBairro> {
   const s = await sessaoEditora();
-  const r = await salvarTextosBairro(getDb(), s.organizacaoId, { titulo: texto(form, "titulo"), subtitulo: texto(form, "subtitulo") }, s.usuarioId);
+  // Campo ausente vai ausente (não como texto vazio): `salvarTextosBairro` mantém o que estava gravado.
+  const enviado = (campo: string) => (typeof form.get(campo) === "string" ? texto(form, campo) : undefined);
+  const r = await salvarTextosBairro(getDb(), s.organizacaoId, { olho: enviado("olho"), titulo: enviado("titulo"), subtitulo: enviado("subtitulo") }, s.usuarioId);
   atualizar();
   return r;
 }

@@ -15,5 +15,5 @@ export async function BairroPainel({ organizacaoId }: { organizacaoId: string })
     foto: fotoId ? enderecoImagemSite(fotoId) : null,
     semImovel: l.bairro !== "" && !bairros.some((b) => mesmoBairro(b, l.bairro)),
   }));
-  return <LugaresBairro titulo={config.titulo} subtitulo={config.subtitulo} lugares={lugares} bairros={bairros} limites={LIMITES_BAIRRO} />;
+  return <LugaresBairro olho={config.olho} titulo={config.titulo} subtitulo={config.subtitulo} lugares={lugares} bairros={bairros} limites={LIMITES_BAIRRO} />;
 }

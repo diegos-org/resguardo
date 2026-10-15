@@ -2,7 +2,7 @@
  * Textos do site público (M1.7), editáveis no painel. O site (M7.1) lê daqui.
  */
 import type { Db } from "@/db/types";
-import { gravarConfig, lerConfig } from "./armazem";
+import { gravarConfig, lerConfig, travarConfig } from "./armazem";
 
 export const CAMPOS_TEXTOS_SITE = [
   { chave: "olho", rotulo: "Olho da capa (linha pequena acima do título, ex.: RIO DE JANEIRO · BRASIL)", limite: 60, linhas: 1 },
@@ -15,10 +15,33 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "porqueOlho", rotulo: "Olho de \"Por que reservar direto\"", limite: 60, linhas: 1 },
   { chave: "porqueTitulo", rotulo: "Título de \"Por que reservar direto\" (a parte entre *asteriscos* sai em itálico)", limite: 120, linhas: 1 },
   { chave: "porque", rotulo: "Por que reservar direto (um benefício por bloco, separados por linha em branco; a primeira linha do bloco é o título). Vazio = a seção não aparece", limite: 2000, linhas: 8 },
-  { chave: "comoReservar", rotulo: "Como reservar", limite: 2000, linhas: 5 },
+  // Títulos e frases que eram fixos no código (M7.16): o texto inicial de cada um é o que o site já mostrava. Os títulos
+  // nunca somem (salvo vazio, vale o texto inicial: a ordem dos títulos da página não muda); o olho e a frase salvos
+  // vazios não aparecem.
+  { chave: "comoReservarOlho", rotulo: "Como reservar: olho (linha pequena acima do título)", limite: 60, linhas: 1 },
+  { chave: "comoReservarTitulo", rotulo: "Como reservar: título da seção (a parte entre *asteriscos* sai em itálico; vazio = \"Como reservar\")", limite: 120, linhas: 1 },
+  {
+    chave: "comoReservar",
+    rotulo: "Como reservar: texto da seção na página inicial (vazio = a seção não aparece). Preenchido, aparece também no Resumo da viagem da página de consulta, no lugar da frase de lá",
+    limite: 2000,
+    linhas: 5,
+  },
+  { chave: "catalogoTitulo", rotulo: "Nossas casas (a página com todas as casas): título (a parte entre *asteriscos* sai em itálico; vazio = \"Nossas casas\")", limite: 120, linhas: 1 },
+  { chave: "catalogoTexto", rotulo: "Nossas casas: frase abaixo do título, quando há casas no site", limite: 240, linhas: 2 },
+  { chave: "planejarOlho", rotulo: "Página de cada casa, cartão da consulta ao lado da descrição: olho (linha pequena acima do título)", limite: 60, linhas: 1 },
+  { chave: "planejarTitulo", rotulo: "Página de cada casa, cartão da consulta: título (a parte entre *asteriscos* sai em itálico; vazio = \"Consultar disponibilidade\")", limite: 120, linhas: 1 },
+  { chave: "planejarTexto", rotulo: "Página de cada casa, cartão da consulta: frase abaixo do título (vazio = não aparece)", limite: 240, linhas: 2 },
   { chave: "consultaOlho", rotulo: "Página de consulta: olho (linha pequena acima do título)", limite: 60, linhas: 1 },
   { chave: "consultaTitulo", rotulo: "Página de consulta: título (a parte entre *asteriscos* sai em itálico)", limite: 120, linhas: 1 },
   { chave: "consultaTexto", rotulo: "Página de consulta: frase abaixo do título", limite: 240, linhas: 2 },
+  { chave: "resumoOlho", rotulo: "Página de consulta, quadro Resumo da viagem: olho (linha pequena acima do título)", limite: 60, linhas: 1 },
+  { chave: "resumoTitulo", rotulo: "Página de consulta, quadro Resumo da viagem: título (a parte entre *asteriscos* sai em itálico; vazio = \"Resumo da viagem\")", limite: 120, linhas: 1 },
+  {
+    chave: "resumoTexto",
+    rotulo: "Página de consulta, quadro Resumo da viagem: frase antes da consulta (com o texto de \"Como reservar\" preenchido, vale o texto dele; vazio = não aparece)",
+    limite: 240,
+    linhas: 2,
+  },
   // Busca em todas as casas (M7.9): a página que lista as casas que recebem o grupo, com a situação de cada uma.
   { chave: "buscaOlho", rotulo: "Busca em todas as casas: olho (linha pequena acima do título)", limite: 60, linhas: 1 },
   { chave: "buscaTitulo", rotulo: "Busca em todas as casas: título (a parte entre *asteriscos* sai em itálico)", limite: 120, linhas: 1 },
@@ -27,7 +50,9 @@ export const CAMPOS_TEXTOS_SITE = [
   { chave: "buscaContato", rotulo: "Busca em todas as casas: frase ao lado do botão de contato, depois das casas (vazio = só o botão)", limite: 200, linhas: 2 },
   { chave: "chamadaOlho", rotulo: "Olho da chamada final (linha pequena acima dela)", limite: 60, linhas: 1 },
   { chave: "chamada", rotulo: "Chamada final (título da faixa verde antes do rodapé)", limite: 120, linhas: 1 },
-  { chave: "contato", rotulo: "Texto de contato", limite: 500, linhas: 3 },
+  { chave: "contatoOlho", rotulo: "Contato: olho (linha pequena acima do título)", limite: 60, linhas: 1 },
+  { chave: "contatoTitulo", rotulo: "Contato: título da seção (a parte entre *asteriscos* sai em itálico; vazio = \"Contato\")", limite: 120, linhas: 1 },
+  { chave: "contato", rotulo: "Contato: texto da seção na página inicial (vazio = a seção não aparece)", limite: 500, linhas: 3 },
   { chave: "rodape", rotulo: "Rodapé", limite: 240, linhas: 2 },
   // Página não encontrada e site sem casas (M7.8): os títulos e as frases da não encontrada vêm do estudo aprovado
   // (prototipos/scl-publico, `errorPage`); o aviso do site sem casas é um texto-base novo, para Diego revisar.
@@ -143,10 +168,23 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
     "Valor claro desde o início\nO total da estadia aparece antes de qualquer reserva, já com o desconto de quem reserva pelo site.",
     "Um bairro para viver\nEntre a praia, os cafés e os restaurantes, descubra seu próprio ritmo no Leblon.",
   ].join("\n\n"),
+  // M7.16: os textos que o site mostrava fixos no código, sem mudar nada até Diego editar (o estudo aprovado sugere
+  // outros, registrados no guia, nunca gravados aqui).
+  comoReservarOlho: "Passo a passo",
+  comoReservarTitulo: "Como reservar",
   comoReservar: "",
+  catalogoTitulo: "Nossas casas",
+  catalogoTexto: "Escolha um apartamento para ver o que ele oferece e consultar as datas.",
+  planejarOlho: "Planeje sua estadia",
+  planejarTitulo: "Consultar disponibilidade",
+  // O cartão não tinha frase: o campo nasce vazio (nada aparece até Diego escrever).
+  planejarTexto: "",
   consultaOlho: "Vamos combinar sua viagem",
   consultaTitulo: "Conte seus planos. *A gente encontra sua casa.*",
   consultaTexto: "Escolha a casa, as datas e quantas pessoas. A disponibilidade e o valor aparecem aqui, antes de qualquer reserva.",
+  resumoOlho: "Sua estadia, sem surpresas",
+  resumoTitulo: "Resumo da viagem",
+  resumoTexto: "Escolha o apartamento, as datas e quantas pessoas.",
   // Busca em todas as casas (M7.9): texto-base do estudo ("Sua busca" / "Encontre seu lugar."), com o aviso da situação real.
   buscaOlho: "Sua busca",
   buscaTitulo: "Encontre seu lugar.",
@@ -156,6 +194,8 @@ export const TEXTOS_SITE_INICIAIS: TextosSite = {
   buscaContato: "Prefere conversar? A equipe ajuda a escolher a casa.",
   chamadaOlho: "Sua próxima viagem começa aqui",
   chamada: "O Rio está logo ali.",
+  contatoOlho: "Fale com a gente",
+  contatoTitulo: "Contato",
   contato: "",
   rodape: "",
   // Página não encontrada (M7.8): os textos do estudo aprovado (prototipos/scl-publico/src/server.mjs).
@@ -221,6 +261,15 @@ export function partesDoTitulo(titulo: string): { texto: string; destaque: boole
   return partes.length ? partes : [{ texto: titulo, destaque: false }];
 }
 
+/** Títulos de seção que eram fixos no código (M7.16): nunca somem da página. */
+export type ChaveTituloFixo = "comoReservarTitulo" | "contatoTitulo" | "catalogoTitulo" | "planejarTitulo" | "resumoTitulo";
+
+/**
+ * Título de seção (M7.16) como a página mostra: o salvo em Configurações → Textos do site; salvo vazio, o texto inicial,
+ * que é o que o site mostrava antes (um título em branco quebraria a ordem dos títulos da página).
+ */
+export const tituloDaSecao = (textos: Pick<TextosSite, ChaveTituloFixo>, chave: ChaveTituloFixo) => textos[chave].trim() || TEXTOS_SITE_INICIAIS[chave];
+
 /** Título sem os asteriscos (para <title>, descrições e textos simples). */
 export const tituloSimples = (titulo: string) => titulo.replace(/\*([^*]+)\*/g, "$1");
 
@@ -257,4 +306,23 @@ export async function lerTextosSite(db: Db, organizacaoId: string): Promise<Text
 
 export async function salvarTextosSite(db: Db, organizacaoId: string, textos: TextosSite, autorId: string | null): Promise<boolean> {
   return db.transaction(async (tx) => Object.keys(await gravarConfig(tx, organizacaoId, "textos_site", { ...textos }, autorId)).length > 0);
+}
+
+/**
+ * Grava o que o formulário de Textos do site mandou. O campo que não veio no envio (a tela aberta antes de ele existir,
+ * como os do M7.16, salva depois da publicação) fica como estava, em vez de ser apagado; o mandado vazio é gravado vazio.
+ * O que estava gravado é lido dentro da trava da gravação, para não desfazer o que outra pessoa salvou no meio.
+ */
+export async function salvarTextosSiteDoFormulario(
+  db: Db,
+  organizacaoId: string,
+  recebidos: Record<string, unknown>,
+  autorId: string | null,
+): Promise<{ ok: true; mudou: boolean } | { ok: false; erros: Partial<Record<ChaveTextoSite, string>> }> {
+  return db.transaction(async (tx) => {
+    await travarConfig(tx, organizacaoId, "textos_site");
+    const v = validarTextosSite({ ...(await lerTextosSite(tx, organizacaoId)), ...recebidos });
+    if (!v.ok) return v;
+    return { ok: true as const, mudou: Object.keys(await gravarConfig(tx, organizacaoId, "textos_site", { ...v.textos }, autorId)).length > 0 };
+  });
 }

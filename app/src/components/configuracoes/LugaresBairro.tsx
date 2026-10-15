@@ -12,7 +12,7 @@ import styles from "../formularios.module.css";
 /** Um lugar como o painel mostra: a foto já é o endereço da prévia; `semImovel` = o bairro não bate com nenhum imóvel do site. */
 export type LugarDoPainel = { id: string; nome: string; distancia: string; frase: string; bairro: string; foto: string | null; semImovel: boolean };
 
-type Props = { titulo: string; subtitulo: string; lugares: readonly LugarDoPainel[]; bairros: readonly string[]; limites: LimitesBairro };
+type Props = { olho: string; titulo: string; subtitulo: string; lugares: readonly LugarDoPainel[]; bairros: readonly string[]; limites: LimitesBairro };
 type Erros = Record<string, string | undefined>;
 /** Recado de uma parte da tela: `onde` é "textos", "lista", "novo" ou o id do lugar. */
 type Aviso = { onde: string; ok: boolean; texto: string; erros?: Erros } | null;
@@ -182,7 +182,7 @@ function ItemLugar({ l, posicao, total, limites, lista, ocupado, enviando, aviso
  * "O bairro à sua porta" (M7.6) em Configurações → Site: textos da seção, lugares (editar, foto, ordem, remover com
  * confirmação) e "Adicionar lugar". A foto é reduzida no navegador e sobe num pedido só dela.
  */
-export function LugaresBairro({ titulo, subtitulo, lugares, bairros, limites }: Props) {
+export function LugaresBairro({ olho, titulo, subtitulo, lugares, bairros, limites }: Props) {
   const router = useRouter();
   const lista = useId();
   const fotoNova = useRef<HTMLInputElement>(null);
@@ -256,7 +256,7 @@ export function LugaresBairro({ titulo, subtitulo, lugares, bairros, limites }: 
         O bairro à sua porta
       </h2>
       <p style={nota}>
-        Lugares perto dos apartamentos (a praia, um café, uma livraria) que aparecem no fim da página de cada imóvel no site, com o título e o subtítulo abaixo.
+        Lugares perto dos apartamentos (a praia, um café, uma livraria) que aparecem no fim da página de cada imóvel no site, com o olho, o título e o subtítulo abaixo.
         Cada lugar tem nome, distância (ex.: 5 min a pé), uma frase curta e, se quiser, uma foto. Com o bairro em branco, o lugar aparece em todos os
         imóveis; com um bairro (ex.: Leblon), só nos imóveis daquele bairro. Sem nenhum lugar, a seção não aparece no site.
       </p>
@@ -270,7 +270,7 @@ export function LugaresBairro({ titulo, subtitulo, lugares, bairros, limites }: 
         ))}
       </datalist>
       <form
-        key={`${titulo}\n${subtitulo}`}
+        key={`${olho}\n${titulo}\n${subtitulo}`}
         onSubmit={(ev) => {
           ev.preventDefault();
           executar("textos", salvarTextosBairroAcao, new FormData(ev.currentTarget), "Textos da seção salvos.");
@@ -278,6 +278,7 @@ export function LugaresBairro({ titulo, subtitulo, lugares, bairros, limites }: 
         className={styles.form}
         aria-label="Textos da seção O bairro à sua porta"
       >
+        <Campo nome="olho" rotulo="Olho (linha pequena acima do título; pode ficar em branco)" limite={limites.olho} valor={olho} erro={avisoDe("textos")?.erros?.olho} />
         <Campo nome="titulo" rotulo="Título da seção" limite={limites.titulo} valor={titulo} erro={avisoDe("textos")?.erros?.titulo} obrigatorio />
         <Campo nome="subtitulo" rotulo="Subtítulo (pode ficar em branco)" limite={limites.subtitulo} valor={subtitulo} erro={avisoDe("textos")?.erros?.subtitulo} linhas={2} />
         <Recado aviso={avisoDe("textos")} />

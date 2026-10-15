@@ -31,7 +31,7 @@ import { type LugarDoPainel, LugaresBairro } from "./LugaresBairro";
 const praia: LugarDoPainel = { id: "l1", nome: "Praia Fictícia", distancia: "5 min a pé", frase: "Mar aberto.", bairro: "Leblon", foto: "/imagens-site/f1", semImovel: false };
 const mirante: LugarDoPainel = { id: "l2", nome: "Mirante Inventado", distancia: "", frase: "", bairro: "Bairro Nenhum", foto: null, semImovel: true };
 const tela = (lugares: LugarDoPainel[] = [praia, mirante]) =>
-  render(<LugaresBairro titulo="Título fictício" subtitulo="Sub fictício" lugares={lugares} bairros={["Leblon", "Ipanema"]} limites={LIMITES_BAIRRO} />);
+  render(<LugaresBairro olho="Olho fictício" titulo="Título fictício" subtitulo="Sub fictício" lugares={lugares} bairros={["Leblon", "Ipanema"]} limites={LIMITES_BAIRRO} />);
 const enviado = (fn: ReturnType<typeof vi.fn>) => Object.fromEntries((fn.mock.calls.at(-1)![0] as FormData).entries());
 const item = (nome: string) => within(screen.getByRole("form", { name: new RegExp(nome) }).closest("li")!);
 /** Espera a ação anterior terminar (os botões ficam desligados enquanto isso) antes de clicar. */
@@ -53,6 +53,11 @@ it("explica a seção (e que as fotos do estudo não podem ser usadas) e mostra 
   expect(screen.getByRole("heading", { level: 2, name: "O bairro à sua porta" })).toBeTruthy();
   expect(screen.getByText(/direitos delas não foram liberados/)).toBeTruthy();
   expect((screen.getByLabelText("Título da seção") as HTMLInputElement).value).toBe("Título fictício");
+  // O olho da seção (M7.16), junto do título e do subtítulo, com o limite próprio.
+  const olho = screen.getByLabelText(/^Olho/) as HTMLInputElement;
+  expect(olho.value).toBe("Olho fictício");
+  expect(olho.maxLength).toBe(LIMITES_BAIRRO.olho);
+  expect(olho.required).toBe(false);
   const p = item("Praia Fictícia");
   expect((p.getByLabelText("Nome") as HTMLInputElement).value).toBe("Praia Fictícia");
   expect((p.getByLabelText("Distância") as HTMLInputElement).value).toBe("5 min a pé");
@@ -69,6 +74,20 @@ it("explica a seção (e que as fotos do estudo não podem ser usadas) e mostra 
   expect(p.queryByText(/Nenhum imóvel do site está no bairro/)).toBeNull();
   expect(screen.getByRole("form", { name: "Adicionar lugar" })).toBeTruthy();
   expect([...document.querySelectorAll("datalist option")].map((o) => o.getAttribute("value"))).toEqual(["Leblon", "Ipanema"]);
+});
+
+it("salvar os textos da seção manda o olho (M7.16), o título e o subtítulo; erro do olho aparece no campo", async () => {
+  tela();
+  const form = within(screen.getByRole("form", { name: "Textos da seção O bairro à sua porta" }));
+  fireEvent.change(form.getByLabelText(/^Olho/), { target: { value: "" } });
+  fireEvent.click(form.getByRole("button", { name: "Salvar textos" }));
+  await waitFor(() => expect(form.getByRole("status").textContent).toBe("Textos da seção salvos."));
+  expect(enviado(m.textos)).toEqual({ olho: "", titulo: "Título fictício", subtitulo: "Sub fictício" });
+  m.textos.mockResolvedValue({ ok: false, erro: "Confira os campos destacados.", erros: { olho: "Máximo de 60 caracteres." } });
+  const salvar = form.getByRole("button", { name: "Salvar textos" });
+  await livre(salvar);
+  fireEvent.click(salvar);
+  await waitFor(() => expect(form.getByText("Máximo de 60 caracteres.")).toBeTruthy());
 });
 
 it("salvar o lugar manda o que está no formulário e mostra o resultado; erro de campo aparece no campo", async () => {

@@ -69,6 +69,12 @@ describe("O bairro à sua porta (M7.6): leitura", () => {
     });
     expect(c.titulo).toBe(TEXTOS_BAIRRO_INICIAIS.titulo);
     expect(c.subtitulo).toBe("");
+    // Olho nunca gravado (antes do M7.16): o de sempre; gravado em branco, continua em branco; longo, cortado.
+    expect(c.olho).toBe("O bairro à sua porta");
+    expect(configDoBairro({ olho: "" }).olho).toBe("");
+    expect(configDoBairro({ olho: "  Perto   de casa " }).olho).toBe("Perto de casa");
+    expect(configDoBairro({ olho: longo }).olho).toBe("x".repeat(LIMITES_BAIRRO.olho));
+    expect(configDoBairro({ olho: 7 }).olho).toBe(TEXTOS_BAIRRO_INICIAIS.olho);
     expect(c.lugares).toEqual([{ id: ID_A, nome: "Praia Fictícia", distancia: "", frase: "x".repeat(LIMITES_BAIRRO.frase), bairro: "", fotoId: null }]);
     expect(configDoBairro({ lugares: "nada" }).lugares).toEqual([]);
     const muitos = Array.from({ length: 15 }, (_, i) => ({ id: `${String(i).padStart(8, "0")}-1111-4111-8111-111111111111`, nome: `Lugar ${i}` }));
@@ -181,22 +187,25 @@ describe("O bairro à sua porta (M7.6): edição no painel", () => {
     expect(await existe(foto)).toBe(true);
   });
 
-  it("textos da seção: título obrigatório, subtítulo pode ficar em branco; salvar não mexe nos lugares", async () => {
+  it("textos da seção: título obrigatório, olho e subtítulo podem ficar em branco; salvar não mexe nos lugares", async () => {
     await adicionar("Praia Fictícia");
-    expect(await salvarTextosBairro(db, org, { titulo: " ", subtitulo: "s".repeat(201) }, null)).toEqual({
+    expect(await salvarTextosBairro(db, org, { olho: "o".repeat(61), titulo: " ", subtitulo: "s".repeat(201) }, null)).toEqual({
       ok: false,
       erro: "Confira os campos destacados.",
-      erros: { titulo: "Escreva o título da seção.", subtitulo: "Máximo de 200 caracteres." },
+      erros: { olho: "Máximo de 60 caracteres.", titulo: "Escreva o título da seção.", subtitulo: "Máximo de 200 caracteres." },
     });
-    expect(await salvarTextosBairro(db, org, { titulo: "Perto de tudo.", subtitulo: "" }, null)).toEqual({ ok: true, mudou: true });
-    expect(await lerBairro(db, org)).toMatchObject({ titulo: "Perto de tudo.", subtitulo: "", lugares: [{ nome: "Praia Fictícia" }] });
+    expect(await lerBairro(db, org)).toMatchObject({ olho: TEXTOS_BAIRRO_INICIAIS.olho });
+    expect(await salvarTextosBairro(db, org, { olho: "", titulo: "Perto de tudo.", subtitulo: "" }, null)).toEqual({ ok: true, mudou: true });
+    expect(await lerBairro(db, org)).toMatchObject({ olho: "", titulo: "Perto de tudo.", subtitulo: "", lugares: [{ nome: "Praia Fictícia" }] });
+    expect(await salvarTextosBairro(db, org, { olho: " Perto de casa ", titulo: "Perto de tudo.", subtitulo: "" }, null)).toEqual({ ok: true, mudou: true });
+    expect((await lerBairro(db, org)).olho).toBe("Perto de casa");
   });
 
   it("o que fica gravado é só o formato limpo", async () => {
     await gravarConfig(db, org, "site_bairro", { lugares: [{ id: "lixo", nome: "Estragado" }], extra: 1 }, null);
     await adicionar("Praia Fictícia");
     const gravado = await lerConfig(db, org, "site_bairro");
-    expect(Object.keys(gravado ?? {}).sort()).toEqual(["lugares", "subtitulo", "titulo"]);
+    expect(Object.keys(gravado ?? {}).sort()).toEqual(["lugares", "olho", "subtitulo", "titulo"]);
     expect((gravado?.lugares as unknown[]).length).toBe(1);
   });
 });
@@ -207,10 +216,11 @@ describe("O bairro à sua porta (M7.6): no site", () => {
     await adicionar("Mirante Inventado", { bairro: "São Conrado" });
     const geral = await adicionar("Café Inventado", { frase: "Uma pausa." });
     await trocarFotoLugar(db, org, geral, { nome: "cafe.jpg", conteudo: jpg() }, null);
-    await salvarTextosBairro(db, org, { titulo: "Perto de tudo.", subtitulo: "Sub fictício." }, null);
+    await salvarTextosBairro(db, org, { olho: "Perto de casa", titulo: "Perto de tudo.", subtitulo: "Sub fictício." }, null);
     const foto = `/imagens-site/${await fotoDe(geral)}`;
 
     expect(await lugaresDoSite(db, org, "Leblon")).toEqual({
+      olho: "Perto de casa",
       titulo: "Perto de tudo.",
       subtitulo: "Sub fictício.",
       lugares: [

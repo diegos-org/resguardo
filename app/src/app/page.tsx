@@ -6,7 +6,7 @@ import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site
 import { SemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { VitrineCasas } from "@/components/site/VitrineCasas";
-import { blocosDoTexto, tituloSimples } from "@/configuracoes/textos-site";
+import { blocosDoTexto, tituloDaSecao, tituloSimples } from "@/configuracoes/textos-site";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { canalDeContato, hojeMaisCedo, imoveisDoSite } from "@/site/site";
 
@@ -111,11 +111,15 @@ export default async function Inicio() {
           </div>
         </section>
       )}
+      {/* Como reservar e Contato (M7.16): o olho e o título também vêm de Configurações → Textos do site (olho vazio não
+          aparece; título vazio volta ao texto inicial). A seção só aparece com o texto dela preenchido. */}
       {textos.comoReservar && (
         <section className={styles.secao} aria-labelledby="titulo-como">
           <div className={styles.dentro}>
-            <p className={styles.olho}>Passo a passo</p>
-            <h2 id="titulo-como">Como reservar</h2>
+            {textos.comoReservarOlho && <p className={styles.olho}>{textos.comoReservarOlho}</p>}
+            <h2 id="titulo-como">
+              <TextoComDestaque texto={tituloDaSecao(textos, "comoReservarTitulo")} />
+            </h2>
             <p className={styles.texto}>{textos.comoReservar}</p>
           </div>
         </section>
@@ -123,8 +127,10 @@ export default async function Inicio() {
       {textos.contato && (
         <section className={styles.secao} aria-labelledby="titulo-contato">
           <div className={styles.dentro}>
-            <p className={styles.olho}>Fale com a gente</p>
-            <h2 id="titulo-contato">Contato</h2>
+            {textos.contatoOlho && <p className={styles.olho}>{textos.contatoOlho}</p>}
+            <h2 id="titulo-contato">
+              <TextoComDestaque texto={tituloDaSecao(textos, "contatoTitulo")} />
+            </h2>
             <p className={styles.texto}>{textos.contato}</p>
           </div>
         </section>

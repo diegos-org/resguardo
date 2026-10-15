@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blocosDoTexto, CAMPOS_TEXTOS_SITE, partesDoTitulo, TEXTOS_SITE_INICIAIS, TEXTOS_SITE_OBRIGATORIOS, tituloSimples, validarTextosSite } from "./textos-site";
+import { blocosDoTexto, CAMPOS_TEXTOS_SITE, partesDoTitulo, TEXTOS_SITE_INICIAIS, TEXTOS_SITE_OBRIGATORIOS, tituloDaSecao, tituloSimples, validarTextosSite } from "./textos-site";
 
 describe("textos do site (M7.5): destaque no título e blocos do texto", () => {
   it("palavra entre asteriscos vira destaque; sem asteriscos, uma parte só", () => {
@@ -235,5 +235,76 @@ describe("textos da busca em todas as casas (M7.9): editáveis, com o texto-base
     // A lista inclui casas sem capacidade cadastrada: o aviso diz "podem receber", nunca que todas recebem o grupo.
     expect(TEXTOS_SITE_INICIAIS.buscaAviso).toContain("podem receber o seu grupo");
     expect(TEXTOS_SITE_INICIAIS.buscaAviso).not.toMatch(/por partes|agenda de agora/);
+  });
+});
+
+describe("títulos e frases que eram fixos no código (M7.16): editáveis, com o texto de antes", () => {
+  // O texto que o site mostrava fixo no código até o M7.16: o inicial é exatamente esse, para nada mudar até Diego editar.
+  const DE_ANTES = {
+    comoReservarOlho: "Passo a passo",
+    comoReservarTitulo: "Como reservar",
+    catalogoTitulo: "Nossas casas",
+    catalogoTexto: "Escolha um apartamento para ver o que ele oferece e consultar as datas.",
+    planejarOlho: "Planeje sua estadia",
+    planejarTitulo: "Consultar disponibilidade",
+    planejarTexto: "",
+    resumoOlho: "Sua estadia, sem surpresas",
+    resumoTitulo: "Resumo da viagem",
+    resumoTexto: "Escolha o apartamento, as datas e quantas pessoas.",
+    contatoOlho: "Fale com a gente",
+    contatoTitulo: "Contato",
+  } as const;
+  const chaves = Object.keys(DE_ANTES) as (keyof typeof DE_ANTES)[];
+  const campo = (k: string) => CAMPOS_TEXTOS_SITE.find((c) => c.chave === k)!;
+
+  it("o texto inicial de cada campo novo é o que o site mostrava; o cartão da casa, que não tinha frase, nasce vazio", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).toBe(DE_ANTES[k]);
+    // Os textos do estudo aprovado são só sugestão (no guia), nunca gravados aqui.
+    const textos = chaves.map((k) => TEXTOS_SITE_INICIAIS[k]).join(" | ");
+    for (const doEstudo of ["Encontre sua casa", "Escolha o espaço que combina", "Quais são seus planos?", "Consulte as datas para receber", "Escolha sua casa e suas datas."]) expect(textos).not.toContain(doEstudo);
+  });
+
+  it("os campos aparecem na tela com os limites dos campos parecidos: olho 60, título 120 e frase 240; nenhum é obrigatório", () => {
+    for (const k of chaves) {
+      const c = campo(k);
+      expect(c, k).toBeTruthy();
+      const limite = k.endsWith("Olho") ? 60 : k.endsWith("Titulo") ? 120 : 240;
+      expect(c.limite, k).toBe(limite);
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeLessThanOrEqual(limite);
+      expect(TEXTOS_SITE_OBRIGATORIOS.includes(k), k).toBe(false);
+      // Os títulos aceitam a parte entre asteriscos em itálico, como os outros títulos; o rótulo diz o que vale vazio.
+      if (k.endsWith("Titulo")) expect(c.rotulo, k).toContain(`a parte entre *asteriscos* sai em itálico; vazio = "${DE_ANTES[k]}"`);
+    }
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, ...Object.fromEntries(chaves.map((k) => [k, ""])) })).toMatchObject({ ok: true });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "x".repeat(121), resumoOlho: "x".repeat(61), planejarTexto: "x".repeat(241) })).toEqual({
+      ok: false,
+      erros: { catalogoTitulo: "Máximo de 120 caracteres.", resumoOlho: "Máximo de 60 caracteres.", planejarTexto: "Máximo de 240 caracteres." },
+    });
+  });
+
+  it("na tela, cada campo novo fica junto da sua página: Como reservar e Contato com o texto da seção, o Resumo da viagem com a consulta", () => {
+    const ordem: string[] = CAMPOS_TEXTOS_SITE.map((c) => c.chave);
+    const junto = (antes: string[], depois: string) => expect(ordem.slice(ordem.indexOf(depois) - antes.length, ordem.indexOf(depois))).toEqual(antes);
+    junto(["comoReservarOlho", "comoReservarTitulo"], "comoReservar");
+    junto(["contatoOlho", "contatoTitulo"], "contato");
+    junto(["consultaTexto", "resumoOlho", "resumoTitulo"], "resumoTexto");
+    junto(["catalogoTitulo", "catalogoTexto", "planejarOlho", "planejarTitulo", "planejarTexto"], "consultaOlho");
+    // "Como reservar" aparece também no Resumo da viagem da consulta (desde o M7.1): o rótulo diz isso.
+    expect(campo("comoReservar").rotulo).toContain("Resumo da viagem");
+    expect(campo("resumoTexto").rotulo).toContain("Como reservar");
+  });
+
+  it("título salvo vazio volta ao texto inicial (a página nunca fica sem o título); salvo com texto, vale o salvo", () => {
+    const vazios = { ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "", planejarTitulo: " ", resumoTitulo: "", comoReservarTitulo: "", contatoTitulo: "" };
+    expect(tituloDaSecao(vazios, "catalogoTitulo")).toBe("Nossas casas");
+    expect(tituloDaSecao(vazios, "planejarTitulo")).toBe("Consultar disponibilidade");
+    expect(tituloDaSecao(vazios, "resumoTitulo")).toBe("Resumo da viagem");
+    expect(tituloDaSecao(vazios, "comoReservarTitulo")).toBe("Como reservar");
+    expect(tituloDaSecao(vazios, "contatoTitulo")).toBe("Contato");
+    expect(tituloDaSecao({ ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "Encontre sua casa *no Leblon.*" }, "catalogoTitulo")).toBe("Encontre sua casa *no Leblon.*");
+  });
+
+  it("o texto inicial não cita o Beds24", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/beds24/i);
   });
 });

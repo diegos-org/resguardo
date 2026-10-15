@@ -90,6 +90,18 @@ describe("prévia dos links do site (M7.13)", () => {
     expect((await metadadosCatalogo()).description).toBe(TEXTOS_SITE_INICIAIS.subtitulo);
   });
 
+  it("Nossas casas (M7.16): a frase e o título da própria página, agora editáveis, não mudam a prévia nem o título da aba", async () => {
+    // A frase de Nossas casas editada no painel aparece na página; a prévia continua com a da vitrine, como no M7.13.
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTexto: "Frase fictícia de Nossas casas.", vitrineTexto: "Vitrine fictícia." } }));
+    expect((await metadadosCatalogo()).description).toBe("Vitrine fictícia.");
+    // Frase da página vazia: nada muda na prévia (a vitrine continua).
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTexto: "" } }));
+    expect((await metadadosCatalogo()).description).toBe(TEXTOS_SITE_INICIAIS.vitrineTexto);
+    // O título da aba é o nome da página no menu, mesmo com outro título na página.
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "Encontre sua casa *no Leblon.*" } }));
+    expect((await metadadosCatalogo()).title).toBe("Nossas casas — Casa Exemplo");
+  });
+
   it("site sem nenhuma casa publicada (M7.8): Nossas casas, a consulta e a busca descrevem o aviso do site sem casas, o que a página mostra", async () => {
     m.imoveis.mockResolvedValue([]);
     expect((await metadadosCatalogo()).description).toBe(TEXTOS_SITE_INICIAIS.semCasasTexto);
