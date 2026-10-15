@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TEXTOS_PROPRIETARIOS_INICIAIS } from "@/configuracoes/pagina-proprietarios";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import { ICONES_PADRAO } from "@/site/icone";
 import type { ConteudoSite, ImovelPublico } from "@/site/site";
 import { generateMetadata as metadadosAnunciar } from "../anunciar/page";
 import { generateMetadata as metadadosConsulta } from "../consulta/page";
+import { generateMetadata as metadadosEntrarMinhaReserva } from "../hospede/entrar/page";
+import { generateMetadata as metadadosMinhaReserva } from "../hospede/page";
 import { generateMetadata as metadadosCasa } from "../imoveis/[codigo]/page";
 import { generateMetadata as metadadosCatalogo } from "../imoveis/page";
 import { generateMetadata as metadadosInicio } from "../page";
@@ -23,6 +26,7 @@ vi.mock("@/configuracoes/pagina-proprietarios", async (orig) => ({ ...(await ori
 vi.mock("@/email/correio", () => ({ correioDoAmbiente: () => null }));
 vi.mock("@/marketplace/acoes", () => ({ entrarCadastroAcao: vi.fn(), pedirCodigoCadastroAcao: vi.fn() }));
 vi.mock("@/components/site/FormContatoProprietario", () => ({ FormContatoProprietario: () => null }));
+vi.mock("@/hospede/acoes", () => ({ entrarHospede: vi.fn(), pedirCodigoHospedeAcao: vi.fn(), pedirCancelamentoAcao: vi.fn(), sairHospede: vi.fn() }));
 
 const conteudo = (resto: Partial<ConteudoSite> = {}): ConteudoSite => ({
   organizacaoId: "org",
@@ -75,6 +79,31 @@ describe("prévia dos links do site (M7.13)", () => {
     expect(meta).toMatchObject({ title: "Casa Exemplo", description: TEXTOS_SITE_INICIAIS.subtitulo, openGraph: { siteName: "Casa Exemplo", images: [{ url: "/imagens-site/c1-pequena" }] } });
     expect(String(meta.metadataBase)).toBe("https://casa-exemplo.vercel.app/");
     expect(meta.alternates).toBeUndefined();
+  });
+
+  it("ícone da aba (M7.18): a marca enviada que serve de ícone nas páginas do site; sem ela, a do estudo", async () => {
+    const icone = { url: "/imagens-site/m1", lado: 256, atalho: true };
+    m.conteudo.mockResolvedValue(conteudo({ imagens: { capa: "/imagens-site/c1", marca: "/imagens-site/m1", previa: "/imagens-site/c1-pequena", icone } }));
+    const daMarca = { icon: [{ url: "/imagens-site/m1", type: "image/png", sizes: "256x256" }], apple: [{ url: "/imagens-site/m1", type: "image/png", sizes: "256x256" }] };
+    for (const meta of [await metadadosInicio(), await metadadosCasa(casa()), await metadadosConsulta(semParametros), await metadadosCatalogo(), await metadadosAnunciar()]) expect(meta.icons).toEqual(daMarca);
+    m.conteudo.mockResolvedValue(conteudo());
+    for (const meta of [await metadadosInicio(), await metadadosCasa(casa())]) expect(meta.icons).toBe(ICONES_PADRAO);
+  });
+
+  it("ícone da aba (M7.18): com transparência, a marca enviada na aba e a do estudo no atalho do celular", async () => {
+    const icone = { url: "/imagens-site/m1", lado: 256, atalho: false };
+    m.conteudo.mockResolvedValue(conteudo({ imagens: { capa: "/imagens-site/c1", marca: "/imagens-site/m1", previa: "/imagens-site/c1-pequena", icone } }));
+    for (const meta of [await metadadosInicio(), await metadadosCasa(casa())])
+      expect(meta.icons).toEqual({ icon: [{ url: "/imagens-site/m1", type: "image/png", sizes: "256x256" }], apple: ICONES_PADRAO.apple });
+  });
+
+  it("Minha reserva (portal do hóspede, M7.18): o ícone fixo da marca do estudo, como os outros portais, mesmo com a marca enviada", async () => {
+    m.conteudo.mockResolvedValue(conteudo({ imagens: { capa: "/imagens-site/c1", marca: "/imagens-site/m1", previa: "/imagens-site/c1-pequena", icone: { url: "/imagens-site/m1", lado: 256, atalho: true } } }));
+    for (const meta of [await metadadosMinhaReserva(), await metadadosEntrarMinhaReserva()]) {
+      expect(meta.icons).toBe(ICONES_PADRAO);
+      // O resto continua o do site: o título e a frase.
+      expect(meta).toMatchObject({ title: "Minha reserva — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.subtitulo });
+    }
   });
 
   it("início sem foto de capa: a prévia sai sem imagem", async () => {

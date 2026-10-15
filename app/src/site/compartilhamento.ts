@@ -14,6 +14,7 @@
  * (um endereço relativo ali não diria nada a quem lê a prévia).
  */
 import type { Metadata } from "next";
+import { iconesDoSite } from "./icone";
 import { type ConteudoSite, tituloDoSite } from "./site";
 
 /** O que o campo "Site" tem: a base, ou por que ele não serve (o formato, ou o caminho de uma página depois do endereço). */
@@ -104,8 +105,9 @@ type ConteudoDaPrevia = Pick<ConteudoSite, "nomeEmpresa" | "textos" | "imagens" 
 
 /**
  * Metadados de uma página do site: título "Página — Nome da empresa", a frase da página, a prévia dos links (Open Graph,
- * lido também pelo WhatsApp, e a do X) e, com a base do campo "Site" confirmada pelo endereço em que a página foi pedida
- * (`host`), o endereço principal (canonical e og:url).
+ * lido também pelo WhatsApp, e a do X), o ícone da aba (M7.18: a marca enviada que serve de ícone, ou a do estudo; regra
+ * em ./icone) e, com a base do campo "Site" confirmada pelo endereço em que a página foi pedida (`host`), o endereço
+ * principal (canonical e og:url). Site em configuração: só o título e a descrição (o ícone é o do layout raiz).
  */
 export function metadadosDaPagina(conteudo: ConteudoDaPrevia | null, pagina?: string, previa: PreviaDaPagina = {}, host: string | null = null): Metadata {
   const title = tituloDoSite(conteudo, pagina) || "Site em configuração";
@@ -119,6 +121,7 @@ export function metadadosDaPagina(conteudo: ConteudoDaPrevia | null, pagina?: st
   return {
     title,
     description,
+    icons: iconesDoSite(conteudo.imagens.icone),
     ...(base && { metadataBase: base }),
     ...(caminho && { alternates: { canonical: caminho } }),
     openGraph: {
