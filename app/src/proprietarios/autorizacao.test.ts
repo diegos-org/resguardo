@@ -6,6 +6,7 @@ import {
   FORMULARIOS_PROPRIETARIO,
   LIMITE_TEXTO_AUTORIZACAO,
   lerRegistroAutorizacao,
+  limparTextoAutorizacao,
   marcaDoFormulario,
   montarAutorizacao,
   SEM_REGISTRO_AUTORIZACAO,
@@ -46,6 +47,13 @@ describe("texto da autorização dos proprietários (M7.14; editável no M7.15)"
     });
   });
 
+  it("o nome da empresa entra como está, mesmo com $& $' $` $$ (não vira pedaço do modelo)", () => {
+    expect(montarAutorizacao(2, "Autorizo a {empresa}.", "Casa $& Cia").texto).toBe("Autorizo a Casa $& Cia.");
+    expect(montarAutorizacao(2, "Autorizo a {empresa} a responder.", "Casa $' Cia").texto).toBe("Autorizo a Casa $' Cia a responder.");
+    expect(montarAutorizacao(2, "Autorizo a {empresa} a responder.", "Casa $` e $$ Cia").texto).toBe("Autorizo a Casa $` e $$ Cia a responder.");
+    expect(autorizacaoDeOrigem("contato", "  Casa $1 Cia  ").texto).toContain("para a Casa $1 Cia me responder");
+  });
+
   it("a marca é curta, igual para o mesmo texto e muda com o texto, o nome da empresa ou a versão", () => {
     const a = autorizacaoDeOrigem("contato", "Sua Casa Exemplo");
     expect(a.marca).toMatch(/^v1\.[0-9a-z]{1,7}$/);
@@ -64,10 +72,22 @@ describe("texto da autorização dos proprietários (M7.14; editável no M7.15)"
     for (const vazio of ["", "   ", "\n\n", null, undefined, 42]) expect(validarTextoAutorizacao(vazio)).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.vazio });
     expect(validarTextoAutorizacao("x".repeat(LIMITE_TEXTO_AUTORIZACAO))).toMatchObject({ ok: true });
     expect(validarTextoAutorizacao("x".repeat(LIMITE_TEXTO_AUTORIZACAO + 1))).toEqual({ ok: false, erro: `Máximo de ${LIMITE_TEXTO_AUTORIZACAO} caracteres (o texto tem ${LIMITE_TEXTO_AUTORIZACAO + 1}).` });
+    // O limite vale no texto limpo (espaços seguidos contam como um), o mesmo que o contador do painel mede.
+    const comEspacos = `  ${"x ".repeat(250)}   `.replace(/ /g, "   ");
+    expect(limparTextoAutorizacao(comEspacos)).toHaveLength(499);
+    expect(validarTextoAutorizacao(comEspacos)).toMatchObject({ ok: true });
+    expect(limparTextoAutorizacao(null)).toBe("");
     expect(validarTextoAutorizacao("Autorizo o uso.\r\nOutra linha.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.linhas });
     for (const invisivel of ["Autorizo\u200b o uso.", "Autorizo \u202eosu o.", "Autorizo\u0007 o uso.", "Autorizo o\ufeff uso."]) {
       expect(validarTextoAutorizacao(invisivel)).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.invisivel });
     }
+    // Fora do plano básico (dois "pedaços" no JavaScript): os caracteres TAG, que escondem texto, e a formatação musical.
+    const fora = [String.fromCodePoint(0xe0041, 0xe0042), String.fromCodePoint(0xe0001), String.fromCodePoint(0xe007f), String.fromCodePoint(0x1d173), String.fromCodePoint(0x1d17a)];
+    // E os de dentro que a lista antiga já pegava ou deixava passar: U+2065, preenchimentos de Hangul, separador de parágrafo, hífen suave.
+    const dentro = [0x2065, 0x115f, 0x1160, 0x3164, 0xffa0, 0x2029, 0x00ad, 0x180e, 0x2066].map((c) => String.fromCharCode(c));
+    for (const c of [...fora, ...dentro]) expect(validarTextoAutorizacao(`Autorizo${c} o uso.`)).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.invisivel });
+    // Emoji e letras de fora do plano básico continuam sendo texto comum.
+    expect(validarTextoAutorizacao(`Autorizo o uso ${String.fromCodePoint(0x1f44d)} ${String.fromCodePoint(0x1d400)}.`)).toMatchObject({ ok: true });
     expect(validarTextoAutorizacao("Autorizo o <b>uso</b>.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.marcacao });
     expect(validarTextoAutorizacao("Autorizo a {nome} a responder.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.chaves });
     expect(validarTextoAutorizacao("Autorizo a {empresa a responder.")).toEqual({ ok: false, erro: ERROS_TEXTO_AUTORIZACAO.chaves });

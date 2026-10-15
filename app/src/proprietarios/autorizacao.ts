@@ -67,8 +67,15 @@ function impressao(texto: string): string {
   return h.toString(36);
 }
 
-/** `{empresa}` vira o nome da empresa; sem nome cadastrado, a frase continua legível ("para a empresa me responder"). */
-export const preencherEmpresaNaAutorizacao = (modelo: string, empresa: string): string => modelo.replaceAll(MARCADOR_EMPRESA, empresa.trim() || "empresa");
+/**
+ * `{empresa}` vira o nome da empresa; sem nome cadastrado, a frase continua legível ("para a empresa me responder"). O
+ * nome entra por uma função, e não como texto de substituição: assim `$&`, `$'` e afins no nome ficam como estão (no
+ * texto de substituição, o JavaScript os trocaria por pedaços do modelo, e o texto gravado não seria o nome cadastrado).
+ */
+export function preencherEmpresaNaAutorizacao(modelo: string, empresa: string): string {
+  const nome = empresa.trim() || "empresa";
+  return modelo.replaceAll(MARCADOR_EMPRESA, () => nome);
+}
 
 /** O texto de uma versão como aparece ao lado da caixa, com o nome da empresa, e a marca dele. */
 export function montarAutorizacao(versao: number, modelo: string, empresa: string): TextoAutorizacao {
@@ -80,8 +87,14 @@ export function montarAutorizacao(versao: number, modelo: string, empresa: strin
 export const autorizacaoDeOrigem = (formulario: FormularioProprietario, empresa: string): TextoAutorizacao =>
   montarAutorizacao(VERSAO_ORIGEM_AUTORIZACAO, TEXTOS_ORIGEM_AUTORIZACAO[formulario], empresa);
 
-/** Caracteres de controle e invisíveis (inclusive os que invertem a direção do texto): o que se vê seria outro texto. */
-const INVISIVEIS = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
+/**
+ * Caracteres de controle e invisíveis (inclusive os que invertem a direção do texto): o que se vê seria outro texto.
+ * Por classe Unicode, com a flag `u`, para valer também fora do plano básico: controles (Cc), formatação (Cf: hífen
+ * suave, direção do texto, espaços de largura zero, BOM, os caracteres TAG U+E0000–E007F e os de formatação musical
+ * U+1D173–1D17A), separadores de linha e de parágrafo (Zl, Zp) e os preenchimentos que não aparecem (U+2065, ainda sem
+ * uso no Unicode e já recusado antes; os de Hangul U+115F, U+1160, U+3164 e U+FFA0).
+ */
+const INVISIVEIS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u2065\u115f\u1160\u3164\uffa0]/u;
 
 export const ERROS_TEXTO_AUTORIZACAO = {
   vazio: "Escreva o texto da caixa: ela é obrigatória (é a autorização que a LGPD pede) e não pode ficar vazia.",
@@ -92,12 +105,20 @@ export const ERROS_TEXTO_AUTORIZACAO = {
 } as const;
 
 /**
- * Confere o texto de uma caixa antes de publicar (no painel, enquanto se digita, e de novo no servidor). As pontas sem
- * espaço e espaços seguidos viram um só (é como a página mostra); vazio, quebra de linha, caractere invisível, `<`/`>`,
- * chave fora do `{empresa}` e mais de `LIMITE_TEXTO_AUTORIZACAO` caracteres são recusados com o motivo.
+ * O texto como seria publicado: sem espaço nas pontas e com espaços seguidos virando um só (é como a página mostra). É
+ * nele que vale o limite de `LIMITE_TEXTO_AUTORIZACAO` caracteres, e é ele que o contador do painel mede.
+ */
+export const limparTextoAutorizacao = (bruto: unknown): string =>
+  (typeof bruto === "string" ? bruto : "").replace(/\r\n?/g, "\n").trim().replace(/[ \t]+/g, " ");
+
+/**
+ * Confere o texto de uma caixa antes de publicar (no painel, enquanto se digita, e de novo no servidor), já limpo
+ * (`limparTextoAutorizacao`): vazio, quebra de linha, caractere invisível, `<`/`>`, chave fora do `{empresa}` e mais de
+ * `LIMITE_TEXTO_AUTORIZACAO` caracteres são recusados com o motivo. O campo do painel não corta o texto colado: o que
+ * passa do limite aparece aqui, como aviso, em vez de sumir sem ninguém ver.
  */
 export function validarTextoAutorizacao(bruto: unknown): { ok: true; texto: string } | { ok: false; erro: string } {
-  const t = (typeof bruto === "string" ? bruto : "").replace(/\r\n?/g, "\n").trim().replace(/[ \t]+/g, " ");
+  const t = limparTextoAutorizacao(bruto);
   if (!t) return { ok: false, erro: ERROS_TEXTO_AUTORIZACAO.vazio };
   if (t.length > LIMITE_TEXTO_AUTORIZACAO) return { ok: false, erro: `Máximo de ${LIMITE_TEXTO_AUTORIZACAO} caracteres (o texto tem ${t.length}).` };
   if (t.includes("\n")) return { ok: false, erro: ERROS_TEXTO_AUTORIZACAO.linhas };

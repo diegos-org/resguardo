@@ -64,7 +64,15 @@ marketplace) agora se muda pelo painel.
   (cada pedido guarda o nome daquele momento).
 - **O que não dá para publicar:** texto vazio (a caixa é obrigatória pela lei de proteção de dados), mais de 500
   letras, quebra de linha (ao lado da caixa o texto aparece corrido), os sinais < e >, chaves fora do {empresa} e
-  caracteres invisíveis que às vezes vêm ao colar de outro programa. O painel avisa enquanto você digita.
+  caracteres invisíveis que às vezes vêm ao colar de outro programa. O painel avisa enquanto você digita. Se você colar
+  um texto maior que 500 letras, nada é cortado: o painel diz quantas letras o texto tem, e você encurta antes de
+  publicar.
+- **Nada fica guardado antes de publicar:** se você mudou o texto e tenta sair da tela (outra aba das Configurações,
+  o Voltar do navegador, fechar ou recarregar), o sistema pergunta antes, como nas páginas legais.
+- **Se alguém publicar enquanto você edita** (outra pessoa, ou você em outra janela), nada é publicado por cima sem
+  você saber. Se a tela já mostra a versão nova (por exemplo, depois de você publicar a outra caixa), o seu texto fica
+  no campo, com um aviso, e você escolhe entre usar o texto que acabou de ser publicado ou continuar com o seu (que
+  vira a versão seguinte). Se o aviso pedir para recarregar a página, copie antes o seu texto, se quiser aproveitá-lo.
 - **Quem pode:** só quem tem o perfil de administrador, o mesmo que mexe nas outras configurações; a equipe de
   operação, os proprietários e as limpezas não veem a aba.
 - **O que você precisa fazer:** nada obrigatório. Quando o advogado responder sobre os formulários dos proprietários

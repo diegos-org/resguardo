@@ -363,7 +363,13 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Alteração de reserv
   diferentes, e os envios já gravados como versão 1 têm o texto dela. O nome da empresa continua entrando pelo marcador
   `{empresa}`, trocado no servidor a cada página e a cada envio (não é congelado na versão; o texto gravado leva o nome
   daquele momento). Publicar recusa texto vazio (a caixa é obrigatória), mais de 500 caracteres, quebra de linha,
-  caractere invisível ou de controle, `<`/`>` e chave fora do `{empresa}` (texto puro). Formulário e servidor leem a
+  caractere invisível ou de controle (também os de fora do plano básico do Unicode, como os caracteres TAG), `<`/`>` e
+  chave fora do `{empresa}` (texto puro). O campo do painel não corta o texto colado: o que passa de 500 caracteres
+  (contados depois de juntar os espaços seguidos, como o contador mostra) vira aviso, com o tamanho. A tela segue a D6:
+  sem rascunho guardado, prévia ao vivo e aviso de "sair sem publicar" (a proteção destas páginas, agora num lugar só,
+  `components/configuracoes/useSairSemPublicar.ts`, usada pelos dois formulários). Se outra versão entra em vigor
+  enquanto há texto mudado no campo, o texto fica, com aviso, e só publica depois de Diego escolher entre usar o texto da
+  versão nova ou continuar com o dele; a base enviada é sempre a versão de que o texto do campo partiu. Formulário e servidor leem a
   versão em vigor de um lugar só (`app/src/configuracoes/autorizacao-proprietarios.ts`), com a mesma conferência da
   marca do M7.14; os registros gravados não mudam. Motivo: "Tudo editável pelo painel" (Diego, 24/09), e é dos textos
   que mudam depois da conversa com o advogado. Objetivo: Diego ajustar o texto sem código, com a prova do consentimento
