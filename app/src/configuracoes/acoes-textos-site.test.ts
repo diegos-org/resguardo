@@ -10,7 +10,26 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CAMPOS_TEXTOS_SITE, lerTextosSite, TEXTOS_SITE_INICIAIS } from "./textos-site";
 
-const m = vi.hoisted(() => ({ db: null as unknown as Db, sessao: null as unknown as Sessao, revalidar: vi.fn() }));
+const m = vi.hoisted(() => ({
+  db: null as unknown as Db,
+  sessao: null as unknown as Sessao,
+  revalidar: vi.fn(),
+  /** Roda logo depois da próxima leitura de uma configuração (uma vez só): abre a janela entre ler e gravar. */
+  depoisDeLer: null as null | (() => Promise<void>),
+}));
+vi.mock("./armazem", async (original) => {
+  const real = await original<typeof import("./armazem")>();
+  return {
+    ...real,
+    lerConfig: async (...args: Parameters<typeof real.lerConfig>) => {
+      const valor = await real.lerConfig(...args);
+      const depois = m.depoisDeLer;
+      m.depoisDeLer = null;
+      if (depois) await depois();
+      return valor;
+    },
+  };
+});
 vi.mock("@/db/client", () => ({ getDb: () => m.db }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: async () => m.sessao }));
 vi.mock("next/cache", () => ({ revalidatePath: m.revalidar, refresh: vi.fn() }));
@@ -55,6 +74,19 @@ describe("salvar os textos do site pela ação do painel", () => {
     await salvarTextosAcao({}, telaAntiga({ chamada: "Chamada fictícia." }));
     const lidos = await lerTextosSite(m.db, org);
     expect(lidos).toMatchObject({ comoReservarOlho: "Olho fictício", catalogoTexto: "Frase fictícia de Nossas casas.", chamada: "Chamada fictícia." });
+  });
+
+  it("tela antiga salva ao mesmo tempo que outra pessoa muda um campo novo: a mudança da outra pessoa não é desfeita", async () => {
+    // A outra pessoa salva logo depois de a tela antiga ler o que estava gravado. Lida dentro da trava da gravação, a
+    // tela antiga só termina antes ou depois da outra, nunca no meio (a espera de 300 ms evita travar o teste).
+    let outra: Promise<unknown> | null = null;
+    m.depoisDeLer = async () => {
+      outra = salvarTextosAcao({}, formulario({ ...TEXTOS_SITE_INICIAIS, comoReservarOlho: "Olho fictício da outra pessoa" }));
+      await Promise.race([outra, new Promise((r) => setTimeout(r, 300))]);
+    };
+    expect(await salvarTextosAcao({}, telaAntiga({ chamada: "Chamada fictícia." }))).toMatchObject({ ok: true });
+    expect(await outra).toMatchObject({ ok: true });
+    expect((await lerTextosSite(m.db, org)).comoReservarOlho).toBe("Olho fictício da outra pessoa");
   });
 
   it("campo mandado vazio continua sendo gravado vazio (a linha some do site)", async () => {

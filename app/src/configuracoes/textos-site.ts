@@ -2,7 +2,7 @@
  * Textos do site público (M1.7), editáveis no painel. O site (M7.1) lê daqui.
  */
 import type { Db } from "@/db/types";
-import { gravarConfig, lerConfig } from "./armazem";
+import { gravarConfig, lerConfig, travarConfig } from "./armazem";
 
 export const CAMPOS_TEXTOS_SITE = [
   { chave: "olho", rotulo: "Olho da capa (linha pequena acima do título, ex.: RIO DE JANEIRO · BRASIL)", limite: 60, linhas: 1 },
@@ -306,4 +306,23 @@ export async function lerTextosSite(db: Db, organizacaoId: string): Promise<Text
 
 export async function salvarTextosSite(db: Db, organizacaoId: string, textos: TextosSite, autorId: string | null): Promise<boolean> {
   return db.transaction(async (tx) => Object.keys(await gravarConfig(tx, organizacaoId, "textos_site", { ...textos }, autorId)).length > 0);
+}
+
+/**
+ * Grava o que o formulário de Textos do site mandou. O campo que não veio no envio (a tela aberta antes de ele existir,
+ * como os do M7.16, salva depois da publicação) fica como estava, em vez de ser apagado; o mandado vazio é gravado vazio.
+ * O que estava gravado é lido dentro da trava da gravação, para não desfazer o que outra pessoa salvou no meio.
+ */
+export async function salvarTextosSiteDoFormulario(
+  db: Db,
+  organizacaoId: string,
+  recebidos: Record<string, unknown>,
+  autorId: string | null,
+): Promise<{ ok: true; mudou: boolean } | { ok: false; erros: Partial<Record<ChaveTextoSite, string>> }> {
+  return db.transaction(async (tx) => {
+    await travarConfig(tx, organizacaoId, "textos_site");
+    const v = validarTextosSite({ ...(await lerTextosSite(tx, organizacaoId)), ...recebidos });
+    if (!v.ok) return v;
+    return { ok: true as const, mudou: Object.keys(await gravarConfig(tx, organizacaoId, "textos_site", { ...v.textos }, autorId)).length > 0 };
+  });
 }
