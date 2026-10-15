@@ -65,3 +65,17 @@ it("cartão (M8.2b): a chave pública é do formulário do cartão; chave públi
   expect(semChave).toContain("Falta MERCADOPAGO_PUBLIC_KEY: o cartão não é oferecido (o Pix não depende dela)");
   expect(semChave).not.toContain("contas ou ambientes diferentes");
 });
+
+it("M7.12: onde roda pela mesma regra do pagamento (ambienteDoSistema): VERCEL_ENV inesperado ou NODE_ENV=production fora da Vercel contam como produção", () => {
+  expect(textoAmbiente(env({ VERCEL_ENV: "preview" }))).toBe("teste · prévia da Vercel");
+  expect(textoAmbiente(env({ VERCEL_ENV: "development" }))).toBe("teste · computador de desenvolvimento");
+  expect(textoAmbiente(env({ NODE_ENV: "development" }))).toBe("teste · computador de desenvolvimento");
+  // Antes, estes dois diziam "computador de desenvolvimento" enquanto o pagamento já os tratava como produção.
+  expect(textoAmbiente(env({ VERCEL_ENV: "staging" }))).toBe("teste · deploy de produção");
+  expect(textoAmbiente(env({ NODE_ENV: "production" }))).toBe("teste · deploy de produção");
+  // A nota do "Conferir agora" só fora da produção, pela mesma regra.
+  const nota = "aqui use Conferir agora";
+  expect(renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={env({ VERCEL_ENV: "development" })} />)).toContain(nota);
+  expect(renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={env({ VERCEL_ENV: "staging" })} />)).not.toContain(nota);
+  expect(renderToStaticMarkup(<MercadoPagoIntegracao mp={mp()} env={env({ NODE_ENV: "production" })} />)).not.toContain(nota);
+});

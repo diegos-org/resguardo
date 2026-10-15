@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import type { AceiteNaPagina } from "@/site/aceites";
 import type { CotacaoVista } from "@/site/cotacoes";
@@ -94,7 +94,8 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     m.pixPossivel.mockResolvedValue(true);
     h = await html();
     expect(m.pixPossivel).toHaveBeenLastCalledWith({}, "org", { imovel: { id: cotacao.imovelId }, checkin: "2026-10-12", checkout: "2026-10-15", situacao: "disponivel", total: 182400 }, GATE_OK);
-    expect(h).toContain("Ambiente de teste: nenhuma cobrança real.");
+    // No ambiente de teste (o destes testes), a faixa do layout raiz diz "nenhuma cobrança real" (M7.12): sem a nota daqui.
+    expect(h).not.toContain("Ambiente de teste");
     expect(h).toContain("Nada é cobrado ao segurar: o Pix aparece logo depois");
     expect(h).toContain("Nada é cobrado ao segurar as datas: o pagamento é por Pix");
     expect(h).toContain("para pagar por Pix aqui mesmo");
@@ -106,7 +107,7 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pagar" }));
     const h = await html();
     expect(m.vistaPagamento).toHaveBeenCalledWith({}, "org", cotacao.id, expect.any(Date), expect.objectContaining({ comAutorizacao: true }));
-    expect(h).toContain("Ambiente de teste: nenhuma cobrança real.");
+    expect(h).not.toContain("Ambiente de teste");
     expect(h).toContain("Pague com Pix");
     expect(h).toContain(TEXTOS_SITE_INICIAIS.pagamentoConvite);
     expect(h.indexOf("Pague com Pix")).toBeLessThan(h.indexOf("Diárias"));
@@ -136,8 +137,9 @@ describe("página da cotação com o pagamento no site (M8.2a)", () => {
     expect(h).toContain('src="data:image/png;base64,RkFMU08="');
     expect(h).toContain("Este Pix vale até <strong>12:30</strong>");
     expect(h).toContain("Pode fechar e voltar por este link");
-    // Mesmo sem as chaves agora, o pagamento de teste já criado mostra a faixa.
-    expect(h).toContain("Ambiente de teste: nenhuma cobrança real.");
+    // Sem as chaves agora (portão fechado), o pagamento de teste já criado: no ambiente de teste, a faixa do layout raiz
+    // basta (M7.12); a nota local fica para o caso que ela não cobre (ver "uma faixa só", abaixo).
+    expect(h).not.toContain("Ambiente de teste");
   });
 
   it.each([
@@ -462,5 +464,33 @@ describe("alteração da reserva paga pelo site (M8.2d)", () => {
     expect(h).not.toMatch(/Beds24/i);
     m.vistaPagamento.mockResolvedValue(confirmada(null));
     expect(await html()).not.toContain("foi alterada depois desta cotação");
+  });
+});
+
+describe("uma faixa só na página da cotação (M7.12)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const NOTA = "Ambiente de teste: nenhuma cobrança real.";
+  const pix = { copiaECola: "000201PIXFICTICIO", imagem: "data:image/png;base64,RkFMU08=", link: null, expiraEm: holdAte.toISOString() };
+
+  it("na prévia, no `vercel dev` e no computador: a faixa geral do topo diz isso; a nota local não se repete", async () => {
+    m.portao.mockResolvedValue(GATE_OK);
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pagar" }));
+    for (const [variavel, valor] of [["VERCEL_ENV", "preview"], ["VERCEL_ENV", "development"], ["NODE_ENV", "development"]]) {
+      vi.unstubAllEnvs();
+      vi.stubEnv("VERCEL_ENV", "");
+      vi.stubEnv(variavel, valor);
+      const h = await html();
+      expect(h, `${variavel}=${valor}`).toContain("Pague com Pix");
+      expect(h, `${variavel}=${valor}`).not.toContain(NOTA);
+    }
+  });
+
+  it("fora do ambiente de teste (sem a faixa): um pagamento de teste já criado ainda mostra a nota local", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pix_aguardando", dinheiroSemDesfecho: true, pix }));
+    expect(await html()).toContain(NOTA);
+    // Sem pagamento de teste, nada.
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pix_aguardando", dinheiroSemDesfecho: true, pix, ambienteTeste: false }));
+    expect(await html()).not.toContain("Ambiente de teste");
   });
 });

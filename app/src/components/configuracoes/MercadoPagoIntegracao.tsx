@@ -2,6 +2,7 @@ import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
+import { type AmbienteDoSistema, ambienteDeTeste, ambienteDoSistema } from "@/sistema/ambiente";
 import { producaoSemChaves, TEXTO_PRODUCAO_SEM_CHAVES } from "@/sistema/servicos";
 
 const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
@@ -20,12 +21,17 @@ function contaDeTeste(mp: SituacaoMercadoPago): string {
   return "Não deu para conferir agora no Mercado Pago: nenhuma cobrança é feita até conferir.";
 }
 
-/** MERCADOPAGO_AMBIENTE e onde o sistema está rodando (o teste só roda fora do deploy de produção). */
+const ONDE: Record<AmbienteDoSistema, string> = { producao: "deploy de produção", previa: "prévia da Vercel", desenvolvimento: "computador de desenvolvimento" };
+
+/**
+ * MERCADOPAGO_AMBIENTE e onde o sistema está rodando (o teste só roda fora do deploy de produção), pela mesma regra do
+ * pagamento (`ambienteDoSistema`, M7.12): um VERCEL_ENV inesperado, ou fora da Vercel com NODE_ENV=production, conta
+ * como produção, como no pagamento.
+ */
 export function textoAmbiente(env: NodeJS.ProcessEnv): string {
   const a = ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE);
   const mp = a === "teste" ? "teste" : a === "producao" ? "produção (travado nesta fase)" : "valor inválido em MERCADOPAGO_AMBIENTE (desligado)";
-  const onde = env.VERCEL_ENV === "production" ? "deploy de produção" : env.VERCEL_ENV === "preview" ? "prévia da Vercel" : "computador de desenvolvimento";
-  return `${mp} · ${onde}`;
+  return `${mp} · ${ONDE[ambienteDoSistema(env)]}`;
 }
 
 /** Prefixo de uma chave do Mercado Pago (TEST- ou APP_USR-); null quando falta ou é outro (nunca a chave). */
@@ -51,7 +57,7 @@ export function chavesDesencontradas(env: NodeJS.ProcessEnv): boolean {
  */
 export function MercadoPagoIntegracao({ mp, env }: { mp: SituacaoMercadoPago; env: NodeJS.ProcessEnv }) {
   // Fora do deploy de produção (prévia ou computador), o Mercado Pago não alcança este endereço.
-  const naPrevia = env.VERCEL_ENV !== "production";
+  const naPrevia = ambienteDeTeste(env);
   const linhas: [string, string][] = [
     ["Conexão", producaoSemChaves(mp, env) ? TEXTO_PRODUCAO_SEM_CHAVES : mp.motivo ? `${CONEXAO[mp.situacao]}: ${mp.motivo}` : CONEXAO[mp.situacao]],
     ["Conta de teste", contaDeTeste(mp)],

@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TEXTO_FAIXA_PREVIA } from "@/components/FaixaPrevia";
 import { MolduraPortal } from "@/components/portal/MolduraPortal";
 import { AVISO_NOVA_JANELA, ID_CONTEUDO, ROTULO_PULAR } from "@/components/site/Acessibilidade";
 import { AceiteFeito, BlocoAceite } from "@/components/site/BlocoAceite";
@@ -15,6 +16,7 @@ import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import type { AceiteNaPagina } from "@/site/aceites";
 import type { ConteudoSite, ImovelPublico } from "@/site/site";
 import Consulta from "../consulta/page";
+import RootLayout from "../layout";
 import PaginaImovel from "../imoveis/[codigo]/page";
 import Catalogo from "../imoveis/page";
 import NaoEncontradaNoSite from "../not-found";
@@ -509,5 +511,40 @@ describe("ordem dos títulos sem saltos (M7.11)", () => {
     m.tem.mockResolvedValue(false);
     for (const html of [renderToStaticMarkup(await Inicio()), renderToStaticMarkup(await Catalogo()), renderToStaticMarkup(await Consulta(props({}) as never)), renderToStaticMarkup(await NaoEncontradaNoSite())])
       expect(saltos(niveis(html))).toEqual([]);
+  });
+});
+
+describe('faixa "Prévia de teste" no topo (M7.12)', () => {
+  it("texto legível pelos tokens (≥ 4,5:1, texto pequeno), fundo claro fora das listas de verdes e nada focável dentro", () => {
+    const faixa = regra(GLOBAL, ".scl-previa");
+    const [texto, fundo] = [tokenDe(valor(faixa, "color")!), tokenDe(valor(faixa, "background")!)];
+    expect([texto, fundo]).toEqual(["--scl-tinta", "--scl-areia"]);
+    expect(contraste(cor(texto), cor(fundo)).toFixed(2)).toBe("10.66");
+    expect(contraste(cor(texto), cor(fundo))).toBeGreaterThanOrEqual(4.5);
+    // Não é fundo verde: não entra na classificação de contêineres e peças, e o contorno do foco segue o de cada página.
+    expect(FUNDO_VERDE.test(faixa)).toBe(false);
+    expect(FOCO_CLARO.test(faixa) || FOCO_LARANJA.test(faixa)).toBe(false);
+  });
+
+  it("com a faixa no topo (layout raiz, na prévia), o Pular para o conteúdo continua o primeiro focável das molduras", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    try {
+      const comFaixa = (miolo: React.ReactNode) => dom(renderToStaticMarkup(RootLayout({ children: miolo } as LayoutProps<"/">)));
+      const paginas = [
+        comFaixa(<Moldura conteudo={conteudo}>{<h1>Oi</h1>}</Moldura>),
+        comFaixa(<MolduraBase>{<h1>Erro</h1>}</MolduraBase>),
+        comFaixa(<MolduraPortal empresa="Sua Casa Exemplo" titulo="Portal do proprietário">{<h1>Portal</h1>}</MolduraPortal>),
+        comFaixa(await Consulta(props({}, pedido) as never)),
+      ];
+      for (const raiz of paginas) {
+        expect(raiz.firstElementChild?.textContent).toBe(TEXTO_FAIXA_PREVIA);
+        expect(raiz.firstElementChild?.querySelector(FOCAVEIS)).toBeNull();
+        const pular = primeiroFocavel(raiz);
+        expect(pular?.textContent).toBe(ROTULO_PULAR);
+        expect(pular?.getAttribute("href")).toBe(`#${ID_CONTEUDO}`);
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

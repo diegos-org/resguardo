@@ -25,6 +25,7 @@ import {
   TITULO_PAGAMENTO,
 } from "@/site/pagamento-vista";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
+import { ambienteDeTeste } from "@/sistema/ambiente";
 
 export const generateMetadata = () => metadadosDoSite("Cotação");
 
@@ -105,7 +106,10 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
     !pagamento && vista.estado !== "segurada" && vista.estado !== "convertida" && !(vista.estado === "aberta" && vista.mudou)
       ? await pixPossivel(db, organizacaoId, { imovel: { id: c.imovelId }, checkin: c.checkin, checkout: c.checkout, situacao: c.situacao, total: c.total }, gate)
       : false;
-  const ambienteTeste = gate.ok || (pagamento?.ambienteTeste ?? false);
+  // Uma faixa só (M7.12): no ambiente de teste, a faixa "Prévia de teste" do layout raiz já diz "nenhuma cobrança real"
+  // no topo da página. A nota daqui fica para o caso que a faixa não cobre: um pagamento de teste visto fora do ambiente
+  // de teste (o que só aconteceria com o banco das prévias ligado a outro deploy).
+  const ambienteTeste = (gate.ok || (pagamento?.ambienteTeste ?? false)) && !ambienteDeTeste();
   // Com o cartão ligado (M8.2b), os textos de antes de segurar dizem "por Pix ou cartão".
   const cartaoNoPagamento = pagamentoNoSite && (await cartaoNoSite(db, organizacaoId, gate, agora));
   // M7.4: o aceite das páginas legais (caixa no "Gerar Pix" ou no cartão, só quando algum pode aparecer; ou as versões

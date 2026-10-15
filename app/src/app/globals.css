@@ -157,6 +157,24 @@ main[tabindex="-1"]:focus {
   outline: none;
 }
 
+/* Faixa "Prévia de teste" (M7.12): fina, no topo de toda página, só fora do deploy de produção (FaixaPrevia.tsx). Visual
+   do `.preview` do estudo aprovado (prototipos/acervo-visual-2026-10/site-publico): areia, texto escuro, 11px (10px no
+   celular). Tinta sobre areia: 10,66:1. Nada focável dentro. */
+.scl-previa {
+  padding: 8px 16px;
+  background: var(--scl-areia);
+  color: var(--scl-tinta);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .scl-previa {
+    font-size: 0.625rem;
+  }
+}
+
 /* Texto só para quem usa leitor de tela (ex.: "abre em nova janela"): fora da tela, mas lido. */
 .scl-so-leitor {
   position: absolute;
