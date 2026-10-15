@@ -100,6 +100,9 @@ describe("site público (M7.1)", () => {
     expect((await imoveisDoSite(db, org)).map((i) => [i.codigo, i.frase])).toEqual([["102", ""], ["403", "Frase fictícia de abertura."]]);
     expect(await imovelDoSite(db, org, "403")).toMatchObject({ frase: "Frase fictícia de abertura.", descricao: "Studio fictício." });
     expect(await imovelDoSite(db, org, "buzios")).toBeNull();
+    // Só espaços (gravados fora do formulário, que já apara) contam como sem frase.
+    await db.update(imoveis).set({ frase: "   " }).where(eq(imoveis.id, studio));
+    expect((await imovelDoSite(db, org, "403"))?.frase).toBe("");
   });
 
   it("página do imóvel: só se for público e ativo", async () => {

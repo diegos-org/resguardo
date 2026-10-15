@@ -166,7 +166,8 @@ function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
     quartos: l.quartos,
     banheiros: l.banheiros,
     descricao: l.descricao ?? "",
-    frase: l.frase ?? "",
+    // Aparada aqui também (o cadastro já apara): só espaços não viram um título vazio na página da casa.
+    frase: (l.frase ?? "").trim(),
     camas: descreverCamas(l.camas ?? {}),
     comodidades: l.comodidades ?? [],
     regrasCasa: l.regrasCasa ?? "",
