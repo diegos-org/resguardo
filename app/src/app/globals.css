@@ -157,6 +157,38 @@ main[tabindex="-1"]:focus {
   outline: none;
 }
 
+/* Faixa "Prévia de teste" (M7.12): fina, no topo de toda página, só fora do deploy de produção (FaixaPrevia.tsx). Visual
+   do `.preview` do estudo aprovado (prototipos/acervo-visual-2026-10/site-publico): areia, texto escuro, 11px (10px no
+   celular). Tinta sobre areia: 10,66:1. Nada focável dentro. */
+.scl-previa {
+  padding: 8px 16px;
+  background: var(--scl-areia);
+  color: var(--scl-tinta);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .scl-previa {
+    font-size: 0.625rem;
+  }
+}
+
+/* Com a faixa, a moldura logo abaixo dela (site, portais e painel têm min-height: 100vh) passaria do fim da tela pela
+   altura da faixa, e toda página curta ganharia uma rolagem que a produção não tem. Só quando a faixa existe (:has): o
+   corpo vira coluna (o body já tem min-height: 100vh) e a moldura ocupa o resto da tela, sem os 100vh dela. Sem altura
+   fixa: no celular estreito o texto da faixa pode ter duas linhas. Na produção, sem a faixa, nada disto se aplica. */
+body:has(> .scl-previa) {
+  display: flex;
+  flex-direction: column;
+}
+
+body:has(> .scl-previa) > .scl-previa + * {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+
 /* Texto só para quem usa leitor de tela (ex.: "abre em nova janela"): fora da tela, mas lido. */
 .scl-so-leitor {
   position: absolute;

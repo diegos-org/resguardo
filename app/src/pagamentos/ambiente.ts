@@ -9,7 +9,8 @@
  *   de produção tem a operação real; o teste é nas prévias (banco separado). Só rodam o teste as
  *   prévias (VERCEL_ENV=preview), o `vercel dev` (development) e o computador de desenvolvimento
  *   (sem VERCEL_ENV e NODE_ENV diferente de production): um `next start` ou script fora da Vercel
- *   com NODE_ENV=production, ou um VERCEL_ENV inesperado, conta como produção.
+ *   com NODE_ENV=production, ou um VERCEL_ENV inesperado, conta como produção. A regra mora em
+ *   `sistema/ambiente.ts` (`ambienteDeTeste`, M7.12), a mesma da faixa "Prévia de teste".
  * - MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_PUBLIC_KEY: as duas obrigatórias.
  * - MERCADOPAGO_WEBHOOK_SECRET: opcional aqui (sem ela, nenhum aviso é aceito).
  *
@@ -18,6 +19,7 @@
  * pelo provedor). Nada aqui registra ou devolve o access token ou o segredo do webhook.
  */
 import { createHash } from "node:crypto";
+import { ambienteDeTeste } from "@/sistema/ambiente";
 import { ClienteMercadoPagoHttp } from "./mercadopago";
 import type { ProvedorPagamento } from "./provedor";
 
@@ -39,13 +41,6 @@ export function ambienteMercadoPago(valor: string | undefined): AmbienteMercadoP
 
 const chaveLegivel = (v: string) => /^[\x21-\x7E]{1,512}$/.test(v);
 const ler = (v: string | undefined) => v?.trim() || null;
-
-/** Só as prévias da Vercel, o `vercel dev` e o computador de desenvolvimento rodam o teste (deny-by-default). */
-function ambienteDeTeste(env: NodeJS.ProcessEnv): boolean {
-  const vercel = env.VERCEL_ENV?.trim();
-  if (vercel) return vercel === "preview" || vercel === "development";
-  return env.NODE_ENV !== "production";
-}
 
 export function estadoPagamentoDoAmbiente(env: NodeJS.ProcessEnv = process.env): EstadoPagamento {
   const ambiente = ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE);
