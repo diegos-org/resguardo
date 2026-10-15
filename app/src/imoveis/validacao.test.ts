@@ -61,7 +61,7 @@ describe("validarImovel", () => {
       expect(frase("a".repeat(120))).toMatchObject({ ok: true, dados: { frase: "a".repeat(120) } });
       // O limite vale depois de aparar: espaços nas pontas não contam.
       expect(frase(` ${"a".repeat(120)} `)).toMatchObject({ ok: true });
-      expect(frase("a".repeat(121))).toEqual({ ok: false, erros: { frase: "Máximo de 120 caracteres." } });
+      expect(frase("a".repeat(121))).toEqual({ ok: false, erros: { frase: "Máximo de 120 caracteres (a frase tem 121)." } });
     });
 
     it("sem quebra de linha no meio (é um título na página da casa)", () => {

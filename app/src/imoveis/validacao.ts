@@ -72,7 +72,7 @@ export function validarImovel(entrada: Entrada): ResultadoValidacao {
   // A frase vira um título na página da casa: uma linha só, espaços das pontas aparados; vazia é permitida.
   const frase = texto(entrada.frase);
   if (/[\r\n\u2028\u2029]/.test(frase)) erros.frase = "Escreva a frase numa linha só, sem quebra de linha.";
-  else if (frase.length > LIMITE_FRASE) erros.frase = `Máximo de ${LIMITE_FRASE} caracteres.`;
+  else if (frase.length > LIMITE_FRASE) erros.frase = `Máximo de ${LIMITE_FRASE} caracteres (a frase tem ${frase.length}).`;
 
   if (Object.keys(erros).length > 0) return { ok: false, erros };
   return {

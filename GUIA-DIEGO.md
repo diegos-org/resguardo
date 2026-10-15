@@ -51,7 +51,8 @@ estudo que você aprovou em 4/10, a página de cada casa abre o texto com uma fr
 descrição (por exemplo "Dias leves entre a praia e os restaurantes."). O sistema não tinha onde guardar essa frase.
 
 - **Onde escrever:** em **Imóveis → o imóvel**, logo antes da descrição, há o campo novo **Frase de abertura (site)**,
-  com uma explicação curta embaixo. Até 120 caracteres, numa linha só. Espaços sobrando no começo e no fim saem
+  com uma explicação curta embaixo. Até 120 caracteres, numa linha só: o campo mostra quantos tem e avisa quando passa,
+  sem cortar o que você colou (você encurta antes de salvar). Espaços sobrando no começo e no fim saem
   sozinhos.
 - **O que o hóspede vê:** na página da casa, a frase aparece acima da descrição, em letra grande, na mesma letra dos
   títulos do site. Quando o link chega com datas, ela vem logo depois do quadro da disponibilidade.
