@@ -2,18 +2,19 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BairroAPorta } from "@/components/site/BairroAPorta";
-import { olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
+import { fraseDoImovel, olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
-import { textosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
+import { metadadosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
 import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
 import { lugaresDoSite } from "@/site/bairro";
+import { linkDaCasa } from "@/site/link-da-casa";
 import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
@@ -24,10 +25,19 @@ export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]"
   const { codigo } = await params;
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return metadadosDoSite(undefined);
+  // A mesma leitura da página (com `cache`, uma vez só por requisição).
   const i = await imovelDoSite(db, conteudo.organizacaoId, codigo);
   // Casa que não existe ou saiu do site (M7.8): o título da aba é o da "Casa não encontrada" já aqui, o mesmo de
   // ./not-found.tsx, para não depender só do título da not-found (que o Next pode trocar pelo do layout).
-  return metadadosDoSite(i ? i.nome : textosDaNaoEncontrada(conteudo.textos, "casa").titulo);
+  if (!i) return metadadosDaNaoEncontrada("casa");
+  // Prévia do link (M7.13): o nome, a primeira frase da descrição (a mesma do cartão) e a versão pequena da capa da casa
+  // (sem foto, sem imagem: nunca a capa do site no lugar). O endereço principal é o da casa, sem as datas do link.
+  const capa = i.fotos[0];
+  return metadadosDoSite(i.nome, {
+    descricao: fraseDoImovel(i),
+    imagem: capa ? { url: capa.pequena, alt: capa.legenda || `Foto de ${i.nome}` } : null,
+    caminho: linkDaCasa(i.codigo) ?? undefined,
+  });
 }
 
 export default async function PaginaImovel({ params, searchParams }: PageProps<"/imoveis/[codigo]">) {

@@ -221,12 +221,15 @@ describe("busca em todas as casas (M7.9)", () => {
     const h = await html({ checkin: "2099-10-12", checkout: "2099-10-15", guests: "2" });
     expect(h).toContain("Encontre seu lugar.");
     expect(h).toContain("3 casas na sua busca");
+    // Prévia do link (M7.13): a frase que cada página mostra — na busca, o aviso acima das casas; na consulta, a frase
+    // abaixo do título — e o endereço principal sem as datas, as pessoas e a casa do link.
+    const caminho = "/consulta";
     await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({ checkin: "2099-10-12" }) });
-    expect(metadadosDoSite).toHaveBeenLastCalledWith("Sua busca");
+    expect(metadadosDoSite).toHaveBeenLastCalledWith("Sua busca", { descricao: TEXTOS_SITE_INICIAIS.buscaAviso, caminho });
     await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({ imovel: "403", entrada: "2099-10-12" }) });
-    expect(metadadosDoSite).toHaveBeenLastCalledWith("Consulta");
+    expect(metadadosDoSite).toHaveBeenLastCalledWith("Consulta", { descricao: TEXTOS_SITE_INICIAIS.consultaTexto, caminho });
     await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({}) });
-    expect(metadadosDoSite).toHaveBeenLastCalledWith("Consulta");
+    expect(metadadosDoSite).toHaveBeenLastCalledWith("Consulta", { descricao: TEXTOS_SITE_INICIAIS.consultaTexto, caminho });
   });
 
   it("nenhuma casa recebe o grupo: o aviso editável e o contato, sem consultar nada", async () => {

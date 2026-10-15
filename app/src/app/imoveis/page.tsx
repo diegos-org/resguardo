@@ -5,7 +5,11 @@ import styles from "@/components/site/site.module.css";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imoveisDoSite } from "@/site/site";
 
-export const generateMetadata = () => metadadosDoSite("Nossas casas");
+/** Prévia do link (M7.13): a frase da vitrine de casas (Configurações → Textos do site) e a capa do site. */
+export async function generateMetadata() {
+  const { conteudo } = await carregarSite();
+  return metadadosDoSite("Nossas casas", { descricao: conteudo?.textos.vitrineTexto });
+}
 
 export default async function Catalogo() {
   const { db, conteudo } = await carregarSite();

@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
@@ -5,6 +6,7 @@ import { FormCampos } from "@/components/configuracoes/FormCampos";
 import { salvarEmpresaAcao } from "@/configuracoes/acoes";
 import { lerEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
+import { notaDoCampoSite } from "@/site/compartilhamento";
 
 const CAMPOS = [
   { nome: "nome", rotulo: "Nome da empresa (aparece no painel, no portal do proprietário e nos e-mails de convite e de código)", limite: 80, obrigatorio: true },
@@ -19,7 +21,12 @@ const CAMPOS = [
     limite: 120,
     dica: "Quem atende os pedidos sobre dados pessoais; aparece na Política de privacidade. Se a empresa usar a dispensa para pequeno porte, confirme o texto com o advogado.",
   },
-  { nome: "site", rotulo: "Site", limite: 200, dica: "Com https:// no começo." },
+  {
+    nome: "site",
+    rotulo: "Site",
+    limite: 200,
+    dica: "Com https:// no começo. É a base dos links nas mensagens ao hóspede e da prévia dos links do site (WhatsApp e redes).",
+  },
   { nome: "chavePix", rotulo: "Chave Pix da empresa", limite: 140, dica: "Aparece no portal para o proprietário que deve à empresa, depois do fechamento do mês." },
 ];
 
@@ -27,5 +34,8 @@ export default async function Empresa() {
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "configuracao:editar")) redirect("/painel/configuracoes");
   const empresa = await lerEmpresa(getDb(), sessao.organizacaoId);
-  return <FormCampos titulo="Dados da empresa" campos={CAMPOS} valores={empresa} salvar={salvarEmpresaAcao} />;
+  // Nota do campo "Site" (M7.13), pelo valor salvo e pelo endereço em que o painel está aberto agora.
+  const nota = notaDoCampoSite(empresa.site, (await headers()).get("host"));
+  const campos = CAMPOS.map((c) => (c.nome === "site" ? { ...c, nota } : c));
+  return <FormCampos titulo="Dados da empresa" campos={campos} valores={empresa} salvar={salvarEmpresaAcao} />;
 }

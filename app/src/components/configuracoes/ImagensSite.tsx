@@ -10,11 +10,16 @@ import styles from "../formularios.module.css";
 
 type Aviso = { ok: boolean; texto: string } | null;
 
+/** Capa enviada antes da versão leve (M7.13): a prévia dos links usa a foto grande até a foto ser enviada de novo. */
+export const AVISO_CAPA_SEM_PREVIA =
+  "Esta foto foi enviada antes da versão leve que aparece na prévia dos links. Até você enviar a foto de novo, a prévia usa a foto grande, que é pesada para o WhatsApp e pode não aparecer lá. Envie a mesma foto de novo para resolver.";
+
 /**
  * Foto da capa e marca do site (M7.6). A foto da capa é reduzida no navegador antes de subir (pode ser a original do
- * celular); a marca sobe como está, para o PNG transparente continuar transparente.
+ * celular); a marca sobe como está, para o PNG transparente continuar transparente. `capaSemPrevia` (M7.13): a capa
+ * enviada antes da versão leve da prévia dos links — a tela avisa e pede para enviar a foto de novo.
  */
-export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null; marca: string | null; marcaPadrao: string }) {
+export function ImagensSite({ capa, capaSemPrevia = false, marca, marcaPadrao }: { capa: string | null; capaSemPrevia?: boolean; marca: string | null; marcaPadrao: string }) {
   const router = useRouter();
   const [aviso, setAviso] = useState<Aviso>(null);
   const [enviando, setEnviando] = useState<string | null>(null);
@@ -38,8 +43,10 @@ export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null;
       const form = new FormData();
       form.set("qual", qual);
       if (qual === "capa") {
-        const { grande } = await reduzirFoto(arquivo);
+        // A grande para a capa e a pequena (800 px) para a prévia dos links no WhatsApp e nas redes (M7.13).
+        const { grande, pequena } = await reduzirFoto(arquivo);
         form.set("arquivo", new File([grande], nomeJpg(arquivo.name), { type: "image/jpeg" }));
+        form.set("pequena", new File([pequena], nomeJpg(arquivo.name).replace(/\.jpg$/, "-pequena.jpg"), { type: "image/jpeg" }));
       } else form.set("arquivo", arquivo);
       concluir(await enviarImagemSiteAcao(form), qual === "capa" ? "Foto da capa trocada: já está no site." : "Marca trocada: já está no site.");
     } catch (e) {
@@ -63,7 +70,7 @@ export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null;
         Imagens do site
       </h2>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
-        A foto da capa fica atrás do título da página inicial; sem foto, a capa fica no fundo verde (nunca uma imagem genérica). Use só fotos que você tem direito de
+        A foto da capa fica atrás do título da página inicial e aparece na prévia quando alguém manda o link do site pelo WhatsApp ou pelas redes; sem foto, a capa fica no fundo verde e a prévia sai sem imagem (nunca uma imagem genérica). Use só fotos que você tem direito de
         usar. A marca é o ícone ao lado do nome, no topo e no rodapé; enquanto você não enviar outra, vale a do estudo visual.
       </p>
       {aviso && (
@@ -81,6 +88,11 @@ export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null;
               <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>Sem foto: fundo verde</span>
             )}
           </div>
+          {capa && capaSemPrevia && (
+            <p role="note" style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)", margin: 0 }}>
+              {AVISO_CAPA_SEM_PREVIA}
+            </p>
+          )}
           <form onSubmit={(ev) => enviar(ev, "capa")} className={styles.form} aria-label="Enviar foto da capa">
             <label>
               {capa ? "Trocar a foto (JPG ou PNG; pode ser a original do celular)" : "Enviar a foto (JPG ou PNG; pode ser a original do celular)"}

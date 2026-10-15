@@ -113,14 +113,14 @@ describe("página não encontrada do site (M7.8)", () => {
     expect(m.imoveis).not.toHaveBeenCalled();
   });
 
-  it("título da aba: o da página não encontrada com o nome da empresa (metadados do site)", async () => {
+  it("título da aba: o da página não encontrada com o nome da empresa (metadados do site); a frase é a descrição (M7.13)", async () => {
     await metadadosDaPagina();
-    expect(m.meta).toHaveBeenLastCalledWith("Página não encontrada");
+    expect(m.meta).toHaveBeenLastCalledWith("Página não encontrada", { descricao: TEXTOS_SITE_INICIAIS.naoEncontradoTexto });
     await metadadosDaCasa();
-    expect(m.meta).toHaveBeenLastCalledWith("Casa não encontrada");
-    m.site.mockResolvedValue({ db: {}, conteudo: comTextos({ casaNaoEncontradaTitulo: "Essa casa saiu do site" }) });
+    expect(m.meta).toHaveBeenLastCalledWith("Casa não encontrada", { descricao: TEXTOS_SITE_INICIAIS.casaNaoEncontradaTexto });
+    m.site.mockResolvedValue({ db: {}, conteudo: comTextos({ casaNaoEncontradaTitulo: "Essa casa saiu do site", casaNaoEncontradaTexto: "" }) });
     await metadadosDaCasa();
-    expect(m.meta).toHaveBeenLastCalledWith("Essa casa saiu do site");
+    expect(m.meta).toHaveBeenLastCalledWith("Essa casa saiu do site", { descricao: "" });
   });
 
   it("página do imóvel: código que não existe ou saiu do site cai na página \"Casa não encontrada\" (a aba vem dela)", async () => {
@@ -131,22 +131,46 @@ describe("página não encontrada do site (M7.8)", () => {
     expect(existsSync(join(app, "imoveis", "[codigo]", "not-found.tsx"))).toBe(true);
     // O título da aba já sai "Casa não encontrada" pelos metadados da própria página, sem depender só da not-found.
     await metadadosDoImovel(props);
-    expect(m.meta).toHaveBeenLastCalledWith("Casa não encontrada");
+    expect(m.meta).toHaveBeenLastCalledWith("Casa não encontrada", { descricao: TEXTOS_SITE_INICIAIS.casaNaoEncontradaTexto });
     m.site.mockResolvedValue({ db: {}, conteudo: comTextos({ casaNaoEncontradaTitulo: "Essa casa saiu do site" }) });
     await metadadosDoImovel(props);
-    expect(m.meta).toHaveBeenLastCalledWith("Essa casa saiu do site");
+    expect(m.meta).toHaveBeenLastCalledWith("Essa casa saiu do site", { descricao: TEXTOS_SITE_INICIAIS.casaNaoEncontradaTexto });
   });
 
   it("página do imóvel: a casa que existe tem o nome dela na aba; site sem organização, o título-base", async () => {
     const props = { params: Promise.resolve({ codigo: "403" }), searchParams: Promise.resolve({}) };
     m.imovel.mockResolvedValue(imovel);
     await metadadosDoImovel(props);
-    expect(m.meta).toHaveBeenLastCalledWith("Studio Exemplo");
+    // Prévia do link (M7.13): sem foto, sem imagem; sem descrição, a frase do cartão (bairro e cidade); o endereço sem datas.
+    expect(m.meta).toHaveBeenLastCalledWith("Studio Exemplo", { descricao: "Leblon, Rio de Janeiro", imagem: null, caminho: "/imoveis/403" });
     m.site.mockResolvedValue({ db: {}, conteudo: null });
     m.imovel.mockClear();
     await metadadosDoImovel(props);
     expect(m.meta).toHaveBeenLastCalledWith(undefined);
     expect(m.imovel).not.toHaveBeenCalled();
+  });
+
+  it("prévia do link da casa (M7.13): a versão pequena da capa, a primeira frase da descrição e o endereço sem as datas", async () => {
+    const comFoto: ImovelPublico = {
+      ...imovel,
+      descricao: "Um refúgio para dois, com o Leblon à porta. Cama queen e cozinha equipada.",
+      fotos: [
+        { grande: "/fotos/f1", pequena: "/fotos/f1/pequena", legenda: "" },
+        { grande: "/fotos/f2", pequena: "/fotos/f2/pequena", legenda: "Quarto" },
+      ],
+    };
+    m.imovel.mockResolvedValue(comFoto);
+    // O link com as datas tem o mesmo endereço principal.
+    await metadadosDoImovel({ params: Promise.resolve({ codigo: "403" }), searchParams: Promise.resolve({ checkin: "2099-10-12", checkout: "2099-10-15", guests: "2" }) });
+    expect(m.meta).toHaveBeenLastCalledWith("Studio Exemplo", {
+      descricao: "Um refúgio para dois, com o Leblon à porta.",
+      imagem: { url: "/fotos/f1/pequena", alt: "Foto de Studio Exemplo" },
+      caminho: "/imoveis/403",
+    });
+    // A legenda da capa, quando existe, é o texto alternativo (o mesmo do cartão).
+    m.imovel.mockResolvedValue({ ...comFoto, fotos: [{ grande: "/fotos/f1", pequena: "/fotos/f1/pequena", legenda: "Sala com vista" }] });
+    await metadadosDoImovel({ params: Promise.resolve({ codigo: "403" }), searchParams: Promise.resolve({}) });
+    expect(m.meta).toHaveBeenLastCalledWith("Studio Exemplo", expect.objectContaining({ imagem: { url: "/fotos/f1/pequena", alt: "Sala com vista" } }));
   });
 });
 

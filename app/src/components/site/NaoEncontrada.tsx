@@ -67,8 +67,12 @@ export async function PaginaNaoEncontrada({ tipo }: { tipo: TipoNaoEncontrada })
   return <NaoEncontrada conteudo={conteudo} tipo={tipo} temCasas={temCasas} />;
 }
 
-/** Título da aba da página não encontrada: "Página não encontrada — Nome da empresa". */
+/**
+ * Título da aba da página não encontrada: "Página não encontrada — Nome da empresa"; a frase da página (M7.13) é a
+ * descrição (vazia = a do site).
+ */
 export async function metadadosDaNaoEncontrada(tipo: TipoNaoEncontrada) {
   const { conteudo } = await carregarSite();
-  return metadadosDoSite(textosDaNaoEncontrada(conteudo?.textos ?? null, tipo).titulo);
+  const { titulo, texto } = textosDaNaoEncontrada(conteudo?.textos ?? null, tipo);
+  return metadadosDoSite(titulo, { descricao: texto });
 }

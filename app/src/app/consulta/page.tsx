@@ -17,8 +17,15 @@ import { ASSUNTO_CONSULTA, AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato,
 /** Busca em todas as casas (M7.9): o pedido tem datas, mas nenhuma casa escolhida ("Todas as casas"). */
 const ehBusca = (p: { imovel: string; entrada: string; saida: string }) => !p.imovel && !!(p.entrada || p.saida);
 
+/**
+ * Prévia do link (M7.13): a frase que a própria página mostra (Configurações → Textos do site) — na consulta, a frase
+ * abaixo do título; na busca em todas as casas, o aviso acima das casas (vazio = a descrição do site) — e o endereço
+ * principal sem as datas, as pessoas e a casa do link.
+ */
 export async function generateMetadata({ searchParams }: PageProps<"/consulta">) {
-  return metadadosDoSite(ehBusca(lerPedidoConsulta(await searchParams)) ? "Sua busca" : "Consulta");
+  const { conteudo } = await carregarSite();
+  const busca = ehBusca(lerPedidoConsulta(await searchParams));
+  return metadadosDoSite(busca ? "Sua busca" : "Consulta", { descricao: busca ? conteudo?.textos.buscaAviso : conteudo?.textos.consultaTexto, caminho: "/consulta" });
 }
 
 export default async function Consulta({ searchParams }: PageProps<"/consulta">) {
