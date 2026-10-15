@@ -123,6 +123,22 @@ describe("página não encontrada do site (M7.8)", () => {
     expect(m.meta).toHaveBeenLastCalledWith("Essa casa saiu do site", { descricao: "" });
   });
 
+  it("site sem nenhuma casa publicada: a descrição é o aviso do site sem casas, que a página mostra no lugar da frase (M7.13)", async () => {
+    m.tem.mockResolvedValue(false);
+    await metadadosDaPagina();
+    expect(m.meta).toHaveBeenLastCalledWith("Página não encontrada", { descricao: TEXTOS_SITE_INICIAIS.semCasasTexto });
+    m.site.mockResolvedValue({ db: {}, conteudo: comTextos({ semCasasTexto: "Frase fictícia: ainda sem casas." }) });
+    await metadadosDaCasa();
+    expect(m.meta).toHaveBeenLastCalledWith("Casa não encontrada", { descricao: "Frase fictícia: ainda sem casas." });
+    expect(m.tem).toHaveBeenCalledWith({}, "org");
+    // Sem o site configurado, não há conferência a fazer: os textos-base da página.
+    m.site.mockResolvedValue({ db: {}, conteudo: null });
+    m.tem.mockClear();
+    await metadadosDaPagina();
+    expect(m.meta).toHaveBeenLastCalledWith("Página não encontrada", { descricao: TEXTOS_SITE_INICIAIS.naoEncontradoTexto });
+    expect(m.tem).not.toHaveBeenCalled();
+  });
+
   it("página do imóvel: código que não existe ou saiu do site cai na página \"Casa não encontrada\" (a aba vem dela)", async () => {
     const props = { params: Promise.resolve({ codigo: "NAOEXISTE" }), searchParams: Promise.resolve({}) };
     await expect(PaginaImovel(props)).rejects.toThrow("NAO_ENCONTRADA");

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BairroAPorta } from "@/components/site/BairroAPorta";
+import { altDaCapa } from "@/components/site/CapaDoImovel";
 import { fraseDoImovel, olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
@@ -35,7 +36,7 @@ export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]"
   const capa = i.fotos[0];
   return metadadosDoSite(i.nome, {
     descricao: fraseDoImovel(i),
-    imagem: capa ? { url: capa.pequena, alt: capa.legenda || `Foto de ${i.nome}` } : null,
+    imagem: capa ? { url: capa.pequena, alt: altDaCapa(i.nome, capa) } : null,
     caminho: linkDaCasa(i.codigo) ?? undefined,
   });
 }

@@ -12,11 +12,13 @@ import { generateMetadata as metadadosInicio } from "../page";
  * M7.13: prévia dos links (WhatsApp e redes) e descrição de cada página, pelos metadados de verdade do site
  * (`metadadosDoSite`); só a leitura do banco é trocada por dados fictícios.
  */
-const m = vi.hoisted(() => ({ conteudo: vi.fn(), imovel: vi.fn(), textos: vi.fn() }));
+const m = vi.hoisted(() => ({ conteudo: vi.fn(), imovel: vi.fn(), imoveis: vi.fn(), tem: vi.fn(), textos: vi.fn(), host: "casa-exemplo.vercel.app" as string | null }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({ connection: async () => {} }));
+// O endereço pelo qual a página foi pedida (o cabeçalho Host).
+vi.mock("next/headers", () => ({ headers: async () => new Headers(m.host ? { host: m.host } : {}) }));
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
-vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), conteudoDoSite: m.conteudo, imovelDoSite: m.imovel }));
+vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), conteudoDoSite: m.conteudo, imovelDoSite: m.imovel, imoveisDoSite: m.imoveis, temCasaNoSite: m.tem }));
 vi.mock("@/configuracoes/pagina-proprietarios", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/pagina-proprietarios")>()), lerTextosProprietarios: m.textos }));
 vi.mock("@/email/correio", () => ({ correioDoAmbiente: () => null }));
 vi.mock("@/marketplace/acoes", () => ({ entrarCadastroAcao: vi.fn(), pedirCodigoCadastroAcao: vi.fn() }));
@@ -60,7 +62,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.conteudo.mockResolvedValue(conteudo());
   m.imovel.mockResolvedValue(imovel);
+  m.imoveis.mockResolvedValue([imovel]);
+  m.tem.mockResolvedValue(true);
   m.textos.mockResolvedValue(TEXTOS_PROPRIETARIOS_INICIAIS);
+  m.host = "casa-exemplo.vercel.app";
 });
 
 describe("prévia dos links do site (M7.13)", () => {
@@ -78,10 +83,22 @@ describe("prévia dos links do site (M7.13)", () => {
     expect(meta.twitter).toMatchObject({ card: "summary" });
   });
 
-  it("Nossas casas: a frase da vitrine; sem ela, o subtítulo do site", async () => {
+  it("Nossas casas: a frase da vitrine de casas da página inicial; sem ela, o subtítulo do site", async () => {
     expect(await metadadosCatalogo()).toMatchObject({ title: "Nossas casas — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.vitrineTexto });
     m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, vitrineTexto: "" } }));
     expect((await metadadosCatalogo()).description).toBe(TEXTOS_SITE_INICIAIS.subtitulo);
+  });
+
+  it("site sem nenhuma casa publicada (M7.8): Nossas casas, a consulta e a busca descrevem o aviso do site sem casas, o que a página mostra", async () => {
+    m.imoveis.mockResolvedValue([]);
+    expect((await metadadosCatalogo()).description).toBe(TEXTOS_SITE_INICIAIS.semCasasTexto);
+    for (const sp of [{}, { imovel: "403" }, { checkin: "2099-10-12", checkout: "2099-10-15", guests: "2" }])
+      expect((await metadadosConsulta({ ...semParametros, searchParams: Promise.resolve(sp) })).description).toBe(TEXTOS_SITE_INICIAIS.semCasasTexto);
+    // O aviso editado no painel; salvo vazio, o texto-base (a mesma regra da página, `textoSemCasas`).
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, semCasasTexto: "Frase fictícia: ainda sem casas." } }));
+    expect((await metadadosCatalogo()).description).toBe("Frase fictícia: ainda sem casas.");
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, semCasasTexto: "  " } }));
+    expect((await metadadosConsulta(semParametros)).description).toBe(TEXTOS_SITE_INICIAIS.semCasasTexto);
   });
 
   it("página para proprietários: a frase da capa dela (Configurações → Página para proprietários)", async () => {
@@ -114,20 +131,48 @@ describe("prévia dos links do site (M7.13)", () => {
     expect(meta.alternates).toBeUndefined();
   });
 
-  it("consulta: a frase abaixo do título; busca em todas as casas: o aviso acima das casas; as duas no endereço principal /consulta", async () => {
+  it("casa não encontrada com o site sem nenhuma casa (M7.8): a descrição é o aviso do site sem casas, o que a página mostra no lugar da frase", async () => {
+    m.imovel.mockResolvedValue(null);
+    m.tem.mockResolvedValue(false);
+    expect(await metadadosCasa(casa())).toMatchObject({ title: "Casa não encontrada — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.semCasasTexto });
+    expect(m.tem).toHaveBeenCalledWith({}, "org");
+  });
+
+  it("consulta: a frase abaixo do título, no endereço principal /consulta; busca em todas as casas: o aviso acima das casas, sem endereço principal", async () => {
     for (const sp of [{}, { imovel: "403", entrada: "2099-10-12" }]) {
       const meta = await metadadosConsulta({ ...semParametros, searchParams: Promise.resolve(sp) });
       expect(meta).toMatchObject({ title: "Consulta — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.consultaTexto, alternates: { canonical: "/consulta" }, openGraph: { url: "/consulta" } });
     }
     const busca = { ...semParametros, searchParams: Promise.resolve({ checkin: "2099-10-12", checkout: "2099-10-15", guests: "2" }) };
-    expect(await metadadosConsulta(busca)).toMatchObject({ title: "Sua busca — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.buscaAviso, alternates: { canonical: "/consulta" }, openGraph: { url: "/consulta" } });
+    // Com o endereço da consulta, o Facebook trocaria a prévia da busca pela da consulta: a busca não indica nenhum.
+    const metaBusca = await metadadosConsulta(busca);
+    expect(metaBusca).toMatchObject({ title: "Sua busca — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.buscaAviso });
+    expect(metaBusca.alternates).toBeUndefined();
+    expect(metaBusca.openGraph).not.toHaveProperty("url");
     // Aviso da busca apagado no painel: a descrição do site, nunca um texto inventado.
     m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, buscaAviso: "" } }));
     expect((await metadadosConsulta({ ...busca, searchParams: Promise.resolve({ checkin: "2099-10-12" }) })).description).toBe(TEXTOS_SITE_INICIAIS.subtitulo);
   });
 
-  it("campo Site com http ou vazio: sem base e sem endereço principal; a foto da casa continua", async () => {
-    for (const site of ["http://casa-exemplo.vercel.app", ""]) {
+  it("campo Site https de outro domínio, que ainda não abre o sistema: sem base e sem endereço principal; a foto continua relativa (o Next completa com o endereço da Vercel)", async () => {
+    m.conteudo.mockResolvedValue(conteudo({ site: "https://www.exemplo.com.br" }));
+    for (const meta of [await metadadosCasa(casa()), await metadadosConsulta(semParametros), await metadadosInicio()]) {
+      expect(meta.metadataBase).toBeUndefined();
+      expect(meta.alternates).toBeUndefined();
+      expect(meta.openGraph).not.toHaveProperty("url");
+      expect(JSON.stringify(meta)).not.toContain("exemplo.com.br");
+    }
+    expect((await metadadosCasa(casa())).openGraph).toMatchObject({ images: [{ url: "/fotos/f1/pequena" }] });
+    // O mesmo campo certo, mas a página pedida por outro endereço (o de uma publicação da Vercel): também sem base.
+    m.conteudo.mockResolvedValue(conteudo());
+    m.host = "casa-exemplo-abc123-time.vercel.app";
+    expect((await metadadosConsulta(semParametros)).metadataBase).toBeUndefined();
+    m.host = null;
+    expect((await metadadosConsulta(semParametros)).alternates).toBeUndefined();
+  });
+
+  it("campo Site com http, vazio ou com o caminho de uma página: sem base e sem endereço principal; a foto da casa continua", async () => {
+    for (const site of ["http://casa-exemplo.vercel.app", "", "https://casa-exemplo.vercel.app/imoveis/403"]) {
       m.conteudo.mockResolvedValue(conteudo({ site }));
       const meta = await metadadosCasa(casa());
       expect(meta.metadataBase).toBeUndefined();

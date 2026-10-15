@@ -1,14 +1,19 @@
 import { CartaoImovel } from "@/components/site/CartaoImovel";
 import { Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
-import { SemCasas } from "@/components/site/SemCasas";
+import { SemCasas, textoSemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imoveisDoSite } from "@/site/site";
 
-/** Prévia do link (M7.13): a frase da vitrine de casas (Configurações → Textos do site) e a capa do site. */
+/**
+ * Prévia do link (M7.13): a frase da vitrine de casas da página inicial (Configurações → Textos do site; esta página tem
+ * uma frase fixa) e a capa do site; sem nenhuma casa no site (M7.8), o aviso do site sem casas, o que a página mostra. A
+ * lista é a mesma da página (`imoveisDoSite`, com `cache`: uma leitura só).
+ */
 export async function generateMetadata() {
-  const { conteudo } = await carregarSite();
-  return metadadosDoSite("Nossas casas", { descricao: conteudo?.textos.vitrineTexto });
+  const { db, conteudo } = await carregarSite();
+  const temCasas = conteudo ? (await imoveisDoSite(db, conteudo.organizacaoId)).length > 0 : false;
+  return metadadosDoSite("Nossas casas", { descricao: conteudo && (temCasas ? conteudo.textos.vitrineTexto : textoSemCasas(conteudo.textos)) });
 }
 
 export default async function Catalogo() {

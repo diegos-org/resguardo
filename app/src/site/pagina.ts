@@ -1,4 +1,5 @@
 import "server-only";
+import { headers } from "next/headers";
 import { connection } from "next/server";
 import { cache } from "react";
 import { getDb } from "@/db/client";
@@ -14,9 +15,10 @@ export const carregarSite = cache(async () => {
 
 /**
  * Metadados de uma página do site (nome da empresa do site, lido uma vez por requisição): título, a frase da página e a
- * prévia dos links (M7.13; as regras em ./compartilhamento). Sem `previa`, a descrição e a capa do site.
+ * prévia dos links (M7.13; as regras em ./compartilhamento). Sem `previa`, a descrição e a capa do site. O endereço pelo
+ * qual a página foi pedida confirma o campo "Site" como base dos endereços completos.
  */
 export async function metadadosDoSite(pagina?: string, previa?: PreviaDaPagina) {
   const { conteudo } = await carregarSite();
-  return metadadosDaPagina(conteudo, pagina, previa);
+  return metadadosDaPagina(conteudo, pagina, previa, (await headers()).get("host"));
 }

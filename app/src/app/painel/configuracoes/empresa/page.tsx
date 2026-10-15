@@ -25,7 +25,7 @@ const CAMPOS = [
     nome: "site",
     rotulo: "Site",
     limite: 200,
-    dica: "Com https:// no começo. É a base dos links nas mensagens ao hóspede e da prévia dos links do site (WhatsApp e redes).",
+    dica: "Só o endereço do site, com https:// no começo e sem o caminho de uma página. É a base dos links nas mensagens ao hóspede e da prévia dos links do site (WhatsApp e redes).",
   },
   { nome: "chavePix", rotulo: "Chave Pix da empresa", limite: 140, dica: "Aparece no portal para o proprietário que deve à empresa, depois do fechamento do mês." },
 ];
@@ -34,7 +34,8 @@ export default async function Empresa() {
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "configuracao:editar")) redirect("/painel/configuracoes");
   const empresa = await lerEmpresa(getDb(), sessao.organizacaoId);
-  // Nota do campo "Site" (M7.13), pelo valor salvo e pelo endereço em que o painel está aberto agora.
+  // Nota do campo "Site" (M7.13), pelo valor salvo e pelo endereço deste sistema (na Vercel, o de produção do projeto;
+  // fora dela, o endereço em que o painel está aberto agora).
   const nota = notaDoCampoSite(empresa.site, (await headers()).get("host"));
   const campos = CAMPOS.map((c) => (c.nome === "site" ? { ...c, nota } : c));
   return <FormCampos titulo="Dados da empresa" campos={campos} valores={empresa} salvar={salvarEmpresaAcao} />;

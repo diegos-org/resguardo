@@ -222,14 +222,22 @@ describe("busca em todas as casas (M7.9)", () => {
     expect(h).toContain("Encontre seu lugar.");
     expect(h).toContain("3 casas na sua busca");
     // Prévia do link (M7.13): a frase que cada página mostra — na busca, o aviso acima das casas; na consulta, a frase
-    // abaixo do título — e o endereço principal sem as datas, as pessoas e a casa do link.
+    // abaixo do título — e, só na consulta, o endereço principal sem as datas, as pessoas e a casa do link (a busca não
+    // indica nenhum: com o da consulta, o Facebook trocaria a prévia dela pela da consulta).
     const caminho = "/consulta";
     await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({ checkin: "2099-10-12" }) });
-    expect(metadadosDoSite).toHaveBeenLastCalledWith("Sua busca", { descricao: TEXTOS_SITE_INICIAIS.buscaAviso, caminho });
+    expect(metadadosDoSite).toHaveBeenLastCalledWith("Sua busca", { descricao: TEXTOS_SITE_INICIAIS.buscaAviso, caminho: undefined });
     await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({ imovel: "403", entrada: "2099-10-12" }) });
     expect(metadadosDoSite).toHaveBeenLastCalledWith("Consulta", { descricao: TEXTOS_SITE_INICIAIS.consultaTexto, caminho });
     await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({}) });
     expect(metadadosDoSite).toHaveBeenLastCalledWith("Consulta", { descricao: TEXTOS_SITE_INICIAIS.consultaTexto, caminho });
+    // Sem nenhuma casa no site (M7.8), as duas mostram o aviso do site sem casas no lugar da frase: a prévia diz o mesmo.
+    m.imoveis.mockResolvedValue([]);
+    await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({ checkin: "2099-10-12" }) });
+    expect(metadadosDoSite).toHaveBeenLastCalledWith("Sua busca", { descricao: TEXTOS_SITE_INICIAIS.semCasasTexto, caminho: undefined });
+    await generateMetadata({ params: Promise.resolve({}), searchParams: Promise.resolve({}) });
+    expect(metadadosDoSite).toHaveBeenLastCalledWith("Consulta", { descricao: TEXTOS_SITE_INICIAIS.semCasasTexto, caminho });
+    expect(m.imoveis).toHaveBeenCalledWith({}, "org");
   });
 
   it("nenhuma casa recebe o grupo: o aviso editável e o contato, sem consultar nada", async () => {

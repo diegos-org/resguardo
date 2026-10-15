@@ -183,7 +183,8 @@ const noSite = (organizacaoId: string) => and(eq(imoveis.organizacaoId, organiza
 
 /**
  * Imóveis que aparecem no site: públicos e ativos, pelo código. Com `cache` do React (M7.13), os metadados e a página da
- * mesma requisição leem o banco uma vez só (com o mesmo `db`, o de `carregarSite`); fora de uma página, lê sempre.
+ * mesma requisição (a consulta e Nossas casas, que olham a lista para saber se há casa no site) leem o banco uma vez só
+ * (com o mesmo `db`, o de `carregarSite`); fora de uma página, lê sempre.
  */
 export const imoveisDoSite = cache(async function imoveisDoSite(db: Db, organizacaoId: string): Promise<ImovelPublico[]> {
   const linhas = await db.select(colunasPublicas).from(imoveis).leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id)).where(noSite(organizacaoId)).orderBy(asc(imoveis.codigo));
@@ -193,11 +194,12 @@ export const imoveisDoSite = cache(async function imoveisDoSite(db: Db, organiza
 /**
  * Se há alguma casa no site (M7.8), sem montar a lista nem buscar fotos: a página não encontrada só precisa disso para
  * decidir entre "Conhecer as casas" e o aviso do site sem casas (um endereço errado, até de robô, faz uma leitura curta).
+ * Com `cache` (M7.13): os metadados da página não encontrada (a frase da prévia) e a própria página leem uma vez só.
  */
-export async function temCasaNoSite(db: Db, organizacaoId: string): Promise<boolean> {
+export const temCasaNoSite = cache(async function temCasaNoSite(db: Db, organizacaoId: string): Promise<boolean> {
   const [l] = await db.select({ id: imoveis.id }).from(imoveis).where(noSite(organizacaoId)).limit(1);
   return !!l;
-}
+});
 
 /**
  * Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. Com `cache` (M7.13): os
