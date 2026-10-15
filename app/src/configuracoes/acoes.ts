@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
@@ -130,8 +130,9 @@ export async function publicarPaginaLegalAcao(_a: EstadoForm, form: FormData): P
 
 /**
  * Texto da caixa de autorização de um formulário de "Anuncie seu imóvel" (M7.15): publica a versão seguinte quando o
- * texto mudou. Recusada (texto vazio ou inválido, outra pessoa publicou no meio), nada é revalidado e o formulário mantém
- * o que foi digitado e a versão que mostrava — a mesma regra do "Como funciona" e das páginas legais.
+ * texto mudou. Recusada por texto vazio ou inválido, nada é revalidado e o formulário mantém o que foi digitado. Recusada
+ * porque outra pessoa publicou no meio, a tela é atualizada (`refresh`, sem recarregar a página): recebe a versão nova
+ * e mantém o texto digitado no campo, e o formulário oferece usar o texto novo ou continuar com o seu.
  */
 export async function publicarAutorizacaoAcao(_a: EstadoForm, form: FormData): Promise<EstadoForm> {
   const sessao = await sessaoConfig();
@@ -141,7 +142,18 @@ export async function publicarAutorizacaoAcao(_a: EstadoForm, form: FormData): P
   const base = String(form.get("versaoBase") ?? "");
   if (!/^\d{1,6}$/.test(base)) return { mensagem: "Recarregue a página e tente de novo.", valores: campos(form) };
   const r = await publicarTextoAutorizacao(getDb(), sessao.organizacaoId, formulario, form.get("texto"), sessao.usuarioId, hojeISO(), Number(base));
-  if (!r.ok) return { mensagem: r.erro, erros: r.erros, valores: campos(form) };
+  if (!r.ok) {
+    const emVigor = r.atual?.numero ?? 0;
+    if (emVigor === Number(base)) return { mensagem: r.erro, erros: r.erros, valores: campos(form) };
+    // Outra versão entrou em vigor desde que a tela abriu: a tela precisa recebê-la para mostrar a escolha.
+    refresh();
+    if (r.erros) return { mensagem: r.erro, erros: r.erros, valores: campos(form) };
+    const quando = r.atual?.data ? ` em ${r.atual.data.split("-").reverse().join("/")}` : "";
+    return {
+      mensagem: `Enquanto você editava, a versão ${emVigor} foi publicada por outra pessoa${quando}. O seu texto não foi publicado e continua no campo: escolha entre usar o texto novo ou continuar com o seu.`,
+      valores: campos(form),
+    };
+  }
   revalidatePath("/painel/configuracoes/autorizacao-proprietarios");
   revalidatePath("/anunciar", "layout");
   const caixa = CAIXAS_AUTORIZACAO[formulario].titulo.toLowerCase();

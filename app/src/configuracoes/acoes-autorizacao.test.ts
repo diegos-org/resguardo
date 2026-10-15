@@ -7,10 +7,10 @@ import { ERROS_TEXTO_AUTORIZACAO, TEXTOS_ORIGEM_AUTORIZACAO } from "@/proprietar
 import { publicarAutorizacaoAcao } from "./acoes";
 import { lerVersoesAutorizacao } from "./autorizacao-proprietarios";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), db: { atual: null as unknown }, revalidar: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), db: { atual: null as unknown }, revalidar: vi.fn(), refresh: vi.fn() }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => m.db.atual }));
-vi.mock("next/cache", () => ({ revalidatePath: m.revalidar }));
+vi.mock("next/cache", () => ({ revalidatePath: m.revalidar, refresh: m.refresh }));
 vi.mock("@/lib/datas", async (orig) => ({ ...(await orig<typeof import("@/lib/datas")>()), hojeISO: () => "2026-10-15" }));
 
 let db: Db, close: () => Promise<void>, org: string, admin: string;
@@ -60,13 +60,23 @@ describe("publicar o texto de uma caixa de autorização pelo painel (M7.15)", (
     });
     expect(await publicarAutorizacaoAcao({}, cadastro({ formulario: "termos" }))).toEqual({ mensagem: "Formulário desconhecido. Recarregue a página." });
     expect(await publicarAutorizacaoAcao({}, cadastro({ versaoBase: "x" }))).toMatchObject({ mensagem: "Recarregue a página e tente de novo." });
-    // Outra pessoa publicou no meio: recusado, com a base que o formulário mostrava.
+    // Recusas sem troca de versão não atualizam a tela.
+    expect(m.refresh).not.toHaveBeenCalled();
+    // Outra pessoa publicou no meio: recusado, com a base que o formulário mostrava; a tela é atualizada (sem recarregar)
+    // para receber a versão nova e mostrar a escolha, com o texto digitado mantido no campo.
     await publicarAutorizacaoAcao({}, cadastro());
     m.revalidar.mockClear();
     const velha = await publicarAutorizacaoAcao({}, cadastro({ texto: "Outro texto fictício." }));
-    expect(velha.mensagem).toBe("Enquanto você editava, a versão 2 foi publicada por outra pessoa em 15/10/2026. Recarregue a página, confira o texto atual e publique de novo.");
+    expect(velha.mensagem).toBe(
+      "Enquanto você editava, a versão 2 foi publicada por outra pessoa em 15/10/2026. O seu texto não foi publicado e continua no campo: escolha entre usar o texto novo ou continuar com o seu.",
+    );
     expect(velha.valores).toMatchObject({ versaoBase: "1", texto: "Outro texto fictício." });
+    expect(m.refresh).toHaveBeenCalledTimes(1);
     expect(m.revalidar).not.toHaveBeenCalled();
+    // Base velha e texto inválido: o erro do campo continua, e a tela também recebe a versão nova.
+    m.refresh.mockClear();
+    expect(await publicarAutorizacaoAcao({}, cadastro({ texto: "   " }))).toMatchObject({ erros: { texto: ERROS_TEXTO_AUTORIZACAO.vazio } });
+    expect(m.refresh).toHaveBeenCalledTimes(1);
     expect(await lerVersoesAutorizacao(db, org, "cadastro")).toHaveLength(1);
     expect(await lerVersoesAutorizacao(db, org, "contato")).toEqual([]);
   });

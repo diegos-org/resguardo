@@ -70,9 +70,9 @@ marketplace) agora se muda pelo painel.
 - **Nada fica guardado antes de publicar:** se você mudou o texto e tenta sair da tela (outra aba das Configurações,
   o Voltar do navegador, fechar ou recarregar), o sistema pergunta antes, como nas páginas legais.
 - **Se alguém publicar enquanto você edita** (outra pessoa, ou você em outra janela), nada é publicado por cima sem
-  você saber. Se a tela já mostra a versão nova (por exemplo, depois de você publicar a outra caixa), o seu texto fica
-  no campo, com um aviso, e você escolhe entre usar o texto que acabou de ser publicado ou continuar com o seu (que
-  vira a versão seguinte). Se o aviso pedir para recarregar a página, copie antes o seu texto, se quiser aproveitá-lo.
+  você saber. Ao tocar em publicar, a tela recebe a versão nova sozinha, sem recarregar a página: o seu texto fica no
+  campo, com um aviso, e você escolhe entre usar o texto que acabou de ser publicado ou continuar com o seu (que vira a
+  versão seguinte).
 - **Quem pode:** só quem tem o perfil de administrador, o mesmo que mexe nas outras configurações; a equipe de
   operação, os proprietários e as limpezas não veem a aba.
 - **O que você precisa fazer:** nada obrigatório. Quando o advogado responder sobre os formulários dos proprietários
