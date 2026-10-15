@@ -1,10 +1,9 @@
-import { LinkNovaJanela } from "@/components/site/Acessibilidade";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
 import { FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import { CabecalhoBusca, ResultadosBusca } from "@/components/site/ResultadosBusca";
-import { SemCasas } from "@/components/site/SemCasas";
+import { BotaoContato, SemCasas } from "@/components/site/SemCasas";
 import styles from "@/components/site/site.module.css";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
@@ -91,15 +90,10 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
       ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: pedido.entrada, checkout: pedido.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
       : false;
   // Por onde a conversa continua (WhatsApp, senão e-mail): a regra única do site, para o formulário e para o envio, cujo
-  // link (a mensagem pronta, com o assunto da consulta no e-mail) também vem do lugar único, `contatoDoSite`.
+  // link (a mensagem pronta, com o assunto da consulta no e-mail) também vem do lugar único, `contatoDoSite`; o botão é o
+  // `BotaoContato` de sempre, com o rótulo do envio tirado do mesmo link (`externo`: WhatsApp).
   const canal = canalDeContato(conteudo);
   const envio = prontoParaEnviar && r?.ok ? contatoDoSite(conteudo, { mensagem: r.texto, assunto: ASSUNTO_CONSULTA }) : null;
-  const rotuloEnvio = (
-    <>
-      {canal === "whatsapp" ? "Enviar pelo WhatsApp" : "Enviar por e-mail"}
-      <span aria-hidden="true">↗</span>
-    </>
-  );
   return (
     <Moldura conteudo={conteudo}>
       {cabecalho(true)}
@@ -144,16 +138,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
               <p className={`${styles.texto} ${styles.caixa}`}>{r.texto}</p>
               {envio ? (
                 <p style={{ marginTop: 16 }}>
-                  {/* O WhatsApp abre outra janela pelo LinkNovaJanela (M7.11, com o aviso para o leitor de tela); o e-mail abre o programa de e-mail. */}
-                  {envio.externo ? (
-                    <LinkNovaJanela href={envio.href} className={styles.botao}>
-                      {rotuloEnvio}
-                    </LinkNovaJanela>
-                  ) : (
-                    <a href={envio.href} className={styles.botao}>
-                      {rotuloEnvio}
-                    </a>
-                  )}
+                  <BotaoContato contato={envio} rotulo={envio.externo ? "Enviar pelo WhatsApp" : "Enviar por e-mail"} />
                 </p>
               ) : (
                 <p className={styles.aviso} role="note" style={{ marginTop: 16 }}>

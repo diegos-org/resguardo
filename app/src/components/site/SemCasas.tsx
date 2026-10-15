@@ -32,23 +32,24 @@ export function SemCasas({ conteudo, contato: opcoes }: { conteudo: Pick<Conteud
 }
 
 /**
- * O botão do link de `contatoDoSite` (o mesmo no aviso do site sem casas e na busca em todas as casas). O WhatsApp abre
- * outra janela pelo `LinkNovaJanela` (M7.11, com o aviso para o leitor de tela); o e-mail abre o programa de e-mail.
+ * O botão do link de `contatoDoSite` (o mesmo no aviso do site sem casas, na busca em todas as casas e no envio da
+ * mensagem da consulta). O WhatsApp abre outra janela pelo `LinkNovaJanela` (M7.11, com o aviso para o leitor de tela);
+ * o e-mail abre o programa de e-mail. `rotulo` troca o texto padrão do contato (o envio da consulta diz "Enviar…").
  */
-export function BotaoContato({ contato }: { contato: NonNullable<ReturnType<typeof contatoDoSite>> }) {
-  const rotulo = (
+export function BotaoContato({ contato, rotulo = contato.rotulo }: { contato: NonNullable<ReturnType<typeof contatoDoSite>>; rotulo?: string }) {
+  const texto = (
     <>
-      {contato.rotulo}
+      {rotulo}
       <span aria-hidden="true">↗</span>
     </>
   );
   return contato.externo ? (
     <LinkNovaJanela href={contato.href} className={styles.botao}>
-      {rotulo}
+      {texto}
     </LinkNovaJanela>
   ) : (
     <a href={contato.href} className={styles.botao}>
-      {rotulo}
+      {texto}
     </a>
   );
 }
