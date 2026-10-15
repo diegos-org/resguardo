@@ -27,7 +27,7 @@ export const CAMPOS_TEXTOS_SITE = [
     linhas: 5,
   },
   { chave: "catalogoTitulo", rotulo: "Nossas casas (a página com todas as casas): título (a parte entre *asteriscos* sai em itálico; vazio = \"Nossas casas\")", limite: 120, linhas: 1 },
-  { chave: "catalogoTexto", rotulo: "Nossas casas: frase abaixo do título, quando há casas no site (é também a frase da prévia do link da página)", limite: 240, linhas: 2 },
+  { chave: "catalogoTexto", rotulo: "Nossas casas: frase abaixo do título, quando há casas no site", limite: 240, linhas: 2 },
   { chave: "planejarOlho", rotulo: "Página de cada casa, cartão da consulta ao lado da descrição: olho (linha pequena acima do título)", limite: 60, linhas: 1 },
   { chave: "planejarTitulo", rotulo: "Página de cada casa, cartão da consulta: título (a parte entre *asteriscos* sai em itálico; vazio = \"Consultar disponibilidade\")", limite: 120, linhas: 1 },
   { chave: "planejarTexto", rotulo: "Página de cada casa, cartão da consulta: frase abaixo do título (vazio = não aparece)", limite: 240, linhas: 2 },

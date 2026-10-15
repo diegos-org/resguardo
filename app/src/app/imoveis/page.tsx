@@ -7,16 +7,17 @@ import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imoveisDoSite } from "@/site/site";
 
 /**
- * Prévia do link (M7.13): a frase que a página mostra — a de Nossas casas abaixo do título (Configurações → Textos do
- * site, M7.16; vazia, a descrição do site) — e a capa do site; sem nenhuma casa no site (M7.8), o aviso do site sem casas,
- * que a página mostra no lugar da lista. Até o M7.16 a frase da página era fixa no código e a prévia usava a da vitrine
- * de casas da página inicial. O título da aba continua "Nossas casas", o nome da página no menu, mesmo com outro título
- * na página. A lista é a mesma da página (`imoveisDoSite`, com `cache`: uma leitura só).
+ * Prévia do link (M7.13): a frase da vitrine de casas da página inicial (Configurações → Textos do site) e a capa do site;
+ * sem nenhuma casa no site (M7.8), o aviso do site sem casas, o que a página mostra. A frase abaixo do título desta página
+ * era fixa até o M7.16 e agora se edita em Textos do site (`catalogoTexto`), mas a prévia continua com a da vitrine, como
+ * no M7.13, para nada mudar no site até Diego editar; usar a frase da própria página na prévia é proposta registrada no
+ * guia, para Diego decidir. O título da aba continua "Nossas casas", o nome da página no menu, mesmo com outro título na
+ * página. A lista é a mesma da página (`imoveisDoSite`, com `cache`: uma leitura só).
  */
 export async function generateMetadata() {
   const { db, conteudo } = await carregarSite();
   const temCasas = conteudo ? (await imoveisDoSite(db, conteudo.organizacaoId)).length > 0 : false;
-  return metadadosDoSite("Nossas casas", { descricao: conteudo && (temCasas ? conteudo.textos.catalogoTexto : textoSemCasas(conteudo.textos)) });
+  return metadadosDoSite("Nossas casas", { descricao: conteudo && (temCasas ? conteudo.textos.vitrineTexto : textoSemCasas(conteudo.textos)) });
 }
 
 export default async function Catalogo() {

@@ -83,14 +83,19 @@ describe("prévia dos links do site (M7.13)", () => {
     expect(meta.twitter).toMatchObject({ card: "summary" });
   });
 
-  it("Nossas casas (M7.16): a frase da própria página, a de Textos do site (não mais a da vitrine da página inicial); sem ela, o subtítulo do site", async () => {
-    expect(await metadadosCatalogo()).toMatchObject({ title: "Nossas casas — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.catalogoTexto });
-    expect(TEXTOS_SITE_INICIAIS.catalogoTexto).toBe("Escolha um apartamento para ver o que ele oferece e consultar as datas.");
-    // A frase editada no painel é a mesma da página; a da vitrine não entra mais aqui.
-    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTexto: "Frase fictícia de Nossas casas.", vitrineTexto: "Vitrine fictícia." } }));
-    expect((await metadadosCatalogo()).description).toBe("Frase fictícia de Nossas casas.");
-    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTexto: "" } }));
+  it("Nossas casas: a frase da vitrine de casas da página inicial; sem ela, o subtítulo do site", async () => {
+    expect(await metadadosCatalogo()).toMatchObject({ title: "Nossas casas — Casa Exemplo", description: TEXTOS_SITE_INICIAIS.vitrineTexto });
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, vitrineTexto: "" } }));
     expect((await metadadosCatalogo()).description).toBe(TEXTOS_SITE_INICIAIS.subtitulo);
+  });
+
+  it("Nossas casas (M7.16): a frase e o título da própria página, agora editáveis, não mudam a prévia nem o título da aba", async () => {
+    // A frase de Nossas casas editada no painel aparece na página; a prévia continua com a da vitrine, como no M7.13.
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTexto: "Frase fictícia de Nossas casas.", vitrineTexto: "Vitrine fictícia." } }));
+    expect((await metadadosCatalogo()).description).toBe("Vitrine fictícia.");
+    // Frase da página vazia: nada muda na prévia (a vitrine continua).
+    m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTexto: "" } }));
+    expect((await metadadosCatalogo()).description).toBe(TEXTOS_SITE_INICIAIS.vitrineTexto);
     // O título da aba é o nome da página no menu, mesmo com outro título na página.
     m.conteudo.mockResolvedValue(conteudo({ textos: { ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "Encontre sua casa *no Leblon.*" } }));
     expect((await metadadosCatalogo()).title).toBe("Nossas casas — Casa Exemplo");
