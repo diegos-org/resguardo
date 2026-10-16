@@ -2,7 +2,9 @@
  * O cancelamento pela política na tela do painel (M8.2c; desenho §9.2): a prévia em linhas prontas — o formulário do
  * navegador só mostra texto, nunca calcula nem decide — e os textos de cada resultado. Puro (sem banco).
  */
+import { HORA_LIMITE_DO_DIA } from "@/configuracoes/politica-cancelamento";
 import type { SituacaoDevolucao } from "@/db/schema";
+import { diaMesBr } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { diaHoraBr, type EscolhaDaEquipe, escolhaDaEquipe, NOMES_BASE_CANCELAMENTO, NOMES_CANAL_PEDIDO, type Previa, type RotaDevolucao } from "./cancelamento";
 
@@ -31,7 +33,6 @@ export type PreviaParaTela = {
   avisos: string[];
 };
 
-const diaIso = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
 const ROTAS: Record<Exclude<RotaDevolucao, "nenhuma">, string> = {
   pedida: "pelo Mercado Pago agora",
   fora_do_prazo: "pelo painel do Mercado Pago ou por fora (mais de 78 dias)",
@@ -52,9 +53,9 @@ export function previaParaTela(p: Previa): PreviaParaTela {
         : `Pedido recebido em ${diaHoraBr(p.recebidoEm)}${p.canal ? ` (${NOMES_CANAL_PEDIDO[p.canal]})` : ""}.`;
   const politica = p.politica
     ? [
-        `Política aceita: versão ${p.politica.versao} de ${diaIso(p.politica.data)}`,
-        p.decisao.integralAte ? ` — reembolso integral para pedidos até ${diaIso(p.decisao.integralAte)} (23h59)` : "",
-        p.decisao.arrependimentoAte ? `; arrependimento até ${diaIso(p.decisao.arrependimentoAte)}${p.politica.arrependimentoAteEntrada ? ", ou até a entrada" : ""}` : "",
+        `Política aceita: versão ${p.politica.versao} de ${diaMesBr(p.politica.data)}`,
+        p.decisao.integralAte ? ` — reembolso integral para pedidos até ${diaMesBr(p.decisao.integralAte)} (${HORA_LIMITE_DO_DIA})` : "",
+        p.decisao.arrependimentoAte ? `; arrependimento até ${diaMesBr(p.decisao.arrependimentoAte)}${p.politica.arrependimentoAteEntrada ? ", ou até a entrada" : ""}` : "",
         ".",
       ].join("")
     : null;

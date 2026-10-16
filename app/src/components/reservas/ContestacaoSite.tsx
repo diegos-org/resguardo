@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
-import { hojeISO } from "@/lib/datas";
+import { dataHoraNoFuso, hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import {
   atualizarValorSeguradoAcao,
@@ -29,7 +29,7 @@ import { FormRegistrarContestacao } from "./FormRegistrarContestacao";
 import { FormResultadoContestacao } from "./FormResultadoContestacao";
 
 const FUSO = "America/Sao_Paulo";
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: FUSO, dateStyle: "short", timeStyle: "short" });
+const quando = (d: Date) => dataHoraNoFuso(d, FUSO);
 const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } as const;
 const caixa = { border: "1px dashed var(--scl-borda)", borderRadius: "var(--scl-raio-cartao)", padding: 10, display: "flex", flexDirection: "column", gap: 8 } as const;
 

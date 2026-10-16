@@ -18,7 +18,7 @@ import { formatarDocumento } from "@/proprietarios/documento";
 import { ultimoAceite } from "@/portal/aceites";
 import { obterProprietario } from "@/proprietarios/repositorio";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
-import { hojeISO } from "@/lib/datas";
+import { dataBr, dataHoraNoFuso, dataNoFuso, hojeISO } from "@/lib/datas";
 import { escolherPeriodicidadeAdminAcao } from "@/repasses/acoes";
 import { NOMES_PERIODICIDADE, PERIODICIDADES } from "@/repasses/periodicidade";
 import { periodicidadeDoProprietario } from "@/repasses/proprietario";
@@ -40,7 +40,7 @@ export default async function EditarProprietario({ params, searchParams }: PageP
     ultimoAceite(db, sessao.organizacaoId, id),
   ]);
   const agora = new Date();
-  const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const quando = (d: Date) => dataHoraNoFuso(d);
   return (
     <>
       <h1>{dono.nome}</h1>
@@ -79,7 +79,7 @@ export default async function EditarProprietario({ params, searchParams }: PageP
           <input type="hidden" name="proprietarioId" value={dono.id} />
           <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Como recebe os repasses</h2>
           <p style={{ margin: 0, color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>
-            Hoje: {periodicidade.descricao}. Próximo repasse previsto: {periodicidade.proximaData.split("-").reverse().join("/")}. O proprietário também escolhe no portal; sem escolha vale o padrão do tipo de contrato (Configurações → Repasses). Vale a partir do próximo repasse.
+            Hoje: {periodicidade.descricao}. Próximo repasse previsto: {dataBr(periodicidade.proximaData)}. O proprietário também escolhe no portal; sem escolha vale o padrão do tipo de contrato (Configurações → Repasses). Vale a partir do próximo repasse.
           </p>
           <div className={styles.linha} style={{ alignItems: "flex-end" }}>
             <label style={{ flex: "0 1 320px" }}>
@@ -107,9 +107,10 @@ export default async function EditarProprietario({ params, searchParams }: PageP
           id: c.id,
           email: c.email,
           situacao: situacao(c, agora),
-          criadoEm: c.criadoEm.toISOString(),
-          expiraEm: c.expiraEm.toISOString(),
-          aceitoEm: c.aceitoEm?.toISOString() ?? null,
+          // Os textos já prontos, no horário de Brasília (o dia em UTC mostrava o dia seguinte à noite).
+          criadoEm: dataNoFuso(c.criadoEm),
+          expiraEm: dataHoraNoFuso(c.expiraEm),
+          aceitoEm: c.aceitoEm ? dataNoFuso(c.aceitoEm) : null,
         }))}
         convidar={convidar}
         revogar={revogar}

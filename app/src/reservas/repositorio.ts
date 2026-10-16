@@ -8,7 +8,7 @@ import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { hojeISO } from "@/lib/datas";
+import { hojeISO, horaNoFuso } from "@/lib/datas";
 import { pagamentoEmAndamentoOuAprovado, type PagamentoQuePrende, pagamentoSemReservaADevolver } from "@/pagamentos/andamento";
 import { devolvidaNoProvedorSql } from "@/portal/posse";
 import { chavesDaImportacao } from "./travas-importacao";
@@ -258,8 +258,6 @@ export async function salvarEmailHospede(
   });
 }
 
-const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit" }).format(d);
-
 /**
  * Por que a equipe não mexe à mão num pedido com pagamento do site (M8.2a). Também o texto do cancelamento pela política
  * (M8.2c) quando há uma tentativa em andamento.
@@ -274,7 +272,7 @@ export function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "can
         ? `Não confirmada: ${andamento}. Aguarde a resposta do Mercado Pago antes de confirmar à mão.`
         : `Não cancelada: ${andamento}. Aguarde a resposta dele.`;
     }
-    const ate = p.pixExpiraEm ? ` até ${horaBr(p.pixExpiraEm, fuso)}` : "";
+    const ate = p.pixExpiraEm ? ` até ${horaNoFuso(p.pixExpiraEm, fuso)}` : "";
     // M8.2d: a alteração de uma reserva paga espera o pagamento em andamento, como o cancelamento.
     if (acao === "alterar") return `Não alterada: há um Pix do site em andamento${ate}. Aguarde o prazo dele.`;
     return acao === "confirmar"

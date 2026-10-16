@@ -24,7 +24,7 @@ function Campos({ m, estado }: { m?: Modelo; estado: EstadoForm<ErrosModelo> }) 
         </label>
         <label className={styles.largo}>
           Quando é usado
-          <input name="quando" defaultValue={v("quando")} maxLength={120} placeholder="ex.: 2 dias antes da entrada, 10h" />
+          <input name="quando" defaultValue={v("quando")} maxLength={120} placeholder="ex.: 2 dias antes da entrada, 10:00" />
           {erro("quando")}
         </label>
       </div>

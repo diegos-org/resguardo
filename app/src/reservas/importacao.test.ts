@@ -140,7 +140,7 @@ describe("linha igual reconfere o financeiro", () => {
   it("reimportar igual depois de o imóvel ganhar contrato gera o financeiro que faltava", async () => {
     const csv = "imovel;origem;codigo_canal;entrada;saida;valor_bruto;taxa_canal\n403;airbnb;C1;10/10/2030;12/10/2030;1.000,00;150,00";
     const r1 = await importarCsv(db, org, csv, null);
-    expect(r1.avisosFinanceiro[0].avisos.join(" ")).toContain("Sem contrato");
+    expect(r1.avisosFinanceiro[0].avisos.join(" ")).toContain("Sem contrato vigente em 10/10/2030 para este imóvel.");
     const [res] = await db.select().from(reservas).where(eq(reservas.idFonte, "airbnb:C1"));
     expect(await listarLancamentos(db, org, { reservaId: res.id })).toHaveLength(0);
     await criarContrato(db, org, im403, { tipo: "gestao_completa", comissao: "15", inicio: "2025-01-01" }, null);

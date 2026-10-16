@@ -8,6 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import type { DesfechoPagamento, SituacaoPagamento } from "@/db/schema";
+import { diaMesBr, diaMesNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { ESTADOS_LIDOS_CONTESTACAO, type EstadoLidoContestacao, SITUACOES_DOCUMENTACAO, type SituacaoDocumentacao, TEMPO_LIMITE_CONTESTACAO_MS, TEMPO_LIMITE_PADRAO_MS } from "./provedor";
 
@@ -1332,10 +1333,8 @@ export const NOMES_SITUACAO_CONTESTACAO: Record<SituacaoContestacao, string> = {
   sem_efeito: "encerrada sem efeito",
 };
 
-const FUSO = "America/Sao_Paulo";
 /** dd/mm em São Paulo (um instante) ou de uma data AAAA-MM-DD. */
-const diaMes = (d: Date | string) =>
-  typeof d === "string" ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, day: "2-digit", month: "2-digit" }).format(d);
+const diaMes = (d: Date | string) => (typeof d === "string" ? diaMesBr(d) : diaMesNoFuso(d));
 
 // Registro pela equipe e leitura.
 export const TEXTO_DISPUTA_JA_NO_QUADRO = "O Mercado Pago já mostra esta disputa: ela está no quadro.";

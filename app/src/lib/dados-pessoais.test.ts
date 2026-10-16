@@ -32,6 +32,8 @@ describe("notas sem dados pessoais (M8.2c)", () => {
 
   it.each([
     "WhatsApp da empresa, 14h10",
+    // O exemplo dos formulários de pedido, com a hora no padrão do Brasil (M7.22).
+    "WhatsApp da empresa, 14:10",
     "pedido de 10/10",
     "pedido de 10/10/2026 às 14:10",
     "pedido de 10/10 15:00 pelo WhatsApp",

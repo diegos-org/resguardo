@@ -3,6 +3,7 @@
  * página da cotação leem daqui, com os dados da ficha do imóvel (Imóveis → ficha → Detalhes). Sem dependência de servidor.
  */
 import type { EstadoCotacao } from "@/db/schema";
+import { escreverHora } from "@/lib/datas";
 import type { EstadoPagamentoHospede } from "@/pagamentos/consultas";
 
 /**
@@ -45,11 +46,11 @@ export function regrasDaCasa(f: FichaDasRegras): RegrasDaCasa {
 }
 
 /**
- * As frases dos horários, as mesmas nas duas páginas: "Entrada a partir das …" e "Saída até as …". `hora` escreve a hora:
- * a página da casa usa como está ("15:00"); a cotação, como Minha reserva ("15h", `escreverHora`).
+ * As frases dos horários, as mesmas na página da casa e na da cotação: "Entrada a partir das 15:00" e "Saída até as
+ * 11:00". A hora sai sempre por `escreverHora`, a escrita única da casa, da cotação e de Minha reserva (M7.22).
  */
-export function frasesDosHorarios(r: Pick<RegrasDaCasa, "entrada" | "saida">, hora: (h: string) => string = (h) => h): [string, string] {
-  return [`Entrada a partir das ${hora(r.entrada)}`, `Saída até as ${hora(r.saida)}`];
+export function frasesDosHorarios(r: Pick<RegrasDaCasa, "entrada" | "saida">): [string, string] {
+  return [`Entrada a partir das ${escreverHora(r.entrada)}`, `Saída até as ${escreverHora(r.saida)}`];
 }
 
 /**

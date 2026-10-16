@@ -36,7 +36,7 @@ const cadastro = (over: Partial<Cadastro> = {}): Cadastro => ({
 });
 const TEXTO = "Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo.";
 const autorizado = { autorizadoEm: new Date("2026-10-15T15:30:00Z"), autorizacaoVersao: 1, autorizacaoTexto: TEXTO };
-const registroNoHtml = `Autorizado em 15/10/2026, 12:30 (texto da versão 1): “${TEXTO}”`;
+const registroNoHtml = `Autorizado em 15/10/2026 às 12:30 (texto da versão 1): “${TEXTO}”`;
 
 beforeEach(() => {
   vi.clearAllMocks();

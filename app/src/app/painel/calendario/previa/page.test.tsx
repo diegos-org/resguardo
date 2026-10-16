@@ -55,6 +55,11 @@ it("prefere 103, mostra plano por noite, leitura parcial e horário local; opera
   expect(m.envios).not.toHaveBeenCalled();
   expect(h).not.toContain('method="post"');
 });
+it("os mínimos por dia saem na ordem da semana, de segunda a domingo, com o rótulo da mesma ordem (M7.22)", async () => {
+  // Guardado por número (0 = domingo … 6 = sábado): um mínimo diferente em cada dia mostra a ordem.
+  m.regras.mockResolvedValue({ ...REGRAS_CALENDARIO_PADRAO, minimoPorDia: [7, 1, 2, 3, 4, 5, 6], envio: { imoveis: ["i103"], automatico: false } });
+  expect(await html()).toContain("mínimo por dia da semana 1/2/3/4/5/6/7 (seg a dom)");
+});
 it("admin vê o envio com o sinal da Vercel e o histórico, mas imóvel de outra empresa não é planejado", async () => {
   m.sessao.mockResolvedValue({ papel: "admin", usuarioId: "u", organizacaoId: "org" });
   vi.stubEnv("BEDS24_ESCRITA", "ligada");

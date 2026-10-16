@@ -27,6 +27,7 @@ import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { CodigoDuplicado, criarImovel } from "@/imoveis/repositorio";
 import { validarImovel } from "@/imoveis/validacao";
+import { dataNoFuso } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { ERRO_AUTORIZACAO_MUDOU, marcaDoFormulario, type TextoAutorizacao } from "@/proprietarios/autorizacao";
 import { ERRO_TELEFONE_DDD, telefoneComDddValido } from "@/proprietarios/documento";
@@ -269,7 +270,7 @@ export async function aprovarCadastro(db: Db, organizacaoId: string, id: string,
           telefone: c.telefone,
           endereco: "",
           chavePix: "",
-          observacoes: `Cadastro marketplace pelo site em ${agora.toISOString().slice(0, 10)}; ${origem}. Falta completar documento e Pix.`,
+          observacoes: `Cadastro marketplace pelo site em ${dataNoFuso(agora)}; ${origem}. Falta completar documento e Pix.`,
           ativo: true,
         },
         autorId,

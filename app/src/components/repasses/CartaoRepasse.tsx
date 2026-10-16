@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
+import { dataBr, dataHoraNoFuso } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import { anexarComprovanteAcao, enviarEmailRepasseAcao, estornarRepasseAcao, pagarRepasseAcao } from "@/repasses/acoes";
@@ -21,8 +22,7 @@ type Props = {
   editar: boolean;
 };
 
-const dataBr = (d: string) => d.split("-").reverse().join("/");
-const quando = (d: Date | null) => (d ? d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "");
+const quando = (d: Date | null) => (d ? dataHoraNoFuso(d) : "");
 
 export function nomeDoRepasse(r: Pick<Repasse, "tipo" | "mes" | "data">): string {
   if (r.tipo === "fechamento") return `Fechamento de ${nomeMes(r.mes.slice(0, 7))}`;

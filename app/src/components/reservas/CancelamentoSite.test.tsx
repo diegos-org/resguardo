@@ -184,7 +184,7 @@ describe("cancelamento pela política na ficha (M8.2c)", () => {
     });
     expect(h).toContain("O hóspede pediu");
     expect(h).toContain("01/10 às 13:00 por Diego Fictício");
-    expect(h).toContain("versão 1 — reembolso integral para pedidos até 26/10 (23h59) — arrependimento até 08/10, ou até a entrada");
+    expect(h).toContain("versão 1 — reembolso integral para pedidos até 26/10 (23:59) — arrependimento até 08/10, ou até a entrada");
     expect(h).toContain("Devolução integral — pedido dentro do prazo de reembolso integral (R$ 1.824,00)");
     expect(h).toContain("pedida ao Mercado Pago, aguardando confirmação");
     expect(h).toContain("o Mercado Pago pediu para esperar: o sistema tenta de novo sozinho");

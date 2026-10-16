@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { NOMES_TIPO } from "@/contratos/regras";
 import { TIPOS_CONTRATO } from "@/db/schema";
+import { DIAS_NA_ORDEM } from "@/lib/datas";
 import type { EstadoRegrasRepasses } from "@/repasses/acoes";
 import { DIA_FECHAMENTO_MAX, DIA_FECHAMENTO_MIN, diaDoFechamentoAtual, NOMES_DIA_SEMANA, NOMES_PERIODICIDADE, PERIODICIDADES, type RegrasRepasses } from "@/repasses/periodicidade";
 import styles from "../formularios.module.css";
@@ -43,9 +44,9 @@ export function FormRegrasRepasses({ regras, salvar }: Props) {
           <label>
             Semanal: dia da semana
             <select name="diaSemanal" defaultValue={v("diaSemanal", String(regras.diaSemanal))} aria-invalid={estado.erros?.diaSemanal ? true : undefined}>
-              {NOMES_DIA_SEMANA.map((n, i) => (
-                <option key={n} value={i}>
-                  {n}
+              {DIAS_NA_ORDEM.map((i) => (
+                <option key={i} value={i}>
+                  {NOMES_DIA_SEMANA[i]}
                 </option>
               ))}
             </select>

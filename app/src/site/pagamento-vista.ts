@@ -14,10 +14,11 @@
  * devolução da diferença), a que não pôde valer e a que não vale mais, e o compositor único do texto dela
  * (`textoDaAlteracao`: a página, a variável `{alteracao}` das mensagens e o botão "Copiar a proposta" do painel).
  */
-import { fimDoArrependimento, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
+import { fimDoArrependimento, HORA_LIMITE_DO_DIA, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import type { TextosSite } from "@/configuracoes/textos-site";
 import type { AlteracaoParaHospede, CancelamentoParaHospede, EstadoPagamentoHospede, VistaPagamentoHospede } from "@/pagamentos/consultas";
 import { urlDoDesafio } from "@/pagamentos/provedor";
+import { diaHoraNoFuso, diaMesBr, diaMesNoFuso, FUSO_PADRAO, hojeISO, horaNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 
 export type { EstadoPagamentoHospede };
@@ -228,10 +229,8 @@ export function alteracaoParaOHospede(a: AlteracaoParaHospede): AlteracaoDoHospe
   };
 }
 
-const horaNoFuso = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit" }).format(d);
-const diaNoFuso = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit" }).format(d);
-/** "13:30" no mesmo dia; "02/10, 13:30" noutro (no fuso do imóvel). */
-const momento = (d: Date, agora: Date, fuso: string) => (diaNoFuso(d, fuso) === diaNoFuso(agora, fuso) ? horaNoFuso(d, fuso) : `${diaNoFuso(d, fuso)}, ${horaNoFuso(d, fuso)}`);
+/** "13:30" no mesmo dia; "02/10 às 13:30" noutro (no fuso do imóvel). */
+const momento = (d: Date, agora: Date, fuso: string) => (hojeISO(fuso, d) === hojeISO(fuso, agora) ? horaNoFuso(d, fuso) : diaHoraNoFuso(d, fuso));
 
 /**
  * A linha fixa do cartão em análise (não editável: leva a hora, calculada no servidor no fuso do imóvel). Enquanto as
@@ -243,7 +242,7 @@ export function linhaDaAnalise(prazo: string | null, agora: Date, fuso: string):
   if (Number.isNaN(d.getTime())) return null;
   if (d.getTime() > agora.getTime()) return `As datas estão seguradas até ${momento(d, agora, fuso)}.`;
   const quando = momento(d, agora, fuso);
-  return `O prazo das datas acabou ${quando.includes(",") ? "em" : "às"} ${quando}: se a análise aprovar e as datas ainda estiverem livres, confirmamos a reserva; senão, devolvemos o valor integral.`;
+  return `O prazo das datas acabou ${quando.includes(" às ") ? "em" : "às"} ${quando}: se a análise aprovar e as datas ainda estiverem livres, confirmamos a reserva; senão, devolvemos o valor integral.`;
 }
 
 /**
@@ -308,18 +307,16 @@ export type TextoDoCancelamento = {
 };
 
 /** Os pedidos e a hora de Brasília (a política conta neste horário). */
-const BRASILIA = "America/Sao_Paulo";
-const diaMes = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit" }).format(d);
-const diaHora = (d: Date, fuso: string) => `${diaMes(d, fuso)} às ${new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit" }).format(d)}`;
-const diaIso = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
+const BRASILIA = FUSO_PADRAO;
+const diaMes = diaMesNoFuso;
+const diaHora = diaHoraNoFuso;
+const diaIso = diaMesBr;
 const quando = (d: Date | string | null): Date | null => {
   if (!d) return null;
   const x = d instanceof Date ? d : new Date(d);
   return Number.isNaN(x.getTime()) ? null : x;
 };
 const juntar = (...partes: (string | null | undefined)[]) => partes.filter((x): x is string => !!x && !!x.trim()).join(" ");
-/** AAAA-MM-DD de um instante no fuso. */
-const isoNoFuso = (d: Date, fuso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: fuso, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 /** "até dd/mm" ou, quando a política para o arrependimento na entrada e ela vem antes, "até a entrada, em dd/mm" (`fimDoArrependimento`). */
 const ateOArrependimento = (ate: string, ateEntrada: boolean | null | undefined, entrada: string | null) => {
   const fim = fimDoArrependimento(ate, ateEntrada ?? null, entrada);
@@ -368,7 +365,7 @@ export function textoDoCancelamento(
   }
   const recebido = quando(c.recebidoEm)!;
   const entradaQuando = quando(c.entradaEm);
-  const entradaDaEstadia = entradaQuando ? isoNoFuso(entradaQuando, BRASILIA) : null;
+  const entradaDaEstadia = entradaQuando ? hojeISO(BRASILIA, entradaQuando) : null;
   const cabecalho =
     c.quemCancela === "empresa"
       ? `Nós cancelamos a sua reserva ${codigo}${c.motivoEmpresa === "imovel_sem_condicoes" ? ": o apartamento ficou sem condições de receber você" : c.motivoEmpresa === "forca_maior" ? " por motivo de força maior" : ""}.`
@@ -420,7 +417,7 @@ export function textoDoCancelamento(
   else {
     const arr = c.arrependimentoAte ? ateOArrependimento(c.arrependimentoAte, c.arrependimentoAteEntrada, entradaDaEstadia) : null;
     const arrependimento = arr && arr.fim.ate > c.integralAte ? ` Arrependimento: ${arr.texto}.` : "";
-    decisoes.push(juntar(`Prazo de reembolso integral: pedidos até ${diaIso(c.integralAte)}, às 23h59.${arrependimento}`, textos.cancelamentoSemDevolucaoPrazo));
+    decisoes.push(juntar(`Prazo de reembolso integral: pedidos até ${diaIso(c.integralAte)}, às ${HORA_LIMITE_DO_DIA}.${arrependimento}`, textos.cancelamentoSemDevolucaoPrazo));
   }
   const decisao = juntar(...decisoes);
   return { linhas: [cabecalho, ...decisoes, ...(comoVolta ? [comoVolta] : []), ...(textos.cancelamentoFecho ? [textos.cancelamentoFecho] : [])].filter((l) => l.trim()), decisao, comoVolta };
@@ -456,12 +453,11 @@ const noitesEntre = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00
 /** "dd/mm–dd/mm (N noites, P pessoas)". */
 const estadia = (e: { checkin: string; checkout: string; hospedes: number | null }) =>
   `${diaIso(e.checkin)}–${diaIso(e.checkout)} (${plural(noitesEntre(e.checkin, e.checkout), "noite", "noites")}${e.hospedes === null ? "" : `, ${plural(e.hospedes, "pessoa", "pessoas")}`})`;
-const horaBrasilia = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: BRASILIA, hour: "2-digit", minute: "2-digit" }).format(d);
 /**
  * O prazo das datas seguradas: "HH:MM" quando acaba no dia em que a alteração foi preparada, senão "dd/mm às HH:MM" (o
  * prazo vai até 48 horas). Puro: o dia de referência é o da preparação, nunca o relógio de quem lê.
  */
-const prazoBrasilia = (ate: Date, desde: Date | null) => (desde && diaMes(ate, BRASILIA) !== diaMes(desde, BRASILIA) ? `${diaMes(ate, BRASILIA)} às ${horaBrasilia(ate)}` : horaBrasilia(ate));
+const prazoBrasilia = (ate: Date, desde: Date | null) => (desde && diaMes(ate, BRASILIA) !== diaMes(desde, BRASILIA) ? diaHora(ate, BRASILIA) : horaNoFuso(ate, BRASILIA));
 
 /** Por que a política devolve (ou não) a diferença, em palavras do hóspede (os fatos da decisão pela política). */
 function porqueDaReducao(r: NonNullable<AlteracaoParaHospede["reducao"]> & { integralAte: string }, entradaDaPolitica: string): string {
@@ -471,7 +467,7 @@ function porqueDaReducao(r: NonNullable<AlteracaoParaHospede["reducao"]> & { int
     const fim = fimDoArrependimento(r.arrependimentoAte, r.arrependimentoAteEntrada ?? null, r.entradaDaEstadia ?? null);
     return fim.ateEntrada ? `direito de arrependimento: até a entrada, em ${diaIso(fim.ate)}` : `direito de arrependimento: até ${diaIso(fim.ate)}, 7 dias depois do pagamento`;
   }
-  return `o pedido chegou ${r.direito === "integral" ? "até" : "depois de"} ${diaIso(r.integralAte)}, 23h59, contando da entrada de ${diaIso(entradaDaPolitica)}`;
+  return `o pedido chegou ${r.direito === "integral" ? "até" : "depois de"} ${diaIso(r.integralAte)}, ${HORA_LIMITE_DO_DIA}, contando da entrada de ${diaIso(entradaDaPolitica)}`;
 }
 
 /**

@@ -1,11 +1,12 @@
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
+import { dataHoraNoFuso } from "@/lib/datas";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
 import { type AmbienteDoSistema, ambienteDeTeste, ambienteDoSistema, deployDeProducao, type MotivoDaProducao, motivoDaProducao } from "@/sistema/ambiente";
 import { producaoSemChaves, TEXTO_PRODUCAO_SEM_CHAVES } from "@/sistema/servicos";
 
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+const quando = (d: Date) => dataHoraNoFuso(d);
 
 const CONEXAO: Record<SituacaoMercadoPago["situacao"], string> = {
   teste: "Ligado em teste (nenhuma cobrança real)",

@@ -7,11 +7,11 @@ import { editarModeloAcao, novoModeloAcao, salvarMensagensAcao } from "@/configu
 import { ehMensagemDeAlteracao, ehMensagemDeCancelamento, garantirModelosIniciais, listarModelos, MODELOS_INICIAIS, TEXTOS_BASE_ALTERACAO, TEXTOS_BASE_CANCELAMENTO } from "@/configuracoes/modelos";
 import { getDb } from "@/db/client";
 import { ORIGENS_RESERVA, TIPOS_MENSAGEM_HOSPEDE } from "@/db/schema";
+import { dataHoraNoFuso } from "@/lib/datas";
 import { lerConfigMensagens, NOMES_TIPO, ultimaExecucaoDaOrganizacao, ultimosEnvios } from "@/mensagens/hospede";
 import { NOMES_ORIGEM } from "@/reservas/regras";
 
-const dataHora = (d: Date) =>
-  new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d);
+const dataHora = (d: Date) => dataHoraNoFuso(d);
 
 export default async function Mensagens() {
   const sessao = await exigirSessaoPainel();

@@ -2,7 +2,9 @@
 
 import { startTransition, useActionState, useRef, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { CampoHora } from "@/components/CampoHora";
 import styles from "@/components/formularios.module.css";
+import { lerHora } from "@/lib/datas";
 import type { EstadoCancelamentoPainel } from "@/pagamentos/acoes-cancelamento";
 import { CAMPO_ROTULO_FORA, CAMPO_VALOR_FORA } from "@/pagamentos/campos-cancelamento";
 
@@ -86,7 +88,8 @@ export function FormCancelamentoSite({
   const [excecao, setExcecao] = useState(false);
   const previa = estado.previa && alteradoEm !== estado ? estado.previa : null;
   const doHospede = quem === "hospede";
-  const momentoCorrigido = !!pedido && !pedido.site && doHospede && (data !== pedido.data || hora !== pedido.hora);
+  // A hora lida como o servidor lê (M7.22): "9:30" é o mesmo momento que "09:30" e não pede o motivo da correção.
+  const momentoCorrigido = !!pedido && !pedido.site && doHospede && (data !== pedido.data || (lerHora(hora) ?? hora) !== pedido.hora);
   // A SCL cancela: sempre integral, com ou sem política aceita (a escolha sem política é só do pedido do hóspede).
   const escolheSemPolitica = quem !== "empresa" && (semPolitica || estado.escolha === "sem_politica");
   const ofereceExcecao = !escolheSemPolitica && estado.escolha === "excecao";
@@ -157,7 +160,7 @@ export function FormCancelamentoSite({
               </label>
               <label style={{ flex: "0 1 140px" }}>
                 Hora (Brasília)
-                <input type="time" name="recebidoHora" value={hora} onChange={(e) => setHora(e.target.value)} required />
+                <CampoHora name="recebidoHora" value={hora} onChange={(e) => setHora(e.target.value)} required />
               </label>
               <label style={{ flex: "0 1 200px" }}>
                 Como chegou
@@ -177,13 +180,13 @@ export function FormCancelamentoSite({
             {momentoCorrigido && (
               <label>
                 Por que corrigir o horário (obrigatório, sem dados pessoais)
-                <input name="motivoMomento" required maxLength={300} placeholder="ex.: a mensagem do hóspede chegou às 14h10, não às 15h" />
+                <input name="motivoMomento" required maxLength={300} placeholder="ex.: a mensagem do hóspede chegou às 14:10, não às 15:00" />
               </label>
             )}
           </>
         ))}
       <label>
-        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14h10&rdquo;)
+        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14:10&rdquo;)
         <input name="nota" maxLength={300} />
       </label>
       {foraPedidos.map((f) => (
@@ -313,7 +316,7 @@ export function FormRegistrarPedido({ reservaId, acao, agora, canais }: { reserv
         </label>
         <label style={{ flex: "0 1 140px" }}>
           Hora (Brasília)
-          <input type="time" name="recebidoHora" defaultValue={agora.hora} required />
+          <CampoHora name="recebidoHora" defaultValue={agora.hora} required />
         </label>
         <label style={{ flex: "0 1 200px" }}>
           Como chegou
@@ -330,7 +333,7 @@ export function FormRegistrarPedido({ reservaId, acao, agora, canais }: { reserv
         </label>
       </div>
       <label>
-        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14h10&rdquo;)
+        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14:10&rdquo;)
         <input name="nota" maxLength={300} />
       </label>
       <div className={styles.acoes}>
@@ -396,7 +399,7 @@ export function FormDescartarPedido({
           </label>
           <label style={{ flex: "0 1 140px" }}>
             Hora (Brasília)
-            <input type="time" name="desistenciaHora" defaultValue={agora.hora} required />
+            <CampoHora name="desistenciaHora" defaultValue={agora.hora} required />
           </label>
         </>
       )}

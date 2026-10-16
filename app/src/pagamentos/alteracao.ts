@@ -54,7 +54,7 @@ import { dadosDoMotor } from "@/financeiro/aplicar";
 import { calcularReserva, type PendenciaDoCalculo } from "@/financeiro/motor";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { hojeISO, instanteLocal } from "@/lib/datas";
+import { diaHoraNoFuso, hojeISO, horaNoFuso, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
@@ -288,11 +288,8 @@ const FOLGA_MOMENTO_MS = 59_000;
 const VALOR_MAXIMO = 1_000_000_000;
 const ZERO: Componentes = { bruto: 0, taxa: 0, comissao: 0, parte: 0 };
 
-const fmt = (d: Date, fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
-const horaBr = (d: Date, fuso = FUSO_PAGAMENTO) => fmt(d, fuso, { hour: "2-digit", minute: "2-digit" });
 /** Um prazo: "HH:MM" quando acaba hoje (no fuso), senão "dd/mm às HH:MM" (o prazo das datas vai até 48 horas). */
-export const prazoBr = (d: Date, agora: Date, fuso = FUSO_PAGAMENTO) =>
-  hojeISO(fuso, d) === hojeISO(fuso, agora) ? horaBr(d, fuso) : `${fmt(d, fuso, { day: "2-digit", month: "2-digit" })} às ${horaBr(d, fuso)}`;
+export const prazoBr = (d: Date, agora: Date, fuso = FUSO_PAGAMENTO) => (hojeISO(fuso, d) === hojeISO(fuso, agora) ? horaNoFuso(d, fuso) : diaHoraNoFuso(d, fuso));
 /** O prazo das datas seguradas de uma alteração nova: o tempo da configuração, nunca depois do limite (D1, a entrada). */
 export const prazoDasDatas = (agora: Date, minutos: number, limite: Date | null | undefined) => {
   const ate = new Date(agora.getTime() + minutos * 60_000);
@@ -1319,7 +1316,7 @@ async function gravarAlteracao(tx: Db, organizacaoId: string, m: Montada, autorI
         taxaCanal: null,
         valorLiquido: null,
         codigoCanal: "",
-        observacoes: `Datas seguradas para a alteração da reserva ${r.codigo} até ${fmt(holdAte, c.fuso, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}; somem sozinhas se a alteração não for concluída.`,
+        observacoes: `Datas seguradas para a alteração da reserva ${r.codigo} até ${diaHoraNoFuso(holdAte, c.fuso)}; somem sozinhas se a alteração não for concluída.`,
       },
       autorId,
       agora,

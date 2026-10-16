@@ -972,10 +972,12 @@ fuso do imóvel (fuso diferente de `America/Sao_Paulo` = aviso na prévia). O in
    entrada (padrão 21, de 0 a 72, em Configurações → Pagamento no site: entrada às 15:00 = 12:00 do dia
    seguinte; antes: "Não comparecimento só depois de dd/mm às HH:MM (o hóspede pode chegar atrasado e
    avisar)."). A pergunta começa por "Confirme que o hóspede não chegou e não avisou de atraso."
-3. **No prazo** (pedido até 23h59 do dia que fica N dias antes da entrada, `prazoDoReembolso`) → integral.
-4. **Arrependimento** (dia da aprovação + 7 dias, até 23h59; `DIAS_ARREPENDIMENTO`, da lei, não editável) →
+3. **No prazo** (pedido até 23:59 do dia que fica N dias antes da entrada, `prazoDoReembolso`) → integral.
+4. **Arrependimento** (dia da aprovação + 7 dias, até 23:59; `DIAS_ARREPENDIMENTO`, da lei, não editável) →
    integral, mesmo dentro dos N dias. Com `regras.arrependimentoAteEntrada` (padrão: sim), só antes do instante
    da entrada. `aprovadoEm` é a primeira leitura que viu a aprovação: a janela só pode ficar maior que a real.
+   A hora-limite é escrita "23:59" (`HORA_LIMITE_DO_DIA`) desde o M7.22, decisão de Diego em 16/10/2026 (a hora
+   no padrão do Brasil, igual em todo lugar); antes, "23h59". A regra do prazo não mudou, só a escrita.
 5. **Depois do início da estadia** → nada (`estadia_iniciada`). No pedido do hóspede, o cancelamento é
    **recusado**: "saída antecipada não é cancelamento"; a reserva continua (descarte o pedido, se for o caso).
 6. Fora disso → nada (`fora_do_prazo`).
@@ -1194,7 +1196,7 @@ depois do prazo do integral: só o arrependimento); a do arrependimento, só qua
 Para a reserva paga pelo site daquele e-mail (os mesmos filtros de Minha reserva, no domínio), antes do
 instante da entrada e com "Hóspede pode pedir o cancelamento em Minha reserva" ligado (Configurações →
 Pagamento no site, ligado por padrão): o quadro "Cancelar a reserva" com a abertura editável, os prazos da
-política aceita ("pedidos até dd/mm (23h59) têm devolução integral; depois disso, não há devolução, salvo o
+política aceita ("pedidos até dd/mm (23:59) têm devolução integral; depois disso, não há devolução, salvo o
 arrependimento até dd/mm ou até a entrada, o que vier antes. Pedido feito agora: devolução integral | sem
 devolução pela política"; sem política aceita, "A equipe confirma com você, por escrito, o valor da
 devolução.") e o botão **"Pedir o cancelamento"** (com confirmação). Nunca valores. O hóspede **só pede**: o
@@ -3573,7 +3575,7 @@ consulta".
 | Reserva cancelada, devolvida (M8.2c) | "Devolução de R$ … confirmada pelo Mercado Pago em dd/mm" (o valor lido, quando a leitura o traz), "feita pelo Mercado Pago em dd/mm" (confirmada pela equipe) ou "feita em dd/mm" (por fora, com a frase da transferência e sem linha da forma de pagamento) |
 | Reserva cancelada, com a equipe (M8.2c) | "A devolução de R$ … pelo Mercado Pago não foi possível." e a frase editável de que a equipe combina outra forma, sem custo (Pix recusado, ou cartão com a devolução por fora já aberta) |
 | Reserva cancelada, em conferência (M8.2c) | devolução a menos, pagamento contestado ou devolvido em parte, devolução parada por um problema (desde o M8.2e, também a reserva cancelada por "Cancelar a reserva contestada", enquanto a disputa não termina, e depois da perdida que não cobre todo o retido; perdida e cobrindo o retido, a página diz que o dinheiro voltou pela frase `cancelamentoDevolvidoPelaDisputa`, desde a revisão do Codex de 11/10): "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você." Nunca oferece outro jeito de pagar |
-| Reserva cancelada sem devolução (M8.2c) | os prazos da política aceita ("Prazo de reembolso integral: pedidos até dd/mm, às 23h59." e o arrependimento, quando vai além) e a frase do caso (fora do prazo, não comparecimento, ou decisão da equipe sem política) |
+| Reserva cancelada sem devolução (M8.2c) | os prazos da política aceita ("Prazo de reembolso integral: pedidos até dd/mm, às 23:59." e o arrependimento, quando vai além; "23:59" desde o M7.22, decisão de Diego em 16/10/2026, antes "23h59") e a frase do caso (fora do prazo, não comparecimento, ou decisão da equipe sem política) |
 | Reserva cancelada, devolução esperando a liberação (M8.2d) | o restante de um pagamento já devolvido em parte, que só é pedido depois da liberação: "…previsto para dd/mm" e a frase editável `devolucaoAguardaLiberacao` ("Ela será pedida ao Mercado Pago quando ele liberar o seu pagamento…"), nunca "Já pedimos" |
 | Alteração segurada (M8.2d) | "Alteração da sua reserva": de/para (datas, noites, pessoas, valor, diferença), "Datas seguradas até HH:MM (horário de Brasília)" (ou "dd/mm às HH:MM"), a frase do rumo e a linha da política; no aumento, o Pix e o cartão da diferença (com o aceite D11 quando preciso); a reserva continua como está até a confirmação |
 | Alteração confirmada (M8.2d) | "Alteração confirmada": as datas, as pessoas e o valor novos e, na redução, a devolução da diferença (esperando a liberação, pedida, feita, com a equipe, em conferência) ou "não é devolvida"; a última aplicada, enquanto a devolução está aberta e por 30 dias |

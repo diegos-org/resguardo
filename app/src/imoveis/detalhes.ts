@@ -6,6 +6,7 @@ import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, imoveisDetalhes, imoveisPeriodos } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { lerHora, MENSAGEM_HORA } from "@/lib/datas";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
@@ -98,10 +99,13 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
     if (c !== null && c > VALOR_MAXIMO) erros[campo] = "Valor alto demais.";
     return c;
   };
+  // Em branco = o horário padrão da casa; "9:00" e "15h" gravam "09:00" e "15:00" (M7.22).
   const hora = (campo: "checkinAPartirDe" | "checkoutAte", padrao: string) => {
-    const v = txt(e[campo]) || padrao;
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) erros[campo] = "Use HH:MM (ex.: 15:00).";
-    return v;
+    const v = txt(e[campo]);
+    if (v === "") return padrao;
+    const h = lerHora(v);
+    if (!h) erros[campo] = MENSAGEM_HORA;
+    return h ?? v;
   };
   const dias = (campo: "diasChegada" | "diasSaida") => {
     const v = lista(e[campo]);

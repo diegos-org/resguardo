@@ -14,6 +14,10 @@ it("pedido é mostrado como pendente e exige referência e aceite para confirmar
   expect(h).toContain('type="checkbox" required="" name="aceite"');
   expect(h).toContain("Canal do aceite");
   expect(h).toContain("Registrar acordo confirmado");
+  // O horário pedido se digita como 15:00 (M7.22): campo de texto, nunca o nativo, que mostra AM/PM em inglês.
+  expect(h).not.toContain('type="time"');
+  const campo = h.match(/<input [^>]*name="hora"[^>]*\/>/)?.[0] ?? "";
+  for (const a of ['type="text"', 'placeholder="15:00"', 'required=""']) expect(campo, a).toContain(a);
 });
 it("sem edição não oferece formulários de mutação", () => {
   const h = renderToStaticMarkup(<Horarios id="reserva" horarios={horarios} editar={false} vigentes={{ entrada: false, saida: false }} />);
@@ -23,4 +27,10 @@ it("acordo inválido fica explícito na ficha", () => {
   const h = renderToStaticMarkup(<Horarios id="reserva" horarios={{ ...horarios, entrada: { acordo: registro } }} editar vigentes={{ entrada: false, saida: false }} />);
   expect(h).toContain("Este acordo precisa de reconfirmação");
   expect(h).toContain("Revogar acordo");
+});
+it("acordo confirmado: estadia em dd/mm/aaaa e a confirmação no horário de Brasília, sem ISO nem UTC (M7.22)", () => {
+  const acordo: RegistroHorario = { ...registro, checkin: "2026-10-20", checkout: "2026-10-23", confirmadoEm: "2026-10-17T01:30:00.000Z", confirmadoPor: "equipe" };
+  const h = renderToStaticMarkup(<Horarios id="reserva" horarios={{ ...horarios, entrada: { acordo } }} editar={false} vigentes={{ entrada: true, saida: false }} />);
+  expect(h).toContain("estadia 20/10/2026 a 23/10/2026. Confirmação registrada em 16/10/2026 às 22:30.");
+  for (const cru of ["2026-10-20", "2026-10-23", "T01:30", "2026-10-17"]) expect(h).not.toContain(cru);
 });
