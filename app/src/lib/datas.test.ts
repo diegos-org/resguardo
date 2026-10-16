@@ -1,20 +1,35 @@
 import { describe, expect, it } from "vitest";
+import { diaCurto as diaCurtoDaAgenda } from "@/agenda/agenda";
 import { instanteLocal as instanteDoPortal, somarDias as somarDoPortal } from "@/hospede/portal";
+import { DIAS_SEMANA as diasDasRegras, diaDaSemana as diaDasRegras } from "@/imoveis/regras-venda";
+import { NOMES_DIA_SEMANA as nomesDoRepasse } from "@/repasses/periodicidade";
+import { DIAS_DA_SEMANA_CURTOS as curtosDoSite, DIAS_SEMANA as diasDoSite } from "@/site/calendario";
 import {
   dataBr,
   dataHoraNoFuso,
   dataNoFuso,
+  diaCurto,
+  diaDaSemana,
+  diaDaSemanaEData,
   diaHoraNoFuso,
   diaMesBr,
   diaMesNoFuso,
+  DIAS_DA_SEMANA_CURTOS,
+  DIAS_NA_ORDEM,
+  DIAS_SEMANA,
   escreverHora,
+  fimDeSemana,
   FUSO_PADRAO,
   HORA_VALIDA,
   horaNoFuso,
   hojeISO,
   instanteLocal,
+  LETRAS_DA_SEMANA,
   lerHora,
+  NOMES_DIA_SEMANA,
   PADRAO_DO_CAMPO_HORA,
+  posicaoNaSemana,
+  PRIMEIRO_DIA_DA_SEMANA,
   rotuloDoFuso,
   somarDias,
 } from "./datas";
@@ -145,5 +160,46 @@ describe("datas no fuso do imóvel", () => {
     expect(rotuloDoFuso("America/Sao_Paulo")).toBe("horário de Brasília");
     expect(rotuloDoFuso(FUSO_PADRAO)).toBe("horário de Brasília");
     expect(rotuloDoFuso("Europe/Lisbon")).toBe("horário do local do imóvel");
+  });
+});
+
+describe("a semana começando na segunda (Diego, 16/10/2026)", () => {
+  it("diaDaSemana é o número guardado, 0 = domingo … 6 = sábado, sem fuso", () => {
+    // 11/10/2026 é domingo; a semana de 11 a 17 percorre os sete números.
+    expect(Array.from({ length: 7 }, (_, i) => diaDaSemana(somarDias("2026-10-11", i)))).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(diaDaSemana("2026-10-16")).toBe(5);
+    expect(diaDaSemana("2028-02-29")).toBe(2);
+    expect(diaDaSemana("2026-12-31")).toBe(4);
+  });
+
+  it("a ordem mostrada vai de segunda a domingo, com os mesmos números guardados", () => {
+    expect(PRIMEIRO_DIA_DA_SEMANA).toBe(1);
+    expect(DIAS_NA_ORDEM).toEqual([1, 2, 3, 4, 5, 6, 0]);
+    expect(DIAS_NA_ORDEM.map((n) => DIAS_SEMANA[n])).toEqual(["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]);
+    expect(DIAS_NA_ORDEM.map((n) => DIAS_DA_SEMANA_CURTOS[n]).join(" ")).toBe("seg ter qua qui sex sáb dom");
+    expect(DIAS_NA_ORDEM.map((n) => LETRAS_DA_SEMANA[n]).join("")).toBe("STQQSSD");
+    expect(NOMES_DIA_SEMANA[1]).toBe("segunda-feira");
+    expect(NOMES_DIA_SEMANA[0]).toBe("domingo");
+    // A posição na semana: 0 na segunda (12/10/2026) … 6 no domingo (18/10/2026).
+    expect(Array.from({ length: 7 }, (_, i) => posicaoNaSemana(somarDias("2026-10-12", i)))).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(posicaoNaSemana("2026-10-11")).toBe(6);
+  });
+
+  it("fim de semana, rótulo curto e dia com a data, sem Intl", () => {
+    expect(["2026-10-16", "2026-10-17", "2026-10-18", "2026-10-19"].map(fimDeSemana)).toEqual([false, true, true, false]);
+    expect(diaCurto("2026-10-16")).toBe("sex 16/10");
+    expect(diaCurto("2026-03-05")).toBe("qui 05/03");
+    expect(diaDaSemanaEData("2026-10-16")).toBe("sex, 16/10/2026");
+    expect(diaDaSemanaEData("2026-11-09")).toBe("seg, 09/11/2026");
+    expect(diaDaSemanaEData("2026-10-17")).not.toContain(".");
+  });
+
+  it("os módulos que mostram dias reexportam os mesmos objetos de lib/datas.ts (uma regra, um lugar)", () => {
+    expect(diaDasRegras).toBe(diaDaSemana);
+    expect(diasDasRegras).toBe(DIAS_SEMANA);
+    expect(diasDoSite).toBe(DIAS_SEMANA);
+    expect(curtosDoSite).toBe(DIAS_DA_SEMANA_CURTOS);
+    expect(nomesDoRepasse).toBe(NOMES_DIA_SEMANA);
+    expect(diaCurtoDaAgenda).toBe(diaCurto);
   });
 });

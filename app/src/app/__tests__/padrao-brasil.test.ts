@@ -7,7 +7,10 @@ import { describe, expect, it } from "vitest";
  * Este teste varre o código de src (sem os testes e os arquivos de apoio deles), sem os comentários, e falha se uma hora
  * de relógio voltar no formato antigo ("15h", "23h59", "0h"). Durações acima de 23 horas ("24h", "48h", "Portaria 24h")
  * não casam. Falha também se uma data ou hora para pessoas for formatada fora de lib/datas.ts (Intl ou toLocale com
- * fuso), o que já deixou segundos, vírgula e o dia em UTC na tela. A mensagem lista o arquivo e a linha de cada achado.
+ * fuso), o que já deixou segundos, vírgula e o dia em UTC na tela. E, desde a decisão de Diego de que a semana começa na
+ * segunda em todos os calendários (16/10/2026), falha se o dia da semana for calculado (`getUTCDay`, `getDay`) ou se uma
+ * lista de nomes ou letras dos dias for escrita fora de lib/datas.ts: a ordem da semana e os nomes ficam num lugar só.
+ * A mensagem lista o arquivo e a linha de cada achado.
  */
 const SRC = join(__dirname, "..", "..");
 
@@ -68,23 +71,42 @@ const FORMATO_FORA_DA_LIB: { nome: string; re: RegExp }[] = [
   { nome: "toLocaleTimeString(", re: /\.toLocaleTimeString\(/g },
   { nome: "toLocaleString( com timeZone", re: /\.toLocaleString\(\s*[^)]*\btimeZone\b/g },
   { nome: 'Intl.DateTimeFormat("pt-BR"', re: /\bIntl\.DateTimeFormat\(\s*["'`]pt-BR["'`]/g },
+  { nome: "weekday:", re: /\bweekday\s*:/g },
 ];
 
-/** Exceções do formato, com motivo; a que não servir mais sai da lista (o último teste avisa). */
-const EXCECOES_FORMATO: { arquivo: string; trecho: string; motivo: string }[] = [
-  { arquivo: "app/hospede/page.tsx", trecho: 'weekday: "short"', motivo: "o dia da semana sai na parte da semana do M7.22 (diaDaSemanaEData)" },
+/**
+ * Exceções do formato, com motivo; a que não servir mais sai da lista (o último teste avisa). A do `weekday` de Minha
+ * reserva saiu na parte da semana do M7.22: o dia vem de `diaDaSemanaEData` ("sex, 16/10/2026").
+ */
+const EXCECOES_FORMATO: { arquivo: string; trecho: string; motivo: string }[] = [];
+
+/**
+ * A semana fora de lib/datas.ts: o dia calculado por `getUTCDay`/`getDay` (o número guardado sai de `diaDaSemana`, e a
+ * ordem mostrada, de `DIAS_NA_ORDEM`), uma lista com dois nomes de dias seguidos entre aspas ("dom", "seg"; "domingo",
+ * "segunda-feira") ou a lista das sete letras.
+ */
+const SEMANA_FORA_DA_LIB: { nome: string; re: RegExp }[] = [
+  { nome: "getUTCDay/getDay", re: /\.get(?:UTC)?Day\(\)/g },
+  {
+    nome: "lista de nomes de dias",
+    re: /\[\s*(["'`])(?:domingo|segunda|terça|quarta|quinta|sexta|sábado|dom|seg|ter|qua|qui|sex|sáb)(?:-feira)?\1\s*,\s*(["'`])(?:domingo|segunda|terça|quarta|quinta|sexta|sábado|dom|seg|ter|qua|qui|sex|sáb)(?:-feira)?\2/g,
+  },
+  { nome: "lista de letras dos dias", re: /\[\s*(?:["'`][DSTQ]["'`]\s*,\s*){6}["'`][DSTQ]["'`]\s*,?\s*\]/g },
 ];
 
-function formatosForaDaLib(codigo: string): { n: number; nome: string; linha: string }[] {
+function achadosForaDaLib(regras: { nome: string; re: RegExp }[], codigo: string): { n: number; nome: string; linha: string }[] {
   const limpo = semComentarios(codigo);
   const linhas = limpo.split("\n");
-  return FORMATO_FORA_DA_LIB.flatMap(({ nome, re }) =>
+  return regras.flatMap(({ nome, re }) =>
     [...limpo.matchAll(re)].map((m) => {
       const n = limpo.slice(0, m.index).split("\n").length;
       return { n, nome, linha: linhas[n - 1] };
     }),
   );
 }
+
+const formatosForaDaLib = (codigo: string) => achadosForaDaLib(FORMATO_FORA_DA_LIB, codigo);
+const semanaForaDaLib = (codigo: string) => achadosForaDaLib(SEMANA_FORA_DA_LIB, codigo);
 
 function horasAntigas(codigo: string): { n: number; linha: string; hora: string }[] {
   return semComentarios(codigo)
@@ -136,6 +158,8 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
       'd.toLocaleDateString("pt-BR", { timeZone: FUSO })',
       "d.toLocaleTimeString()",
       'new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, day: "2-digit", month: "2-digit" })',
+      'new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short" })',
+      'new Intl.DateTimeFormat("en-US", { weekday: "long" })',
     ])
       expect(formatosForaDaLib(t), t).not.toEqual([]);
     for (const t of [
@@ -159,6 +183,40 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
           .map(({ n, nome, linha }) => `${rel}:${n}: ${nome} em ${linha.trim()}`),
       );
     expect(achados).toEqual([]);
+  });
+
+  it("o detector da semana pega getUTCDay, getDay e listas de nomes ou letras dos dias e deixa o resto", () => {
+    for (const t of [
+      "new Date(`${d}T12:00:00Z`).getUTCDay()",
+      "agora.getDay()",
+      'const SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];',
+      "const DIAS = ['domingo', 'segunda', 'terça'];",
+      'const NOMES = ["segunda-feira", "terça-feira"] as const;',
+      'const LETRAS = ["D", "S", "T", "Q", "Q", "S", "S"];',
+      'const L = ["S", "T", "Q", "Q", "S", "S", "D",]',
+    ])
+      expect(semanaForaDaLib(t), t).not.toEqual([]);
+    for (const t of [
+      "diaDaSemana(d)",
+      "DIAS_NA_ORDEM.map((n) => DIAS_SEMANA[n])",
+      '"Entrada só em: sexta, sábado."',
+      '["segunda"]',
+      '["D", "S"]',
+      'const ESTADOS = ["pedida", "confirmada"];',
+      "// const SEMANA = [\"dom\", \"seg\"];",
+      "d.getUTCDate()",
+    ])
+      expect(semanaForaDaLib(t), t).toEqual([]);
+  });
+
+  it("a semana só por lib/datas.ts: nenhum getUTCDay ou getDay e nenhuma lista de nomes ou letras dos dias fora dele", () => {
+    const achados = fontes()
+      .filter((rel) => rel !== "lib/datas.ts")
+      .flatMap((rel) => semanaForaDaLib(readFileSync(join(SRC, rel), "utf8")).map(({ n, nome, linha }) => `${rel}:${n}: ${nome} em ${linha.trim()}`));
+    expect(achados).toEqual([]);
+    // E lib/datas.ts tem a regra: segunda primeiro, com os números guardados de domingo (0) a sábado (6).
+    const lib = readFileSync(join(SRC, "lib/datas.ts"), "utf8");
+    expect(lib).toContain("export const PRIMEIRO_DIA_DA_SEMANA = 1;");
   });
 
   it("cada exceção ainda existe no arquivo dela (a que não serve mais sai da lista)", () => {

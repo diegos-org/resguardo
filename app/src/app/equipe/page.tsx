@@ -13,7 +13,7 @@ import { agendaDaProfissional, situacaoDaSenha } from "@/equipe/acesso";
 import { marcarFeitaAcao, trocarMinhaSenhaAcao } from "@/equipe/acoes";
 import { limpezasDaProfissional, textoDosHorarios } from "@/equipe/equipe";
 import { FRASE_FINAL } from "@/agenda/agenda";
-import { hojeISO } from "@/lib/datas";
+import { diaCurto, hojeISO } from "@/lib/datas";
 import { metadadosDeAcesso } from "@/site/site";
 
 /** A sessão e o nome da empresa dela, lidos uma vez por requisição: o título da aba e a moldura usam os mesmos. */
@@ -29,9 +29,6 @@ export async function generateMetadata(): Promise<Metadata> {
   const nomeEmpresa = sessao?.papel === "limpeza" && sessao.profissionalId ? await empresaDaTela(sessao.organizacaoId) : "";
   return metadadosDeAcesso({ nomeEmpresa }, "Minhas limpezas", "Equipe de limpeza: as limpezas marcadas para você e a agenda da equipe.");
 }
-
-const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-const dia = (d: string) => `${DIAS[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.split("-").reverse().slice(0, 2).join("/")}`;
 
 /**
  * Tela da profissional de limpeza pelo celular (M6.6): as limpezas dela e o botão "Feita"; desde o M6.8, também a agenda
@@ -81,10 +78,10 @@ export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
         const feita = l.estado === "realizada";
         const podeMarcar = !feita && l.data <= hoje;
         return (
-          <section key={l.id} className={styles.cartaoLimpeza} style={{ opacity: feita ? 0.7 : 1 }} aria-label={`Limpeza ${l.imovelCodigo} ${dia(l.data)}`}>
+          <section key={l.id} className={styles.cartaoLimpeza} style={{ opacity: feita ? 0.7 : 1 }} aria-label={`Limpeza ${l.imovelCodigo} ${diaCurto(l.data)}`}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
               <strong>
-                {dia(l.data)}
+                {diaCurto(l.data)}
                 {l.data === hoje ? " (hoje)" : ""}
               </strong>
               <span>{feita ? "Feita ✓" : l.estado === "confirmada" ? "Confirmada" : "Pedida"}</span>
@@ -100,7 +97,7 @@ export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
             {podeMarcar && (
               <form action={marcarFeitaAcao}>
                 <input type="hidden" name="id" value={l.id} />
-                <BotaoConfirmar pergunta={`Confirmar que a limpeza do ${l.imovelCodigo} de ${dia(l.data)} foi feita?`} className={`${styles.botao} ${styles.botaoLargo}`}>
+                <BotaoConfirmar pergunta={`Confirmar que a limpeza do ${l.imovelCodigo} de ${diaCurto(l.data)} foi feita?`} className={`${styles.botao} ${styles.botaoLargo}`}>
                   Marcar como feita
                 </BotaoConfirmar>
               </form>

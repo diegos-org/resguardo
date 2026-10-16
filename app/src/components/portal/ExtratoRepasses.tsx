@@ -103,7 +103,6 @@ export function ExtratoRepasses({ donos, periodicidades, partes, repasses, itens
               </button>
               <span style={{ ...rotulo, flexBasis: "100%" }}>
                 Hoje: {p.descricao}. Próximo repasse previsto: <strong>{dataBr(p.proximaData)}</strong>.
-                {p.efetiva === "semanal" ? ` (${regras.diaSemanal === 1 ? "segundas" : "dia configurado pela empresa"})` : ""}
               </span>
             </form>
           );

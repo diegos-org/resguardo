@@ -6,15 +6,13 @@ import styles from "@/components/calendario/calendario.module.css";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
-import { hojeISO } from "@/lib/datas";
+import { diaDaSemana, fimDeSemana, hojeISO, LETRAS_DA_SEMANA } from "@/lib/datas";
 import { filtrosParaQuery, lerFiltros, nomeDoMes, periodoDosFiltros } from "@/lib/filtros";
 import { conflitos, NOMES_ORIGEM } from "@/reservas/regras";
 import { itensDoCalendario, listarLimpezas, sincronizarLimpezas } from "@/limpezas/limpezas";
 import { itensDoCalendario as manutencoesDoCalendario } from "@/manutencao/manutencao";
 import { Bloqueios } from "@/components/calendario/Bloqueios";
 import { listarBloqueios, listarReservas } from "@/reservas/repositorio";
-
-const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
 
 export default async function Calendario({ searchParams }: PageProps<"/painel/calendario">) {
   const sessao = await exigirSessaoPainel();
@@ -119,11 +117,10 @@ export default async function Calendario({ searchParams }: PageProps<"/painel/ca
           <div className={styles.grade} style={{ gridTemplateColumns: colunas }} role="grid" aria-label={`Calendário de ${nomeDoMes(filtros.mes)} de ${filtros.ano}`}>
             <div className={styles.cabecalhoImovel}>Imóvel</div>
             {dias.map((d) => {
-              const semana = new Date(`${d}T12:00:00Z`).getUTCDay();
-              const classes = [styles.dia, semana === 0 || semana === 6 ? styles.fimDeSemana : "", d === hoje ? styles.hoje : ""].join(" ");
+              const classes = [styles.dia, fimDeSemana(d) ? styles.fimDeSemana : "", d === hoje ? styles.hoje : ""].join(" ");
               return (
                 <div key={d} className={classes}>
-                  {SEMANA[semana]}
+                  {LETRAS_DA_SEMANA[diaDaSemana(d)]}
                   <strong>{Number(d.slice(8))}</strong>
                 </div>
               );

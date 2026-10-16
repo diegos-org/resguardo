@@ -54,6 +54,11 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     // Dois grupos de dias (entrada e saída): só a segunda da entrada está marcada.
     const segundas = within(form).getAllByLabelText("segunda") as HTMLInputElement[];
     expect(segundas.map((c) => c.checked)).toEqual([true, false]);
+    // Os dias aparecem de segunda a domingo (M7.22), cada um com o número guardado (0 = domingo).
+    const entrada = within(form).getByRole("group", { name: /Entrada só nestes dias/ });
+    expect(within(entrada).getAllByRole("checkbox").map((c) => [c.parentElement?.textContent?.trim(), (c as HTMLInputElement).value])).toEqual([
+      ["segunda", "1"], ["terça", "2"], ["quarta", "3"], ["quinta", "4"], ["sexta", "5"], ["sábado", "6"], ["domingo", "0"],
+    ]);
     // Simulação com o preço cadastrado: no site o hóspede paga menos e o proprietário recebe mais que no Airbnb.
     expect(form.textContent).toContain(textoDaSimulacao(30000, PRECOS_MARKETPLACE_PADRAO, "Sua Casa Exemplo"));
     expect(form.textContent).toContain("no Airbnb você receberia R$ 252,00");

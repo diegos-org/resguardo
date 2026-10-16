@@ -92,3 +92,40 @@ export const diaHoraNoFuso = (d: Date, fuso = FUSO_PADRAO) => `${diaMesBr(hojeIS
 
 /** Como dizer o fuso ao lado de uma hora: "horário de Brasília" no padrão, "horário do local do imóvel" nos outros. */
 export const rotuloDoFuso = (fuso: string) => (fuso === FUSO_PADRAO ? "horário de Brasília" : "horário do local do imóvel");
+
+/**
+ * O dia da semana de uma data guardada ("AAAA-MM-DD"), sem fuso: 0 = domingo … 6 = sábado. É o número guardado nas regras
+ * (dias de entrada e de saída, mínimo por dia, dia do repasse semanal) e não muda com a ordem em que a semana aparece.
+ */
+export const diaDaSemana = (d: string) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)))).getUTCDay();
+
+/**
+ * O primeiro dia da semana nos calendários e nas listas de dias: segunda-feira (1). Decisão de Diego em 16/10/2026 (M7.22):
+ * a semana começa na segunda em todos os calendários, por ser "visualmente muito mais prático" no Brasil. Antes, o
+ * calendário de datas do site (M7.6) e as listas de dias começavam no domingo.
+ */
+export const PRIMEIRO_DIA_DA_SEMANA = 1;
+
+/** Os números dos dias na ordem em que a semana aparece: [1, 2, 3, 4, 5, 6, 0] (de segunda a domingo). */
+export const DIAS_NA_ORDEM: readonly number[] = Array.from({ length: 7 }, (_, i) => (PRIMEIRO_DIA_DA_SEMANA + i) % 7);
+
+/** A coluna da data na semana mostrada: 0 na segunda … 6 no domingo. */
+export const posicaoNaSemana = (d: string) => (diaDaSemana(d) - PRIMEIRO_DIA_DA_SEMANA + 7) % 7;
+
+/** Nomes dos dias, todos indexados pelo número guardado (0 = domingo); para mostrar na ordem da semana, `DIAS_NA_ORDEM`. */
+export const DIAS_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"] as const;
+/** Os nomes inteiros, como nas frases do repasse semanal ("toda segunda-feira"). */
+export const NOMES_DIA_SEMANA = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"] as const;
+/** O cabeçalho das colunas do calendário de datas do site e os rótulos curtos ("sex 16/10"). */
+export const DIAS_DA_SEMANA_CURTOS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"] as const;
+/** A letra do dia sobre o número, nos calendários do mês do painel e do portal. */
+export const LETRAS_DA_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"] as const;
+
+/** Sábado ou domingo. */
+export const fimDeSemana = (d: string) => diaDaSemana(d) === 0 || diaDaSemana(d) === 6;
+
+/** O rótulo curto de uma data: "sex 16/10" (agenda da equipe, Limpezas e a tela da profissional). */
+export const diaCurto = (d: string) => `${DIAS_DA_SEMANA_CURTOS[diaDaSemana(d)]} ${diaMesBr(d)}`;
+
+/** O dia da semana e a data com o ano: "sex, 16/10/2026" (Minha reserva). Sem Intl: o mesmo texto em qualquer servidor. */
+export const diaDaSemanaEData = (d: string) => `${DIAS_DA_SEMANA_CURTOS[diaDaSemana(d)]}, ${dataBr(d)}`;

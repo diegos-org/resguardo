@@ -205,4 +205,12 @@ describe("Minha reserva: os horários em HH:MM (M7.22)", () => {
     expect(h).toContain("a partir das 14:30");
     expect(h).toContain("até 09:00");
   });
+
+  it("o dia da semana e a data como 'seg, 09/11/2026', sem o ponto do Intl ('seg.,'), na entrada, na saída e nas instruções", async () => {
+    const h = await html();
+    expect(h).toContain("seg, 09/11/2026, a partir das 15:00");
+    expect(h).toContain("qui, 12/11/2026, até 11:00");
+    expect(h).toContain("aparecem aqui em sáb, 07/11/2026, às 10:00.");
+    expect(h).not.toMatch(/(seg|qui|sáb)\.,/);
+  });
 });

@@ -12,9 +12,9 @@ import { EnvioBeds24 } from "@/components/calendario/EnvioBeds24";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { EXPLICACAO_FONTE_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
-import { diaDaSemana, somarDias } from "@/imoveis/regras-venda";
+import { somarDias } from "@/imoveis/regras-venda";
 import { listarImoveis } from "@/imoveis/repositorio";
-import { dataBr, dataHoraNoFuso, hojeISO } from "@/lib/datas";
+import { dataBr, dataHoraNoFuso, diaDaSemana, DIAS_NA_ORDEM, hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { descontoBp } from "@/marketplace/precos";
@@ -80,7 +80,7 @@ export default async function Previa({ searchParams }: PageProps<"/painel/calend
       <p>Datas e horários no fuso {escolhido.fuso}. Mesmo valor registrado não comprova o preço final no Airbnb ou Booking: taxas, limpeza, hóspedes extras e descontos por duração dos canais ficam fora desta comparação.</p>
       {vinculos.length !== 1 ? <p className={styles.alerta}>{vinculos.length ? "Há vários vínculos Beds24: confira o mapeamento antes de qualquer envio." : "Sem vínculo Beds24. Configure o mapeamento para importar e enviar este imóvel."}</p> :
         <p>Vínculo atual: propriedade {vinculos[0].propertyId || "não informada"} · quarto {vinculos[0].roomId || "não informado"}.</p>}
-      <p>Regras em vigor: mínimo por dia da semana {regras.minimoPorDia.join("/")} (dom a sáb) · máximo {plano.regras.estadiaMaxima ?? regras.estadiaMaxima} noites · feriados cadastrados: {regras.feriados.length} · eventos: {regras.eventos.filter(e => e.todosImoveis || e.imoveis.includes(escolhido.id)).length} neste imóvel · última hora: {APLICACOES_ULTIMA_HORA[regras.ultimaHora.aplicadoPor]} ({regras.ultimaHora.faixas.map(f => `D−${f.ateDias} a D−${f.deDias}: ${f.percentual}%`).join("; ")}) · pisos deste imóvel: {dinheiro(plano.pisos[0])} / {dinheiro(plano.pisos[1])}.</p>
+      <p>Regras em vigor: mínimo por dia da semana {DIAS_NA_ORDEM.map((n) => regras.minimoPorDia[n]).join("/")} (seg a dom) · máximo {plano.regras.estadiaMaxima ?? regras.estadiaMaxima} noites · feriados cadastrados: {regras.feriados.length} · eventos: {regras.eventos.filter(e => e.todosImoveis || e.imoveis.includes(escolhido.id)).length} neste imóvel · última hora: {APLICACOES_ULTIMA_HORA[regras.ultimaHora.aplicadoPor]} ({regras.ultimaHora.faixas.map(f => `D−${f.ateDias} a D−${f.deDias}: ${f.percentual}%`).join("; ")}) · pisos deste imóvel: {dinheiro(plano.pisos[0])} / {dinheiro(plano.pisos[1])}.</p>
       {regras.ultimaHora.aplicadoPor === "beds24" && <p>Com o Beds24 aplicando a última hora, o SCL envia a referência e eleva o valor enviado só quando o desconto nativo cairia abaixo do piso. O preço final mostrado é o esperado após a regra nativa; a releitura confirma o que o Beds24 gravou, não a cotação final nos canais.</p>}
       <p><strong>Fonte de preços deste imóvel:</strong> {NOMES_FONTE_PRECOS[plano.fontePrecos]}. {EXPLICACAO_FONTE_PRECOS[plano.fontePrecos]}{plano.fontePrecos === "beds24" ? " Nesta tela, o preço de cada noite é o da coluna Beds24; o SCL envia só mínimos, máximos e bloqueios." : ""}</p>
       <p>Coluna “Site (≈)”: preço da noite no site com o desconto do site de aproximadamente {(bpSite / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% (Configurações → Marketplace e desconto do site). É referência por noite: o desconto real é calculado sobre o total da estadia. Serve para conferir a promessa de preço abaixo das plataformas contra o que o hóspede vê no Airbnb e no Booking.</p>

@@ -77,6 +77,9 @@ describe("verificar estadia", () => {
     const r = { ...base, diasChegada: [5, 6], diasSaida: [0] };
     expect(verificarEstadia(r, [], "2026-10-10", "2026-10-18", hoje)).toEqual([]);
     expect(verificarEstadia(r, [], "2026-10-12", "2026-10-16", hoje)).toEqual(["Entrada só em: sexta, sábado.", "Saída só em: domingo."]);
+    // Os dias saem na ordem da semana, de segunda a domingo (M7.22), seja qual for a ordem guardada.
+    const fds = { ...base, diasChegada: [0, 5, 1], diasSaida: [6, 0] };
+    expect(verificarEstadia(fds, [], "2026-10-13", "2026-10-16", hoje)).toEqual(["Entrada só em: segunda, sexta, domingo.", "Saída só em: sábado, domingo."]);
   });
 
   it("sem regras cadastradas, nada é bloqueado (além de datas impossíveis)", () => {

@@ -5,6 +5,7 @@
  * Datas "AAAA-MM-DD"; noites de `checkin` até o dia anterior ao `checkout`. Dinheiro em centavos.
  * Faltou preço de alguma noite? A cotação fica pendente com aviso — nunca chuta um valor.
  */
+import { DIAS_NA_ORDEM, DIAS_SEMANA, diaDaSemana } from "@/lib/datas";
 
 export type RegrasVenda = {
   estadiaMinima: number | null;
@@ -24,13 +25,13 @@ export type RegrasVenda = {
 
 export type Periodo = { id?: string; nome: string; inicio: string; fim: string; precoNoite: number | null; estadiaMinima: number | null };
 
-export const DIAS_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"] as const;
+/** O dia da semana (0 = domingo, o número guardado em `diasChegada` e `diasSaida`) e os nomes vêm de lib/datas.ts (M7.22). */
+export { DIAS_SEMANA, diaDaSemana };
 
 const DIA_MS = 86_400_000;
 const utc = (d: string) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
 export const somarDias = (d: string, n: number) => new Date(utc(d) + n * DIA_MS).toISOString().slice(0, 10);
 export const diasEntre = (a: string, b: string) => Math.round((utc(b) - utc(a)) / DIA_MS);
-export const diaDaSemana = (d: string) => new Date(utc(d)).getUTCDay();
 
 export function periodoDaNoite(periodos: readonly Periodo[], noite: string): Periodo | undefined {
   return periodos.find((p) => p.inicio <= noite && noite <= p.fim);
@@ -60,6 +61,9 @@ export function estadiaMinimaNaEntrada(r: RegrasVenda, periodos: readonly Period
   return periodoDaNoite(periodos, checkin)?.estadiaMinima ?? r.estadiaMinima;
 }
 
+/** Os dias permitidos na ordem da semana (de segunda a domingo), como nas telas: "segunda, sexta, domingo". */
+const nomesNaOrdem = (dias: readonly number[]) => DIAS_NA_ORDEM.filter((d) => dias.includes(d)).map((d) => DIAS_SEMANA[d]).join(", ");
+
 /** Tudo o que impede a estadia, em linguagem simples. Lista vazia = pode. */
 export function verificarEstadia(r: RegrasVenda, periodos: readonly Periodo[], checkin: string, checkout: string, hoje: string): string[] {
   const problemas: string[] = [];
@@ -76,10 +80,10 @@ export function verificarEstadia(r: RegrasVenda, periodos: readonly Periodo[], c
   else if (r.antecedenciaMinima !== null && ate < r.antecedenciaMinima) problemas.push(`Precisa reservar com ${r.antecedenciaMinima} dia(s) de antecedência.`);
   if (r.janelaMaxima !== null && ate > r.janelaMaxima) problemas.push(`Aceita reservas só até ${r.janelaMaxima} dias à frente.`);
   if (r.diasChegada.length && !r.diasChegada.includes(diaDaSemana(checkin))) {
-    problemas.push(`Entrada só em: ${r.diasChegada.map((d) => DIAS_SEMANA[d]).join(", ")}.`);
+    problemas.push(`Entrada só em: ${nomesNaOrdem(r.diasChegada)}.`);
   }
   if (r.diasSaida.length && !r.diasSaida.includes(diaDaSemana(checkout))) {
-    problemas.push(`Saída só em: ${r.diasSaida.map((d) => DIAS_SEMANA[d]).join(", ")}.`);
+    problemas.push(`Saída só em: ${nomesNaOrdem(r.diasSaida)}.`);
   }
   return problemas;
 }

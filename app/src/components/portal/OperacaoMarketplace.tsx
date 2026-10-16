@@ -6,8 +6,8 @@ import { CampoHora } from "@/components/CampoHora";
 import { Periodos } from "@/components/imoveis/Periodos";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
 import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
-import { DIAS_SEMANA, type Periodo } from "@/imoveis/regras-venda";
-import { dataBr, dataHoraNoFuso } from "@/lib/datas";
+import type { Periodo } from "@/imoveis/regras-venda";
+import { dataBr, dataHoraNoFuso, DIAS_NA_ORDEM, DIAS_SEMANA } from "@/lib/datas";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import { type PrecosMarketplace, simular } from "@/marketplace/precos";
@@ -209,9 +209,9 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
         <fieldset key={k} style={{ border: 0, padding: 0, margin: 0 }}>
           <legend className={styles.miudo}>{k === "diasChegada" ? "Entrada só nestes dias (nenhum marcado = qualquer dia)" : "Saída só nestes dias (nenhum marcado = qualquer dia)"}</legend>
           <div className={f.linha}>
-            {DIAS_SEMANA.map((nome, dia) => (
+            {DIAS_NA_ORDEM.map((dia) => (
               <label key={dia} className={f.check}>
-                <input type="checkbox" name={k} value={dia} defaultChecked={naLista(k, dia)} /> {nome}
+                <input type="checkbox" name={k} value={dia} defaultChecked={naLista(k, dia)} /> {DIAS_SEMANA[dia]}
               </label>
             ))}
           </div>

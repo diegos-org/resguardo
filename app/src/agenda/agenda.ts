@@ -19,7 +19,7 @@ import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { periodoDoBloqueio } from "@/reservas/bloqueios";
 import { horarioEfetivo, lerHorariosReservas } from "@/reservas/horarios";
-import { escreverHora, hojeISO, lerHora } from "@/lib/datas";
+import { diaCurto, escreverHora, hojeISO, lerHora } from "@/lib/datas";
 import { listarLimpezas, NOMES_ESTADO, sincronizarLimpezas } from "@/limpezas/limpezas";
 import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 
@@ -30,8 +30,8 @@ export const diasDaCidade = (cidade: string) => /buzios/i.test(cidade.normalize(
 
 const dia = (d: string) => Date.parse(`${d}T00:00:00Z`);
 const somaDias = (d: string, n: number) => new Date(dia(d) + n * 86_400_000).toISOString().slice(0, 10);
-const SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-export const diaCurto = (d: string) => `${SEMANA[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.split("-").reverse().slice(0, 2).join("/")}`;
+/** O rótulo curto do dia ("sex 16/10") é o de lib/datas.ts, o mesmo das telas Limpezas e da profissional (M7.22). */
+export { diaCurto };
 
 // ——— Configuração (editável no painel) ———
 
