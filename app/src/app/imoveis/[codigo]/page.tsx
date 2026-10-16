@@ -22,7 +22,7 @@ import { consultarDisponibilidade, disponibilidadeInvalida } from "@/site/dispon
 import { fraseDoImovel } from "@/site/frase-do-imovel";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
+import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta, pedidoEnviado } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
@@ -61,9 +61,9 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   // Link com datas que não servem (M7.21: entrada antes de hoje, saída antes da entrada, grupo maior que a casa ou sem o
   // número de pessoas): a mesma conferência da consulta (`montarConsulta`), com os mesmos textos, no quadro da
   // disponibilidade ("Confira os dados") e nos campos do cartão "Planeje sua estadia" — avisar em vez de não mostrar nada.
-  // Vale com alguma data no link, como o envio da consulta; sem datas, nenhum aviso. Pedido que não passa não chega à
-  // disponibilidade, nem ao "segurar as datas".
-  const conferida = pedido.entrada || pedido.saida ? montarConsulta(consulta, imovel, hoje) : null;
+  // Vale com alguma data no link (`pedidoEnviado`, a mesma regra do envio da consulta); sem datas, nenhum aviso. Pedido que
+  // não passa não chega à disponibilidade, nem ao "segurar as datas".
+  const conferida = pedidoEnviado(pedido) ? montarConsulta(consulta, imovel, hoje) : null;
   const erros = conferida && !conferida.ok ? conferida.erros : {};
   const disponibilidade = conferida?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, consulta) : conferida ? disponibilidadeInvalida(Object.values(erros)) : null;
   // Pagamento no site (M8.2a): os textos "nenhum pagamento é feito aqui" dependem de o Pix estar oferecido.

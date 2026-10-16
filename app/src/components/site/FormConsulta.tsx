@@ -29,12 +29,15 @@ export function opcoesDeHospedes(imoveis: Pick<ImovelPublico, "capacidade">[], p
 /**
  * Resultado à vista (M7.21): o envio abre a página no resultado — o "Resumo da viagem" da consulta de uma casa ou a lista
  * da busca em todas as casas —, e não no topo, onde no celular o resultado ficava fora da tela e parecia que nada tinha
- * acontecido. O formulário é um `<form>` comum, não o `next/form`: o envio recarrega a página, e o navegador mantém a
- * âncora do endereço do envio (`/consulta#resultado`), rola até o alvo e põe o foco nele (tabIndex -1, fora da ordem do
- * Tab, como o miolo do "Pular para o conteúdo", M7.11), que o leitor de tela anuncia. Sem animação: o navegador pula
- * direto, também com "reduzir movimento". O alvo (`ALVO_DO_RESULTADO`) só existe quando há resultado: com erro de
- * preenchimento, a âncora não acha nada e a página fica no topo, onde os erros aparecem. Contorno e folga do alvo em
- * globals.css (`#resultado`).
+ * acontecido. O formulário é um `<form>` comum, não o `next/form` (que também levaria ao alvo, mas por navegação no
+ * cliente): funciona sem JavaScript e não precisa de componente no navegador. O envio com dados novos recarrega a página,
+ * e o navegador mantém a âncora do endereço do envio (`/consulta#resultado`), rola até o alvo e põe o foco nele (tabIndex
+ * -1, fora da ordem do Tab, como o miolo do "Pular para o conteúdo", M7.11), com o nome do título para o leitor de tela
+ * (foco conferido só no Chromium; leitor de tela e Safari não testados). Com os mesmos dados do endereço atual, o
+ * navegador só volta ao resultado já mostrado, sem consultar de novo (pela regra do HTML, é uma navegação só até a
+ * âncora); recarregar a página refaz a consulta. Sem animação: o navegador pula direto, também com "reduzir movimento".
+ * O alvo (`ALVO_DO_RESULTADO`) só existe quando há resultado: com erro de preenchimento, a âncora não acha nada e a
+ * página fica no topo, onde os erros aparecem. Contorno e folga do alvo em globals.css (`#resultado`).
  */
 export const ID_RESULTADO = "resultado";
 export const ALVO_DO_RESULTADO = { id: ID_RESULTADO, tabIndex: -1 } as const;
@@ -77,7 +80,11 @@ export function FormConsulta({
     ) : null;
   const pessoas = opcoesDeHospedes(imoveis, valores.hospedes);
   const pedidas = /^\d+$/.test(valores.hospedes ?? "") ? Number(valores.hospedes) : 0;
-  const pessoasEscolhidas = String(pessoas.includes(pedidas) ? pedidas : Math.min(2, pessoas.length));
+  // Aviso de pessoas sem um número da lista ("Informe quantas pessoas.", M7.21: link sem pessoas, com 0 ou com texto): o
+  // campo fica em "Escolha", para combinar com o aviso, em vez de um palpite. O campo é obrigatório, então o navegador
+  // só envia depois da escolha. Sem aviso (visita sem pessoas no link), o padrão de sempre: 2 pessoas.
+  const semEscolha = !!erros.hospedes && !pessoas.includes(pedidas);
+  const pessoasEscolhidas = semEscolha ? "" : String(pessoas.includes(pedidas) ? pedidas : Math.min(2, pessoas.length));
   const classe = variante === "busca" ? styles.buscaForm : `${styles.formulario} ${styles.duasColunas}`;
   const dica =
     variante === "busca"
@@ -116,6 +123,11 @@ export function FormConsulta({
       <label className={variante === "busca" ? undefined : styles.campoLargo}>
         Hóspedes
         <select name="hospedes" defaultValue={pessoasEscolhidas} required aria-describedby={erros.hospedes ? "erro-hospedes" : undefined}>
+          {semEscolha && (
+            <option value="" disabled>
+              Escolha
+            </option>
+          )}
           {pessoas.map((n) => (
             <option key={n} value={n}>
               {n} {n === 1 ? "pessoa" : "pessoas"}

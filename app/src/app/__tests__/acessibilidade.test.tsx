@@ -480,6 +480,14 @@ describe("resultado à vista depois do envio da consulta (M7.21)", () => {
       expect(alvos(raiz), caso).toEqual([]);
       if (erro) expect([...raiz.querySelectorAll(`form .${styles.erro}`)].map((e) => e.textContent), caso).toContain(erro);
     }
+    // Busca sem o número de pessoas: o campo combina com o aviso ("Escolha", obrigatório), sem um palpite de 2 pessoas.
+    const semPessoas = dom(await consultar({ ...busca, hospedes: "" })).querySelector<HTMLSelectElement>('form select[name="hospedes"]')!;
+    expect(semPessoas.value).toBe("");
+    expect(semPessoas.required).toBe(true);
+    expect(semPessoas.options[0].textContent).toBe("Escolha");
+    expect(semPessoas.getAttribute("aria-describedby")).toBe("erro-hospedes");
+    // Grupo maior que a casa: o número pedido continua marcado, ao lado do aviso "recebe até N pessoas".
+    expect(dom(await consultar({ ...pedido, hospedes: "9" })).querySelector<HTMLSelectElement>('form select[name="hospedes"]')!.value).toBe("9");
     // Nada foi consultado com dados errados (e o quadro do resumo fica com "a confirmar").
     expect(m.disponibilidade).not.toHaveBeenCalled();
     // A página da casa não é destino do envio: nem com a disponibilidade à vista há alvo nela.

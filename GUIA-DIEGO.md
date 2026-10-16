@@ -53,8 +53,9 @@ Do levantamento do site de 16/10, dentro do seu pedido de 14/10 (avançar o site
   embaixo, fora da tela, e parecia que nada tinha acontecido.
 - **Agora:** a página já abre no resultado. Na consulta de uma casa, no quadro "Resumo da viagem", com a situação e o
   valor. Na busca em todas as casas, na lista "N casas na sua busca" (ou no aviso de que nenhuma casa recebe o grupo).
-  Quem usa leitor de tela ouve o nome do quadro. No computador, a página desce um pouco e mostra o formulário e o resumo
-  lado a lado.
+  O foco vai para o quadro, para que o leitor de tela (programa que lê a página em voz alta) leia o nome dele; isso não
+  foi testado com um leitor de tela. No computador, a página desce um pouco e mostra o formulário e o resumo lado a
+  lado.
 - **Com algum campo errado** (por exemplo, uma data que já passou), a página continua no topo, onde aparecem os avisos
   de cada campo.
 - **Link da casa enviado pelo WhatsApp:** quando as datas ou as pessoas do link não servem (entrada que já passou,
@@ -62,18 +63,29 @@ Do levantamento do site de 16/10, dentro do seu pedido de 14/10 (avançar o site
   casa mostra o quadro "Confira os dados" com o motivo, e o mesmo aviso aparece no campo certo do cartão "Planeje sua
   estadia". Antes, não aparecia nada, e quem abria o link não sabia por que não via o valor. Nesses casos nada é
   consultado e o botão de segurar as datas não aparece.
-- **Link sem o número de pessoas:** o aviso diz "Informe quantas pessoas.", e o campo "Hóspedes" do cartão já aparece
-  marcado em 2 pessoas, como em qualquer visita sem esse número no link. Basta a pessoa conferir e tocar em
-  "Continuar".
+- **Link sem o número de pessoas** (ou com um número que não serve, como 0): o aviso diz "Informe quantas pessoas.", e
+  o campo "Hóspedes" do cartão fica em "Escolha", sem número marcado. A pessoa escolhe e toca em "Continuar"; sem
+  escolher, o navegador não envia e pede a escolha. O mesmo vale para um grupo grande demais para a lista do campo
+  (100 pessoas, por exemplo), ao lado do aviso de quantas pessoas a casa recebe. Na primeira versão deste item, o
+  campo vinha marcado em 2 pessoas ao lado do aviso, como se alguém tivesse escolhido; a revisão feita antes de
+  publicar trocou isso, para o sistema não supor. Numa visita sem pessoas no link (e sem aviso), o campo continua
+  começando em 2, como antes.
 - **Link sem datas:** a página da casa continua como antes, sem aviso.
-- **Textos:** os avisos são os mesmos que a consulta já usava. Nenhum texto novo para revisar.
-- **Conferido:** num navegador de verdade (Chrome, no tamanho de um iPhone e de um computador), com dados de teste: a
-  consulta e a busca abrem no resultado; com uma data errada, a página fica no topo com o aviso; os quatro tipos de
-  link errado mostram o quadro e o aviso no campo. O Safari do iPhone não foi testado aqui.
+- **Textos:** os avisos são os mesmos que a consulta já usava. O único texto novo é "Escolha", no campo "Hóspedes". Ele
+  fica fixo, como os outros nomes do formulário; a pergunta sobre poder mudar esses textos pelo painel continua na
+  seção 7.
+- **Conferido:** num navegador de verdade (Chromium, o mesmo motor do Chrome, no tamanho de um iPhone e de um
+  computador), com dados de teste: a consulta e a busca abrem no resultado; com uma data errada, a página fica no topo
+  com o aviso; os quatro tipos de link errado mostram o quadro e o aviso no campo. O Safari do iPhone, o Firefox e os
+  leitores de tela não foram testados aqui. O campo em "Escolha" foi conferido só pelos testes automáticos, não no
+  navegador.
 - **O que você precisa fazer:** nada.
-- **Ficou de fora:** escolher outra casa no cartão "Planeje sua estadia" continua abrindo a página dessa outra casa no
-  topo, como antes; e o link antigo do site anterior ("/property/" seguido do código), com datas erradas, continua
-  respondendo com uma linha de texto (como ficou no M7.9).
+- **Ficou de fora:** tocar de novo em "Continuar" (ou "Consultar") sem mudar nada, com o resultado já na tela, só leva
+  de volta ao resultado já mostrado, sem consultar de novo; para atualizar, recarregue a página ou mude algum campo
+  (nenhum valor antigo é cobrado: ao segurar as datas, o sistema confere tudo de novo). Escolher outra casa no cartão
+  "Planeje sua estadia" continua abrindo a página dessa outra casa no topo, como antes; e o link antigo do site
+  anterior ("/property/" seguido do código), com datas erradas, continua respondendo com uma linha de texto (como
+  ficou no M7.9).
 
 ### Ícone da aba com a marca do site — M7.18 (15/10)
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TITULO_DA_SITUACAO } from "@/components/site/Disponibilidade";
 import styles from "@/components/site/site.module.css";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
@@ -124,19 +124,35 @@ describe("link da casa com datas ou pessoas que não servem (M7.21)", () => {
     expect(p.erros).toEqual({ hospedes: "Este apartamento recebe até 4 pessoas." });
     expect(p.pessoas.value).toBe("9");
     expect(p.pessoas.getAttribute("aria-describedby")).toBe("erro-hospedes");
+    expect([...p.pessoas.options].map((o) => o.textContent)).not.toContain("Escolha");
+    // Grupo de três dígitos (fora da lista do campo, que só acrescenta números até 99): o mesmo aviso, e o campo fica em
+    // "Escolha", sem um número que ninguém pediu.
+    const cem = await abrir({ checkin: "2099-10-12", checkout: "2099-10-15", guests: "100" });
+    expect(cem.erros).toEqual({ hospedes: "Este apartamento recebe até 4 pessoas." });
+    expect(cem.pessoas.value).toBe("");
+    expect(cem.pessoas.options[0].textContent).toBe("Escolha");
     expect(m.disponibilidade).not.toHaveBeenCalled();
     expect(p.segurar).toBeNull();
   });
 
-  it("sem o número de pessoas: \"Informe quantas pessoas.\"; o campo já vem marcado em 2 pessoas, para conferir e continuar", async () => {
-    const p = await abrir({ checkin: "2099-10-12", checkout: "2099-10-15" });
-    expect(p.titulo).toBe(TITULO_DA_SITUACAO.invalida);
-    expect(p.motivos).toEqual(["Informe quantas pessoas."]);
-    expect(p.erros).toEqual({ hospedes: "Informe quantas pessoas." });
-    // O que o visitante vê no campo (registrado no guia): 2 pessoas já marcadas, como no formulário sem pedido.
-    expect(p.pessoas.value).toBe("2");
+  it("sem o número de pessoas (ou com 0, ou com texto): \"Informe quantas pessoas.\", e o campo fica em \"Escolha\", sem palpite", async () => {
+    for (const link of [{ checkin: "2099-10-12", checkout: "2099-10-15" }, { checkin: "2099-10-12", checkout: "2099-10-15", guests: "0" }, { checkin: "2099-10-12", checkout: "2099-10-15", guests: "dois" }] as Record<string, string>[]) {
+      const caso = JSON.stringify(link);
+      const p = await abrir(link);
+      expect(p.titulo, caso).toBe(TITULO_DA_SITUACAO.invalida);
+      expect(p.motivos, caso).toEqual(["Informe quantas pessoas."]);
+      expect(p.erros, caso).toEqual({ hospedes: "Informe quantas pessoas." });
+      // O campo combina com o aviso (avisar em vez de supor): nada marcado, a primeira opção é "Escolha", que não se pode
+      // escolher de volta; o campo é obrigatório, então o navegador só envia depois de uma escolha.
+      expect(p.pessoas.value, caso).toBe("");
+      expect(p.pessoas.required, caso).toBe(true);
+      expect(p.pessoas.options[0].textContent, caso).toBe("Escolha");
+      expect(p.pessoas.options[0].disabled, caso).toBe(true);
+      expect([...p.pessoas.options].filter((o) => o.selected).map((o) => o.textContent), caso).toEqual(["Escolha"]);
+      expect(p.pessoas.getAttribute("aria-describedby"), caso).toBe("erro-hospedes");
+      expect(p.segurar, caso).toBeNull();
+    }
     expect(m.disponibilidade).not.toHaveBeenCalled();
-    expect(p.segurar).toBeNull();
   });
 
   it("mais de um problema: todos os motivos, na ordem dos campos, cada um no seu campo", async () => {
@@ -158,8 +174,32 @@ describe("link da casa com datas ou pessoas que não servem (M7.21)", () => {
       expect(p.quadro, JSON.stringify(link)).toBeNull();
       expect(p.erros, JSON.stringify(link)).toEqual({});
       expect(p.raiz.textContent, JSON.stringify(link)).not.toContain(TITULO_DA_SITUACAO.invalida);
+      // Sem aviso, nenhum "Escolha": o campo de pessoas tem o padrão de sempre.
+      expect([...p.pessoas.options].map((o) => o.textContent), JSON.stringify(link)).not.toContain("Escolha");
     }
+    expect((await abrir({})).pessoas.value).toBe("2");
     expect(m.disponibilidade).not.toHaveBeenCalled();
+  });
+
+  describe("\"hoje\" no fuso da casa (São Paulo), não no do servidor", () => {
+    // 17/10/2026 às 2h30 em UTC ainda é 16/10 às 23h30 em São Paulo: a entrada de 16/10 ainda é hoje; a de 15/10, não.
+    beforeEach(() => vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-17T02:30:00Z") }));
+    afterEach(() => vi.useRealTimers());
+
+    it("entrada no dia de hoje em São Paulo, já amanhã em UTC: sem aviso, a disponibilidade é consultada", async () => {
+      const p = await abrir({ checkin: "2026-10-16", checkout: "2026-10-19", guests: "2" });
+      expect(p.erros).toEqual({});
+      expect(m.disponibilidade).toHaveBeenCalledWith({}, "org", { imovel: "403", entrada: "2026-10-16", saida: "2026-10-19", hospedes: "2" });
+      expect(p.titulo).toBe(TITULO_DA_SITUACAO.disponivel);
+    });
+
+    it("entrada na véspera em São Paulo: \"A entrada não pode ser antes de hoje.\" no quadro e no campo", async () => {
+      const p = await abrir({ checkin: "2026-10-15", checkout: "2026-10-19", guests: "2" });
+      expect(p.titulo).toBe(TITULO_DA_SITUACAO.invalida);
+      expect(p.motivos).toEqual(["A entrada não pode ser antes de hoje."]);
+      expect(p.erros).toEqual({ entrada: "A entrada não pode ser antes de hoje." });
+      expect(m.disponibilidade).not.toHaveBeenCalled();
+    });
   });
 
   it("link que serve: a disponibilidade de verdade, sem aviso nos campos, e as datas para segurar", async () => {

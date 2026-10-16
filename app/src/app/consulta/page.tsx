@@ -13,10 +13,10 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { ASSUNTO_CONSULTA, AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato, contatoDoSite, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, mensagemDaBusca, montarConsulta } from "@/site/site";
+import { ASSUNTO_CONSULTA, AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato, contatoDoSite, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, mensagemDaBusca, montarConsulta, type PedidoConsulta, pedidoEnviado } from "@/site/site";
 
-/** Busca em todas as casas (M7.9): o pedido tem datas, mas nenhuma casa escolhida ("Todas as casas"). */
-const ehBusca = (p: { imovel: string; entrada: string; saida: string }) => !p.imovel && !!(p.entrada || p.saida);
+/** Busca em todas as casas (M7.9): o pedido foi enviado (`pedidoEnviado`), mas sem casa escolhida ("Todas as casas"). */
+const ehBusca = (p: PedidoConsulta) => !p.imovel && pedidoEnviado(p);
 
 /**
  * Prévia do link (M7.13): a frase que a própria página mostra (Configurações → Textos do site) — na consulta, a frase
@@ -38,7 +38,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return <SiteEmConfiguracao />;
   const pedido = lerPedidoConsulta(sp);
-  const enviado = !!(pedido.entrada || pedido.saida);
+  const enviado = pedidoEnviado(pedido);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
   const { textos } = conteudo;
   const busca = ehBusca(pedido);

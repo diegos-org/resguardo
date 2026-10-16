@@ -71,8 +71,9 @@ export const MOTIVO_SEM_CAPACIDADE = "A capacidade deste apartamento ainda não 
 
 /**
  * Pedido que não passa na conferência ("Confira os dados"), com os motivos: sem noites, sem valor e sem leitura, nada para
- * segurar (`podeSegurar`). A página da casa mostra assim o link com datas que não servem (M7.21), com os textos da
- * conferência da consulta (`montarConsulta`).
+ * segurar (`podeSegurar`). O único jeito de montar esse resultado: a conferência da própria disponibilidade e a página da
+ * casa, que mostra assim o link com datas que não servem (M7.21), com os textos da conferência da consulta
+ * (`montarConsulta`).
  */
 export const disponibilidadeInvalida = (motivos: string[]): Disponibilidade => ({ situacao: "invalida", motivos, noites: 0, cotacao: null, leituraEm: null });
 
@@ -105,7 +106,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   const [imovel] = /^[\w-]{1,40}$/.test(p.imovel)
     ? await db.select({ id: imoveis.id, fuso: imoveis.fuso, capacidade: imoveis.capacidade }).from(imoveis).where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, p.imovel), eq(imoveis.publico, true), eq(imoveis.ativo, true)))
     : [];
-  if (!imovel) return vazio("invalida", ["Escolha um apartamento."]);
+  if (!imovel) return disponibilidadeInvalida(["Escolha um apartamento."]);
   const hoje = hojeISO(imovel.fuso, agora);
   const erros: string[] = [];
   if (!dataValida(p.entrada)) erros.push("Informe a data de entrada.");
@@ -115,7 +116,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   const hospedes = /^\d+$/.test(p.hospedes) ? Number(p.hospedes) : NaN;
   if (!Number.isInteger(hospedes) || hospedes < 1) erros.push("Informe quantas pessoas.");
   else if (imovel.capacidade && hospedes > imovel.capacidade) erros.push(`Este apartamento recebe até ${imovel.capacidade} pessoas.`);
-  if (erros.length) return vazio("invalida", erros);
+  if (erros.length) return disponibilidadeInvalida(erros);
 
   const noites = diasEntre(p.entrada, p.saida);
   const { regras, precos } = o.config ?? (await lerConfigDaConsulta(db, organizacaoId));
