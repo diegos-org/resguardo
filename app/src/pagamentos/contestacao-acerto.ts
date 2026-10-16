@@ -23,6 +23,7 @@ import { contestacoesPagamento, lancamentos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { estornar, type Lancamento, lancar, type NovoLancamento } from "@/financeiro/ledger";
 import { travarMotorDaReserva } from "@/financeiro/trava";
+import { dataBr, diaMesBr } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { lancarAcertoDoProprietario, mesDoDesconto, ORIGEM_CANCELAMENTO } from "@/repasses/descontos";
 import { registrarEventoDaContestacao } from "./contestacao-leitura";
@@ -39,8 +40,6 @@ import {
 } from "./contestacao-regras";
 import { type Contestacao, dinheiroDaReserva, type Pagamento, type Travado } from "./travas";
 
-const dataBr = (d: string) => d.slice(0, 10).split("-").reverse().join("/");
-const diaMes = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
 const emVigor = () => and(isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`);
 
 /**
@@ -343,7 +342,7 @@ export async function lancarContestacao(
       break;
     }
     case "ganha": {
-      const quando = `a SCL ganhou a disputa em ${diaMes(m.resultadoEm)}`;
+      const quando = `a SCL ganhou a disputa em ${diaMesBr(m.resultadoEm)}`;
       await doProprietario(chaves.proprietarioReverte(), livro.proprietario, `${disputa}: valor segurado devolvido (${quando})`, livro.proprietarioId);
       await daScl(chaves.sclReverte(), -livro.scl, "previsto", `${disputa}: perda prevista revertida (${quando})`);
       await volta(m.voltaEm, quando);
@@ -379,7 +378,7 @@ export async function lancarContestacao(
     case "definitivos": {
       // A divisão final (xF, yF) comparada sempre com o já lançado (Σx, Σy): o ajuste do proprietário (positivo devolve), o
       // espelho da perda prevista e a perda definitiva da SCL, no mês corrente (nunca `mudarEstado` num mês anterior).
-      const quando = `a SCL perdeu a disputa em ${diaMes(m.resultadoEm)}`;
+      const quando = `a SCL perdeu a disputa em ${diaMesBr(m.resultadoEm)}`;
       const ajuste = livro.proprietario - m.proprietario;
       const dono = livro.proprietarioId ?? m.proprietarioId;
       await doProprietario(

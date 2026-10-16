@@ -22,6 +22,7 @@ import {
   FUSO_PADRAO,
   HORA_VALIDA,
   horaNoFuso,
+  INTERVALO_DA_SEMANA,
   hojeISO,
   instanteLocal,
   LETRAS_DA_SEMANA,
@@ -178,6 +179,8 @@ describe("a semana começando na segunda (Diego, 16/10/2026)", () => {
     expect(DIAS_NA_ORDEM.map((n) => DIAS_SEMANA[n])).toEqual(["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]);
     expect(DIAS_NA_ORDEM.map((n) => DIAS_DA_SEMANA_CURTOS[n]).join(" ")).toBe("seg ter qua qui sex sáb dom");
     expect(DIAS_NA_ORDEM.map((n) => LETRAS_DA_SEMANA[n]).join("")).toBe("STQQSSD");
+    // O rótulo ao lado de uma lista por dia sai da mesma ordem (a prévia do calendário: "mínimo 1/1/1/1/2/2/1 (seg a dom)").
+    expect(INTERVALO_DA_SEMANA).toBe("seg a dom");
     expect(NOMES_DIA_SEMANA[1]).toBe("segunda-feira");
     expect(NOMES_DIA_SEMANA[0]).toBe("domingo");
     // A posição na semana: 0 na segunda (12/10/2026) … 6 no domingo (18/10/2026).

@@ -82,7 +82,7 @@ describe("formulário da alteração da reserva paga pelo site (M8.2d)", () => {
     expect((screen.getByLabelText(/Pela cotação do site/) as HTMLInputElement).checked).toBe(true);
     expect(screen.getByLabelText("Como chegou")).toBeTruthy();
     // A hora do pedido no formato 15:00 (M7.22): campo de texto com a hora de agora, nunca o nativo (AM/PM em inglês).
-    const hora = screen.getByLabelText("Hora (Brasília)") as HTMLInputElement;
+    const hora = screen.getByRole("textbox", { name: "Hora (Brasília)" }) as HTMLInputElement;
     expect([hora.type, hora.value, hora.placeholder, hora.required]).toEqual(["text", "12:00", "15:00", true]);
     fireEvent.click(screen.getByLabelText(/A SCL propõe/));
     expect((screen.getByLabelText(/Manter o valor atual \(R\$ 1\.500,00\)/) as HTMLInputElement).checked).toBe(true);

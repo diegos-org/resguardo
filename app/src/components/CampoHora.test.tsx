@@ -3,12 +3,13 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PADRAO_DO_CAMPO_HORA } from "@/lib/datas";
-import { CampoHora } from "./CampoHora";
+import { MENSAGEM_HORA, PADRAO_DO_CAMPO_HORA } from "@/lib/datas";
+import { CampoHora, DICA_DO_CAMPO_HORA } from "./CampoHora";
 
 afterEach(cleanup);
 
-const campo = (rotulo = "Hora") => screen.getByLabelText(rotulo) as HTMLInputElement;
+// Pelo nome acessível: o exemplo "Ex.: 15:00" fica fora do nome (é a descrição do campo).
+const campo = (rotulo = "Hora") => screen.getByRole("textbox", { name: rotulo }) as HTMLInputElement;
 
 describe("CampoHora (M7.22): a hora como 15:00 em qualquer aparelho", () => {
   it("campo de texto com o padrão 15:00 (24 horas), nunca o nativo de hora, que mostra AM/PM em inglês", () => {
@@ -20,9 +21,23 @@ describe("CampoHora (M7.22): a hora como 15:00 em qualquer aparelho", () => {
     );
     const c = campo();
     expect([c.type, c.name, c.value, c.pattern, c.maxLength, c.placeholder, c.autocomplete, c.required]).toEqual(["text", "checkinAPartirDe", "15:00", PADRAO_DO_CAMPO_HORA, 5, "15:00", "off", false]);
-    expect(c.title).toBe("Hora no formato 15:00 (24 horas)");
+    // O aviso que o navegador mostra ao recusar é o mesmo dos servidores, num lugar só (M7.22).
+    expect([c.title, MENSAGEM_HORA]).toEqual(["Use o formato 15:00 (24 horas).", "Use o formato 15:00 (24 horas)."]);
     // Sem teclado só de números: o do celular não tem os dois-pontos.
     expect(c.getAttribute("inputmode")).toBeNull();
+  });
+
+  it("o exemplo fica visível embaixo do campo, como a descrição dele, fora do nome (o rótulo continua só \"Hora\")", () => {
+    render(
+      <label>
+        Hora
+        <CampoHora name="hora" defaultValue="15:00" />
+      </label>,
+    );
+    const c = campo();
+    const dica = document.getElementById(c.getAttribute("aria-describedby") ?? "");
+    expect([DICA_DO_CAMPO_HORA, dica?.textContent]).toEqual(["Ex.: 15:00", "Ex.: 15:00"]);
+    expect(screen.getByRole("textbox", { description: "Ex.: 15:00" })).toBe(c);
   });
 
   it("a hora guardada aparece no formato 15:00: \"15h\" vira \"15:00\" e \"9:00\" vira \"09:00\"; o que não é hora fica como está", () => {
@@ -105,13 +120,16 @@ describe("CampoHora (M7.22): a hora como 15:00 em qualquer aparelho", () => {
       </>,
     );
     const c = campo();
-    expect([c.id, c.getAttribute("aria-invalid"), c.getAttribute("aria-describedby"), c.value]).toEqual(["saida", "true", "erro-saida", "25:00"]);
+    // O aviso de erro de quem chama vem primeiro; o exemplo do campo, depois.
+    const [erro, dica] = (c.getAttribute("aria-describedby") ?? "").split(" ");
+    expect([c.id, c.getAttribute("aria-invalid"), erro, document.getElementById(dica)?.textContent, c.value]).toEqual(["saida", "true", "erro-saida", "Ex.: 15:00", "25:00"]);
+    expect(screen.getByRole("textbox", { description: "Use o formato 15:00 (24 horas). Ex.: 15:00" })).toBe(c);
   });
 
-  it("sem hooks: também desenha numa tela de servidor", () => {
+  it("também desenha numa tela de servidor (o único hook é useId)", () => {
     const h = renderToStaticMarkup(<CampoHora name="hora" required />);
-    expect(h).toMatch(/^<input [^>]*\/>$/);
-    for (const a of ['type="text"', 'placeholder="15:00"', 'name="hora"', 'required=""']) expect(h, a).toContain(a);
+    expect(h).toMatch(/^<input [^>]*\/><span id="[^"]+-dica" aria-hidden="true"[^>]*>Ex\.: 15:00<\/span>$/);
+    for (const a of ['type="text"', 'placeholder="15:00"', 'name="hora"', 'required=""', 'aria-describedby="']) expect(h, a).toContain(a);
     expect(h).not.toContain("time");
   });
 });

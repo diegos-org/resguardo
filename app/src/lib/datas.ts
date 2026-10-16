@@ -39,6 +39,12 @@ export const HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const PADRAO_DO_CAMPO_HORA = "([01]?\\d|2[0-3]):[0-5]\\d";
 
 /**
+ * O aviso único da hora fora do formato (M7.22): o `title` do campo de hora, que o navegador mostra ao recusar o envio, e
+ * a recusa de cada servidor (ficha do imóvel e portal, agenda, horários combinados, cancelamento e alteração).
+ */
+export const MENSAGEM_HORA = "Use o formato 15:00 (24 horas).";
+
+/**
  * Lê uma hora digitada ou guardada e devolve "HH:MM" com dois dígitos: "15:00", "9:00", "15h", "15h30" e "9h05" valem.
  * Fora disso ("25:00", "15:7", "15", vazio, texto), null: quem chama avisa, sem adivinhar a hora.
  */
@@ -120,6 +126,8 @@ export const NOMES_DIA_SEMANA = ["domingo", "segunda-feira", "terça-feira", "qu
 export const DIAS_DA_SEMANA_CURTOS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"] as const;
 /** A letra do dia sobre o número, nos calendários do mês do painel e do portal. */
 export const LETRAS_DA_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"] as const;
+/** De que dia a que dia vai uma lista na ordem da semana ("seg a dom"), tirado de `DIAS_NA_ORDEM`, sem outra cópia da regra. */
+export const INTERVALO_DA_SEMANA = `${DIAS_DA_SEMANA_CURTOS[DIAS_NA_ORDEM[0]]} a ${DIAS_DA_SEMANA_CURTOS[DIAS_NA_ORDEM[6]]}`;
 
 /** Sábado ou domingo. */
 export const fimDeSemana = (d: string) => diaDaSemana(d) === 0 || diaDaSemana(d) === 6;

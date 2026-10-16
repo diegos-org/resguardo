@@ -5,7 +5,7 @@ import styles from "@/components/formularios.module.css";
 import { textoDaFaltaNoCancelamento, VARIAVEIS_DO_CANCELAMENTO } from "@/configuracoes/modelos-texto";
 import { HORA_LIMITE_DO_DIA } from "@/configuracoes/politica-cancelamento";
 import { CANAIS_PEDIDO_CANCELAMENTO, type EstadoReserva, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, type MotivoCancelamentoEmpresa } from "@/db/schema";
-import { hojeISO, horaNoFuso } from "@/lib/datas";
+import { diaMesBr, hojeISO, horaNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import type { MensagemPronta } from "@/mensagens/hospede";
 import {
@@ -23,7 +23,6 @@ import { FormCancelamentoSite, FormDescartarPedido, FormRegistrarPedido, type Op
 import { devolucoesDoCancelamento, linhaDaDevolucao } from "./PagamentoNoSite";
 
 const FUSO = "America/Sao_Paulo";
-const diaIso = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
 const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } as const;
 const botaoDiscreto = { font: "inherit", fontSize: "0.8125rem", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--scl-borda)", background: "var(--scl-papel)", cursor: "pointer" } as const;
 
@@ -88,8 +87,8 @@ function quemCancelou(c: CancelamentoDoPainel): string {
 function politica(c: CancelamentoDoPainel): string {
   if (c.politicaVersao === null) return "sem política aceita (pagamento anterior às páginas legais do site): decisão da equipe";
   const partes = [`versão ${c.politicaVersao}`];
-  if (c.integralAte) partes.push(`reembolso integral para pedidos até ${diaIso(c.integralAte)} (${HORA_LIMITE_DO_DIA})`);
-  if (c.arrependimentoAte) partes.push(`arrependimento até ${diaIso(c.arrependimentoAte)}${c.arrependimentoAteEntrada ? ", ou até a entrada" : ""}`);
+  if (c.integralAte) partes.push(`reembolso integral para pedidos até ${diaMesBr(c.integralAte)} (${HORA_LIMITE_DO_DIA})`);
+  if (c.arrependimentoAte) partes.push(`arrependimento até ${diaMesBr(c.arrependimentoAte)}${c.arrependimentoAteEntrada ? ", ou até a entrada" : ""}`);
   return partes.join(" — ");
 }
 
@@ -110,12 +109,12 @@ function financeiro(c: CancelamentoDoPainel): string {
 }
 
 function parteDoProprietario(c: CancelamentoDoPainel, checkin: string, verValores: boolean): string {
-  if (c.direito === "nenhum") return `retida: dividida como uma reserva normal; disponível depois de ${diaIso(checkin)} e da liberação do Mercado Pago`;
+  if (c.direito === "nenhum") return `retida: dividida como uma reserva normal; disponível depois de ${diaMesBr(checkin)} e da liberação do Mercado Pago`;
   if (!c.descontos.length) return "saiu do financeiro (não tinha sido repassada)";
   return c.descontos
     .map(
       (d) =>
-        `já repassada: ${verValores ? `${formatBRL(d.valor)} de ` : ""}desconto lançado${c.resultadoLancadoEm ? ` em ${diaBr(c.resultadoLancadoEm)}` : ""} — ${d.situacao.tipo === "descontado" ? `descontado no repasse de ${diaIso(d.situacao.data)}` : "a descontar no próximo repasse"}`,
+        `já repassada: ${verValores ? `${formatBRL(d.valor)} de ` : ""}desconto lançado${c.resultadoLancadoEm ? ` em ${diaBr(c.resultadoLancadoEm)}` : ""} — ${d.situacao.tipo === "descontado" ? `descontado no repasse de ${diaMesBr(d.situacao.data)}` : "a descontar no próximo repasse"}`,
     )
     .join("; ");
 }

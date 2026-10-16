@@ -192,7 +192,7 @@ export function Cotacao({
       {estado === "segurada" && c.holdAte && (
         <>
           <p className={styles.texto} style={{ marginTop: 12 }}>
-            As datas estão seguradas para você até <strong>{diaHoraNoFuso(c.holdAte, c.fuso)}</strong> ({rotuloDoFuso(c.fuso)})
+            As datas estão seguradas para você até <strong>{diaHoraNoFuso(c.holdAte, c.fuso)}</strong>, {rotuloDoFuso(c.fuso)}
             {vista.reserva ? ` (pedido ${vista.reserva.codigo})` : ""}. Fale com a equipe para confirmar a reserva; se o prazo passar sem confirmação, as datas voltam à venda.
           </p>
           {temContato ? (

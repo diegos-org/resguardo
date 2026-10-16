@@ -183,7 +183,7 @@ describe("configuração e envio", () => {
     // Sem configuração, o horário da casa sem ficha (HORARIOS_PADRAO), no formato 15:00.
     expect(await lerConfigAgenda(db, org)).toEqual({ ativa: false, destinatarios: [], formatos: {}, horaEntrada: "15:00", horaSaida: "11:00" });
     for (const horaEntrada of ["3 da tarde", "25:00", "15"])
-      expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], horaEntrada }, null), horaEntrada).toEqual({ ok: false, erro: "Horário no formato 15:00." });
+      expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], horaEntrada }, null), horaEntrada).toEqual({ ok: false, erro: "Use o formato 15:00 (24 horas)." });
     expect(await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [] }, null)).toMatchObject({ ok: false });
     expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [{ email: "nao-e-email", cidades: [] }] }, null)).toMatchObject({ ok: false });
     expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [{ email: "a@example.com", cidades: ["Niterói"] }] }, null)).toMatchObject({ ok: false });

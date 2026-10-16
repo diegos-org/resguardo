@@ -403,6 +403,8 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const mesNome = nomeDoMes(mes);
   const extenso = nomeDoPeriodo({ ano: d.ano, mes: d.mes });
   const fim = ultimoDia(d.ano, d.mes);
+  // O último dia do mês, "AAAA-MM-DD": o acerto escreve "31/03" e "31/03/2026" pela escrita única (M7.22).
+  const fimISO = `${mes}-${String(fim).padStart(2, "0")}`;
   const r = d.resumo;
   const resultado = r.suaParte - r.despesas;
   const doMes = d.partes.filter((p) => p.mes === mes);
@@ -561,7 +563,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const acerto: LinhaValor[] = d.rodape.flatMap((x) => {
     const quem = d.rodape.length > 1 ? ` — ${x.nome}` : "";
     const saldoTexto = x.saldo > 0 ? `(a ${e} deve a você)` : x.saldo < 0 ? `(você deve à ${e})` : "(zerado)";
-    const linhas: LinhaValor[] = [{ texto: `Saldo do acerto em ${fim}/${d.mes} ${saldoTexto}${quem}`, valor: formatBRL(Math.abs(x.saldo)), tipo: "normal" }];
+    const linhas: LinhaValor[] = [{ texto: `Saldo do acerto em ${diaMesBr(fimISO)} ${saldoTexto}${quem}`, valor: formatBRL(Math.abs(x.saldo)), tipo: "normal" }];
     if (x.descontado > 0) linhas.push({ texto: `− Adiantamentos descontados${quem}`, valor: `− ${formatBRL(x.descontado)}`, tipo: "sub" });
     if (x.situacao === "pago") linhas.push({ texto: `Transferido em ${dataBr(x.dataPagamento!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     else if (x.situacao === "proprietario_deve") {
@@ -571,7 +573,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
       if (transferir) linhas.push({ texto: `Você transfere no fechamento${quem}`, valor: formatBRL(transferir), tipo: "total" });
     } else if (x.situacao === "fechado" || x.situacao === "empresa_deve") linhas.push({ texto: `A transferir no fechamento${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     else if (x.situacao === "no_repasse_posterior") linhas.push({ texto: `Levado pelo repasse de ${nomeMes(x.repassePosterior!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
-    else if (x.situacao === "parcial") linhas.push({ texto: `Saldo parcial, fecha em ${dataBr(`${d.ano}-${String(d.mes).padStart(2, "0")}-${String(fim).padStart(2, "0")}`)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
+    else if (x.situacao === "parcial") linhas.push({ texto: `Saldo parcial, fecha em ${dataBr(fimISO)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     return linhas;
   });
 

@@ -159,9 +159,12 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(p.emissao).toBe("parcial até 20/10");
     expect(p.periodo).toBe("1 a 20/10/2026 (parcial: posição de 20/10/2026)");
     // Dia e mês de um dígito saem com o zero, como na posição (M7.22): antes, "1 a 5/3/2026" e "parcial até 5/3".
-    const marco = textosDoRelatorio({ ...base, ano: 2026, mes: 3, situacao: "parcial", ate: "2026-03-05", metricas: { ...base.metricas, parcialAte: 5, anterior: mesDados({ mes: "2026-02" }) } });
+    const marco = textosDoRelatorio({ ...base, ano: 2026, mes: 3, situacao: "parcial", ate: "2026-03-05", metricas: { ...base.metricas, atual: mesDados({ mes: "2026-03" }), parcialAte: 5, anterior: mesDados({ mes: "2026-02" }) } });
     expect(marco.periodo).toBe("1 a 05/03/2026 (parcial: posição de 05/03/2026)");
     expect(marco.emissao).toBe("parcial até 05/03");
+    // A página 2 do mesmo PDF escreve o dia do mesmo jeito (antes, "até 5/3").
+    expect(marco.quadros[0].valor).toMatch(/ até 05\/03$/);
+    expect(marco.quadros[4].legenda).toContain("(os números valem até 05/03)");
     expect(p.aviso).toContain("inclusive as que ainda não aconteceram");
     expect(p.quadros[4]).toMatchObject({ valor: "mês em andamento", semDado: true });
     expect(textosDoRelatorio({ ...base, situacao: "futuro" }).periodo).toContain("previsto");
@@ -207,8 +210,8 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     });
     expect(t.reservas.map((l) => [l.codigo, l.situacao, l.noites, l.atravessa])).toEqual([
       ["R1", "a transferir no fechamento", "3", false],
-      ["SCL-9", "cancelada com devolução ao hóspede (estadia de 10/9): desconto no próximo repasse", "—", false],
-      ["SCL-8", "cancelada com devolução ao hóspede (estadia de 20/9): descontada no repasse de 21/10", "—", false],
+      ["SCL-9", "cancelada com devolução ao hóspede (estadia de 10/09): desconto no próximo repasse", "—", false],
+      ["SCL-8", "cancelada com devolução ao hóspede (estadia de 20/09): descontada no repasse de 21/10", "—", false],
     ]);
     // Sem canceladas, nenhuma nota no bruto.
     expect(textosDoRelatorio(base).brutoAoResultado[0].etiqueta).toBeUndefined();
@@ -223,6 +226,12 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(t.acerto).toEqual([
       { texto: "Saldo do acerto em 31/10 (a Sua Casa Leblon deve a você)", valor: "R$ 722,50", tipo: "normal" },
       { texto: "A transferir no fechamento", valor: "R$ 722,50", tipo: "total" },
+    ]);
+    // Mês de um dígito: "31/03", como o "Transferido em 02/04/2026" logo abaixo (M7.22; antes, "31/3").
+    const marco = textosDoRelatorio({ ...base, ano: 2026, mes: 3, rodape: [rodape({ nome: "Dona Fictícia", situacao: "parcial", valor: 72250, saldo: 72250, aFavor: "proprietario" })] });
+    expect(marco.acerto).toEqual([
+      { texto: "Saldo do acerto em 31/03 (a Sua Casa Leblon deve a você)", valor: "R$ 722,50", tipo: "normal" },
+      { texto: "Saldo parcial, fecha em 31/03/2026", valor: "R$ 722,50", tipo: "total" },
     ]);
     const aLiberar = textosDoRelatorio({ ...base, partes: [parte({ situacao: "a_liberar", motivo: "A empresa ainda não registrou o recebimento desta reserva.", pagamento: null })], resumo: { ...base.resumo, emConferencia: true, acertoPendente: -5000 } });
     expect(aLiberar.comoChega.linhas[0]).toMatchObject({ tipo: "aviso", texto: expect.stringContaining("A liberar — Hóspede (10/10 → 13/10), Booking.com") });
@@ -263,7 +272,7 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
       },
     );
     expect(varias.reservas.map((l) => [l.hospede, l.codigo, l.datas, l.noites, l.situacao, l.situacaoTipo])).toEqual([
-      ["Elisa", "4471-905", "30/10 → 2/11 *", "2 de 3", "repassada em 31/10", "ok"],
+      ["Elisa", "4471-905", "30/10 → 02/11 *", "2 de 3", "repassada em 31/10", "ok"],
       ["Zé", "R1", "10/10 → 13/10", "3", "paga pelo canal em 11/10", "ok"],
       ["Ana", "R1", "10/10 → 13/10", "3", "a liberar: quem recebe a confirmar", "aviso"],
       ["Sem", "R9", "10/10 → 13/10", "—", "sem cálculo ainda", "aviso"],
@@ -305,7 +314,7 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(t.conciliacao.map((l) => [l.rotulo, l.reservas, l.suaParte, l.tipo])).toEqual([
       ["Booking.com", "1", "R$ 722,50", "canal"],
       ["Pago pelos canais em outubro de 2026", "1", "R$ 722,50", "subtotal"],
-      ["+ 1 noite de outubro de 2026 paga em setembro de 2026 (Zé (29/9 → 2/10), Airbnb, paga em 30/9)", "1", "R$ 247,35", "ponte"],
+      ["+ 1 noite de outubro de 2026 paga em setembro de 2026 (Zé (29/09 → 02/10), Airbnb, paga em 30/09)", "1", "R$ 247,35", "ponte"],
       ["Resultado por noite de outubro de 2026", "2", "R$ 969,85", "total"],
     ]);
     expect(t.conciliacaoFecha).toBe(true);
@@ -313,7 +322,7 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     expect(t.repasses[0]).toEqual({ texto: "16/10 — repasse antecipado (Hóspede)", valor: "R$ 722,50", tipo: "normal", etiqueta: "pago em 16/10 · comprovante no portal" });
     // Antecipado programado para 31/10 e pago em 1/11: a linha leva a data do Pix e diz a programada.
     const virada = textosDoRelatorio({ ...base, repasses: [{ id: "rep2", tipo: "antecipado", data: "2026-10-31", situacao: "pago", dataPagamento: "2026-11-01", valor: 1000, reservas: ["Zé"] }] });
-    expect(virada.repasses[0]).toEqual({ texto: "1/11 — repasse antecipado (Zé)", valor: "R$ 10,00", tipo: "normal", etiqueta: "pago em 1/11 (programado para 31/10) · comprovante no portal" });
+    expect(virada.repasses[0]).toEqual({ texto: "01/11 — repasse antecipado (Zé)", valor: "R$ 10,00", tipo: "normal", etiqueta: "pago em 01/11 (programado para 31/10) · comprovante no portal" });
     // Relatório parcial antes da data do canal: a parte paga pelo canal ainda é prevista, não "paga".
     const antes = textosDoRelatorio({ ...base, hoje: "2026-10-05", situacao: "parcial", ate: "2026-10-05", partes: [parte({ quemRecebe: "split", situacao: "informacao", canal: "airbnb", pagamento: { data: "2026-10-11", fonte: "canal", prazo: 1 } })] });
     expect(antes.reservas[0]).toMatchObject({ situacao: "prevista para 11/10 pelo canal", situacaoTipo: "info" });
@@ -597,8 +606,8 @@ describe("dados e acesso", () => {
     expect(d.repasses.map((r) => r.id)).toEqual([g.id]);
     expect(d.partes.some((p) => p.mes === "2026-07" && p.repasse?.id === g.id)).toBe(true);
     const textos = textosDoRelatorio(d).comoChega.linhas.map((l) => l.texto);
-    expect(textos).toContain("Repasse antecipado de 6/10 a pagar (Júlia)");
-    expect(textos).toContain("Desse valor, 3 noites de julho de 2026 da reserva de Júlia (10/7 → 13/7), pagas junto: entram no resultado de julho de 2026");
+    expect(textos).toContain("Repasse antecipado de 06/10 a pagar (Júlia)");
+    expect(textos).toContain("Desse valor, 3 noites de julho de 2026 da reserva de Júlia (10/07 → 13/07), pagas junto: entram no resultado de julho de 2026");
   });
 
   it("relatório de parte dos imóveis do dono: só os repasses com reserva desses imóveis; sem filtro, todos", async () => {
@@ -630,7 +639,7 @@ describe("dados e acesso", () => {
     expect((await repassesDoRelatorio(db, org, donos, "2026-11")).repasses).toMatchObject([{ id: g.id, data: "2026-10-31", dataPagamento: "2026-11-01", situacao: "pago", valor: 72250 }]);
     // No relatório de outubro, a parte aparece como repassada em 1/11 (informação); o Pix inteiro fica no de novembro.
     const out = textosDoRelatorio(await dadosDoRelatorio(db, org, { donos, imoveis: [{ id: a, codigo: "403", nome: "Studio Mezanino" }], todosOsImoveis: true, ano: 2026, mes: 10, hoje: "2026-11-02" }));
-    expect(out.comoChega.linhas.map((l) => l.texto)).toEqual(["Já repassado em 1/11 (repasse antecipado de novembro de 2026): 3 noites de outubro de 2026 da reserva de Hóspede (10/10 → 13/10)"]);
+    expect(out.comoChega.linhas.map((l) => l.texto)).toEqual(["Já repassado em 01/11 (repasse antecipado de novembro de 2026): 3 noites de outubro de 2026 da reserva de Hóspede (10/10 → 13/10)"]);
     expect(out.repasses.map((l) => l.texto)).toEqual([]);
   });
 

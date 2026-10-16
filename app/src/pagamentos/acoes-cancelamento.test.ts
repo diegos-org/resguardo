@@ -176,8 +176,8 @@ describe("calcular o cancelamento", () => {
   it("recusa antes do domínio: reserva inválida, momento pela metade, quem cancela ou decisão fora da lista, nota com dado pessoal ou longa demais", async () => {
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, reservaId: "x' or 1=1" }))).toMatchObject({ mensagem: "Reserva não encontrada." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, recebidoHora: "" }))).toMatchObject({ mensagem: "Informe a data e a hora em que o pedido chegou." });
-    expect(await calcularCancelamentoAcao({}, form({ ...doHospede, recebidoHora: "25:00" }))).toMatchObject({ mensagem: "Informe a data e a hora em que o pedido chegou." });
-    for (const recebidoHora of ["15", "15:7", "3 da tarde"]) expect(await calcularCancelamentoAcao({}, form({ ...doHospede, recebidoHora })), recebidoHora).toMatchObject({ mensagem: "Informe a data e a hora em que o pedido chegou." });
+    // Hora digitada fora do formato: o aviso único da hora (M7.22), o mesmo do campo e dos outros formulários.
+    for (const recebidoHora of ["25:00", "15", "15:7", "3 da tarde"]) expect(await calcularCancelamentoAcao({}, form({ ...doHospede, recebidoHora })), recebidoHora).toMatchObject({ mensagem: "Use o formato 15:00 (24 horas)." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, quemCancela: "vizinho" }))).toMatchObject({ mensagem: "Escolha quem cancela." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, decisao: "metade" }))).toMatchObject({ mensagem: "Escolha a decisão." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, nota: "CPF 123.456.789-09" }))).toMatchObject({ mensagem: ERRO_DADOS_PESSOAIS, valores: { nota: "CPF 123.456.789-09" } });

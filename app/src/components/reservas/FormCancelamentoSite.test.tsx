@@ -224,16 +224,23 @@ describe("formulário do cancelamento pela política (M8.2c)", () => {
 
   it("pedido registrado pela equipe: o momento vem preenchido; corrigir a hora pede o motivo. Pedido feito no site: o momento é travado", () => {
     mostrar({ pedido: { site: false, data: "2026-10-01", hora: "12:30", canal: "whatsapp", descricao: "Registrado por Equipe Fictícia" } });
-    expect((screen.getByLabelText("Hora (Brasília)") as HTMLInputElement).value).toBe("12:30");
+    expect((screen.getByRole("textbox", { name: "Hora (Brasília)" }) as HTMLInputElement).value).toBe("12:30");
     // Campo de texto no formato 15:00 (M7.22), controlado: o que a pessoa digita fica como está.
-    expect((screen.getByLabelText("Hora (Brasília)") as HTMLInputElement).type).toBe("text");
+    expect((screen.getByRole("textbox", { name: "Hora (Brasília)" }) as HTMLInputElement).type).toBe("text");
     expect(screen.queryByLabelText(/Por que corrigir o horário/)).toBeNull();
-    fireEvent.change(screen.getByLabelText("Hora (Brasília)"), { target: { value: "11:10" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Hora (Brasília)" }), { target: { value: "11:10" } });
     expect(screen.getByLabelText(/Por que corrigir o horário/)).toBeTruthy();
     expect((screen.getByLabelText(/Não comparecimento/) as HTMLInputElement).disabled).toBe(true);
     cleanup();
+    // A mesma hora digitada sem o zero ("9:30" para 09:30) é o mesmo momento, como no servidor: não pede o motivo.
+    mostrar({ pedido: { site: false, data: "2026-10-01", hora: "09:30", canal: "whatsapp", descricao: "Registrado por Equipe Fictícia" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Hora (Brasília)" }), { target: { value: "9:30" } });
+    expect(screen.queryByLabelText(/Por que corrigir o horário/)).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Hora (Brasília)" }), { target: { value: "9:31" } });
+    expect(screen.getByLabelText(/Por que corrigir o horário/)).toBeTruthy();
+    cleanup();
     mostrar({ pedido: { site: true, data: "2026-10-01", hora: "12:30", canal: null, descricao: "01/10 às 12:30" } });
-    expect(screen.queryByLabelText("Hora (Brasília)")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Hora (Brasília)" })).toBeNull();
     expect(screen.getByText(/pedido feito pelo hóspede em Minha reserva/)).toBeTruthy();
   });
 });
@@ -247,7 +254,7 @@ describe("registrar e descartar o pedido", () => {
     fireEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
     expect(await screen.findByText("Já há um pedido registrado em 01/10 às 12:30.")).toBeTruthy();
     expect(Object.fromEntries(acao.mock.calls[0][1])).toMatchObject({ reservaId: RESERVA, recebidoData: "2026-10-01", recebidoHora: "12:00", canal: "email", nota: "E-mail da empresa" });
-    expect([(screen.getByLabelText("Hora (Brasília)") as HTMLInputElement).type, (screen.getByLabelText("Hora (Brasília)") as HTMLInputElement).placeholder]).toEqual(["text", "15:00"]);
+    expect([(screen.getByRole("textbox", { name: "Hora (Brasília)" }) as HTMLInputElement).type, (screen.getByRole("textbox", { name: "Hora (Brasília)" }) as HTMLInputElement).placeholder]).toEqual(["text", "15:00"]);
     expect((screen.getByLabelText(/Onde está o pedido/) as HTMLInputElement).value).toBe("E-mail da empresa");
   });
 
@@ -265,6 +272,6 @@ describe("registrar e descartar o pedido", () => {
     expect(confirmar).toHaveBeenLastCalledWith("Descartar o pedido?");
     await waitFor(() => expect(acao).toHaveBeenCalledTimes(1));
     expect(Object.fromEntries(acao.mock.calls[0][1])).toMatchObject({ desistenciaCanal: "whatsapp", desistenciaData: "2026-10-01", desistenciaHora: "12:00", motivo: "vem mesmo" });
-    expect((screen.getByLabelText("Hora (Brasília)") as HTMLInputElement).type).toBe("text");
+    expect((screen.getByRole("textbox", { name: "Hora (Brasília)" }) as HTMLInputElement).type).toBe("text");
   });
 });

@@ -64,16 +64,25 @@ const ACOES: Record<string, string> = {
   "beds24.enviar": "enviou calendário e preços ao Beds24",
 };
 
+/** Um instante gravado com `toISOString()` ou com o deslocamento do fuso, também no meio do texto ("COT-1 até <ISO>"). */
+const INSTANTE_ISO = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})/g;
+
 /**
- * O valor de um campo para pessoas. As datas "AAAA-MM-DD" soltas no texto saem em dd/mm/aaaa (M7.22), também nos
- * registros antigos, sem mexer no que está gravado; os carimbos ISO ("2026-10-16T...") e os UUID ficam como estão.
+ * O valor de um campo para pessoas (M7.22), também nos registros antigos, sem mexer no que está gravado: os instantes ISO
+ * ("2026-10-16T18:05:00.000Z", em UTC) saem como "16/10/2026 às 15:05", no horário de Brasília, e as datas "AAAA-MM-DD"
+ * soltas no texto, em dd/mm/aaaa. Os UUID ficam como estão.
  */
 function valor(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   if (v === true) return "sim";
   if (v === false) return "não";
   if (Array.isArray(v)) return v.length ? `${v.length} item(ns)` : "nenhum";
-  const t = String(v).replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1");
+  const t = String(v)
+    .replace(INSTANTE_ISO, (m) => {
+      const d = new Date(m);
+      return Number.isNaN(d.getTime()) ? m : dataHoraNoFuso(d);
+    })
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1");
   return t.length > 60 ? `${t.slice(0, 57)}…` : t;
 }
 

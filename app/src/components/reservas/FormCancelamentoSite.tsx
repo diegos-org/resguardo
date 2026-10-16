@@ -4,6 +4,7 @@ import { startTransition, useActionState, useRef, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { CampoHora } from "@/components/CampoHora";
 import styles from "@/components/formularios.module.css";
+import { lerHora } from "@/lib/datas";
 import type { EstadoCancelamentoPainel } from "@/pagamentos/acoes-cancelamento";
 import { CAMPO_ROTULO_FORA, CAMPO_VALOR_FORA } from "@/pagamentos/campos-cancelamento";
 
@@ -87,7 +88,8 @@ export function FormCancelamentoSite({
   const [excecao, setExcecao] = useState(false);
   const previa = estado.previa && alteradoEm !== estado ? estado.previa : null;
   const doHospede = quem === "hospede";
-  const momentoCorrigido = !!pedido && !pedido.site && doHospede && (data !== pedido.data || hora !== pedido.hora);
+  // A hora lida como o servidor lê (M7.22): "9:30" é o mesmo momento que "09:30" e não pede o motivo da correção.
+  const momentoCorrigido = !!pedido && !pedido.site && doHospede && (data !== pedido.data || (lerHora(hora) ?? hora) !== pedido.hora);
   // A SCL cancela: sempre integral, com ou sem política aceita (a escolha sem política é só do pedido do hóspede).
   const escolheSemPolitica = quem !== "empresa" && (semPolitica || estado.escolha === "sem_politica");
   const ofereceExcecao = !escolheSemPolitica && estado.escolha === "excecao";

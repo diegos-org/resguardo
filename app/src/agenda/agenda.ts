@@ -19,7 +19,7 @@ import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { periodoDoBloqueio } from "@/reservas/bloqueios";
 import { horarioEfetivo, lerHorariosReservas } from "@/reservas/horarios";
-import { diaCurto, escreverHora, hojeISO, lerHora } from "@/lib/datas";
+import { diaCurto, escreverHora, hojeISO, lerHora, MENSAGEM_HORA } from "@/lib/datas";
 import { listarLimpezas, NOMES_ESTADO, sincronizarLimpezas } from "@/limpezas/limpezas";
 import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 
@@ -125,7 +125,7 @@ export async function salvarConfigAgenda(db: Db, organizacaoId: string, c: NovaC
   if (c.ativa && !destinatarios.length) return { ok: false, erro: "Para ligar a agenda, informe pelo menos um destinatário." };
   const horaEntrada = lerHora(c.horaEntrada ?? anterior.horaEntrada);
   const horaSaida = lerHora(c.horaSaida ?? anterior.horaSaida);
-  if (!horaEntrada || !horaSaida) return { ok: false, erro: "Horário no formato 15:00." };
+  if (!horaEntrada || !horaSaida) return { ok: false, erro: MENSAGEM_HORA };
   const formatos: Record<string, Formato> = {};
   for (const [cidade, f] of Object.entries(c.formatos ?? anterior.formatos)) {
     if (!(FORMATOS as readonly string[]).includes(f)) return { ok: false, erro: `Formato inválido para ${cidade}.` };

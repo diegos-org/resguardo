@@ -9,7 +9,7 @@ import { exigir, type Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { auditoria, configuracoes, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { escreverHora, HORA_VALIDA, lerHora } from "@/lib/datas";
+import { escreverHora, HORA_VALIDA, lerHora, MENSAGEM_HORA } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 
 export const CANAIS_HORARIO = ["Airbnb", "WhatsApp", "Booking.com", "Inbox SCL", "Outro"] as const;
@@ -130,6 +130,8 @@ export async function alterarHorario(db: Db, sessao: Sessao, d: AlteracaoHorario
     if (d.acao === "pedir") {
       // "9:00" e "15h" gravam "09:00" e "15:00" (M7.22).
       const hora = lerHora(d.hora ?? "");
+      // Hora digitada fora do formato: o aviso único da hora; sem hora, canal ou referência, o aviso do registro.
+      if (!hora && (d.hora ?? "").trim()) return { ok: false, erro: MENSAGEM_HORA };
       if (!hora || !CANAIS_HORARIO.includes(d.canal as typeof CANAIS_HORARIO[number]) || !referencia || referencia.length > 500)
         return { ok: false, erro: "Informe horário, canal e referência da conversa (até 500 caracteres)." };
       atual.pedido = { id: randomUUID(), hora, canal: d.canal!, referencia, registradoEm: em, registradoPor: sessao.usuarioId,

@@ -36,7 +36,7 @@ describe("histórico da ficha do imóvel", () => {
 describe("datas no histórico (M7.22)", () => {
   const de = (acao: string, mudancas: LinhaHistorico["mudancas"]): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao });
 
-  it("as datas AAAA-MM-DD saem em dd/mm/aaaa, também nos registros antigos; carimbo ISO, UUID e o quando ficam certos", () => {
+  it("as datas AAAA-MM-DD saem em dd/mm/aaaa e os carimbos ISO no horário de Brasília, também nos registros antigos; o UUID e o quando ficam certos", () => {
     render(
       <HistoricoAlteracoes
         linhas={[
@@ -47,6 +47,10 @@ describe("datas no histórico (M7.22)", () => {
           de("imovel.periodo.excluir", { "período Réveillon": ["2026-12-28 a 2027-01-02", null] }),
           de("adiantamento.quitar", { Pix: [null, "150000 em 2026-10-16"] }),
           de("imovel.editar", { carimbo: [null, "2026-10-16T18:05:00.000Z"], id: [null, "00000000-0000-4000-8000-000000002026"] }),
+          // Os carimbos que a ficha da reserva mostra: pedido de cancelamento, conferência, cotação segurada e desistência.
+          de("reserva.cancelamento_pedido", { recebidoEm: [null, "2026-10-16T17:10:00.000Z"], conferenciaResolvidaEm: [null, "2026-10-16T02:30:00Z"] }),
+          de("cotacao.segurar", { cotacao: [null, "COT-1 até 2026-10-01T15:30:00.000Z"] }),
+          de("reserva.cancelamento_descartado", { desistencia: [null, "whatsapp em 2026-10-16T18:05:00-03:00"] }),
         ]}
       />,
     );
@@ -59,9 +63,15 @@ describe("datas no histórico (M7.22)", () => {
       "Contrato: Gestão completa até sem fim → até 31/12/2026",
       "período Réveillon: 28/12/2026 a 02/01/2027 → —",
       "Pix: — → 150000 em 16/10/2026",
-      "carimbo: — → 2026-10-16T18:05:00.000Z",
+      "carimbo: — → 16/10/2026 às 15:05",
       "id: — → 00000000-0000-4000-8000-000000002026",
+      "recebidoEm: — → 16/10/2026 às 14:10",
+      // Perto da meia-noite, o dia também é o de Brasília (02:30 em UTC ainda é o dia 15 aqui).
+      "conferenciaResolvidaEm: — → 15/10/2026 às 23:30",
+      "cotacao: — → COT-1 até 01/10/2026 às 12:30",
+      "desistencia: — → whatsapp em 16/10/2026 às 18:05",
     ]);
+    expect(document.body.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T|\.000Z/);
     // O quando de cada linha: dia e hora no horário de Brasília, sem vírgula nem segundos.
     expect(document.body.textContent).toContain("Pessoa Fictícia removeu o bloqueio · 15/10/2026 às 12:00");
     expect(document.body.textContent).not.toMatch(/15\/10\/2026, |12:00:00/);

@@ -48,7 +48,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect((within(form).getByLabelText(/Estadia mínima/) as HTMLInputElement).value).toBe("2");
     // Horários no formato 15:00 em qualquer aparelho (M7.22): campo de texto, nunca o nativo, que mostra AM/PM em inglês.
     for (const [rotulo, valor] of [["Entrada a partir das", "15:00"], ["Saída até as", "11:00"]]) {
-      const campo = within(form).getByLabelText(rotulo) as HTMLInputElement;
+      const campo = within(form).getByRole("textbox", { name: rotulo }) as HTMLInputElement;
       expect([campo.type, campo.value, campo.placeholder, campo.required], rotulo).toEqual(["text", valor, "15:00", false]);
     }
     // Dois grupos de dias (entrada e saída): só a segunda da entrada está marcada.

@@ -6,7 +6,7 @@ import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, imoveisDetalhes, imoveisPeriodos } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { lerHora } from "@/lib/datas";
+import { lerHora, MENSAGEM_HORA } from "@/lib/datas";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
@@ -104,7 +104,7 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
     const v = txt(e[campo]);
     if (v === "") return padrao;
     const h = lerHora(v);
-    if (!h) erros[campo] = "Use o formato 15:00 (24 horas).";
+    if (!h) erros[campo] = MENSAGEM_HORA;
     return h ?? v;
   };
   const dias = (campo: "diasChegada" | "diasSaida") => {

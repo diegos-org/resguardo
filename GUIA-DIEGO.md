@@ -58,14 +58,21 @@ na segunda-feira".
 - **Campos de hora sem "PM":** os campos de hora do sistema (horários da casa na ficha do imóvel e no portal do
   proprietário marketplace, horários combinados com o hóspede, horário padrão da agenda e as horas do cancelamento e da
   alteração de reserva paga pelo site) eram o campo de hora do navegador, que num celular ou computador em inglês ou em
-  12 horas mostrava "03:00 PM". Agora são um campo de texto no formato 15:00, igual em qualquer aparelho. Dá para digitar
-  "15:00" ou "9:00" (vira "09:00"); uma hora que não existe, como "25:00", é recusada com o aviso "Use o formato 15:00
-  (24 horas).".
+  12 horas mostrava "03:00 PM". Agora são um campo de texto no formato 15:00, igual em qualquer aparelho, com o exemplo
+  "Ex.: 15:00" embaixo. Dá para digitar "15:00" ou "9:00" (vira "09:00"). Uma hora que não existe, como "25:00", não
+  chega a ser enviada: o próprio navegador segura o botão e mostra um balão que pede o formato certo, com o aviso "Use o
+  formato 15:00 (24 horas)."; o mesmo aviso aparece em todos os formulários quando o sistema recusa a hora.
 - **Dia e hora juntos:** no painel, nos PDFs e nos e-mails à equipe, "16/10/2026 às 15:05" (antes "16/10/2026, 15:05", e
   em cinco lugares com os segundos). O PDF diz "Posição extraída do sistema em 16/10/2026 às 15:05". No site, o prazo das
-  datas seguradas sai como "até 01/10 às 12:30 (horário de Brasília)". Tudo no horário de São Paulo, e nenhuma tela mostra
-  mais a data no formato de máquina ("2026-10-16"): horários combinados, convites, histórico de alterações e avisos do
-  financeiro.
+  datas seguradas sai como "até 01/10 às 12:30, horário de Brasília" na cotação e "até 01/10 às 12:30 (horário de
+  Brasília)" no Pix. Tudo no horário de São Paulo, e nenhuma tela mostra mais a data no formato de máquina
+  ("2026-10-16"): horários combinados, convites, histórico de alterações e avisos do financeiro. No histórico da ficha da
+  reserva, os horários gravados (o pedido de cancelamento, a conferência resolvida, as datas seguradas de uma cotação, a
+  desistência do hóspede) saem como "16/10/2026 às 14:10", no horário de Brasília, também nos registros antigos; antes
+  apareciam em formato de máquina, 3 horas adiantados.
+- **Relatório do proprietário:** o dia e o mês saem sempre com dois dígitos no PDF inteiro: "parcial até 05/03", "7
+  noites ocupadas até 05/03", "Saldo do acerto em 31/03" e as datas curtas das tabelas, como "29/09". Antes, a mesma data
+  aparecia como "05/03" na capa e "5/3" na página 2.
 - **A semana começa na segunda:** o calendário de datas do site, em que o hóspede escolhe a entrada e a saída, passa a
   ter as colunas de segunda a domingo ("seg ter qua qui sex sáb dom"). As listas de dias também vão de segunda a domingo:
   os dias de entrada e de saída permitidos na ficha do imóvel e no portal do proprietário marketplace, o mínimo de noites
@@ -87,16 +94,21 @@ na segunda-feira".
   - a agenda salva com "15h" é lida como 15:00 e passa a ser gravada como 15:00 no próximo salvar; nada foi convertido à
     mão no banco;
   - o que já está gravado como texto fica como estava: observações de bloqueios e de pedidos ("até 16/10, 15:05"), o
-    histórico dos convites ("vale até 2026-10-23") e as observações de cadastro do marketplace; no histórico de
-    alterações, as datas soltas já aparecem como 23/10/2026;
+    histórico dos convites ("vale até 2026-10-23") e as observações de cadastro do marketplace; quando o prazo de um
+    pedido muda, a observação dele passa a ser escrita no formato novo; no histórico de alterações, as datas soltas já
+    aparecem como 23/10/2026 e os horários gravados, como 16/10/2026 às 14:10;
   - a Política de cancelamento já publicada continua com "23h59" e "0h" até você publicar uma versão nova pelo painel
     (seção 6, item 42, passo 7);
   - os modelos de mensagem já salvos continuam com "10h" e "14h" no campo "quando"; os criados daqui em diante já vêm com
     "10:00" e "14:00".
 - **Conferido:** pelos testes automáticos, sem abrir o sistema num navegador: a hora em todas as horas do dia, sem AM/PM;
-  os meses de outubro, fevereiro, junho e novembro de 2026 no calendário com a semana na segunda; a ordem dos dias nos
-  formulários com os mesmos dias guardados; e um teste que falha se alguém voltar a escrever "15h", um campo de hora do
-  navegador ou uma lista de dias fora do lugar único.
+  os meses de outubro, fevereiro, junho e novembro de 2026 no calendário com a semana na segunda; a ordem dos dias, com
+  os mesmos dias guardados, na ficha do imóvel, no portal do marketplace, no mínimo por dia, no dia do repasse semanal e
+  na prévia do calendário; o relatório de março, com o zero no dia e no mês; e um teste que falha se alguém voltar a
+  escrever "15h", um campo de hora do navegador, uma data ou hora formatada fora do lugar único (o caminho que mostrava
+  "PM" ou a hora 3 horas adiantada) ou uma lista de dias fora do lugar único. Depois, uma revisão interna achou 14 pontos
+  (os horários do histórico, o "5/3" do relatório, o aviso da hora e partes do teste de guarda, entre outros), todos
+  corrigidos neste mesmo item.
 - **O que você precisa fazer:** na próxima publicação da Política de cancelamento, trocar a escrita da hora (seção 6,
   item 42, passo 7); se quiser, trocar "10h" e "14h" no campo "quando" dos modelos de mensagem já salvos, em
   Configurações, Modelos de mensagem; e responder às três perguntas da seção 7.
@@ -106,7 +118,8 @@ na segunda-feira".
   achou e que não são de data ou hora: o login com Google que falha sem mensagem, mensagens técnicas em inglês na página
   Sistema e nas falhas de e-mail, valores sem separador de milhar nos avisos de repasse, a comissão com ponto decimal e o
   mês no formato de máquina nas descrições do financeiro, o idioma do PDF para o leitor de tela, o aviso do campo do
-  código do hóspede e os telefones sem um formato único.
+  código do hóspede, os telefones sem um formato único e alguns campos do histórico da ficha da reserva, que ainda
+  aparecem com o nome interno (por exemplo, "recebidoEm: 16/10/2026 às 14:10").
 
 ### Menu do painel no celular (M0.10, 16/10)
 

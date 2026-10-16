@@ -36,3 +36,15 @@ describe("cadastro completo: horários da casa no formato 15:00 (M7.22)", () => 
     expect(campo("Entrada a partir de").getAttribute("aria-invalid")).toBeNull();
   });
 });
+
+describe("cadastro completo: dias de entrada e de saída de segunda a domingo (M7.22)", () => {
+  it("cada caixa mostra o dia e guarda o número de sempre (0 = domingo); só os dias gravados vêm marcados", () => {
+    render(<FormDetalhes imovelId={IMOVEL} inicial={{ ...DETALHES_VAZIOS, diasChegada: [5], diasSaida: [0] }} salvar={vi.fn()} />);
+    const ordem = [["segunda", "1"], ["terça", "2"], ["quarta", "3"], ["quinta", "4"], ["sexta", "5"], ["sábado", "6"], ["domingo", "0"]];
+    for (const [grupo, marcado] of [["diasChegada", "5"], ["diasSaida", "0"]]) {
+      const caixas = [...document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"][name="${grupo}"]`)];
+      expect(caixas.map((c) => [c.parentElement?.textContent?.trim(), c.value]), grupo).toEqual(ordem);
+      expect(caixas.filter((c) => c.checked).map((c) => c.value), grupo).toEqual([marcado]);
+    }
+  });
+});

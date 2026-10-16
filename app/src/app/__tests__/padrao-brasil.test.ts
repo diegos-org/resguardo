@@ -1,13 +1,14 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 /**
  * M7.22 (decisão de Diego em 16/10/2026): a hora no padrão do Brasil, igual em todo lugar ("15:00", "23:59", "00:00").
  * Este teste varre o código de src (sem os testes e os arquivos de apoio deles), sem os comentários, e falha se uma hora
  * de relógio voltar no formato antigo ("15h", "23h59", "0h"). Durações acima de 23 horas ("24h", "48h", "Portaria 24h")
- * não casam. Falha também se uma data ou hora para pessoas for formatada fora de lib/datas.ts (Intl ou toLocale com
- * fuso), o que já deixou segundos, vírgula e o dia em UTC na tela. E, desde a decisão de Diego de que a semana começa na
+ * não casam. Falha também se uma data ou hora para pessoas for formatada fora de lib/datas.ts (Intl, toLocale de data ou
+ * hora, ou o dia cortado de um carimbo ISO), o que já deixou segundos, vírgula, PM e o dia em UTC na tela. E, desde a decisão de Diego de que a semana começa na
  * segunda em todos os calendários (16/10/2026), falha se o dia da semana for calculado (`getUTCDay`, `getDay`) ou se uma
  * lista de nomes ou letras dos dias for escrita fora de lib/datas.ts: a ordem da semana e os nomes ficam num lugar só.
  * A mensagem lista o arquivo e a linha de cada achado.
@@ -25,12 +26,40 @@ function fontes(dir = SRC): string[] {
   });
 }
 
+const jaLimpos = new Map<string, string>();
+
 /**
  * Tira comentários de bloco (inclusive os de JSX) e de linha, mantendo as quebras de linha (o número da linha do achado
- * continua o do arquivo); `https://` não é comentário.
+ * continua o do arquivo). Quem acha os comentários é o próprio TypeScript, token a token: um "/*" ou um "//" dentro de
+ * texto ("image/*", "https://"), de expressão regular ou de JSX não é comentário e não esconde o que vem depois. Antes, uma
+ * expressão regular tirava de "image/*" até o "* /" seguinte, e 26 linhas de LugaresBairro.tsx saíam da varredura.
  */
-const semComentarios = (codigo: string) =>
-  codigo.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " ")).replace(/(^|[^:"'`\w])\/\/.*$/gm, "$1");
+function semComentarios(codigo: string): string {
+  const pronto = jaLimpos.get(codigo);
+  if (pronto !== undefined) return pronto;
+  const arquivo = ts.createSourceFile("varredura.tsx", codigo, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const textosJsx: [number, number][] = [];
+  const comentarios = new Map<number, number>();
+  const anotar = (rs: ts.CommentRange[] | undefined) => rs?.forEach((r) => comentarios.set(r.pos, r.end));
+  const visitar = (no: ts.Node) => {
+    if (no.kind === ts.SyntaxKind.JsxText) textosJsx.push([no.pos, no.end]);
+    anotar(ts.getLeadingCommentRanges(codigo, no.pos));
+    anotar(ts.getTrailingCommentRanges(codigo, no.end));
+    for (const filho of no.getChildren(arquivo)) visitar(filho);
+  };
+  visitar(arquivo);
+  let limpo = "";
+  let i = 0;
+  for (const [inicio, fim] of [...comentarios].sort(([a], [b]) => a - b)) {
+    // O texto de JSX ("<p>// texto</p>") não é comentário, nem o que já ficou dentro de outro comentário.
+    if (inicio < i || textosJsx.some(([a, b]) => inicio >= a && inicio < b)) continue;
+    limpo += codigo.slice(i, inicio) + codigo.slice(inicio, fim).replace(/[^\n]/g, " ");
+    i = fim;
+  }
+  limpo += codigo.slice(i);
+  jaLimpos.set(codigo, limpo);
+  return limpo;
+}
 
 /** Hora de relógio no formato antigo: "15h", "9h", "23h59", "0h", "às 20h." (não "24h", "48h", "M7 5h.01" nem "h1"). */
 const HORA_ANTIGA = /(?<![\w.#/-])(?:[01]?\d|2[0-3])h(?:[0-5]\d)?(?!\w|\.\d)/g;
@@ -55,13 +84,19 @@ function textoEntreAspas(linha: string, i: number): string | null {
  */
 const EXCECOES: { arquivo: string; trecho: string; motivo: string }[] = [];
 
-/** O campo nativo de hora (`type="time"`): mostra "03:00 PM" com o navegador ou o celular em inglês ou em 12 horas. */
-const CAMPO_TIME = /\btype\s*=\s*\{?\s*["'`]time["'`]/;
+/**
+ * O campo nativo de hora (`type="time"`): mostra "03:00 PM" com o navegador ou o celular em inglês ou em 12 horas. Também
+ * pelo objeto que um ajudante passa adiante ("{ type: \"time\" }", "{ tipo: \"time\" }").
+ */
+const CAMPO_TIME = /\b(?:type\s*=\s*\{?\s*|type\s*:\s*|tipo\s*:\s*)["'`]time["'`]/;
 
 /**
  * Datas e horas para pessoas saem de lib/datas.ts (parte 3 do M7.22): fora dele, nenhuma opção de hora ou de estilo do
- * Intl, nenhum toLocaleDateString/toLocaleTimeString e nenhum toLocaleString com fuso (o de dinheiro e de números
- * continua). O formatador pt-BR de datas também fica só lá.
+ * Intl, nenhum toLocaleDateString/toLocaleTimeString e nenhum toLocaleString sem opção de número (`style`, `currency`,
+ * `minimumFractionDigits`, `maximumFractionDigits`): sem elas, num Date, ele escreve "10/16/2026, 6:05:00 PM" no navegador
+ * em inglês e a hora em UTC, com segundos, no servidor. O de dinheiro e de números com essas opções continua; o de número
+ * sem opção fica nas exceções. O formatador pt-BR de datas também fica só lá, e o dia não se corta de um carimbo ISO
+ * (`.slice(0, 10).split("-").reverse()`): o dia de um instante sai no fuso de São Paulo, por `dataNoFuso`.
  */
 const FORMATO_FORA_DA_LIB: { nome: string; re: RegExp }[] = [
   { nome: "hour:", re: /\bhour\s*:/g },
@@ -69,16 +104,22 @@ const FORMATO_FORA_DA_LIB: { nome: string; re: RegExp }[] = [
   { nome: "dateStyle:", re: /\bdateStyle\s*:/g },
   { nome: "toLocaleDateString(", re: /\.toLocaleDateString\(/g },
   { nome: "toLocaleTimeString(", re: /\.toLocaleTimeString\(/g },
-  { nome: "toLocaleString( com timeZone", re: /\.toLocaleString\(\s*[^)]*\btimeZone\b/g },
+  { nome: "toLocaleString( sem opção de número", re: /\.toLocaleString\((?![^)]*\b(?:style|currency|minimumFractionDigits|maximumFractionDigits)\b)[^)]*\)/g },
   { nome: 'Intl.DateTimeFormat("pt-BR"', re: /\bIntl\.DateTimeFormat\(\s*["'`]pt-BR["'`]/g },
   { nome: "weekday:", re: /\bweekday\s*:/g },
+  { nome: "dia cortado de um carimbo", re: /\.slice\(0,\s*10\)\.split\(["'`]-["'`]\)\.reverse\(\)/g },
 ];
 
 /**
  * Exceções do formato, com motivo; a que não servir mais sai da lista (o último teste avisa). A do `weekday` de Minha
  * reserva saiu na parte da semana do M7.22: o dia vem de `diaDaSemanaEData` ("sex, 16/10/2026").
  */
-const EXCECOES_FORMATO: { arquivo: string; trecho: string; motivo: string }[] = [];
+const EXCECOES_FORMATO: { arquivo: string; trecho: string; motivo: string }[] = [
+  { arquivo: "components/configuracoes/FormPaginaLegal.tsx", trecho: 's.limite.toLocaleString("pt-BR")', motivo: "número (limite e caracteres usados), não data" },
+  { arquivo: "components/configuracoes/FormPaginaLegal.tsx", trecho: '.length.toLocaleString("pt-BR")', motivo: "número (caracteres usados), não data" },
+  { arquivo: "relatorios/pdf.ts", trecho: 'Math.round(p.diaria / 100).toLocaleString("pt-BR")', motivo: "número (diária em reais inteiros), não data" },
+  { arquivo: "configuracoes/pagina-proprietarios.ts", trecho: 'Math.trunc(c / 100).toLocaleString("pt-BR")', motivo: "número (reais inteiros), não data" },
+];
 
 /**
  * A semana fora de lib/datas.ts: o dia calculado por `getUTCDay`/`getDay` (o número guardado sai de `diaDaSemana`, e a
@@ -127,6 +168,22 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
     for (const t of ['"Portaria 24h"', '"vale 48h"', '"às 15:00"', '"h1"', '"#0h"', '"v1.2h"', 'd="M4 8h16v7H4z M7 11h10"', '"M3 21h18 M3 13h18"', '"M7 5h.01"', "// às 15h", "/* até 23h59 */", "{/* às 20h */}"]) expect(horasAntigas(t), t).toEqual([]);
   });
 
+  it('um "/*" ou "//" dentro de texto, de expressão regular ou de JSX não esconde o código seguinte dos detectores', () => {
+    // O caso de LugaresBairro.tsx: `accept="image/*"` e, linhas depois, um comentário de JSX que fecha com "* /".
+    const tela = ['<input accept="image/jpeg,image/png,image/*" />', "<p>Enviar às 15h</p>", '<input type="time" />', "{new Date().getDay()}", "{/* x */}"].join("\n");
+    const limpo = semComentarios(tela);
+    expect(horasAntigas(tela).map((a) => a.n)).toEqual([2]);
+    expect(limpo.split("\n")[2]).toMatch(CAMPO_TIME);
+    expect(semanaForaDaLib(tela).map((a) => a.n)).toEqual([4]);
+    expect(limpo.split("\n")[4]).toBe("{       }");
+    // Nem "https://", nem uma expressão regular com "//" ou "/*", nem o texto de JSX: só o comentário de verdade sai.
+    const outros = ['const u = "https://example.com"; // às 15h', "const re = /https?:\\/\\//; const r2 = /a\\/*/;", "<p>// às 9h</p>", "<p>às 10h</p>"].join("\n");
+    expect(horasAntigas(outros).map((a) => [a.n, a.hora])).toEqual([[3, "9h"], [4, "10h"]]);
+    expect(semComentarios(outros).split("\n")[1]).toBe("const re = /https?:\\/\\//; const r2 = /a\\/*/;");
+    // E o número da linha de cada achado continua o do arquivo.
+    expect(semComentarios("/* a\nb */ x\n// c\ny").split("\n")).toEqual(["    ", "     x", "    ", "y"]);
+  });
+
   it("nenhuma hora de relógio no formato antigo ('15h', '23h59', '0h') no código, fora dos comentários", () => {
     const lista = fontes();
     expect(lista.length).toBeGreaterThan(300);
@@ -139,8 +196,8 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
   });
 
   it('nenhum campo type="time": a hora se digita no CampoHora, "15:00" em qualquer aparelho', () => {
-    for (const t of ['<input type="time" />', "<input type={'time'} />", '<input name="hora" type = "time" required />']) expect(CAMPO_TIME.test(t), t).toBe(true);
-    for (const t of ['<input type="text" />', '<input type="timestamp" />', "// <input type=\"time\" />"]) expect(CAMPO_TIME.test(semComentarios(t)), t).toBe(false);
+    for (const t of ['<input type="time" />', "<input type={'time'} />", '<input name="hora" type = "time" required />', 'campo("hora", "Hora", { type: "time" })', '{ nome: "hora", tipo: "time" }']) expect(CAMPO_TIME.test(t), t).toBe(true);
+    for (const t of ['<input type="text" />', '<input type="timestamp" />', "// <input type=\"time\" />", '{ type: "month" }', '{ tipo: "texto" }']) expect(CAMPO_TIME.test(semComentarios(t)), t).toBe(false);
     const achados = fontes().flatMap((rel) =>
       semComentarios(readFileSync(join(SRC, rel), "utf8"))
         .split("\n")
@@ -160,12 +217,19 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
       'new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, day: "2-digit", month: "2-digit" })',
       'new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short" })',
       'new Intl.DateTimeFormat("en-US", { weekday: "long" })',
+      // Sem fuso: "10/16/2026, 6:05:00 PM" no navegador em inglês; a hora em UTC, com segundos, no servidor.
+      "{ultima.toLocaleString()}",
+      'r.criadoEm.toLocaleString("pt-BR")',
+      'r.criadoEm.toLocaleString("en-US")',
+      // O dia cortado de um carimbo ISO é o dia em UTC: depois das 21:00 de Brasília, já é o dia seguinte.
+      'iso.slice(0, 10).split("-").reverse().join("/")',
     ])
       expect(formatosForaDaLib(t), t).not.toEqual([]);
     for (const t of [
       '(c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })',
       '(bp / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })',
-      "n.toLocaleString(\"pt-BR\")",
+      '(c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })',
+      '(x / 10).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })',
       'new Intl.DateTimeFormat("en-US", { timeZone: fuso })',
       "// d.toLocaleString(\"pt-BR\", { timeZone: FUSO })",
       "/* hour: 2 */",

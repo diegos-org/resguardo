@@ -3,7 +3,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { CANAIS_PEDIDO_ALTERACAO, type EstadoReserva, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, MOTIVOS_VALOR_ALTERACAO, type MotivoCancelamentoEmpresa, type ResultadoDaAlteracao } from "@/db/schema";
-import { hojeISO, horaNoFuso } from "@/lib/datas";
+import { diaMesBr, hojeISO, horaNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import type { MensagemPronta } from "@/mensagens/hospede";
 import {
@@ -22,7 +22,6 @@ import { NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes";
 import { FormAlteracaoSite, FormAplicarAlteracao, FormDesistirAlteracao, type OpcaoAlteracao } from "./FormAlteracaoSite";
 
 const FUSO = "America/Sao_Paulo";
-const diaIso = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
 const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } as const;
 const botaoDiscreto = { font: "inherit", fontSize: "0.8125rem", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--scl-borda)", background: "var(--scl-papel)", cursor: "pointer" } as const;
 
@@ -98,7 +97,7 @@ function devolucaoEmTexto(a: AlteracaoDoPainel, verValores: boolean): string | n
   if (!d) return "ainda não registrada (veja o quadro do pagamento)";
   const valor = verValores ? ` de ${formatBRL(d.valorConfirmado ?? d.valor)}` : "";
   const estados: Record<NonNullable<AlteracaoDoPainel["devolucao"]>["estado"], string> = {
-    aguardando_liberacao: `esperando o Mercado Pago liberar o pagamento${d.previstaEm ? ` (previsto para ${diaIso(d.previstaEm)})` : ""}: nada foi pedido ainda`,
+    aguardando_liberacao: `esperando o Mercado Pago liberar o pagamento${d.previstaEm ? ` (previsto para ${diaMesBr(d.previstaEm)})` : ""}: nada foi pedido ainda`,
     pedida: "pedida ao Mercado Pago",
     feita: `feita${d.em ? ` em ${diaBr(d.em)}` : ""}${d.porFora ? " (por fora)" : d.algumaPorFora ? " (uma parte por fora)" : ""}`,
     com_a_equipe: "com a equipe: o Mercado Pago não devolveu (veja o quadro do pagamento)",
@@ -201,13 +200,13 @@ function Otas({ a, editar }: { a: AlteracaoDoPainel; editar: boolean }) {
 function esperaEmTexto(a: AlteracaoDoPainel): string {
   const espera = a.diferenca > 0 ? "esperando o pagamento da diferença" : "esperando a confirmação do hóspede";
   if (a.emCarencia && a.holdAte) return `o prazo das datas acabou às ${horaNoFuso(a.holdAte, FUSO)}, mas um pagamento da diferença ainda está em andamento (${espera})`;
-  return `datas seguradas até ${a.holdAte ? `${diaBr(a.holdAte)} às ${horaNoFuso(a.holdAte, FUSO)}` : "—"} (${espera})`;
+  return `datas seguradas até ${a.holdAte ? diaHoraBr(a.holdAte) : "—"} (${espera})`;
 }
 
 /** A pergunta do "Desistir da alteração" (§9.2), com o cancelamento do Pix da diferença ainda não pago, quando há. */
 function perguntaDaDesistencia(a: AlteracaoDoPainel): string {
   const pixPendente = a.tentativas.some((t) => t.forma === "pix" && t.situacao === "pendente");
-  return `Desistir da alteração preparada em ${diaBr(a.criadaEm)} (novas datas ${diaIso(a.depois.checkin)} a ${diaIso(a.depois.checkout)})? As novas datas voltam à venda e a reserva continua como está.${pixPendente ? " O Pix da diferença ainda não pago é cancelado no Mercado Pago." : ""}`;
+  return `Desistir da alteração preparada em ${diaBr(a.criadaEm)} (novas datas ${diaMesBr(a.depois.checkin)} a ${diaMesBr(a.depois.checkout)})? As novas datas voltam à venda e a reserva continua como está.${pixPendente ? " O Pix da diferença ainda não pago é cancelado no Mercado Pago." : ""}`;
 }
 
 /** As tentativas de pagamento da diferença, em palavras (os valores ficam no quadro de cada pagamento). */
@@ -222,7 +221,7 @@ function Segurada({ a, editarReserva, editarFinanceiro, verValores }: { a: Alter
     ["Pedido", pedidoEmTexto(a)],
     ["Datas e pessoas", deParaEmTexto(a)],
     ...(verValores ? ([["Valor", valorEmTexto(a)]] as [string, ReactNode][]) : []),
-    ["Novas noites seguradas", a.noitesNovas ? `${diaIso(a.noitesNovas.inicio)}–${diaIso(a.noitesNovas.fim)}` : "nenhuma (as novas datas cabem nas de agora)"],
+    ["Novas noites seguradas", a.noitesNovas ? `${diaMesBr(a.noitesNovas.inicio)}–${diaMesBr(a.noitesNovas.fim)}` : "nenhuma (as novas datas cabem nas de agora)"],
     ...(a.diferenca > 0 ? ([["Pagamento da diferença", tentativasEmTexto(a)]] as [string, ReactNode][]) : []),
     ["Hóspede avisado: proposta", <Avisado key="proposta" alteracaoId={a.id} qual="proposta" marca={a.avisados.proposta} editar={editarReserva} podeCopiar={verValores} />],
   ];

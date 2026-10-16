@@ -108,6 +108,15 @@ it("estadia cancelada depois de começada e bloqueio removido depois de começad
   expect(await texto()).toContain("sem uso posterior registrado — conferir chaves");
 });
 
+it("pedido com a hora fora do formato: o aviso único da hora (M7.22); sem a hora, o aviso do registro; \"9:30\" grava \"09:30\"", async () => {
+  const r = await reserva();
+  const pedir = (hora: string) => alterarHorario(db, sessao, { reservaId: r.id, tipo: "entrada", versao: 0, acao: "pedir", hora, canal: "Airbnb", referencia: "Mensagem fictícia." });
+  for (const hora of ["25:00", "15", "3 da tarde"]) expect(await pedir(hora), hora).toEqual({ ok: false, erro: "Use o formato 15:00 (24 horas)." });
+  expect(await pedir("")).toEqual({ ok: false, erro: "Informe horário, canal e referência da conversa (até 500 caracteres)." });
+  expect(await pedir("9:30")).toEqual({ ok: true });
+  expect((await lerHorariosReservas(db, org, [r.id])).get(r.id)?.entrada.pedido?.hora).toBe("09:30");
+});
+
 it("pedido não altera padrão do imóvel; aceite explícito muda só o tipo confirmado e limite da troca", async () => {
   await reserva(rio, "2026-09-28", "2026-10-02", "Saindo");
   const r = await reserva();

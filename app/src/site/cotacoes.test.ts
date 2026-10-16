@@ -371,7 +371,8 @@ describe("o mesmo e-mail com um cartão sem resposta (M8.2b)", () => {
   it("a observação do pedido diz que o pagamento estendeu o prazo; o texto antigo (estendido pelo Pix) também é trocado", async () => {
     const c = await montarCenario(db);
     const s = await c.segurar();
-    await db.update(reservas).set({ observacoes: "Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:30 (estendido pelo Pix); depois disso o pedido vence sozinho." }).where(eq(reservas.id, s.reservaId));
+    // O texto como está gravado nos pedidos de antes do M7.22: dia e hora com vírgula ("01/10, 12:30") e "estendido pelo Pix".
+    await db.update(reservas).set({ observacoes: "Pedido pelo site — cotação X. Datas seguradas até 01/10, 12:30 (estendido pelo Pix); depois disso o pedido vence sozinho." }).where(eq(reservas.id, s.reservaId));
     await db.transaction((tx) => estenderHold(tx, c.org, s.cotacaoId, minutos(40), AGORA, null));
     expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:40 (estendido pelo pagamento); depois disso o pedido vence sozinho.");
     await db.transaction((tx) => voltarHold(tx, c.org, s.cotacaoId, minutos(30), minutos(40), AGORA, null));

@@ -60,7 +60,7 @@ it("datas seguradas: prazo no fuso do imóvel, pedido e botão do WhatsApp com a
   render(<Cotacao vista={vista({ estado: "segurada", reserva: { codigo: "SCL-TESTE1", estado: "pedido" } }, { estado: "segurada", holdAte })} whatsapp="5521999990000" email="" />);
   expect(screen.getByRole("heading", { name: "Datas seguradas" })).toBeTruthy();
   // O prazo como em Minha reserva: dia e hora, sem ano, com o fuso (M7.22).
-  expect(screen.getByText(/pedido SCL-TESTE1/).textContent).toContain("até 01/10 às 12:30 (horário de Brasília) (pedido SCL-TESTE1)");
+  expect(screen.getByText(/pedido SCL-TESTE1/).textContent).toContain("até 01/10 às 12:30, horário de Brasília (pedido SCL-TESTE1).");
   // Abre outra janela (M7.11): o fim do link, só para o leitor de tela, avisa.
   const botao = screen.getByRole("link", { name: /^Falar com a equipe pelo WhatsApp/ });
   expect(botao.textContent).toBe("Falar com a equipe pelo WhatsApp (abre em nova janela)");
