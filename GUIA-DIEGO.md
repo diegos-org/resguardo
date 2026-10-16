@@ -65,7 +65,11 @@ serviço que avisa a equipe quando algo dá errado no sistema, para corrigir ant
   sistema troca esses dados por marcadores (como "[e-mail]" ou "[CPF]") e corta o resto.
 - **O IP de quem usa:** o sistema não manda o IP e pede ao Sentry para não descobri-lo pela conexão. Como garantia a mais,
   você ligou em 16/10, nas configurações da organização no Sentry, a opção que impede guardar o IP ("Prevent Storing of IP
-  Addresses"), e conferiu que a limpeza de dados do próprio Sentry está ligada ("Data Scrubber").
+  Addresses"), e conferiu que a limpeza de dados do próprio Sentry está ligada ("Data Scrubber"). O Sentry ainda anota o
+  país de onde o aviso veio (no teste de 16/10, "Estados Unidos", onde fica a máquina de testes), sem guardar o IP.
+- **Teste de 16/10, na prévia:** um erro de teste com um e-mail, um CPF, um telefone e um código fictícios chegou ao
+  Sentry como "[e-mail] CPF [CPF] tel [telefone] id [id]"; o endereço da página chegou como "/reservar/[código]", sem
+  o resto; sem a pessoa e sem o IP; dos cabeçalhos, só o do navegador.
 - **Nomes:** um nome não tem um formato que dê para reconhecer sozinho (como um e-mail ou um CPF têm). Por isso a
   proteção é não deixar o nome entrar: os dados da pessoa, os formulários e o que vai para o banco são cortados antes, e as
   mensagens de erro do sistema não levam nomes.
