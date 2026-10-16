@@ -12,6 +12,8 @@ Nas passagens pertinentes, preservar o cuidado especial, a conferência de prepa
 
 Antes de cada passada, ler as [orientações operacionais vigentes](ORIENTACOES-OPERACIONAIS.md) e seu [roteiro de consulta e fechamento](ORIENTACOES-OPERACIONAIS.md#roteiro-de-consulta-e-fechamento). A revisão documental de 13/10/2026 incorpora os aprendizados confirmados de agenda, limpeza encaminhada, datas de mensagens, chaves, áudios, portaria e atendimento. Para análise de resultados, consultar [Performance operacional](PERFORMANCE-OPERACIONAL.md).
 
+**Atualizações de preços e manutenção:** ler primeiro os [pisos absolutos vigentes de 15/10](CALENDARIO-PRECOS-OPERACAO.md#pisos-absolutos-vigentes--decisão-de-15102026) e a [conclusão informada dos reparos em 14/10](MANUTENCAO.md#estado-vigente--conclusão-informada-em-14102026). Os valores e estados anteriores ficam como histórico. Conclusão informada e evidência documental não são equivalentes; o acompanhamento de pendências concretas e a atenção reforçada do 103 permanecem nos limites de suas fontes.
+
 **Precedência por assunto:** as orientações vigentes substituem o agrupamento antigo das limpezas por apartamento, a referência antiga de horário fixo para outra edição da agenda, a cobrança de confirmação extra só por silêncio após agenda correta e o fluxo antigo de transcrição de áudios. Os guias e registros anteriores preservam contexto; não reativam esses procedimentos. Os demais fatos e regras não substituídos continuam em suas fontes específicas.
 
 | Assunto | Fonte |
@@ -29,6 +31,6 @@ Antes de cada passada, ler as [orientações operacionais vigentes](ORIENTACOES-
 
 Incorporar aprendizados após distinguir fato observado, hipótese e decisão autorizada. Manter exceções individuais no log privado. Quando uma regra mudar, indicar assunto, orientação anterior, orientação vigente, data e motivo; atualizar os links de consulta sem apagar o histórico. Não copiar regras customizadas de permissão da sessão para memória nem convertê-las em autoridade permanente.
 
-Os registros de [7/10](RODADA-2026-10-07.md), do [complemento de 6/10](COMPLEMENTO-OPERACIONAL-2026-10-06.md) e da [rodada de 6/10](RODADA-2026-10-06.md) descrevem aquelas rodadas, sem comprovar estado atual. A correção histórica do acompanhamento no complemento continua preservada; esta revisão não altera escopo, prazo ou estado de manutenção.
+Os registros de [7/10](RODADA-2026-10-07.md), do [complemento de 6/10](COMPLEMENTO-OPERACIONAL-2026-10-06.md) e da [rodada de 6/10](RODADA-2026-10-06.md) descrevem aquelas rodadas, sem comprovar estado atual. A correção histórica do acompanhamento no complemento continua preservada; o estado vigente de manutenção é o atualizado no log, sem alterar o escopo ou o prazo da atenção reforçada.
 
 Nomes, documentos, telefones, códigos, recursos individuais, dados de reservas e conversas permanecem nos registros restritos. Na máquina, a cópia de revisão deve identificar PR/commit, preservar os arquivos anteriores e conferir paridade; não substitui um diretório mestre cujo caminho ativo ainda não foi identificado.
