@@ -69,6 +69,13 @@ export const noiteOcupada = (l: Pick<LinhaPlano, "livresSeguidas" | "observacao"
  */
 export const MOTIVO_SEM_CAPACIDADE = "A capacidade deste apartamento ainda não foi cadastrada: confirmamos na conversa se o número de pessoas cabe.";
 
+/**
+ * Pedido que não passa na conferência ("Confira os dados"), com os motivos: sem noites, sem valor e sem leitura, nada para
+ * segurar (`podeSegurar`). A página da casa mostra assim o link com datas que não servem (M7.21), com os textos da
+ * conferência da consulta (`montarConsulta`).
+ */
+export const disponibilidadeInvalida = (motivos: string[]): Disponibilidade => ({ situacao: "invalida", motivos, noites: 0, cotacao: null, leituraEm: null });
+
 /** As noites [checkin, checkout) de uma reserva que a cotação não conta como ocupadas (a da alteração, M8.2d). */
 export type EstadiaPropria = { reservaId: string; checkin: string; checkout: string };
 

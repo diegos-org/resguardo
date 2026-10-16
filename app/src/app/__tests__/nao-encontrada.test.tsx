@@ -199,7 +199,8 @@ describe("site sem nenhuma casa publicada (M7.8)", () => {
     expect(h).toContain(TEXTOS_SITE_INICIAIS.semCasasTexto);
     expect(h).toContain("Falar pelo WhatsApp");
     expect(h).not.toContain("Em breve.");
-    expect(h).not.toContain('action="/consulta"');
+    // Nenhum formulário da consulta (o envio vai para /consulta#resultado desde o M7.21).
+    expect(h).not.toContain('action="/consulta');
   });
 
   it("Nossas casas: o aviso no lugar da lista, sem a frase \"Escolha um apartamento\"", async () => {

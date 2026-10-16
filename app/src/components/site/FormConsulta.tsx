@@ -26,6 +26,19 @@ export function opcoesDeHospedes(imoveis: Pick<ImovelPublico, "capacidade">[], p
   return n > maximo ? [...opcoes, n] : opcoes;
 }
 
+/**
+ * Resultado à vista (M7.21): o envio abre a página no resultado — o "Resumo da viagem" da consulta de uma casa ou a lista
+ * da busca em todas as casas —, e não no topo, onde no celular o resultado ficava fora da tela e parecia que nada tinha
+ * acontecido. O formulário é um `<form>` comum, não o `next/form`: o envio recarrega a página, e o navegador mantém a
+ * âncora do endereço do envio (`/consulta#resultado`), rola até o alvo e põe o foco nele (tabIndex -1, fora da ordem do
+ * Tab, como o miolo do "Pular para o conteúdo", M7.11), que o leitor de tela anuncia. Sem animação: o navegador pula
+ * direto, também com "reduzir movimento". O alvo (`ALVO_DO_RESULTADO`) só existe quando há resultado: com erro de
+ * preenchimento, a âncora não acha nada e a página fica no topo, onde os erros aparecem. Contorno e folga do alvo em
+ * globals.css (`#resultado`).
+ */
+export const ID_RESULTADO = "resultado";
+export const ALVO_DO_RESULTADO = { id: ID_RESULTADO, tabIndex: -1 } as const;
+
 const TEXTO_CANAL: Record<"whatsapp" | "email" | "nenhum", string> = {
   whatsapp: "A conversa continua pelo WhatsApp, onde você pode se apresentar e contar mais.",
   email: "A conversa continua por e-mail, onde você pode se apresentar e contar mais.",
@@ -74,7 +87,7 @@ export function FormConsulta({
   const trocaNoEnvio = variante === "lateral" && !!valores.imovel;
   const descricaoLugar = [erros.imovel && "erro-imovel", trocaNoEnvio && "dica-troca-casa"].filter(Boolean).join(" ") || undefined;
   return (
-    <form action="/consulta" method="get" className={classe} aria-label="Consultar disponibilidade">
+    <form action={`/consulta#${ID_RESULTADO}`} method="get" className={classe} aria-label="Consultar disponibilidade">
       {variante === "padrao" && <strong>Consultar disponibilidade</strong>}
       <label className={styles.campoLargo}>
         Seu lugar

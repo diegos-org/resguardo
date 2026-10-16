@@ -18,7 +18,7 @@ import { criarCotacaoAcao } from "@/site/acoes";
 import { lugaresDoSite } from "@/site/bairro";
 import { linkDaCasa } from "@/site/link-da-casa";
 import { podeSegurar } from "@/site/cotacoes";
-import { consultarDisponibilidade } from "@/site/disponibilidade";
+import { consultarDisponibilidade, disponibilidadeInvalida } from "@/site/disponibilidade";
 import { fraseDoImovel } from "@/site/frase-do-imovel";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
@@ -58,7 +58,14 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   const hoje = hojeISO(imovel.fuso);
   // Com datas no link, mostra disponibilidade e valor reais (M7.2) antes do formulário.
   const consulta = { ...pedido, imovel: imovel.codigo };
-  const disponibilidade = pedido.entrada && pedido.saida && montarConsulta(consulta, imovel, hoje).ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, consulta) : null;
+  // Link com datas que não servem (M7.21: entrada antes de hoje, saída antes da entrada, grupo maior que a casa ou sem o
+  // número de pessoas): a mesma conferência da consulta (`montarConsulta`), com os mesmos textos, no quadro da
+  // disponibilidade ("Confira os dados") e nos campos do cartão "Planeje sua estadia" — avisar em vez de não mostrar nada.
+  // Vale com alguma data no link, como o envio da consulta; sem datas, nenhum aviso. Pedido que não passa não chega à
+  // disponibilidade, nem ao "segurar as datas".
+  const conferida = pedido.entrada || pedido.saida ? montarConsulta(consulta, imovel, hoje) : null;
+  const erros = conferida && !conferida.ok ? conferida.erros : {};
+  const disponibilidade = conferida?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, consulta) : conferida ? disponibilidadeInvalida(Object.values(erros)) : null;
   // Pagamento no site (M8.2a): os textos "nenhum pagamento é feito aqui" dependem de o Pix estar oferecido.
   const gate = await portaoDoSite(db, conteudo.organizacaoId);
   // Estadia que dá para segurar (null = o site não oferece segurar estas datas).
@@ -172,7 +179,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
               {conteudo.textos.planejarTexto}
             </p>
           )}
-          <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" comPagamento={gate.ok} />
+          <FormConsulta imoveis={todos} valores={consulta} erros={erros} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" comPagamento={gate.ok} />
         </aside>
       </div>
       <BairroAPorta {...bairro} />

@@ -1,6 +1,6 @@
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
-import { FormConsulta } from "@/components/site/FormConsulta";
+import { ALVO_DO_RESULTADO, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import { CabecalhoBusca, ResultadosBusca } from "@/components/site/ResultadosBusca";
 import { BotaoContato, SemCasas, textoSemCasas } from "@/components/site/SemCasas";
@@ -122,8 +122,9 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
           <FormConsulta imoveis={todos} valores={pedido} erros={erros} hoje={hojeMinimo} canal={canal} comPagamento={gate.ok} />
         </div>
         {/* Olho, título e frase do quadro em Configurações → Textos do site (M7.16): olho e frase vazios não aparecem;
-            título vazio volta ao texto inicial. */}
-        <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
+            título vazio volta ao texto inicial. Com a disponibilidade consultada, o quadro é o resultado do envio (M7.21):
+            a página abre nele, com o foco ali; sem ela (erro de preenchimento ou sem datas), fica no topo. */}
+        <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo" {...(disponibilidade ? ALVO_DO_RESULTADO : {})}>
           {textos.resumoOlho && <p className={styles.olho}>{textos.resumoOlho}</p>}
           <h2 id="titulo-resumo">
             <TextoComDestaque texto={tituloDaSecao(textos, "resumoTitulo")} />
