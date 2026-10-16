@@ -1,6 +1,6 @@
 import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";
 import { describe, expect, it } from "vitest";
-import { cnpjValido, cpfValido, limparEndereco, limparEvento, limparRastro, limparTexto, limparValor, luhnValido } from "./limpeza";
+import { cnpjValido, cortarTexto, cpfValido, LIMITE_DO_TEXTO, limparEndereco, limparEvento, limparRastro, limparTexto, limparValor, luhnValido } from "./limpeza";
 
 /**
  * M0.9: a limpeza dos avisos de erro antes de saírem para o Sentry. Todos os dados abaixo são fictícios (o CPF, o CNPJ e
@@ -46,6 +46,12 @@ describe("textos (M0.9): cada tipo de dado pessoal vira um marcador", () => {
     ["limite de tentativas para 203.0.113.7", "limite de tentativas para [IP]"],
     ["limite de tentativas para 2001:db8:85a3::8a2e:370:7334", "limite de tentativas para [IP]"],
     ["limite de tentativas para 2001:0db8:85a3:0000:0000:8a2e:0370:7334.", "limite de tentativas para [IP]."],
+    // Telefones de fora do Brasil, com o código do país.
+    ["hóspede de Portugal +351 912 345 678", "hóspede de Portugal [telefone]"],
+    ["ligar +1 415 555 2671 amanhã", "ligar [telefone] amanhã"],
+    ["WhatsApp +14155552671", "WhatsApp [telefone]"],
+    ["fixo +44 (20) 7946 0958", "fixo [telefone]"],
+    ["celular +33 6 12 34 56 78.", "celular [telefone]."],
   ])("%s", (entrada, saida) => {
     expect(limparTexto(entrada)).toBe(saida);
   });
@@ -92,6 +98,10 @@ describe("textos (M0.9): cada tipo de dado pessoal vira um marcador", () => {
       "pedido 1034567890",
       "at verCotacao (/var/task/.next/server/chunks/ssr/src_site_cotacoes_ts.js:12:345)",
       "TypeError: Cannot read properties of undefined (reading 'valor')",
+      // Um sinal de mais com poucos dígitos não é telefone (fuso, versão, conta).
+      "UTC+03:00",
+      "versão +2.0.1",
+      "total +1500",
     ]) {
       expect(limparTexto(t), t).toBe(t);
     }
@@ -111,6 +121,55 @@ describe("textos (M0.9): cada tipo de dado pessoal vira um marcador", () => {
     expect(cnpjValido("11222333000182")).toBe(false);
     expect(luhnValido("4111111111111111")).toBe(true);
     expect(luhnValido("4111111111111112")).toBe(false);
+  });
+});
+
+describe("textos longos (M0.9): cortados antes da limpeza, que nunca trava", () => {
+  const rapido = (texto: string) => {
+    const inicio = performance.now();
+    const limpo = limparTexto(texto);
+    return { limpo, ms: performance.now() - inicio };
+  };
+
+  it("100 mil letras sem espaço, só dígitos ou o começo de um Pix repetido terminam rápido (antes, 14 s para 80 mil letras)", () => {
+    for (const texto of ["a".repeat(100_000), "1".repeat(100_000), "000201".repeat(17_000), "a ".repeat(50_000), "b".repeat(LIMITE_DO_TEXTO), "7".repeat(LIMITE_DO_TEXTO)]) {
+      const { limpo, ms } = rapido(texto);
+      expect(ms, texto.slice(0, 12)).toBeLessThan(100);
+      expect(limpo.length).toBeLessThanOrEqual(LIMITE_DO_TEXTO + " [cortado]".length);
+    }
+    // Sem espaço nenhum, o texto é um pedaço só: sai todo.
+    expect(limparTexto("a".repeat(100_000))).toBe("[cortado]");
+    // Até o limite, nada é cortado.
+    expect(limparTexto("b".repeat(LIMITE_DO_TEXTO))).toBe("b".repeat(LIMITE_DO_TEXTO));
+  });
+
+  it("corta num espaço e tira o pedaço final que pode ser o começo de um dado (o resto do dado ficou além do limite)", () => {
+    const antes = "x ".repeat((LIMITE_DO_TEXTO - 40) / 2);
+    // Um e-mail inteiro antes do corte é limpo; o que fica depois do limite não sai.
+    const comEmail = rapido(`${antes}${PESSOAIS.email} ${"y ".repeat(200)}`).limpo;
+    expect(comEmail).toContain("[e-mail]");
+    expect(comEmail).not.toContain("maria");
+    expect(comEmail.endsWith(" [cortado]")).toBe(true);
+    // Cartão, telefone, valor de consulta e Pix pela metade, bem no limite: saem do fim.
+    for (const meio of ["cartão 4111 1111 1111 1111 1111", "ligar (21) 99876 5432 5432 5432", "Key (email)=(Maria Silva Santos Oliveira", "Pix 00020101021226850014br.gov.bcb.pix2563qr.exemplo.com/pix/v2 5913SUA CASA TESTE"]) {
+      const texto = `${"x ".repeat((LIMITE_DO_TEXTO - meio.length + 12) / 2)}${meio} ${"z".repeat(30)}`;
+      expect(texto.length, meio).toBeGreaterThan(LIMITE_DO_TEXTO);
+      const limpo = cortarTexto(texto);
+      expect(limpo, meio).toMatch(/ \[cortado\]$/);
+      for (const pedaco of ["4111 1111", "99876", "Maria", "000201", "SUA CASA"]) expect(limpo, `${meio} / ${pedaco}`).not.toContain(pedaco);
+    }
+    // Um parêntese aberto ou um "000201" longe do fim é só texto: não leva o resto junto.
+    const longe = cortarTexto(`aberto ( e 000201 ${"x ".repeat(LIMITE_DO_TEXTO)}`);
+    expect(longe.length).toBeGreaterThan(LIMITE_DO_TEXTO - 10);
+  });
+
+  it("endereço longo é cortado numa barra, com o último pedaço inteiro", () => {
+    const longo = `https://site.exemplo/${"pasta/".repeat(1000)}reservar/${PESSOAIS.cotacao}?email=a%40b.com`;
+    const limpo = limparEndereco(longo);
+    expect(limpo.startsWith("https://site.exemplo/pasta/")).toBe(true);
+    expect(limpo.endsWith("/pasta/[cortado]")).toBe(true);
+    expect(limpo.length).toBeLessThanOrEqual(LIMITE_DO_TEXTO + "/[cortado]".length);
+    expect(limparEndereco(`https://${"a".repeat(5000)}.exemplo/x`)).toBe("[cortado]");
   });
 });
 
@@ -154,6 +213,13 @@ describe("valores (M0.9): campos com nome de dado pessoal saem por inteiro", () 
       limparValor({ email: "a@b.com", nomeDoHospede: "Maria", contato: { telefone: "x", obs: `ligar ${PESSOAIS.celular}` }, lista: [PESSOAIS.cpf, 3], pixelRatio: 2 }),
     ).toEqual({ email: "[omitido]", nomeDoHospede: "[omitido]", contato: { telefone: "[omitido]", obs: "ligar [telefone]" }, lista: ["[CPF]", 3], pixelRatio: 2 });
   });
+
+  it("nomes em outros campos (hóspede, pagador, titular, first_name…) também saem; os nomes técnicos do Sentry ficam", () => {
+    expect(
+      limparValor({ hospede: "Maria Silva", hóspedes: "Maria e João", pagador: { first_name: "Maria" }, payer: { last_name: "Silva" }, titular: "Maria", cardholder: "M SILVA", full_name: "Maria Silva" }),
+    ).toEqual({ hospede: "[omitido]", hóspedes: "[omitido]", pagador: "[omitido]", payer: "[omitido]", titular: "[omitido]", cardholder: "[omitido]", full_name: "[omitido]" });
+    expect(limparValor({ os: { name: "iOS" }, browser: { name: "Safari" }, runtime: { name: "node" } })).toEqual({ os: { name: "iOS" }, browser: { name: "Safari" }, runtime: { name: "node" } });
+  });
 });
 
 describe("rastros (M0.9)", () => {
@@ -181,6 +247,17 @@ describe("rastros (M0.9)", () => {
       category: "ui.click",
       message: "body > main > button.botao",
     });
+    // Uma descrição longa demais é cortada antes, e o marcador do corte fica.
+    expect(limparRastro({ category: "ui.click", message: `${"div > ".repeat(1000)}button[title="Maria Silva"]` })?.message).toMatch(/^div > .* \[cortado\]$/);
+  });
+
+  it("requisição feita pelo servidor (o formato do Node): o método fica, na chave das convenções do Sentry", () => {
+    const r: Breadcrumb = {
+      category: "http",
+      type: "http",
+      data: { "http.request.method": "POST", url: "https://api.exemplo.com/v1/orders/ORD123", status_code: 502, "url.query": "?access_token=x", "url.fragment": "#a" },
+    };
+    expect(limparRastro(r)).toEqual({ category: "http", type: "http", data: { "http.request.method": "POST", url: "https://api.exemplo.com/v1/orders/ORD123", status_code: 502 } });
   });
 
   it("outros rastros: mensagem e dados limpos", () => {
@@ -284,5 +361,34 @@ describe("aviso de erro inteiro (M0.9)", () => {
     }
     // O evento original não é alterado.
     expect(evento.user?.email).toBe(PESSOAIS.email);
+  });
+});
+
+describe("partes do aviso com regra própria (M0.9)", () => {
+  it("objeto lançado no lugar de um erro: o Sentry o põe inteiro em extra.__serialized__, que sai sem o conteúdo", () => {
+    const evento = {
+      type: undefined,
+      exception: { values: [{ type: "Error", value: "Object captured as exception with keys: hospede, pagador, tel" }] },
+      extra: { __serialized__: { hospede: "Maria Silva", tel: "+351 912 345 678", pagador: { first_name: "Maria" } }, outro: "ok" },
+    } as ErrorEvent;
+    const limpo = limparEvento(evento);
+    expect(limpo.extra).toEqual({ __serialized__: "[omitido]", outro: "ok" });
+    expect(limpo.exception!.values![0].value).toBe("Object captured as exception with keys: hospede, pagador, tel");
+    const tudo = JSON.stringify(limpo);
+    for (const valor of ["Maria", "+351 912 345 678", "912 345 678"]) expect(tudo, valor).not.toContain(valor);
+  });
+
+  it("o código do erro do Next (digest) fica como está; um telefone em outra tag continua virando marcador", () => {
+    for (const digest of ["2353485737", "3141592653@E394", "3353831296", "4294967295", "123"]) {
+      expect(limparEvento({ type: undefined, tags: { digest } } as ErrorEvent).tags, digest).toEqual({ digest });
+    }
+    expect(limparEvento({ type: undefined, tags: { digest: "2353485737", contato: "21 2345-6789", outra: "2353485737" } } as ErrorEvent).tags).toEqual({
+      digest: "2353485737",
+      contato: "[telefone]",
+      outra: "[telefone]",
+    });
+    // Sem a forma de um digest do Next (11 dígitos, texto), passa pela limpeza como qualquer tag.
+    expect(limparEvento({ type: undefined, tags: { digest: "21998765432" } } as ErrorEvent).tags).toEqual({ digest: "[telefone]" });
+    expect(limparEvento({ type: undefined, tags: { digest: `para ${PESSOAIS.email}` } } as ErrorEvent).tags).toEqual({ digest: "para [e-mail]" });
   });
 });

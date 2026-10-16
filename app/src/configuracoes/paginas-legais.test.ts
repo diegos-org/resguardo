@@ -217,6 +217,9 @@ describe("textos-base das páginas legais (M7.4)", () => {
     const privacidade = RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto;
     const sentry = /- Sentry, ([^\n]+)/.exec(privacidade)![1];
     expect(sentry).toContain("que registra os erros técnicos do site para a gente corrigir");
+    // M0.9 (revisão): o aviso leva também o caminho até o erro (os rastros do Sentry), e o texto diz isso, sem "só".
+    expect(sentry).toContain("o caminho até ele (as páginas abertas, os botões tocados e as chamadas feitas pela página logo antes, sem o que foi digitado)");
+    expect(sentry).not.toMatch(/recebe só/);
     expect(sentry).toContain("não recebe seu nome, seus contatos, seus documentos nem seus dados de pagamento, e não guarda o seu IP");
     expect(privacidade).toContain("hospedagem do site, banco de dados, registro de erros técnicos, envio de e-mails e pagamento");
     expect(privacidade).toContain("Não usamos cookies de publicidade nem ferramentas de análise de audiência");

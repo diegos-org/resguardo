@@ -27,7 +27,8 @@ describe("servidor: src/instrumentation.ts", () => {
       register();
     }
     expect(m.init).toHaveBeenCalledTimes(2);
-    expect(m.init.mock.calls[0][0]).toMatchObject({ dsn: DSN, environment: "production", release: "abc123", tracesSampleRate: 0 });
+    expect(m.init.mock.calls[0][0]).toMatchObject({ dsn: DSN, environment: "production", release: "abc123" });
+    expect(m.init.mock.calls[0][0]).not.toHaveProperty("tracesSampleRate");
   });
 
   it("não liga sem o endereço de envio, no desenvolvimento nem fora do Node e do Edge", async () => {
@@ -42,6 +43,28 @@ describe("servidor: src/instrumentation.ts", () => {
     vi.stubEnv("NEXT_RUNTIME", "");
     register();
     expect(m.init).not.toHaveBeenCalled();
+  });
+
+  it("endereço de envio estranho na produção ou numa prévia: não liga e deixa um aviso no registro, sem o valor", async () => {
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { register } = await import("../instrumentation");
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://chave@o0.ingest.exemplo.io/xyzzy");
+    for (const ambiente of ["production", "preview"]) {
+      vi.stubEnv("VERCEL_ENV", ambiente);
+      register();
+    }
+    // No desenvolvimento, nada a avisar; sem endereço, também não (é só desligado).
+    vi.stubEnv("VERCEL_ENV", "development");
+    register();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "");
+    register();
+    expect(m.init).not.toHaveBeenCalled();
+    expect(aviso).toHaveBeenCalledTimes(2);
+    expect(String(aviso.mock.calls[0][0])).toContain("NEXT_PUBLIC_SENTRY_DSN não tem a forma de um endereço de envio do Sentry");
+    expect(String(aviso.mock.calls[0][0])).not.toMatch(/xyzzy|o0\.ingest/);
+    aviso.mockRestore();
   });
 
   it("os erros que o Next captura vão para o Sentry pela função do próprio pacote", async () => {

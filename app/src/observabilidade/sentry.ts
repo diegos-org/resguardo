@@ -1,33 +1,51 @@
 /**
  * Avisos de erro do sistema pelo Sentry (M0.9), num lugar só: as opções do `Sentry.init`, usadas igual no servidor
- * (`src/instrumentation.ts`, Node e Edge) e no navegador (`src/instrumentation-client.ts`). Função pura: não carrega o
- * pacote do Sentry nem lê o ambiente sozinha; quem chama passa as variáveis.
+ * (`src/instrumentation.ts`, Node e Edge) e no navegador (`src/instrumentation-client.ts`), e a situação que a página
+ * Sistema mostra (`situacaoDoSentry`). Funções puras: não carregam o pacote do Sentry nem leem o ambiente sozinhas; quem
+ * chama passa as variáveis.
  *
  * Liga só com as duas coisas: o endereço de envio (`NEXT_PUBLIC_SENTRY_DSN`, a mesma variável nos dois lados; é um
- * endereço público, não um segredo) e um ambiente da Vercel que seja `production` ou `preview` (as prévias ficam
- * separadas no Sentry). Sem o endereço, ou no desenvolvimento e nos testes, devolve `null`: nada é ligado nem enviado.
+ * endereço público, não um segredo) e o deploy de produção ou uma prévia da Vercel, pela regra única de
+ * `src/sistema/ambiente.ts` (as prévias ficam separadas no Sentry). Sem o endereço, com um endereço sem a forma de um
+ * DSN, no desenvolvimento e nos testes, nada é ligado nem enviado; o endereço estranho aparece como problema na página
+ * Sistema (avisar em vez de supor).
  *
  * Privacidade (condição de Diego em 16/10/2026: nada de nome, e-mail ou dado de pagamento):
  * - `dataCollection` (a opção da versão 11 do pacote; a antiga `sendDefaultPii` não existe mais nela): nada da pessoa
  *   (o que também impede o Sentry de guardar o IP de quem usa o site), nem cookies, cabeçalhos (menos o User-Agent,
  *   para mostrar navegador e aparelho), corpo das requisições, parâmetros de busca, dados de consultas ao banco ou
  *   variáveis locais;
- * - sem medição de desempenho (`tracesSampleRate: 0`, e `tracesSampler` sempre 0, para um pedido que chegue com o
- *   cabeçalho de rastreio do Sentry também não ligar a medição), sem cabeçalhos do Sentry nas chamadas
- *   a outros serviços (`tracePropagationTargets: []`), sem gravação de tela (Replay), sem formulário de feedback, sem
- *   contagem de sessões e sem relatórios de envio: o Sentry só recebe algo quando acontece um erro;
+ * - sem medição de desempenho: nem `tracesSampleRate` nem `tracesSampler` (qualquer um dos dois, mesmo valendo 0, liga
+ *   no pacote o modo de medição e as integrações que instrumentam o banco; sem os dois, o pacote recusa a medição logo
+ *   no começo, até para um pedido que chegue com o cabeçalho de rastreio do Sentry), e o `next.config.ts` tira essa
+ *   parte do pacote na publicação; sem cabeçalhos do Sentry nas chamadas a outros serviços (`tracePropagationTargets:
+ *   []`), sem gravação de tela (Replay), sem formulário de feedback, sem contagem de sessões, sem o idioma e o fuso do
+ *   aparelho e sem relatórios de envio: o Sentry só recebe algo quando acontece um erro;
  * - e, antes de sair, cada aviso e cada rastro passam pela limpeza (`./limpeza.ts`).
  */
 import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";
+import { ambienteDoSistema, deployDeProducao } from "@/sistema/ambiente";
 import { limparEvento, limparRastro } from "./limpeza";
 
-/** Ambientes que ligam o envio. `development` e o ambiente dos testes nunca ligam. */
-export const AMBIENTES_DO_SENTRY = ["production", "preview"] as const;
-export type AmbienteDoSentry = (typeof AMBIENTES_DO_SENTRY)[number];
+/**
+ * As variáveis que decidem o Sentry. No servidor, as do `process.env`; no navegador, as públicas equivalentes
+ * (`NEXT_PUBLIC_VERCEL_ENV` no lugar de `VERCEL_ENV`, `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA` no lugar de `VERCEL_GIT_COMMIT_SHA`).
+ */
+export type VariaveisDoSentry = {
+  readonly NEXT_PUBLIC_SENTRY_DSN?: string;
+  readonly VERCEL_ENV?: string;
+  readonly NODE_ENV?: string;
+  /** O commit publicado, para saber em que versão o erro aconteceu. */
+  readonly VERCEL_GIT_COMMIT_SHA?: string;
+};
+
+/** Os dois ambientes do Sentry: o deploy de produção e as prévias. */
+export type AmbienteDoSentry = "production" | "preview";
 
 /**
  * Integrações padrão do pacote que ficam desligadas: medição de desempenho, contagem de sessões (navegador e servidor),
- * rastros do console, variáveis locais e, por garantia, gravação de tela, feedback e Spotlight (que nem vêm ligados).
+ * rastros do console, variáveis locais, idioma e fuso do aparelho e, por garantia, gravação de tela, feedback e
+ * Spotlight (que nem vêm ligados).
  */
 export const INTEGRACOES_DESLIGADAS: readonly string[] = [
   "BrowserTracing",
@@ -36,34 +54,58 @@ export const INTEGRACOES_DESLIGADAS: readonly string[] = [
   "Console",
   "LocalVariables",
   "LocalVariablesAsync",
+  "CultureContext",
   "Replay",
   "ReplayCanvas",
   "Feedback",
   "Spotlight",
 ];
 
-export type EntradaDoSentry = {
-  /** `NEXT_PUBLIC_SENTRY_DSN`. */
-  dsn?: string;
-  /** `VERCEL_ENV` no servidor, `NEXT_PUBLIC_VERCEL_ENV` no navegador. */
-  ambiente?: string;
-  /** O commit publicado (`VERCEL_GIT_COMMIT_SHA` / `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`), para saber em que versão o erro aconteceu. */
-  versao?: string;
-};
+/**
+ * O ambiente do Sentry pela regra única de `src/sistema/ambiente.ts`: o deploy de produção da Vercel ou uma prévia. Os
+ * casos que só contam como produção (um VERCEL_ENV inesperado, um `next start` local) e o desenvolvimento ficam de fora.
+ */
+export function ambienteDoSentry(env: VariaveisDoSentry): AmbienteDoSentry | null {
+  if (deployDeProducao(env)) return "production";
+  return ambienteDoSistema(env) === "previa" ? "preview" : null;
+}
 
-const ehAmbienteDoSentry = (a: string | undefined): a is AmbienteDoSentry => (AMBIENTES_DO_SENTRY as readonly string[]).includes(a ?? "");
+/**
+ * Endereço de envio com a forma que o pacote do Sentry aceita: https://chave@servidor/número do projeto (com porta e
+ * caminho opcionais). Um projeto que não é número o pacote não recusa no site publicado, mas o Sentry recusa cada envio.
+ */
+const dsnValido = (dsn: string) => /^https:\/\/\w+@[\w.-]+(?::\d+)?\/(?:[\w.-]+\/)*\d+$/.test(dsn);
 
-/** Endereço de envio com a cara de um DSN do Sentry (https://chave@host/projeto); outra coisa não liga nada. */
-const dsnValido = (dsn: string) => /^https:\/\/[^\s/@]+@[^\s/@]+\/\S+$/.test(dsn);
+/**
+ * Situação do Sentry neste ambiente, a mesma regra de `opcoesDoSentry`: `ligado`, `sem_endereco`, `endereco_invalido`
+ * (há um valor, mas sem a forma de um DSN: nada é enviado) ou `fora_do_ambiente` (o desenvolvimento e os testes).
+ */
+export type SituacaoDoSentry = "ligado" | "sem_endereco" | "endereco_invalido" | "fora_do_ambiente";
 
-/** Opções do `Sentry.init`, ou `null` quando o Sentry não deve ligar (sem endereço, endereço estranho ou fora da Vercel). */
-export function opcoesDoSentry(entrada: EntradaDoSentry) {
-  const dsn = entrada.dsn?.trim();
-  if (!dsn || !dsnValido(dsn) || !ehAmbienteDoSentry(entrada.ambiente)) return null;
-  const versao = entrada.versao?.trim();
+export function situacaoDoSentry(env: VariaveisDoSentry): SituacaoDoSentry {
+  const dsn = env.NEXT_PUBLIC_SENTRY_DSN?.trim();
+  if (!dsn) return "sem_endereco";
+  if (!dsnValido(dsn)) return "endereco_invalido";
+  return ambienteDoSentry(env) ? "ligado" : "fora_do_ambiente";
+}
+
+/**
+ * Aviso para o registro do servidor quando há um endereço de envio estranho na produção ou numa prévia (sem nunca
+ * repetir o valor); `null` nos outros casos.
+ */
+export function avisoDoSentryDesligado(env: VariaveisDoSentry): string | null {
+  if (situacaoDoSentry(env) !== "endereco_invalido" || !ambienteDoSentry(env)) return null;
+  return "Avisos de erro (Sentry) desligados: NEXT_PUBLIC_SENTRY_DSN não tem a forma de um endereço de envio do Sentry (https://chave@servidor/número do projeto). Confira o valor na Vercel.";
+}
+
+/** Opções do `Sentry.init`, ou `null` quando o Sentry não deve ligar (ver `situacaoDoSentry`). */
+export function opcoesDoSentry(env: VariaveisDoSentry) {
+  const ambiente = ambienteDoSentry(env);
+  if (situacaoDoSentry(env) !== "ligado" || !ambiente) return null;
+  const versao = env.VERCEL_GIT_COMMIT_SHA?.trim();
   return {
-    dsn,
-    environment: entrada.ambiente,
+    dsn: env.NEXT_PUBLIC_SENTRY_DSN!.trim(),
+    environment: ambiente,
     ...(versao ? { release: versao } : {}),
     dataCollection: {
       userInfo: false,
@@ -77,8 +119,6 @@ export function opcoesDoSentry(entrada: EntradaDoSentry) {
       queues: false,
       stackFrameVariables: false,
     },
-    tracesSampleRate: 0,
-    tracesSampler: (): number => 0,
     tracePropagationTargets: [],
     sendClientReports: false,
     integrations: <I extends { name: string }>(padrao: I[]): I[] => padrao.filter((i) => !INTEGRACOES_DESLIGADAS.includes(i.name)),

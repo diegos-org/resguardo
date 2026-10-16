@@ -10,7 +10,9 @@
  *   processada DEPOIS da resposta (`after`), lendo o provedor pelas mesmas travas da conferência. Sem provedor (o
  *   deploy de produção, onde o teste não roda) o evento fica "ignorado"; falha fica "erro" e a rotina confere depois.
  *
- * Nada aqui vai para o registro do servidor: nem corpo, nem cabeçalhos, nem segredo.
+ * Nada aqui vai para o registro do servidor: nem corpo, nem cabeçalhos, nem segredo. As falhas ao gravar o evento e ao
+ * processar a order vão para o Sentry (M0.9, `avisarErroDoServidor`): só o erro, limpo antes de sair, sem o corpo nem
+ * os cabeçalhos do aviso.
  */
 import { after } from "next/server";
 import { getDb } from "@/db/client";
@@ -20,6 +22,7 @@ import { idDeOrder, processarAvisoDeOrder } from "@/pagamentos/conferencia";
 import { marcarResultadoDoEvento, registrarAssinaturaRecusada, registrarEventoDeAviso } from "@/pagamentos/eventos";
 import { segredoDoWebhook } from "@/pagamentos/integracao";
 import { provedorDeConferencia } from "@/pagamentos/oferta";
+import { avisarErroDoServidor } from "@/observabilidade/aviso-do-servidor";
 
 export const dynamic = "force-dynamic";
 /** O processamento depois da resposta lê o provedor (cada chamada com tempo-limite de 15 s). */
@@ -72,9 +75,10 @@ async function processarDepois(db: Db, dataId: string, eventoId: string): Promis
       return;
     }
     await processarAvisoDeOrder(db, gate.provedor, dataId, new Date(), { eventoId });
-  } catch {
+  } catch (erro) {
     // processarAvisoDeOrder já marca "erro"; aqui só garante a marca se a falha veio antes. A rotina confere depois.
     await marcarResultadoDoEvento(db, eventoId, "erro").catch(() => undefined);
+    await avisarErroDoServidor(erro, "aviso-mercadopago");
   }
 }
 
@@ -108,8 +112,9 @@ export async function POST(req: Request): Promise<Response> {
   let evento: { id: string; novo: boolean } | null;
   try {
     evento = dataId ? await registrarEventoDeAviso(db, { tipo, acao: corpo.acao, dataId, requestId: xRequestId, ts: lerCabecalhoAssinatura(xSignature)?.ts ?? null, aoVivo: corpo.aoVivo }) : null;
-  } catch {
+  } catch (erro) {
     // Sem gravar o evento não há como saber depois o que chegou: o provedor tenta de novo.
+    await avisarErroDoServidor(erro, "aviso-mercadopago");
     return resposta(500);
   }
   // Id fora do formato aceito, ou repetição (mesmo request-id, ts e id): nada a processar.

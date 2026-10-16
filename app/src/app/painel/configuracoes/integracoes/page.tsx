@@ -5,7 +5,7 @@ import styles from "@/components/formularios.module.css";
 import { MercadoPagoIntegracao } from "@/components/configuracoes/MercadoPagoIntegracao";
 import { TestarBeds24 } from "@/components/configuracoes/TestarBeds24";
 import { situacaoDoMercadoPago } from "@/pagamentos/integracao";
-import { NOME_MERCADO_PAGO, situacaoServicos } from "@/sistema/servicos";
+import { NOME_MERCADO_PAGO, NOME_SENTRY, situacaoServicos } from "@/sistema/servicos";
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { imoveis } from "@/db/schema";
@@ -22,6 +22,7 @@ const ONDE: Record<string, string> = {
   Beds24: "BEDS24_REFRESH_TOKEN (recomendado) ou BEDS24_API_KEY (token direto). Envio de calendário/preços só com BEDS24_ESCRITA=ligada (o refresh token precisa do escopo de inventário).",
   [NOME_MERCADO_PAGO]:
     "MERCADOPAGO_PUBLIC_KEY, MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_AMBIENTE (teste): só no ambiente Preview da Vercel. MERCADOPAGO_WEBHOOK_SECRET: em Preview e Production (o aviso chega no endereço de produção).",
+  [NOME_SENTRY]: "NEXT_PUBLIC_SENTRY_DSN, em Production e Preview (é o endereço de envio do projeto no Sentry, público).",
 };
 
 export default async function Integracoes() {

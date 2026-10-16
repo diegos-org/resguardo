@@ -3,6 +3,7 @@
  * "ok" só quando foi testado agora (o banco); "configurado" quando a chave existe mas o
  * serviço não foi testado nesta abertura (não afirmar que funciona sem ter conferido).
  */
+import { ambienteDoSentry, situacaoDoSentry } from "@/observabilidade/sentry";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
 import { deployDeProducao } from "@/sistema/ambiente";
@@ -12,6 +13,7 @@ export type SituacaoServico = "ok" | "configurado" | "falha" | "nao_configurado"
 export type Servico = { nome: string; paraQue: string; situacao: SituacaoServico; detalhe: string };
 
 export const NOME_MERCADO_PAGO = "Pagamentos (Mercado Pago)";
+export const NOME_SENTRY = "Avisos de erro (Sentry)";
 
 const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 
@@ -49,6 +51,28 @@ export function servicoMercadoPago(mp: SituacaoMercadoPago, env: NodeJS.ProcessE
         situacao: mp.contaDeTeste === true ? "ok" : "falha",
         detalhe: `${mp.contaDeTeste === true ? "Ambiente de teste · conta conferida como de teste no Mercado Pago" : mp.contaDeTeste === false ? "Ambiente de teste · a conta das chaves NÃO é de teste: nenhuma cobrança é feita" : "Ambiente de teste · não deu para conferir no Mercado Pago se a conta é de teste: nenhuma cobrança é feita"} · ${avisos}`,
       };
+  }
+}
+
+/**
+ * A linha do Sentry (M0.9), pela mesma regra que liga o envio (`situacaoDoSentry`): um endereço de envio com a forma
+ * errada aparece como problema, em vez de deixar os avisos desligados sem ninguém saber. O valor nunca aparece.
+ */
+export function servicoSentry(env: NodeJS.ProcessEnv): Servico {
+  const base = { nome: NOME_SENTRY, paraQue: "Avisa a equipe dos erros do sistema, sem dados pessoais" };
+  switch (situacaoDoSentry(env)) {
+    case "ligado":
+      return { ...base, situacao: "configurado", detalhe: `Ligado ${ambienteDoSentry(env) === "production" ? "no deploy de produção" : "nesta prévia"}; o envio não é testado nesta abertura` };
+    case "sem_endereco":
+      return { ...base, situacao: "nao_configurado", detalhe: "Falta NEXT_PUBLIC_SENTRY_DSN: os erros não são avisados" };
+    case "endereco_invalido":
+      return {
+        ...base,
+        situacao: "falha",
+        detalhe: "NEXT_PUBLIC_SENTRY_DSN não tem a forma de um endereço de envio do Sentry (https://chave@servidor/número do projeto): nada é enviado. Confira o valor na Vercel",
+      };
+    case "fora_do_ambiente":
+      return { ...base, situacao: "configurado", detalhe: "Endereço configurado, mas desligado aqui: só envia no deploy de produção e nas prévias da Vercel" };
   }
 }
 
@@ -97,5 +121,6 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
     mercadoPago
       ? servicoMercadoPago(mercadoPago, env)
       : { nome: NOME_MERCADO_PAGO, paraQue: "Pagamento da reserva direta no site (Pix, em teste)", situacao: "nao_configurado", detalhe: "Situação não conferida nesta abertura" },
+    servicoSentry(env),
   ];
 }

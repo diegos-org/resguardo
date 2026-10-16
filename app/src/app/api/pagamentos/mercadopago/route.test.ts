@@ -7,8 +7,10 @@ import type { Db } from "@/db/types";
 import { ErroProvedor } from "@/pagamentos/provedor";
 import { type Cenario, montarCenario } from "@/pagamentos/testes";
 
-const m = vi.hoisted(() => ({ getDb: vi.fn(), gate: vi.fn(), depois: [] as (() => Promise<void>)[] }));
+const m = vi.hoisted(() => ({ getDb: vi.fn(), gate: vi.fn(), depois: [] as (() => Promise<void>)[], captureException: vi.fn(), flush: vi.fn(async () => true) }));
 vi.mock("@/db/client", () => ({ getDb: m.getDb }));
+// M0.9: o pacote do Sentry falso (nada sai); as falhas que a rota pega são avisadas por ele.
+vi.mock("@sentry/nextjs", () => ({ captureException: m.captureException, flush: m.flush }));
 vi.mock("@/pagamentos/oferta", async (original) => ({ ...(await original<typeof import("@/pagamentos/oferta")>()), provedorDeConferencia: m.gate }));
 vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after: (f: () => Promise<void>) => m.depois.push(f) }));
 import { POST } from "./route";
@@ -161,6 +163,9 @@ describe("POST /api/pagamentos/mercadopago", () => {
     await expect(rodarDepois()).resolves.toBeUndefined();
     const [ev] = await db.select().from(eventosPagamento).where(eq(eventosPagamento.dataId, p.idProvedor));
     expect(ev.resultado).toBe("erro");
+    // M0.9: e o Sentry recebe o erro, com o nome da rotina (só o erro: nem corpo nem cabeçalhos do aviso).
+    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(c.provedor.falhas.consultar, { tags: { rotina: "aviso-mercadopago" } });
+    expect(m.flush).toHaveBeenCalledWith(2000);
   });
 
   it("o banco fora do ar ao gravar o evento: 500 (o provedor tenta de novo), sem expor nada", async () => {
@@ -172,5 +177,6 @@ describe("POST /api/pagamentos/mercadopago", () => {
     const r = await POST(pedido("ORDTESTE1"));
     expect(r.status).toBe(500);
     expect(await r.text()).toBe("");
+    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(expect.any(Error), { tags: { rotina: "aviso-mercadopago" } });
   });
 });

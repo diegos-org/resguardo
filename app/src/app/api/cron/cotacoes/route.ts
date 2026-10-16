@@ -10,6 +10,7 @@ import type { Db } from "@/db/types";
 import { provedorDeConferencia } from "@/pagamentos/oferta";
 import { rotinaDoSite } from "@/pagamentos/rotina";
 import { registrarExecucao } from "@/sistema/automacoes";
+import { avisarErroDoServidor } from "@/observabilidade/aviso-do-servidor";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -36,9 +37,10 @@ async function executar(db: Db): Promise<Resultado> {
     try {
       const gate = await provedorDeConferencia();
       r = await rotinaDoSite(db, gate.ok ? gate.provedor : null, new Date());
-    } catch {
-      // A página Sistema mostra o resumo: só um texto fixo, nunca a mensagem crua do erro.
-      throw new Error("a rotina parou no meio; roda de novo em 10 minutos");
+    } catch (erro) {
+      // A página Sistema mostra o resumo: só um texto fixo, nunca a mensagem crua do erro. O erro original segue como
+      // causa só para o aviso ao Sentry (limpo antes de sair, M0.9).
+      throw new Error("a rotina parou no meio; roda de novo em 10 minutos", { cause: erro });
     }
     saida.r = r;
     return resumoDaRotina(r);
@@ -54,7 +56,8 @@ export async function GET(req: Request) {
   try {
     const r = await executar(getDb());
     return Response.json({ ok: true, resumo: r.holds, pagamentos: r.pagamentos });
-  } catch {
+  } catch (erro) {
+    await avisarErroDoServidor(erro, "pedidos-site");
     return Response.json({ ok: false }, { status: 500 });
   }
 }
