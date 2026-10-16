@@ -63,12 +63,12 @@ O que protege Diego:
 - conversar com o advogado (D4);
 - ligar a verificação em duas etapas nas contas do Claude, do ChatGPT e do e-mail, e desligar o uso das conversas para treino.
 
-**Depois da v1:** as regras para o assistente um dia fazer mudanças estão em "Fase 2" e não autorizam nada sozinhas. O histórico das mudanças passa a ser protegido no próprio banco, para ninguém conseguir apagá-lo ou alterá-lo (M13.12).
+**Depois da v1:** as regras para o assistente um dia fazer mudanças estão em "Fase 2" e não autorizam nada sozinhas. O histórico das mudanças passa a ser protegido no próprio banco, para o sistema e um erro de programa não conseguirem apagá-lo nem alterá-lo (M13.12). Quem tem o acesso de dono do banco ainda consegue desligar a trava (ver o limite em "Histórico que ninguém apaga").
 
 ## Histórico desta proposta
 
 - **16/10/2026, primeira versão:** proposta do Claude, com 9 itens (M13.1 a M13.9).
-- **16/10/2026, revisão:** aplicadas a crítica de segurança e LGPD e a crítica de viabilidade. No mesmo dia, o Claude acrescentou as regras da fase 2 e o histórico protegido (linha 13). Mudanças principais (antes → agora, e por quê):
+- **16/10/2026, revisão:** aplicadas a crítica de segurança e LGPD e a crítica de viabilidade. No mesmo dia, o Claude acrescentou as regras da fase 2 e o histórico protegido (linha 13) e registrou a troca do nome do hóspede abreviado, citado na conversa, pela v1 sem nomes (linha 14). Mudanças principais (antes → agora, e por quê):
 
   | # | Antes | Agora | Por quê |
   |---|---|---|---|
@@ -82,9 +82,10 @@ O que protege Diego:
   | 8 | O registro de uso não guardava argumentos | Guarda os argumentos estruturados já validados, nunca texto livre | Sem isso, num incidente, não dá para saber o que foi exposto |
   | 9 | Nível 0 tratado como "não identifica a pessoa" | Nível 0 é dado pseudonimizado, e o advogado vê antes de ligar | É leitura da LGPD (art. 5º, I, e art. 12) feita pelas duas críticas; **a confirmar** com o advogado |
   | 10 | Teste com os assistentes só em produção | Homologação proposta, com dados fictícios (D10) | O recurso "exceção à proteção da Vercel" existe em todos os planos |
-  | 11 | 9 itens, chave ligada no M13.6 | 13 linhas no ROADMAP (M13.1 a M13.11, com a e b); a chave da produção só destrava no M13.7 | Cada PR leva de 5 a 31 rodadas de revisão, e o uso com dado real precisa das defesas prontas |
+  | 11 | 9 itens, chave ligada no M13.6 | 13 linhas no ROADMAP (M13.1 a M13.11, com a e b); 15 com o M13.12 e o M13.13 da linha 13; a chave da produção só destrava no M13.7 | Cada PR leva de 5 a 31 rodadas de revisão, e o uso com dado real precisa das defesas prontas |
   | 12 | — | Defesas novas: login recente, proteção contra enquadramento, uma conexão por assistente, teto diário, alertas, faixas de saída, suspensão ao religar, regra para sessões de agente | Ver as seções correspondentes |
-  | 13 | Escrita fora do M13, só como proposta em `requisitos/labs/` | As regras da fase 2 e o histórico protegido entram no desenho e no ROADMAP (M13.12 e M13.13) | Diego pediu em 16/10 as duas fases e "o histórico que ninguém apaga" no ROADMAP. A primeira versão do desenho deixou isso de fora |
+  | 13 | Escrita fora do M13, só como proposta em `requisitos/labs/` | As regras da fase 2 e o histórico protegido entram no desenho e no ROADMAP (M13.12 e M13.13) | Diego aprovou em 16/10 as duas fases e o histórico persistente ("para ninguém poder apagar") e pediu que fossem para o ROADMAP ("Se quiser colocar tudo isso no roadmap, por favor"). A primeira versão do desenho deixou isso de fora |
+  | 14 | Na conversa de 16/10, o Claude disse a Diego que as consultas trariam "o nome do hóspede abreviado" (Diego: "Gostei") | Sem nomes na v1 (nível 0); primeiro nome e inicial só no M13.9, com a D2 e a D4 | As duas revisões leram o nome, mesmo abreviado, como dado pessoal que vai para empresas de fora do Brasil; sem nomes, o advogado avalia um caso menor. O GUIA conta a mudança a Diego |
 
 - **Objetivo final, que não mudou:** Diego consulta o SCL pelo assistente que já paga, com o login do painel, sem risco de o assistente mudar nada e sem expor dados pessoais além do mínimo.
 
@@ -177,8 +178,8 @@ Tudo fica no app Next.js 16.3.6 de `app/`, na mesma Vercel e no mesmo Neon. Não
 - **Se o endereço não serve:** com o campo vazio ou inválido, o MCP e o servidor de autorização não atendem, e Configurações → Assistentes mostra o aviso. O sistema nunca adivinha o endereço.
 - **Situação de hoje:** o campo Site da produção tem um endereço https que não é o do sistema na Vercel.
   - foi conferido em 15/10 sem ler o valor (M7.13; GUIA, seção 6, item 47);
-  - enquanto Diego não fizer a ação 47, o MCP não atende na produção, e isso aparece como aviso;
-  - a ação 47 já pede o endereço que funciona hoje, o mesmo que a D6 recomenda.
+  - enquanto Diego não fizer o item 47 do guia, o MCP não atende na produção, e isso aparece como aviso;
+  - o item 47 do guia já pede o endereço que funciona hoje, o mesmo que a D6 recomenda.
 
 ### Produção, prévias e homologação
 
@@ -307,7 +308,7 @@ O token nunca é repassado a outro serviço; a especificação proíbe.
 **Recomendação: um servidor de autorização mínimo dentro do próprio app,** no mesmo domínio, reaproveitando o login do painel.
 
 **Razões:**
-- É o "mesmo login" que Diego pediu: a tela de consentimento usa a sessão do `/entrar`.
+- É o "mesmo login" da proposta que Diego aprovou em 16/10: a tela de consentimento usa a sessão do `/entrar`.
 - Não entra fornecedor novo de identidade, que iria para a política de privacidade e para a lista de contas de Diego.
 - As permissões continuam num lugar só (`politica.ts`).
 - O corte de acesso reaproveita o que já existe (`ativo` e `sessaoValidaDesde`).
@@ -879,25 +880,41 @@ aí no futuro".
 - **Hoje:**
   - a tabela `auditoria` (M1.5) já é só de inclusão por regra do código: `registrarAuditoria`
     (`app/src/auditoria/auditoria.ts`) diz que "o registro nunca é editado nem apagado pelo sistema";
-  - conferido em 16/10 na `main` (`adca993`): nenhum código do app atualiza ou apaga linhas da `auditoria`;
+  - conferido em 16/10 na `main` (`adca993`): nenhum código do app atualiza ou apaga linhas da `auditoria`; três
+    testes fazem isso e serão ajustados no M13.12;
   - mas nada no banco impede isso. Um erro de código, uma correção à mão ou um agente conseguiria mudar ou apagar
     uma linha.
 - **O que o M13.12 faz:**
   - uma migração versionada cria um gatilho no Postgres que recusa `UPDATE`, `DELETE` e `TRUNCATE` na `auditoria`.
     A mesma trava vale para o registro das ações da fase 2, quando ele existir;
   - uma correção vira um registro novo de correção, nunca a edição do antigo;
-  - testes com o banco de teste (PGlite) provam que nem o próprio app consegue alterar ou apagar o histórico.
-- **Limite, dito com franqueza:** o dono do banco ainda consegue desligar um gatilho. Por isso:
+  - testes com o banco de teste (PGlite) provam que o app não consegue alterar nem apagar o histórico (`UPDATE`,
+    `DELETE` e `TRUNCATE` recusados);
+  - os três testes que hoje mudam ou apagam linhas da `auditoria` para acertar o `criadoEm` (`agenda.test.ts:47`,
+    `operacional.test.ts:107`, `cancelamento.test.ts:916-917`) passam a gravar o registro já com a data certa.
+- **Limite, dito com franqueza:** o dono do banco ainda consegue desligar um gatilho, e hoje o app e as migrações do
+  build usam esse papel, pela mesma `DATABASE_URL` (`app/src/db/client.ts` e `app/scripts/migrar.mts`); um agente com
+  o acesso de dono ao Neon também conseguiria. Por isso:
   - o gatilho só muda por uma migração nova, revisada no PR e guardada no Git;
-  - a trava mais forte é o app usar um papel do banco sem esse poder. Isso entra junto com o papel só de leitura do
-    M13.11, e criar papéis no Neon pede o "pode" de Diego (D11).
+  - a trava mais forte é o app usar um papel do banco sem poder de mudar a `auditoria` nem desligar o gatilho. Isso
+    pede separar o papel do app do papel das migrações, num item próprio fora do M13.11 (que é só o papel de leitura
+    do MCP e não resolve isso), e criar papéis no Neon pede o "pode" de Diego.
 - **Backup:** o histórico fica no banco e entra no backup do Neon: histórico de 7 dias e snapshots, ampliados em
   3/10. Ele não vai para o Git nem para o backup do repositório, pela regra de dados pessoais.
 - **O que fica de fora:** o registro de uso das consultas (`uso_assistentes`, M13.5) é outra coisa. Ele guarda o
   que o assistente leu e fica 6 meses (D9), para guardar o mínimo de dados (LGPD). O histórico protegido guarda o
-  que mudou e fica para sempre (D13).
-- **Ordem:** o M13.12 não depende do resto do M13 e já protege o sistema todo. A fase 2 (M13.13) só começa com ele
-  pronto.
+  que mudou e fica para sempre (D13), mas `mudancas` hoje leva dados pessoais:
+  - nome do hóspede, observações e código do canal na `reserva.criar` e na `reserva.importar` (`semContato`, em
+    `app/src/reservas/repositorio.ts`, esconde só o e-mail e o telefone);
+  - nome, e-mail e telefone do proprietário na `proprietario.criar` e na `proprietario.editar` (`semSensiveis`, em
+    `app/src/proprietarios/repositorio.ts`, esconde só o documento e o Pix).
+
+  Esses campos seguem o prazo de guarda da Política (`requisitos/product/PAGINAS-LEGAIS.md`, "Prazo de guarda"; a
+  minuta diz que os dados são apagados ou anonimizados quando os prazos terminam). A única exceção ao gatilho é
+  anonimizar esses campos por migração revisada, registrada como correção; a outra saída é o histórico passar a
+  mascará-los na gravação, como já faz com e-mail, telefone, documento e Pix. Vai ao advogado com a D4.
+- **Ordem:** o M13.12 não depende do resto do M13 (só do M12.2, como os primeiros itens do M13) e já protege o
+  sistema todo. A fase 2 (M13.13) só começa com ele pronto.
 
 ## Compatibilidade
 
@@ -1035,8 +1052,10 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
    - em cada conta, desligar o uso das conversas para treinar modelos, se houver a opção (**a confirmar** em cada plano);
    - conferir o que fica na memória do assistente.
 4. **Advogado (D4), antes de ligar na produção:**
+   - estas perguntas entram no dossiê único para o advogado e o contador, combinado com Diego em 16/10 (tudo de uma vez, perto do fim da construção); o Claude monta o dossiê, e Diego não precisa abrir este arquivo;
    - contar que a equipe vai consultar dados de operação e financeiros, pseudonimizados (sem nomes), por assistentes de IA de empresas de fora do Brasil;
    - perguntar a base legal, o mecanismo de transferência internacional (art. 33; Resolução CD/ANPD nº 19/2024, citada pela revisão), a menção nas seções "Com quem compartilhamos", "Dados fora do Brasil" e "Segurança" da Política, e o registro das operações de tratamento (art. 37);
+   - perguntar o prazo de guarda dos dados pessoais que o histórico protegido guarda (M13.12) e se basta anonimizá-los por migração revisada quando o prazo terminar;
    - para nomes (M13.9) ou proprietários (M13.10), versão nova da Política antes.
 5. **Opcional (D10):** dar o "pode" para a homologação na Vercel, para experimentar antes com dados fictícios.
 6. **Depois do M13.7:** ligar o acesso em **Configurações → Assistentes**. A chave nasce desligada e, na produção, só destrava no M13.7.
@@ -1130,22 +1149,22 @@ Vale para conta de assistente invadida, conexão que Diego não reconhece ou avi
 |---|---|---|---|
 | D1 | Quem pode conectar na v1 | Só você, por nome, numa lista em Configurações → Assistentes (não "qualquer admin"). A operação existe como opção desligada e só com plano de assistente que tenha contrato de proteção de dados (seriam contas pessoais de funcionários). O proprietário fica para o M13.10 | Só a opção da operação (M13.6) e o M13.10 |
 | D2 | Quanto de dado pessoal o assistente recebe | Nível 0: sem nomes, contatos ou textos livres; só códigos, valores e links. O nível 1 (primeiro nome e inicial do hóspede, nome do proprietário, código do canal) é o M13.9 | Só o M13.9 |
-| D3 | Quem é o servidor de autorização | Próprio, dentro do app, com perfil estreito, sem DCR e com plano B por adaptador. Segue o pedido de 16/10 ("mesmo login", "endereço do próprio sistema"). Alternativas: provedor externo, ou Better Auth (não recomendado) | O M13.3 começa pela recomendação; se você preferir um provedor, o M13.3 muda antes do merge |
-| D4 | LGPD e Política de privacidade | Conferir com o advogado **antes de ligar na produção, já no nível 0**, com as perguntas de "Passos de Diego", item 4. Para o nível 1 ou para proprietários, versão nova da Política antes | Ligar na produção; M13.9; M13.10 |
+| D3 | Quem é o servidor de autorização | Próprio, dentro do app, com perfil estreito, sem DCR e com plano B por adaptador. Segue a proposta de 16/10 que Diego aprovou ("mesmo login", "endereço do próprio sistema"). Alternativas: provedor externo, ou Better Auth (não recomendado) | O M13.3 começa pela recomendação; se você preferir um provedor, o M13.3 muda antes do merge |
+| D4 | LGPD e Política de privacidade | Conferir com o advogado **antes de ligar na produção, já no nível 0**, com as perguntas de "Passos de Diego", item 4, no dossiê único para o advogado e o contador (combinado em 16/10). Para o nível 1 ou para proprietários, versão nova da Política antes | Ligar na produção; M13.9; M13.10 |
 | D5 | Seus planos do Claude e do ChatGPT | Dizer quais são e se têm contrato de proteção de dados; desligar o treino antes de conectar. No ChatGPT Pro, funciona no site, só leitura, o que basta. No Plus, testar no site e, se não der, usar o Codex | Ligar na produção (com a D4); conferência com o ChatGPT; M13.8 |
-| D6 | Endereço | Começar já em `https://scl-reconstrucao.vercel.app/api/mcp` (exige a ação 47, campo Site) e reconectar uma vez quando o domínio próprio entrar (M11.2). Alternativa: esperar o M11.2 | Nada no código; sem a ação 47, a produção não atende |
+| D6 | Endereço | Começar já em `https://scl-reconstrucao.vercel.app/api/mcp` (exige o campo Site, guia, seção 6, item 47) e reconectar uma vez quando o domínio próprio entrar (M11.2). Alternativa: esperar o M11.2 | Nada no código; sem o item 47 do guia, a produção não atende |
 | D7 | Validade de uma conexão | 30 dias no Claude e no Claude Code; 7 dias no ChatGPT e no Codex (a saída). Ajustável de 1 a 30 dias | Nada |
 | D8 | Avisos | Aviso no Início por 7 dias e e-mail a cada conexão nova, com "não fui eu"; alertas de uso fora do padrão (a janela da madrugada pode ser ajustada ou desligada, porque você às vezes trabalha de madrugada); resumo semanal por e-mail | Nada |
 | D9 | Por quanto tempo guardar o registro de uso | 6 meses, com os argumentos estruturados (sem texto livre), para dar conta de um incidente | Nada |
 | D10 | Homologação para testar antes | Sim: uma branch fixa na Vercel, liberada da proteção, com o banco das prévias e dados fictícios. É mudança de configuração e pede o seu "pode" | Só o teste com assistentes antes da produção |
 | D11 | Papel só de leitura no banco, com permissão por coluna | Sim, como item próprio depois do M13.7 (M13.11). Criar o papel no Neon pede o seu "pode" | Só o M13.11 |
 | D12 | Sessões de trabalho do Claude e do Codex no repositório | Não usam o conector SCL: registrar no CLAUDE.md e desligar os conectores nessas sessões. Você usa o SCL numa conversa própria, sem e-mail nem navegação junto | O fechamento do M13.7 |
-| D13 | Por quanto tempo guardar o histórico das mudanças | Para sempre, protegido no banco (M13.12). O registro das consultas é outra coisa e segue a D9 (6 meses) | Nada |
+| D13 | Por quanto tempo guardar o histórico das mudanças | Para sempre o que mudou, protegido no banco (M13.12); os dados pessoais dentro do histórico seguem o prazo de guarda da Política (D4). O registro das consultas é outra coisa e segue a D9 (6 meses) | Nada |
 | D14 | Fase 2: se haverá ações, quais e para quem | Nada antes de a fase 1 estar em uso. Depois, você escolhe a primeira ação; a sugestão é uma sem dinheiro e sem sistema externo, como bloquear datas no SCL | O M13.13 |
 
 ## Divisão em itens do ROADMAP
 
-**Marco novo:** M13 — MCP do SCL (consulta pelo Claude, pelo ChatGPT e por outros assistentes). Cada item é um PR. As linhas estão no ROADMAP, no marco M13, entre o M12 e o M11: a ordem do arquivo decide a vez de cada item, e o M13 vem depois do que falta para a entrada no ar e para o marketplace (M8.3 e M12.2).
+**Marco novo:** M13 — MCP do SCL (consulta pelo Claude, pelo ChatGPT e por outros assistentes). Cada item é um PR. As linhas estão no ROADMAP, no marco M13, depois do M11: o M11.1 depende de "Tudo acima", e o MCP não trava a entrada no ar. A ordem do arquivo decide a vez de cada item, e os primeiros itens do M13 (2a, 3, 4a e 12) dependem também do M12.2, que depende do M8.3: assim o M13 só começa depois da reserva no Beds24 e do cálculo do marketplace.
 
 **Ordem e princípios:**
 - **Consultas primeiro, sem rota pública:**
@@ -1159,7 +1178,7 @@ Vale para conta de assistente invadida, conexão que Diego não reconhece ou avi
 - **Ferramentas e ajustes (M13.6):** as ferramentas do 2b, a opção da operação, as validades e a exportação do uso.
 - **Segurança de uso e liberação na produção (M13.7):** e-mail, alertas, resumo semanal, faixas de saída, guia completo e regra no CLAUDE.md.
 - **Bloqueados por decisões de Diego:** M13.8 (`search` e `fetch`), M13.9 (nomes), M13.10 (proprietário) e M13.11 (papel do banco).
-- **Histórico protegido (M13.12):** o gatilho no banco que impede alterar ou apagar a auditoria. Não depende do resto do M13 e protege o sistema todo.
+- **Histórico protegido (M13.12):** o gatilho no banco que impede alterar ou apagar a auditoria. Não depende do resto do M13 (só do M12.2, como os primeiros itens) e protege o sistema todo.
 - **Escrita (M13.13):** bloqueada. Segue as regras de "Fase 2" e depende de Diego (D14), do M13.7 e do M13.12.
 
 ## Fontes (consultadas em 16/10/2026)

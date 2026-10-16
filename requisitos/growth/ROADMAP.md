@@ -209,24 +209,30 @@ compromissos: "por enquanto vamos ficar onde a gente está para não sair dos tr
   argumento de venda.
 - **Marcas por bairro e marca principal:**
   1. validar a Sua Casa Leblon no ar;
-  2. Ipanema como segundo piloto (`suacasaipanema.com`, registrado por Diego em 15/10);
-  3. depois, uma marca principal que valha para tudo: um domínio genérico registrado por Diego em 15/10, ou o nome
-     da empresa. A escolher.
+  2. Ipanema, talvez, como segundo piloto ("só para ser talvez um segundo piloto"; `suacasaipanema.com`, registrado
+     por Diego em 15/10);
+  3. depois, uma marca principal que valha para tudo. Candidatos citados por Diego: o domínio genérico registrado em
+     15/10 ("só como exemplo, não precisa ser o oficial futuro") ou o domínio que ele já tem com o nome da empresa.
+     A escolher.
   - Depois: outros bairros do Rio, bairros de São Paulo, Florianópolis e lugares no Nordeste.
-  - **No sistema:** hoje ele serve um site por empresa: um domínio, um nome, uma vitrine. Vários sites com as
+  - **No sistema:** hoje ele serve um site só, de uma empresa (a da variável `SITE_ORGANIZACAO_ID` ou a única do
+    banco): um domínio, um nome, uma vitrine. Vários sites com as
     mesmas casas pedem um item novo: cada site com o seu domínio, nome, cores, textos e as casas do bairro; a marca
     principal mostra todas.
   - **Cuidado (Claude, 16/10):** cada domínio novo começa do zero no Google. Dez sites fracos podem render menos
     que um forte com uma página por bairro. Testar com Ipanema e medir antes de abrir os outros.
 - **Suítes para outros gestores:** uma menor para quem cuida de 2 a 5 imóveis e uma mais completa para
-  profissionais. O sistema já separa os dados por empresa (`organizacaoId` em todas as tabelas), o que deixa a porta
-  aberta. É quase outro negócio (suporte, cobrança, cadastro de clientes, dados de terceiros), então só depois de
-  o marketplace dar certo; o nicho e os subprodutos ficam para decidir.
+  profissionais. O sistema já separa os dados por empresa (`organizacaoId` na maioria das tabelas; algumas, como os
+  vínculos do proprietário, os códigos e as tentativas de login e as configurações gerais, ainda não têm a empresa e
+  teriam de ser revistas), o que deixa a porta aberta. É quase outro negócio (suporte, cobrança, cadastro de
+  clientes, dados de terceiros), então só depois de o marketplace dar certo; o nicho e os subprodutos ficam para
+  decidir.
   - **Referência:** o Giro Temporada, um produto anterior de Diego e a primeira versão do que virou a Sua Casa
     Leblon: assinatura de R$ 27,90 por mês, com agenda de limpeza, integração e sincronização de calendário, preços,
     registro de despesas e receitas e o resultado do mês, para quem cuida de poucos apartamentos. Ele está noutro
     repositório, fora desta sessão; quando a frente voltar, Diego aponta onde.
-- **Captação e segmentação de proprietários:** complementa "Prospecção de proprietários" (acima).
+- **Captação (proprietários para o marketplace e gestores para as suítes) e segmentação dos gestores por tamanho,
+  como Diego descreveu ("um gestor de 2, 3, 4, 5 imóveis"):** complementa "Prospecção de proprietários" (acima).
   - Pesquisa de mercado com dados públicos e agregados (preços, ocupação, número de anúncios por bairro) pode usar
     ferramentas de busca e coleta (Firecrawl, Apify ou pesquisa paga).
   - **Cuidado (Claude, 16/10):** montar listas de anfitriões copiando dados do Airbnb ou do Booking vai contra as
