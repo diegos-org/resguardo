@@ -24,6 +24,7 @@ import type { Correio } from "@/email/correio";
 import { hojeISO, instanteLocal, somarDias } from "@/lib/datas";
 import { situacaoEfetiva } from "@/pagamentos/alteracao-regras";
 import { carenciaNoTravado } from "@/pagamentos/travas";
+import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 import { numeroWhatsapp } from "@/site/site";
 
 // Moram em lib/datas (o cancelamento do M8.2c usa as mesmas); continuam saindo daqui para quem já importava.
@@ -167,7 +168,7 @@ export async function reservasDoHospede(db: Db, organizacaoId: string, email: st
   return linhas.map((l) => {
     const fuso = l.fuso || "America/Sao_Paulo";
     const liberaEm = liberacaoDasInstrucoes(l.checkin, fuso);
-    const saidaAte = l.saidaAte ?? "11:00";
+    const saidaAte = l.saidaAte ?? HORARIOS_PADRAO.saida;
     // A estadia acaba no horário de saída do imóvel (não à meia-noite): daí em diante, sem endereço.
     const encerrada = agora.getTime() >= instanteLocal(l.checkout, saidaAte, fuso).getTime();
     return {
@@ -180,7 +181,7 @@ export async function reservasDoHospede(db: Db, organizacaoId: string, email: st
       noites: Math.round((Date.parse(l.checkout) - Date.parse(l.checkin)) / 86_400_000),
       hospedes: l.hospedes,
       nomeHospede: l.nomeHospede,
-      entradaAPartirDe: l.entradaAPartirDe ?? "15:00",
+      entradaAPartirDe: l.entradaAPartirDe ?? HORARIOS_PADRAO.entrada,
       saidaAte,
       encerrada,
       instrucoes:

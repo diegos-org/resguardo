@@ -17,6 +17,7 @@
  */
 import type { BaseCancelamento, QuemCancelaReserva } from "@/db/schema";
 import { hojeISO, instanteLocal, somarDias } from "@/lib/datas";
+import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 import { prazoDoReembolso, type RegrasCancelamento, regrasComPadrao } from "./paginas-legais-texto";
 
 /** CDC art. 49: sete dias corridos — lei, não regra editável. */
@@ -79,8 +80,8 @@ export const TEXTO_VALOR_PELA_EQUIPE = "A equipe confirma com você, por escrito
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** Sem horário de entrada cadastrado no imóvel (ou com um inválido), a política conta a entrada às 15:00. */
-export const HORA_ENTRADA_PADRAO = "15:00";
+/** Sem horário de entrada cadastrado no imóvel (ou com um inválido), a política conta a entrada no horário padrão (15:00, `HORARIOS_PADRAO`). */
+export const HORA_ENTRADA_PADRAO = HORARIOS_PADRAO.entrada;
 /**
  * O horário de entrada que a política conta: o cadastrado no imóvel (`imoveis_detalhes.checkin_a_partir_de`) ou o padrão.
  * Uma regra só para o painel (a decisão e o horário do não comparecimento na ficha) e para Minha reserva.

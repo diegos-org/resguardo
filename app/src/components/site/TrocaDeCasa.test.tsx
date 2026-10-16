@@ -115,9 +115,9 @@ describe("\"Seu lugar\" opcional e troca de casa no envio do cartão lateral (M7
     expect(m.push).not.toHaveBeenCalled();
     expect(document.getElementById("dica-troca-casa")).toBeNull();
     expect(lugar().hasAttribute("aria-describedby")).toBe(false);
-    // Sem JavaScript também: o formulário continua sendo um GET para a consulta, com os mesmos campos.
+    // Sem JavaScript também: o formulário continua sendo um GET para a consulta (aberta no resultado, M7.21), com os mesmos campos.
     const form = document.querySelector("form")!;
-    expect([form.getAttribute("action"), form.getAttribute("method")]).toEqual(["/consulta", "get"]);
+    expect([form.getAttribute("action"), form.getAttribute("method")]).toEqual(["/consulta#resultado", "get"]);
     expect([...form.querySelectorAll("[name]")].map((e) => e.getAttribute("name"))).toEqual(["imovel", "entrada", "saida", "hospedes"]);
   });
 });

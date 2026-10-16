@@ -11,12 +11,13 @@ import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } 
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
-import { cotacoes, type EstadoCotacao, imoveis, pagamentos, reservas } from "@/db/schema";
+import { cotacoes, type EstadoCotacao, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { expirarAlteracoesVencidas } from "@/pagamentos/alteracao-prazo";
 import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, PRAZO_CARTAO_SEM_RESPOSTA_DIAS } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
 import { consultarDisponibilidade, type Disponibilidade } from "./disponibilidade";
+import { type RegrasDaCasa, regrasDaCasa } from "./regras-da-casa";
 import type { PedidoConsulta } from "./site";
 
 export type Cotacao = typeof cotacoes.$inferSelect;
@@ -176,6 +177,29 @@ export async function obterCotacao(db: Db, organizacaoId: string, codigo: string
     .innerJoin(imoveis, eq(imoveis.id, cotacoes.imovelId))
     .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.codigo, codigo)));
   return c ? { ...c.cotacao, imovelCodigo: c.imovelCodigo, imovelNome: c.imovelNome, fuso: c.fuso } : null;
+}
+
+/**
+ * Horários e regras de convivência da casa da cotação (M7.20), para a página da cotação: a mesma cotação de `obterCotacao`
+ * (que o pagamento também usa e fica como está), com a ficha do imóvel. Não olha se a casa está no site: a reserva feita
+ * numa casa que saiu do site ainda mostra os horários e as regras. Sem ficha, os horários padrão (`regrasDaCasa`).
+ */
+export async function regrasDaCasaDaCotacao(db: Db, organizacaoId: string, codigo: string): Promise<RegrasDaCasa | null> {
+  if (!codigoCotacaoValido(codigo)) return null;
+  const [l] = await db
+    .select({
+      checkinAPartirDe: imoveisDetalhes.checkinAPartirDe,
+      checkoutAte: imoveisDetalhes.checkoutAte,
+      aceitaAnimais: imoveisDetalhes.aceitaAnimais,
+      permiteFumar: imoveisDetalhes.permiteFumar,
+      permiteFestas: imoveisDetalhes.permiteFestas,
+      regrasCasa: imoveisDetalhes.regrasCasa,
+    })
+    .from(cotacoes)
+    .innerJoin(imoveis, eq(imoveis.id, cotacoes.imovelId))
+    .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
+    .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.codigo, codigo)));
+  return l ? regrasDaCasa(l) : null;
 }
 
 const pedidoDa = (c: Cotacao & { imovelCodigo: string }): PedidoConsulta => ({ imovel: c.imovelCodigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) });

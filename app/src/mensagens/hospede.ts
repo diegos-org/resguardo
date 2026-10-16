@@ -82,6 +82,7 @@ import { canceladaPelaDisputa, marcarAvisado, type MensagemAoHospede } from "@/p
 import { type AlteracaoParaHospede, alteracaoParaMensagem, vistaDaCotacaoParaHospede } from "@/pagamentos/consultas";
 import { linkDoSite } from "@/site/compartilhamento";
 import { textoDaAlteracao, textoDoCancelamento } from "@/site/pagamento-vista";
+import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 
 export { NOMES_TIPO };
 
@@ -465,7 +466,7 @@ export async function enviarMensagensHospede(db: Db, organizacaoId: string, corr
 
   for (const l of tiposDaReserva.length ? linhas : []) {
     const fuso = l.fuso || "America/Sao_Paulo";
-    const prazoDados: DadosPrazo = { checkin: l.checkin, checkout: l.checkout, confirmadaEm: l.confirmadaEm, fuso, entradaAPartirDe: l.entradaAPartirDe ?? "15:00", saidaAte: l.saidaAte ?? "11:00" };
+    const prazoDados: DadosPrazo = { checkin: l.checkin, checkout: l.checkout, confirmadaEm: l.confirmadaEm, fuso, entradaAPartirDe: l.entradaAPartirDe ?? HORARIOS_PADRAO.entrada, saidaAte: l.saidaAte ?? HORARIOS_PADRAO.saida };
     for (const tipo of tiposDaReserva) {
       const prazo = prazoDaMensagem(tipo, prazoDados);
       // Vale de quando foi ligado em diante; fora do prazo, não manda.

@@ -18,6 +18,7 @@ import {
   contatoDoSite,
   conteudoDoSite,
   destinoDoLinkAntigo,
+  estaNoSite,
   hojeMaisCedo,
   imovelDoSite,
   imoveisDoSite,
@@ -29,6 +30,7 @@ import {
   montarConsulta,
   numeroWhatsapp,
   organizacaoDoSite,
+  pedidoEnviado,
   temCasaNoSite,
 } from "./site";
 
@@ -219,6 +221,14 @@ describe("site público (M7.1)", () => {
     expect(lerPedidoConsulta({ imovel: ["a", "b"] })).toEqual({ imovel: "", entrada: "", saida: "", hospedes: "" });
   });
 
+  it("pedido enviado: com alguma data (as duas ou só uma); sem datas, só a casa ou só as pessoas, é uma visita (M7.21)", () => {
+    expect(pedidoEnviado({ entrada: "2026-10-10", saida: "2026-10-12" })).toBe(true);
+    expect(pedidoEnviado({ entrada: "2026-10-10", saida: "" })).toBe(true);
+    expect(pedidoEnviado({ entrada: "", saida: "2026-10-12" })).toBe(true);
+    expect(pedidoEnviado(lerPedidoConsulta({ property: "102", guests: "2" }))).toBe(false);
+    expect(pedidoEnviado(lerPedidoConsulta({}))).toBe(false);
+  });
+
   it("título da aba usa o nome da empresa do site", () => {
     expect(tituloDoSite({ nomeEmpresa: "Empresa Exemplo" }, "Apartamentos")).toBe("Apartamentos — Empresa Exemplo");
     expect(tituloDoSite({ nomeEmpresa: "Empresa Exemplo" })).toBe("Empresa Exemplo");
@@ -274,6 +284,17 @@ describe("temCasaNoSite (M7.8)", () => {
     expect(await imoveisDoSite(db, outra)).toEqual([]);
     await db.insert(imoveis).values({ organizacaoId: outra, codigo: "A3", nome: "No site", publico: true });
     expect(await temCasaNoSite(db, outra)).toBe(true);
+  });
+});
+
+describe("estaNoSite (M7.20)", () => {
+  it("a casa deste código está no site com a mesma regra da página da casa (pública, ativa, da organização); código fora do formato nem chega ao banco", async () => {
+    for (const codigo of ["403", "102", "buzios", "303", "nao-existe", "COT/../403", ""]) expect([codigo, await estaNoSite(db, org, codigo)]).toEqual([codigo, !!(await imovelDoSite(db, org, codigo))]);
+    expect(await estaNoSite(db, org, "403")).toBe(true);
+    expect(await estaNoSite(db, org, "buzios")).toBe(false);
+    expect(await estaNoSite(db, org, "303")).toBe(false);
+    const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "Outra" }).returning();
+    expect(await estaNoSite(db, outra, "403")).toBe(false);
   });
 });
 

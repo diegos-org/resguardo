@@ -10,6 +10,7 @@ import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { metadadosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
 import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
+import { RegrasDaCasa } from "@/components/site/RegrasDaCasa";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { tituloDaSecao } from "@/configuracoes/textos-site";
@@ -18,11 +19,12 @@ import { criarCotacaoAcao } from "@/site/acoes";
 import { lugaresDoSite } from "@/site/bairro";
 import { linkDaCasa } from "@/site/link-da-casa";
 import { podeSegurar } from "@/site/cotacoes";
-import { consultarDisponibilidade } from "@/site/disponibilidade";
+import { consultarDisponibilidade, disponibilidadeInvalida } from "@/site/disponibilidade";
 import { fraseDoImovel } from "@/site/frase-do-imovel";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
+import { frasesDosHorarios, regrasDaCasa } from "@/site/regras-da-casa";
+import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta, pedidoEnviado } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
@@ -58,7 +60,14 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   const hoje = hojeISO(imovel.fuso);
   // Com datas no link, mostra disponibilidade e valor reais (M7.2) antes do formulário.
   const consulta = { ...pedido, imovel: imovel.codigo };
-  const disponibilidade = pedido.entrada && pedido.saida && montarConsulta(consulta, imovel, hoje).ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, consulta) : null;
+  // Link com datas que não servem (M7.21: entrada antes de hoje, saída antes da entrada, grupo maior que a casa ou sem o
+  // número de pessoas): a mesma conferência da consulta (`montarConsulta`), com os mesmos textos, no quadro da
+  // disponibilidade ("Confira os dados") e nos campos do cartão "Planeje sua estadia" — avisar em vez de não mostrar nada.
+  // Vale com alguma data no link (`pedidoEnviado`, a mesma regra do envio da consulta); sem datas, nenhum aviso. Pedido que
+  // não passa não chega à disponibilidade, nem ao "segurar as datas".
+  const conferida = pedidoEnviado(pedido) ? montarConsulta(consulta, imovel, hoje) : null;
+  const erros = conferida && !conferida.ok ? conferida.erros : {};
+  const disponibilidade = conferida?.ok ? await consultarDisponibilidade(db, conteudo.organizacaoId, consulta) : conferida ? disponibilidadeInvalida(Object.values(erros)) : null;
   // Pagamento no site (M8.2a): os textos "nenhum pagamento é feito aqui" dependem de o Pix estar oferecido.
   const gate = await portaoDoSite(db, conteudo.organizacaoId);
   // Estadia que dá para segurar (null = o site não oferece segurar estas datas).
@@ -66,13 +75,12 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   const comPix = segurar
     ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: consulta.entrada, checkout: consulta.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
     : false;
+  // Horários e regras de convivência de um lugar só (M7.20), os mesmos da página da cotação; a estadia mínima entra aqui.
+  const casa = regrasDaCasa(imovel);
   const regras = [
-    `Entrada a partir das ${imovel.checkinAPartirDe}`,
-    `Saída até as ${imovel.checkoutAte}`,
+    ...frasesDosHorarios(casa),
     imovel.estadiaMinima ? `Em geral, mínimo de ${imovel.estadiaMinima} ${imovel.estadiaMinima === 1 ? "noite" : "noites"} (datas especiais podem ter outro mínimo)` : null,
-    imovel.aceitaAnimais ? "Aceita animais" : "Não aceita animais",
-    imovel.permiteFumar ? null : "Proibido fumar",
-    imovel.permiteFestas ? null : "Sem festas ou eventos",
+    ...casa.convivencia,
   ].filter((x): x is string => !!x);
   const resumo = resumoImovel(imovel);
   return (
@@ -144,21 +152,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
               </ul>
             </section>
           )}
-          <section aria-labelledby="titulo-regras">
-            <h2 id="titulo-regras" className={styles.tituloFicha}>
-              Regras da casa
-            </h2>
-            <ul className={styles.fichas}>
-              {regras.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-            {imovel.regrasCasa && (
-              <p className={styles.texto} style={{ marginTop: 12 }}>
-                {imovel.regrasCasa}
-              </p>
-            )}
-          </section>
+          <RegrasDaCasa itens={regras} texto={casa.texto} />
         </div>
         {/* Cartão da consulta (M7.16): olho, título e frase de Configurações → Textos do site (olho e frase vazios não
             aparecem; título vazio volta ao texto inicial). */}
@@ -172,7 +166,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
               {conteudo.textos.planejarTexto}
             </p>
           )}
-          <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" comPagamento={gate.ok} />
+          <FormConsulta imoveis={todos} valores={consulta} erros={erros} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" comPagamento={gate.ok} />
         </aside>
       </div>
       <BairroAPorta {...bairro} />

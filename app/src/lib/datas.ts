@@ -28,3 +28,9 @@ export function instanteLocal(dataISO: string, hora: string, fuso: string): Date
   const t = relogio - deslocamento(relogio, fuso);
   return new Date(relogio - deslocamento(t, fuso));
 }
+
+/**
+ * Hora ("HH:MM") como o hóspede lê: hora cheia vira "15h" (sem o zero da frente: "9h"); o resto fica como está ("15:30").
+ * Uma escrita só para Minha reserva e a página da cotação (M7.20).
+ */
+export const escreverHora = (h: string) => h.replace(/^0?(\d+):00$/, "$1h");
