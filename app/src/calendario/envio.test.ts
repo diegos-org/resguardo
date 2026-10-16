@@ -5,7 +5,7 @@ import { executarCronEnvioBeds24 } from "@/beds24/cron-envio";
 import { Beds24Falso } from "@/beds24/falso";
 import { ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas, beds24EnvioImoveis } from "@/db/schema";
+import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, beds24ReservasOperacoes, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas, beds24EnvioImoveis } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { ultimasExecucoes } from "@/sistema/automacoes";
@@ -630,6 +630,16 @@ describe("envio ao Beds24 (M3.7)", () => {
     expect(beds.escritas).toHaveLength(0);
     expect((await ultimosEnvios(db, org)).find(e => e.id !== outra.id)).toMatchObject({ situacao: "ocupada" });
     await db.update(beds24Envios).set({ iniciadoEm: new Date(agora.getTime() - 11 * 60_000) }).where(eq(beds24Envios.id, outra.id));
+    expect((await enviar()).situacao).toBe("ok");
+  });
+
+  it("uma reserva do site sendo enviada ao Beds24 (M8.3, 6 min pelo relógio do banco) também bloqueia, com a causa na mensagem", async () => {
+    const [op] = await db.insert(beds24ReservasOperacoes).values({ organizacaoId: org, tipo: "ensaio", chave: "ensaio:a", modo: "real", situacao: "enviando" }).returning({ id: beds24ReservasOperacoes.id });
+    const r = await enviar();
+    expect(r).toMatchObject({ ok: false, situacao: "ocupada", mensagem: "Há um envio de reserva do site ao Beds24 em andamento. Aguarde alguns minutos e tente de novo.", causa: "envio de reserva do site ao Beds24 em andamento" });
+    expect(beds.escritas).toHaveLength(0);
+    expect(beds.chamadas).toBe(0);
+    await db.update(beds24ReservasOperacoes).set({ iniciadoEm: new Date(Date.now() - 7 * 60_000) }).where(eq(beds24ReservasOperacoes.id, op.id));
     expect((await enviar()).situacao).toBe("ok");
   });
 

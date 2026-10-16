@@ -4,7 +4,7 @@ import { execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprie
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { salvarRecebimento } from "@/imoveis/recebimento";
-import { AUTOMACOES, registrarExecucao, ultimasExecucoes } from "./automacoes";
+import { AUTOMACOES, execucaoNaoRodou, naoRodou, registrarExecucao, ultimasExecucoes } from "./automacoes";
 import { regrasEmVigor } from "./regras";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
 import { NOME_MERCADO_PAGO, servicoMercadoPago, situacaoServicos } from "./servicos";
@@ -102,6 +102,16 @@ describe("automações e regras (com banco)", () => {
     const u = await ultimasExecucoes(db);
     expect(u.get("recalculo-deploy")).toMatchObject({ ok: false, resumo: "Falhou: banco caiu" });
     expect(AUTOMACOES.find((a) => a.id === "recalculo-deploy")?.situacao).toBe("ativa");
+  });
+
+  it("'não rodou' (M8.3a): fica com ok falso e o resumo 'Não rodou: <causa>', sem lançar erro; nunca como sucesso", async () => {
+    const agora = () => new Date("2026-10-16T09:15:00Z");
+    expect(await registrarExecucao(db, "sync-beds24", async () => naoRodou("envio de reserva do site ao Beds24 em andamento"), agora)).toBe("Não rodou: envio de reserva do site ao Beds24 em andamento");
+    const e = (await ultimasExecucoes(db)).get("sync-beds24");
+    expect(e).toMatchObject({ ok: false, resumo: "Não rodou: envio de reserva do site ao Beds24 em andamento", terminadoEm: agora() });
+    expect(execucaoNaoRodou(e!)).toBe(true);
+    expect(execucaoNaoRodou({ ok: false, resumo: "Falhou: banco caiu" })).toBe(false);
+    expect(execucaoNaoRodou({ ok: true, resumo: "Não rodou: texto" })).toBe(false);
   });
 
   it("a rotina de 10 em 10 minutos não esconde a última execução das que rodam raramente (M8.2a)", async () => {

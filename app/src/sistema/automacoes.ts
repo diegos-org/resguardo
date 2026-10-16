@@ -36,11 +36,27 @@ export const AUTOMACOES: readonly Automacao[] = [
 
 export type Execucao = typeof execucoesAutomacao.$inferSelect;
 
-/** Roda `fn` registrando início, fim, sucesso e resumo. Erros são registrados e repassados. */
-export async function registrarExecucao(db: Db, nome: string, fn: () => Promise<string>, agora: () => Date = () => new Date()): Promise<string> {
+/**
+ * A rotina não rodou por um motivo de fora dela (ex.: outra importação ou envio do Beds24 em andamento): fica registrada
+ * como "Não rodou: <causa>", com `ok` falso — nunca como sucesso —, sem virar erro (a rota do cron não falha por isso).
+ */
+export type NaoRodou = { naoRodou: string };
+export const naoRodou = (causa: string): NaoRodou => ({ naoRodou: causa });
+export const PREFIXO_NAO_RODOU = "Não rodou: ";
+/** A execução registrada como "não rodou" (a página Sistema mostra com o selo de aviso, e não o de falha). */
+export const execucaoNaoRodou = (e: Pick<Execucao, "ok" | "resumo">) => e.ok === false && e.resumo.startsWith(PREFIXO_NAO_RODOU);
+
+/** Roda `fn` registrando início, fim, sucesso e resumo. Erros são registrados e repassados; "não rodou" é registrado e devolvido. */
+export async function registrarExecucao(db: Db, nome: string, fn: () => Promise<string | NaoRodou>, agora: () => Date = () => new Date()): Promise<string> {
   const [e] = await db.insert(execucoesAutomacao).values({ nome, iniciadoEm: agora() }).returning({ id: execucoesAutomacao.id });
   try {
-    const resumo = await fn();
+    const r = await fn();
+    if (typeof r !== "string") {
+      const resumo = `${PREFIXO_NAO_RODOU}${r.naoRodou}`.slice(0, 500);
+      await db.update(execucoesAutomacao).set({ terminadoEm: agora(), ok: false, resumo }).where(eq(execucoesAutomacao.id, e.id));
+      return resumo;
+    }
+    const resumo = r;
     await db.update(execucoesAutomacao).set({ terminadoEm: agora(), ok: true, resumo: resumo.slice(0, 500) }).where(eq(execucoesAutomacao.id, e.id));
     return resumo;
   } catch (erro) {

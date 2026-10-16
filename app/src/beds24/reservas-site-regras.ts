@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { contratoVigente } from "@/contratos/regras";
 import type { EstadoReserva } from "@/db/schema";
 import { contratoDeMarketplace, type ContratoParaMotor } from "@/financeiro/motor";
-import type { CredencialBeds24, EstadoBeds24 } from "./tipos";
+import type { CredencialBeds24, EstadoBeds24, ReservaBeds24 } from "./tipos";
 
 // ---------------------------------------------------------------- listas fechadas (desenho 3.2 e 3.4)
 
@@ -238,6 +238,62 @@ export function reservaDoSiteParaBeds24(r: ReservaParaBeds24, c: ContextoParaBed
   if (!hospedesValidos) return fora("sem_hospedes");
   if (!c.quartoDoVinculo) return { decisao: "parada", motivo: "sem_vinculo" };
   return enviar("criar", { quarto: c.quartoDoVinculo, chegada: r.checkin, saida: r.checkout, hospedes: r.hospedes, situacao: "confirmada" }, a?.assinaturaEsperada ?? null);
+}
+
+// ---------------------------------------------------------------- leitura, adoção e conferência (desenho 3.5, 4.3 e 5.2)
+
+/** O registro do Beds24 nos campos que o M8.3 compara (`lido`, `antes`, `depois`): nada do hóspede nem valor. */
+export const lidoDoRegistro = (b: Pick<ReservaBeds24, "roomId" | "checkin" | "checkout" | "hospedes" | "estado">): LidoBeds24 => ({ quarto: b.roomId, chegada: b.checkin, saida: b.checkout, hospedes: b.hospedes, situacao: b.estado });
+
+/**
+ * A assinatura do que o SCL quer agora, pela mesma conta da régua (desenho 3.3): o quarto guardado, as datas e as pessoas
+ * da reserva, e a situação (confirmada ou cancelada). null = a reserva não está em nenhuma das duas (nada a comparar).
+ */
+export function assinaturaAtualDoScl(r: Pick<ReservaParaBeds24, "estado" | "checkin" | "checkout" | "hospedes">, quarto: string): string | null {
+  if (r.estado !== "confirmada" && r.estado !== "cancelada") return null;
+  return assinaturaEsperado({ quarto, chegada: r.checkin, saida: r.checkout, hospedes: r.hospedes, situacao: r.estado });
+}
+
+/** O que mudou no Beds24 por fora: o motivo do acompanhamento e se as datas, a situação ou o quarto mudaram (não só as pessoas). */
+export type DiferencaNoBeds24 = { motivo: "mudada_no_beds24" | "cancelada_no_beds24" | "apagada_no_beds24"; soPessoas: boolean };
+
+/**
+ * Compara a leitura do Beds24 com o `esperado` (o que o SCL mandou): `lido` null = o registro não voltou na leitura por id
+ * (apagado). As pessoas só contam quando o esperado é confirmado e tem o número. Igual = null.
+ */
+export function diferencaNoBeds24(esperado: EsperadoBeds24, lido: LidoBeds24 | null): DiferencaNoBeds24 | null {
+  if (!lido) return { motivo: "apagada_no_beds24", soPessoas: false };
+  if (esperado.situacao === "confirmada" && lido.situacao === "cancelada") return { motivo: "cancelada_no_beds24", soPessoas: false };
+  if (lido.situacao !== esperado.situacao || lido.quarto !== esperado.quarto || lido.chegada !== esperado.chegada || lido.saida !== esperado.saida) return { motivo: "mudada_no_beds24", soPessoas: false };
+  if (esperado.situacao === "confirmada" && esperado.hospedes !== null && lido.hospedes !== esperado.hospedes) return { motivo: "mudada_no_beds24", soPessoas: true };
+  return null;
+}
+
+/** O que a criação esperava encontrar no Beds24: o quarto guardado (na criação, o do vínculo) e as datas do `esperado`. */
+export type EsperadoDaAdocao = { quarto: string; chegada: string; saida: string };
+
+export type DecisaoAdocao =
+  | { adotar: true; registro: ReservaBeds24 }
+  /** Nenhum registro com a marca. */
+  | { adotar: false; motivo: "nenhum" }
+  /** Dois ou mais registros com a marca: a equipe decide (nenhum POST). */
+  | { adotar: false; motivo: "duplicada"; ids: string[] }
+  /** Um registro com a marca, mas não bate (situação, quarto ou datas): a equipe confere (nenhum POST). */
+  | { adotar: false; motivo: "marca_em_registro_inesperado"; id: string };
+
+/**
+ * As regras de adoção (desenho 3.5), iguais no trabalhador, na importação e em "Vincular": exatamente um registro com a
+ * marca, em `confirmed` ou `new` (a confirmada do SCL), no quarto guardado, com a chegada e a saída do esperado. Um
+ * `black` ou um `cancelled` com o código, ou outras datas, é marca em registro inesperado; dois ou mais, duplicada.
+ * `comMarca` são os registros lidos com a marca desta reserva (o ensaio nunca entra). Sem esperado, nada se adota.
+ */
+export function regraDeAdocao(comMarca: readonly ReservaBeds24[], esperado: EsperadoDaAdocao | null): DecisaoAdocao {
+  const ids = [...new Set(comMarca.map((b) => b.idExterno))];
+  if (!ids.length) return { adotar: false, motivo: "nenhum" };
+  if (ids.length > 1) return { adotar: false, motivo: "duplicada", ids: ids.sort() };
+  const b = comMarca[0];
+  if (!esperado || b.estado !== "confirmada" || b.roomId !== esperado.quarto || b.checkin !== esperado.chegada || b.checkout !== esperado.saida) return { adotar: false, motivo: "marca_em_registro_inesperado", id: b.idExterno };
+  return { adotar: true, registro: b };
 }
 
 // ---------------------------------------------------------------- escopos da credencial (prontidão, desenho 7)

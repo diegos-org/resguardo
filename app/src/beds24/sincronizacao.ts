@@ -7,13 +7,16 @@ import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
 import { paraDadosReserva } from "./converter";
+import { avisoDaConferencia, conferirNaImportacao, desvioNaImportacao, passarEnviandoVencidasAIncerta, prepararDesvioNaImportacao } from "./reservas-site";
 import { ErroBeds24, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
-import { envioEmAndamento, tentarTravaBeds24 } from "./trava";
+import { CAUSA_EM_ANDAMENTO, escritaBeds24EmAndamento, MENSAGEM_ENVIO_EM_ANDAMENTO, MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE, tentarTravaBeds24 } from "./trava";
 
 export type ResultadoSync = {
   ok: boolean; situacao: "ok" | "parcial" | "erro" | "ocupada" | "desligada";
   criadas: number; atualizadas: number; iguais: number; bloqueios: number; diasCalendario: number;
   totalDivergencias: number; divergencias: string[]; mensagem: string;
+  /** Só na "ocupada": a causa em poucas palavras (a rotina diária registra "não rodou: <causa>"). */
+  causa?: string;
 };
 const resultado = (): ResultadoSync => ({ ok: true, situacao: "ok", criadas: 0, atualizadas: 0, iguais: 0, bloqueios: 0, diasCalendario: 0, totalDivergencias: 0, divergencias: [], mensagem: "" });
 const referencia = (s: string) => /^[A-Za-z0-9._:-]{1,64}$/.test(s) ? s : "não identificado";
@@ -34,12 +37,17 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
   try {
     r = await db.transaction(async tx => {
       await tx.execute(sql`set local lock_timeout = '15s'`);
-      // Mesma trava do envio de calendário: importação e envio nunca rodam ao mesmo tempo. Um envio entre a
-      // escrita externa e o registro final (fase sem trava) também faz a importação esperar.
-      if (!(await tentarTravaBeds24(tx, org))) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Já há uma sincronização ou um envio de calendário em andamento. Aguarde e atualize a página." };
-      if (await envioEmAndamento(tx, org, agora)) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Há um envio de calendário e preços em andamento. Aguarde alguns minutos e tente de novo." };
+      // Mesma trava do envio de calendário e do envio de reservas do site: importação e envios nunca rodam ao mesmo tempo.
+      // Um envio entre a escrita externa e o registro final (fase sem trava) também faz a importação esperar; a mensagem
+      // diz qual (calendário ou reserva do site).
+      if (!(await tentarTravaBeds24(tx, org))) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Já há uma sincronização, um envio de calendário ou um envio de reserva do site em andamento. Aguarde e atualize a página.", causa: CAUSA_EM_ANDAMENTO.trava };
+      const emAndamento = await escritaBeds24EmAndamento(tx, org, { agora });
+      if (emAndamento) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: emAndamento === "reserva" ? MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE : MENSAGEM_ENVIO_EM_ANDAMENTO, causa: CAUSA_EM_ANDAMENTO[emAndamento] };
       const c = await lerConfigBeds24(tx, org);
       if (o.automatica && !c.automatica) return { ...resultado(), situacao: "desligada" as const, mensagem: "Sincronização automática desligada no painel." };
+      // Já com a trava (e sem envio em andamento): a reserva do site com o POST tentado e sem resposta há mais de 6 min fica
+      // incerta (M8.3, desenho 3.6), e a importação nunca cria por cima dela (desvio "e", abaixo).
+      await passarEnviandoVencidasAIncerta(tx, org);
       const mapas = (await listarMapeamentosBeds24(tx, org)).filter(m => m.ativo);
       if (!mapas.length) throw new ErroBeds24("Vincule pelo menos um quarto do Beds24 a um imóvel ativo do SCL antes de importar.", "configuracao");
       if (mapas.some(m => !/^\d+$/.test(m.propertyId) || !/^\d+$/.test(m.roomId))) throw new ErroBeds24("Confira os vínculos: informe propertyId e roomId numéricos para cada imóvel. Vínculo sem quarto não é usado na importação.", "configuracao");
@@ -51,7 +59,8 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
         if (q.moeda !== "BRL") throw new ErroBeds24(`A moeda do imóvel ${m.codigo} precisa estar confirmada como BRL no Beds24 antes da importação financeira.`, "configuracao");
       }
       const res = resultado();
-      const lote = await leitor.reservas({ saidaDe: c.desde, propertyIds: [...new Set(mapas.map(m => m.propertyId))] });
+      // Com os info items (M8.3, desenho 5.4): é onde mora a marca do SCL nas reservas pagas do site e no ensaio.
+      const lote = await leitor.reservas({ saidaDe: c.desde, propertyIds: [...new Set(mapas.map(m => m.propertyId))], incluirInfo: true });
       const porId = new Map(lote.itens.map(b => [b.idExterno, b]));
       if (porId.size !== lote.itens.length) throw new ErroBeds24("Consulta com IDs de reserva repetidos. Confira a origem antes de importar; nenhuma mudança foi aplicada.", "formato");
       for (const d of lote.divergencias) aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
@@ -66,9 +75,17 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       const faltantes = conhecidos.filter(id => !porId.has(id));
       for (let i = 0; i < faltantes.length; i += 50) {
         const ids = faltantes.slice(i, i + 50);
-        const l = await leitor.reservas({ ids, chegadaDe: "1900-01-01" });
+        const l = await leitor.reservas({ ids, chegadaDe: "1900-01-01", incluirInfo: true });
         for (const b of l.itens) if (ids.includes(b.idExterno)) porId.set(b.idExterno, b);
         for (const id of ids) if (!porId.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
+      }
+      // Reserva paga do site (M8.3, desenho 5.2): o que o desvio consulta, lido uma vez. O id dela que não voltou na releitura
+      // é conferido como apagado no Beds24 (a reserva do SCL continua como estava).
+      const desvio = await prepararDesvioNaImportacao(tx, org, porId.values(), new Set(conhecidos), agora);
+      for (const id of faltantes) {
+        const ligada = porId.has(id) ? undefined : desvio.ligadas.get(id);
+        const a = ligada ? avisoDaConferencia(await conferirNaImportacao(tx, org, ligada.id, null, agora), ligada.codigo, id) : null;
+        if (a) aviso(res, a);
       }
       const inicio = hojeISO("America/Sao_Paulo", agora);
       const fim = somarDias(inicio, c.diasCalendario);
@@ -77,6 +94,13 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
 
       for (const b of porId.values()) {
         if (Date.now() > limite) throw new ErroBeds24("A importação excedeu o tempo disponível e foi desfeita. Reduza o período ou solicite processamento em lotes.", "tempo");
+        // Antes da conferência de vínculo e do ramo de bloqueio: a reserva do site (e o ensaio) nunca passa por
+        // `sincronizarReserva`, mesmo com o vínculo do imóvel trocado depois da criação.
+        const d = await desvioNaImportacao(tx, org, b, desvio);
+        if (d.desviado) {
+          if (d.aviso) aviso(res, d.aviso);
+          continue;
+        }
         const m = mapas.find(m => m.propertyId === b.propertyId && m.roomId === b.roomId);
         if (!m) { aviso(res, `Reserva ${referencia(b.idExterno)}: quarto sem vínculo ativo e exato no SCL. Nenhuma alteração aplicada a esse registro.`); continue; }
         await aplicarRegistro(tx, org, b, m.imovelId, res, o.autorId ?? null, exec.id);

@@ -449,6 +449,16 @@ O desvio fica no laço da importação (`sincronizacao.ts:78-83`), **antes** da 
 
   Já com a trava, a importação pode passar uma `enviando` vencida para `incerta`.
 
+**Registro da implementação (M8.3a, 16/10/2026).** Três pontos do desvio ficaram mais estreitos do que o texto acima. O objetivo final é o mesmo: a importação nunca cria nem sobrescreve a reserva do site e nunca esconde uma reserva de OTA por mais tempo que o necessário.
+
+| | Antes (o texto acima) | Agora (o código) | Motivo |
+|---|---|---|---|
+| `black` com o código | c, d e e valiam para qualquer registro: um `black` com `SCL-XXXXXX` não seria importado. | Um `black` com o código, ou sobre uma criação não resolvida, segue o caminho dos bloqueios. A regra b continua antes de tudo: um `black` no id de uma reserva do site vira `divergente` e nunca cancela nada. | O M8.3 nunca cria um `black`. Um bloqueio com o código no nome é a equipe fechando as datas à mão (6.2 e 6.6), e a importação precisa vê-lo para fechar a pendência quando ele for cancelado. |
+| e, registro já conhecido | Pulava qualquer registro sem marca sobreposto. | Pula só o registro que a importação criaria. O que o SCL já conhece (reserva ou bloqueio importado antes) segue e é atualizado. | Atualizar um registro conhecido não cria duplicata. Pular escondia, enquanto a criação não se resolvesse, por exemplo o cancelamento de uma reserva de OTA. |
+| b, quando vira `divergente` | "Uma diferença vira `divergente`." | Vira `divergente` só quando o Beds24 deveria estar igual: acompanhamento `conferida` ou já `divergente`, e sem operação ativa. Nos outros casos (envio a fazer ou em curso, equipe decidindo, `manual`, `encerrada`), só a leitura é gravada. | Com uma intenção nova ainda não enviada, o Beds24 está diferente do `esperado` por definição. Marcar `mudada_no_beds24` nesse caso seria um alarme falso. |
+
+Na importação, a conferência grava o fato (`lido`, `conferida_em`, `divergente` com o motivo, `ota_fechada_em` vazio quando a divergência é de datas, situação ou quarto). A adoção grava `reservas.beds24_id` e passa a operação de criação a `feita`. A situação `conferida` e as marcas das OTAs (6.3) ficam com o trabalhador do M8.3c.
+
 ### 5.3 Proteção em `sincronizarReserva`
 `reservas/repositorio.ts`: se a fonte for `beds24` ou `csv` e a reserva encontrada tiver `fonte = 'site'`, a função devolve `{ ok: false, erros: { geral: "Reserva do site: os dados vêm do SCL; a diferença no Beds24 vira aviso." } }`. É a regra "fonte externa nunca muda reserva do site", num lugar só. Cobre também o ramo `black` (`sincronizacao.ts:121-122`). O M12.2 estende a regra.
 
