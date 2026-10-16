@@ -67,6 +67,12 @@ export const reservaCalculadaPeloMotor = (r: { estado: EstadoReserva; valorRetid
 
 export type ContratoParaMotor = { tipo: TipoContrato; comissaoBp: number | null; inicio: string; fim: string | null };
 
+/**
+ * Contrato de marketplace pela régua do motor: o tipo, ou o contrato sem comissão (a divisão do modelo B entra no
+ * financeiro com o M12.2). Uma regra, um lugar: `pendenciaDoCalculo` e a reserva do site no Beds24 (M8.3) leem daqui.
+ */
+export const contratoDeMarketplace = (c: Pick<ContratoParaMotor, "tipo" | "comissaoBp">): boolean => c.tipo === "marketplace" || c.comissaoBp === null;
+
 export type ResultadoMotor = { lancamentos: NovoLancamento[]; avisos: string[] };
 
 /** Noites por mês ("AAAA-MM" → noites), em ordem. */
@@ -195,7 +201,7 @@ export function pendenciaDoCalculo(
   if (r.valorBruto === null) return "sem_valor";
   const contrato = contratoVigente(contratos, r.checkin);
   if (!contrato) return "sem_contrato";
-  if (contrato.tipo === "marketplace" || contrato.comissaoBp === null) return "marketplace";
+  if (contratoDeMarketplace(contrato)) return "marketplace";
   if (donos.length === 0) return "sem_proprietario";
   if (donos.length > 1) return "varios_proprietarios";
   if (quemRecebeNaReserva(r, regras, recebimentoDoImovel) !== "empresa") return "recebimento_nao_empresa";

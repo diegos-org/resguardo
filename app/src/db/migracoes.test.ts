@@ -328,4 +328,37 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     expect(await aplicarMigracoesPendentes(executar, ate0071)).toBe(1);
     expect((await frase(antigo.id)).frase).toBe("Frase fictícia.");
   }, 120_000);
+
+  it("a 0072 (M8.3a, reservas do site no Beds24) cria as duas tabelas vazias, com os únicos do desenho, nomes até 63 caracteres, e é idempotente", async () => {
+    const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
+    const m0072 = todas[72];
+    expect(m0072.sql.join("\n")).toContain('"beds24_reservas_operacoes"');
+    // Só até a 0072 (as seguintes terão o próprio teste).
+    const ate0072 = todas.slice(0, 73);
+    expect(await aplicarMigracoesPendentes(executar, todas.slice(0, 72))).toBe(72);
+    const { rows: [{ id: org }] } = await db.query<{ id: string }>("insert into organizacoes (nome) values ('Org') returning id");
+    const { rows: [{ id: im }] } = await db.query<{ id: string }>("insert into imoveis (organizacao_id, codigo, nome) values ($1, '403', 'Studio Fictício') returning id", [org]);
+    const { rows: [{ id: reserva }] } = await db.query<{ id: string }>("insert into reservas (organizacao_id, imovel_id, codigo, origem, checkin, checkout, fonte) values ($1, $2, 'SCL-7K2QXM', 'site', '2026-12-20', '2026-12-27', 'site') returning id", [org, im]);
+
+    expect(await aplicarMigracoesPendentes(executar, ate0072)).toBe(1);
+    // Nada nasce sozinho: nenhuma reserva de antes ganha acompanhamento ou operação.
+    expect((await db.query<{ n: number }>("select (select count(*) from beds24_reservas_site) + (select count(*) from beds24_reservas_operacoes) as n")).rows[0].n).toBe(0);
+    const restricoes = async () => (await db.query<{ n: string }>("select conname as n from pg_constraint where conname like 'beds24_reservas_%' order by 1")).rows.map((r) => r.n);
+    const indices = async () => (await db.query<{ n: string }>("select indexname as n from pg_indexes where tablename like 'beds24_reservas_%' order by 1")).rows.map((r) => r.n);
+    const antes = { restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas() };
+    expect(antes.tabelas).toEqual(expect.arrayContaining(["beds24_reservas_site", "beds24_reservas_operacoes"]));
+    expect(antes.restricoes).toContain("beds24_reservas_operacoes_acompanhamento_fk");
+    expect(antes.restricoes.every((n) => n.length <= 63)).toBe(true);
+    expect(antes.indices).toEqual(expect.arrayContaining(["beds24_reservas_site_reserva", "beds24_reservas_operacoes_chave", "beds24_reservas_operacoes_uma_ativa", "beds24_reservas_operacoes_situacao", "beds24_reservas_operacoes_beds24"]));
+    // Uma operação ativa por reserva; a chave é única por organização.
+    await db.query("insert into beds24_reservas_operacoes (organizacao_id, reserva_id, tipo, chave, modo, situacao) values ($1, $2, 'criar', 'criar:r:1', 'real', 'enviando')", [org, reserva]);
+    await expect(db.query("insert into beds24_reservas_operacoes (organizacao_id, reserva_id, tipo, chave, modo, situacao) values ($1, $2, 'cancelar', 'cancelar:r:2', 'real', 'pendente')", [org, reserva])).rejects.toThrow();
+    await expect(db.query("insert into beds24_reservas_operacoes (organizacao_id, reserva_id, tipo, chave, modo, situacao) values ($1, $2, 'criar', 'criar:r:1', 'real', 'superada')", [org, reserva])).rejects.toThrow();
+    // As instruções de novo (banco compartilhado das prévias): nada muda, nem a linha já gravada.
+    for (const instrucao of m0072.sql) await db.exec(instrucao);
+    expect({ restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas() }).toEqual(antes);
+    expect((await db.query("select 1 from beds24_reservas_operacoes")).rows).toHaveLength(1);
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0072.hash]);
+    expect(await aplicarMigracoesPendentes(executar, ate0072)).toBe(1);
+  }, 120_000);
 });

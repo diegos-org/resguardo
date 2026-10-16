@@ -66,6 +66,17 @@ export function gerarCodigo(): string {
   return `SCL-${s}`;
 }
 
+/** Um código no formato de `gerarCodigo` (mesmo alfabeto), sem nada em volta. */
+export const ehCodigoDeReserva = (t: string): boolean => new RegExp(`^SCL-[${ALFABETO}]{6}$`).test(t);
+
+/**
+ * Os códigos no formato de `gerarCodigo` que aparecem soltos num texto (ex.: o nome ou a nota de um registro do Beds24,
+ * M8.3), sem repetição e na ordem em que aparecem. Grudado em outra letra ou número não conta.
+ */
+export function codigosDeReservaNoTexto(t: string): string[] {
+  return [...new Set(t.match(new RegExp(`\\bSCL-[${ALFABETO}]{6}\\b`, "g")) ?? [])];
+}
+
 export type DadosReserva = {
   imovelId: string;
   origem: OrigemReserva;
