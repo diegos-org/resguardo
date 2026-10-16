@@ -14,6 +14,7 @@ vi.mock("@/beds24/acoes-reservas", () => ({
   desligarImovelReservasBeds24Acao: m.desligar,
   conferirEscoposReservasBeds24Acao: m.escopos,
 }));
+import { avaliarEscoposBeds24, ESCOPOS_OBRIGATORIOS_BEDS24 } from "@/beds24/reservas-site-regras";
 import { AcaoReservasBeds24, ConferirEscoposBeds24 } from "./AcaoReservasBeds24";
 
 let confirmar: ReturnType<typeof vi.spyOn>;
@@ -51,11 +52,17 @@ it("ligar manda o imóvel e mostra a recusa do servidor; desabilitado, nem pergu
   expect((screen.getByRole("button", { name: "Ligar" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
+/** A resposta como o servidor monta: a avaliação vem da regra de verdade, nunca escrita à mão. */
+const lido = (escopos: readonly string[], ilegiveis: string[] = []) => ({
+  resultado: { lidos: true, avaliacao: avaliarEscoposBeds24({ escopos: [...escopos], ilegiveis }), escopos: [...escopos], ilegiveis, lidoEm: "2026-10-16T12:00:00Z" },
+});
+
 it.each([
   [{ resultado: { lidos: false, motivo: "fora_da_producao" } }, "os escopos só são lidos no deploy de produção"],
-  [{ resultado: { lidos: true, avaliacao: { situacao: "em_ordem", excessivos: [], faltando: [] }, escopos: ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "write:inventory"], ilegiveis: [], lidoEm: "2026-10-16T12:00:00Z" } }, "Em ordem: tem todos os escopos do convite"],
-  [{ resultado: { lidos: true, avaliacao: { situacao: "escopo_excessivo", excessivos: ["all:bookings"], faltando: [] }, escopos: ["write:bookings", "all:bookings"], ilegiveis: [], lidoEm: "2026-10-16T12:00:00Z" } }, "a mais: all:bookings"],
-  [{ resultado: { lidos: true, avaliacao: { situacao: "incompleto", excessivos: [], faltando: ["write:inventory"] }, escopos: ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties"], ilegiveis: [], lidoEm: "2026-10-16T12:00:00Z" } }, "Faltam escopos do convite: conta como fora de ordem. Gere um convite novo com todos os escopos acima. Lidos: write:bookings, read:bookings-personal, read:bookings-financial, read:properties · faltando: write:inventory."],
+  [lido(ESCOPOS_OBRIGATORIOS_BEDS24), `Em ordem: tem exatamente os escopos do convite, nada a mais e nada a menos (sem apagar, sem "all" e sem escrever dados pessoais). Lidos: ${ESCOPOS_OBRIGATORIOS_BEDS24.join(", ")}.`],
+  [lido(["write:bookings", "all:bookings"]), "Lidos: write:bookings, all:bookings · a mais: all:bookings · faltando: read:bookings, read:bookings-personal, read:bookings-financial, read:properties, read:inventory, write:inventory."],
+  [lido(ESCOPOS_OBRIGATORIOS_BEDS24.filter((e) => e !== "write:inventory")), "Faltam escopos do convite: conta como fora de ordem. Gere um convite novo com todos os escopos acima. Lidos: read:bookings, write:bookings, read:bookings-personal, read:bookings-financial, read:properties, read:inventory · faltando: write:inventory."],
+  [lido([], ["bookings:write"]), "Não deu para ler os escopos na resposta do Beds24: conta como fora de ordem. Lidos: nenhum · fora do formato: bookings:write."],
   [{ resultado: { lidos: false, motivo: "falhou", erro: "Beds24 respondeu HTTP 401." } }, "Não deu para ler no Beds24: Beds24 respondeu HTTP 401."],
   [{ mensagem: "Somente quem edita as configurações muda o envio das reservas do site ao Beds24." }, "Somente quem edita as configurações"],
 ])("prontidão: os escopos lidos ou por que não leu (%#)", async (resposta, texto) => {

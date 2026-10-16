@@ -1,7 +1,7 @@
 # Reserva paga do site no Beds24 (M8.3): desenho
 
 **Situação:** desenho revisado em 16/10/2026 depois de três críticas: dano real, concorrência e operação. Base: `origin/main` no commit `adca993` (16/10/2026).
-- **M8.3a (base sem escrita): entregue em 16/10/2026 na branch `claude/m8-3a-base-reservas-beds24`, em revisão e ainda não integrado na `main`.** Nada escreve no Beds24. As mudanças de método da implementação estão registradas onde cada regra mora (5.2, 8 e 10).
+- **M8.3a (base sem escrita): entregue em 16/10/2026 na branch `claude/m8-3a-base-reservas-beds24`, em revisão e ainda não integrado na `main`.** Nada escreve no Beds24. As mudanças de método da implementação estão registradas onde cada regra mora (5.2, 7, 8 e 10).
 - **M8.3b e M8.3c:** a fazer (seção 13). **M8.3d:** `bloqueado` na resposta do suporte do Beds24, que Diego pede com a pergunta preparada pelo agente no M8.3c (seções 12 e 13).
 - **D3 decidida por Diego em 16/10/2026**, igual ao padrão: só a reserva paga pelo site vai ao Beds24 (seção 11).
 - **Antes:** esta linha dizia "este é só o desenho" e "Nada foi implementado", e as seções 1 e 13 previam o M8.3a a partir da `main` depois do merge do PR das decisões de 16/10. **Agora:** como esse PR (#146, M13.1) ainda está aberto, o M8.3a foi empilhado sobre ele e entra depois dele, na ordem dos PRs empilhados (`CLAUDE.md`, "Merge", item 4).
@@ -132,7 +132,7 @@ Regras:
 | Produção | ausente ou diferente de `ligada` | qualquer | qualquer | A rotina sai antes de qualquer trava, leitura ou linha nova. A única exceção: operações `enviando` ou `incerta` que sobraram de quando a chave estava ligada são resolvidas só com leitura, nunca com POST. Os avisos usam o texto por reserva (6.2). |
 | Produção | `ligada` | ausente, ou só `BEDS24_API_KEY` | qualquer | Nada sai. Um aviso de configuração aparece em Integrações, no Sistema e numa linha do Início, e não um por reserva. |
 | Produção | `ligada` | refresh token | pausa geral | Nada é escrito. As operações em curso são resolvidas só com leitura. |
-| Produção | `ligada` | refresh token | prontidão falhou: `escopo_excessivo`, `sem_ensaio` ou `marca_ilegivel` | As criações param e vale um aviso de configuração só. Atualização e cancelamento de reservas já criadas seguem, salvo com `escopo_excessivo`. |
+| Produção | `ligada` | refresh token | prontidão falhou: `escopo_excessivo`, `escopo_fora_de_ordem` (escopo faltando ou resposta ilegível, seção 7), `sem_ensaio` ou `marca_ilegivel` | As criações param e vale um aviso de configuração só. Atualização e cancelamento de reservas já criadas seguem, salvo com `escopo_excessivo`; sem a permissão, o Beds24 recusa e o motivo vira `sem_permissao` (3.8). |
 | Produção | `ligada` | refresh token | imóvel não ligado | Para aquele imóvel, vale como chave desligada: sem linha nova e sem aviso de atenção. Só o aviso manual de hoje. |
 | Produção | `ligada` | refresh token | sem vínculo único, quarto inacessível ou moeda diferente de BRL | Aviso de configuração. A reserva fica `pendente` com o motivo. |
 | Produção | `ligada` | refresh token | tudo certo | **Envio real** em três fases (3.6). |
@@ -189,7 +189,7 @@ A última migração na `main` é `0071_m7_17_frase_do_imovel.sql`. O número mu
 | `avisada_em`, `criado_em`, `atualizado_em` | |
 
 Os motivos são estes:
-- **Configuração:** `sem_vinculo`, `sem_credencial`, `escopo_excessivo`, `sem_ensaio`, `marca_ilegivel`.
+- **Configuração:** `sem_vinculo`, `sem_credencial`, `escopo_excessivo`, `escopo_fora_de_ordem`, `sem_ensaio`, `marca_ilegivel`.
 - **Situação manual ou bloqueio:** `anterior_a_ligar`, `deixada_a_mao`, `bloqueio_manual`, `bloqueio_do_scl`.
 - **Incerteza e recusa:** `incerta`, `duplicada`, `marca_em_registro_inesperado`, `sem_permissao`, `recusada_pelo_beds24`, `sem_disponibilidade`.
 - **Conflito, falha e divergência:** `noites_ocupadas`, `falhas`, `mudada_no_beds24`, `cancelada_no_beds24`, `apagada_no_beds24`.
@@ -612,26 +612,41 @@ A chave é `beds24-reserva:<reservaId>:<motivo>:<assinatura>`. O texto leva só 
 - **Sem e-mail do hóspede no Beds24**, as Auto Actions não escrevem ao hóspede. As de origem "Direct" ou "All" valem para reservas da API **[C]** (Auto_Actions:117). Isso preserva o M5.9.
 - **O financeiro é do SCL.** **[C]** O Beds24 não calcula preço de reserva criada pela API (Cat:717-719). **A confirmar** se ele grava 0. A importação não lê o valor da reserva do site (5.2).
 
-**Escopos do token novo (D10).** O convite novo deve pedir exatamente:
-- escrita em `bookings`;
+**Escopos do token novo (D10).** O convite novo deve pedir exatamente estes sete (`ESCOPOS_OBRIGATORIOS_BEDS24`, em `beds24/reservas-site-regras.ts`):
+- leitura e escrita em `bookings`: a escrita cria, muda e cancela; a leitura serve à importação e às releituras da conferência e da busca (3.6), que passam a usar esta credencial (`beds24/http.ts:182-184`);
 - leitura em `bookings-personal`: a importação lê nome e e-mail (`normalizar.ts:92-94`). **[S]** O token atual tem essa leitura;
 - leitura em `bookings-financial`, também para a importação;
 - leitura em `properties`;
-- escrita em `inventory`, para o M3.7.
+- leitura e escrita em `inventory`: a escrita para o envio do M3.7, a leitura para a releitura do calendário dele.
+
+As duas leituras ao lado das escritas vêm explícitas. **[I]** Não está confirmado que a escrita dá a leitura: a documentação trata cada método como um escopo à parte (`API_V2.wiki:138`), e o exemplo da resposta lista `read:bookings` como item próprio (`yaml:3155-3197`). Pergunta ao suporte na seção 12, item 7.
 
 E nunca:
 - escrita nem `all` em `bookings-personal`, que dariam `POST /bookings/messages` (`API_V2.wiki:98-104`);
-- `all` nem o método de apagar (`all:bookings` apaga, `API_V2.wiki:140`; apagar o item principal exige DELETE, `:157`).
+- `all` nem o método de apagar (`all:bookings` apaga, `API_V2.wiki:140`; apagar o item principal exige DELETE, `:157`);
+- nenhum outro escopo, de leitura ou de escrita, fora dos sete.
 
-**Conferência dos escopos.** A prontidão lê `GET /authentication/details` **[C]** (`yaml:3155-3197`) sob demanda e uma vez por dia na rotina, e compara com a lista exata acima (`ESCOPOS_OBRIGATORIOS_BEDS24`, em `beds24/reservas-site-regras.ts`):
-- **a mais** (`escopo_excessivo`): qualquer escopo fora da lista, o que inclui DELETE, `all`, escrita pessoal e qualquer outra escrita. Só a leitura das áreas que já têm escrita (`read:bookings`, `read:inventory`) não conta como a mais, porque a escrita já dá essa leitura. Nada é escrito, e Integrações mostra os escopos a mais;
-- **faltando** (`incompleto`): falta qualquer um dos cinco, a escrita de reservas inclusive. Conta como fora de ordem, e Integrações mostra o que falta;
-- **não deu para ler** (`ilegivel`): também fora de ordem;
-- **em ordem**: os cinco e nada além.
+**Conferência dos escopos.** A prontidão lê `GET /authentication/details` **[C]** (`yaml:3155-3197`) sob demanda e uma vez por dia na rotina, e compara com a lista exata acima:
+- **a mais** (`escopo_excessivo`): qualquer escopo fora dos sete, o que inclui DELETE, `all`, escrita pessoal e qualquer outra leitura ou escrita. Nada é escrito, e Integrações mostra os escopos a mais;
+- **faltando** (`incompleto`): falta qualquer um dos sete, a escrita de reservas inclusive. Conta como fora de ordem, e Integrações mostra o que falta;
+- **não deu para ler** (`ilegivel`): a resposta não veio no formato conhecido, ou trouxe algum item fora dele. Também fora de ordem. Nesse caso a tela não diz o que falta, porque o que parece faltar pode estar lá num formato desconhecido; ela mostra os itens fora do formato;
+- **em ordem**: os sete e nada além.
+
+O motivo de configuração sai de um lugar só, `motivoDosEscoposBeds24`: a mais é `escopo_excessivo`; faltando ou não deu para ler é `escopo_fora_de_ordem` (2.4 e 3.2).
 
 **A confirmar** o formato dos escopos na resposta. Se o suporte disser que a escrita em `bookings-personal` é indispensável, a regra passa por Diego.
 
-*Mudança de 16/10 (revisão do Codex no PR do M8.3a).* Antes, a conferência só barrava DELETE, `all` e escrita pessoal e só exigia a escrita de reservas: uma credencial sem a leitura de dados pessoais, de imóveis ou sem a escrita de calendário, ou com outra escrita qualquer, aparecia "em ordem". Agora ela exige os cinco do convite e barra qualquer escopo fora da lista. Motivo: a lista do convite é exata (D10), e a prontidão só pode dizer "em ordem" para a credencial que o desenho pede. Objetivo: nenhuma escrita de reservas com credencial diferente da combinada. A situação `sem_escrita` deixou de existir: a falta da escrita de reservas aparece como `incompleto`, com `write:bookings` na lista do que falta.
+*Mudanças de 16/10 (revisões do PR do M8.3a).*
+- **Primeira, pela revisão do Codex.**
+  - Antes, a conferência só barrava DELETE, `all` e escrita pessoal e só exigia a escrita de reservas. Uma credencial sem a leitura de dados pessoais ou de imóveis, ou sem a escrita de calendário, aparecia "em ordem", e também uma com outra escrita qualquer.
+  - Depois, passou a exigir os cinco do convite e a barrar o que estivesse fora da lista, tolerando `read:bookings` e `read:inventory` "porque a escrita já dá essa leitura".
+  - A situação `sem_escrita` deixou de existir: a falta da escrita de reservas aparece como `incompleto`, com `write:bookings` na lista do que falta.
+- **Segunda, pela revisão interna.** A tolerância se apoiava numa suposição sem fonte.
+  - Agora o convite pede as duas leituras explícitas, e a lista exata passa a ter sete escopos, sem exceção.
+  - Com a resposta ilegível, a tela não diz mais o que falta.
+  - A prontidão ganhou o motivo `escopo_fora_de_ordem`, para a falta e para a leitura ilegível. Antes, essas duas situações não tinham motivo na tabela 2.4.
+- **Motivo das duas:** a lista do convite é exata (D10), e a prontidão só pode dizer "em ordem" para a credencial que o desenho pede, sem supor o que não foi conferido.
+- **Objetivo:** nenhuma escrita de reservas com credencial diferente da combinada.
 
 **A troca do token afeta tudo.**
 - O refresh token tem prioridade também na importação e no envio (`beds24/http.ts:166-170`).
@@ -843,7 +858,7 @@ Em `app/painel/configuracoes/integracoes/page.tsx` (`configuracao:editar`):
     - até 10 operações por volta; 150 s mínimos; atraso e 5 falhas;
     - com o falso lento, a volta não inicia operação sem tempo para a fase 3.
 35. O pagamento não depende do Beds24: com o falso falhando, o pagamento confirma; nada do M8.3 roda dentro de `aplicarNaTransacao`.
-36. `escopo_excessivo`: nada é escrito.
+36. `escopo_excessivo`: nada é escrito. `escopo_fora_de_ordem` (faltando ou ilegível): as criações param, e a atualização e o cancelamento seguem.
 37. Ensaio: cria, relê, procura, cancela e relê; a importação pula o registro; o ensaio libera a D6.
 38. Os botões de configuração são recusados para o papel `operacao`.
 39. Regressão: uma reserva criada pelo M8.3, com `livres = 0` observado, aceita a alteração que acrescenta uma noite no fim.
@@ -897,7 +912,7 @@ Em `app/painel/configuracoes/integracoes/page.tsx` (`configuracao:editar`):
 4. Reserva sobre `black` ou blackout, e o efeito de `overbookingProtection`.
 5. O que acontece ao passar de `cancelled` para `confirmed`.
 6. Se o info item é dado básico; se `notes` é básico e não aparece em modelos de e-mail; se gravar o nome exige escrita em `bookings-personal`.
-7. Os escopos mínimos e o formato de `GET /authentication/details`.
+7. Os escopos mínimos e o formato de `GET /authentication/details`. Em especial: a escrita em `bookings` e em `inventory` já dá a leitura? Se der e a resposta não listar a leitura, a lista do convite (7) perde as duas leituras, com registro.
 8. Que preço fica gravado quando `price` não vai.
 9. Que `channel`, `referer` e `apiSource` a reserva criada recebe (**[I]** `direct`).
 10. O padrão de `notifyGuest`, `notifyHost` e `allowWebhooks`.

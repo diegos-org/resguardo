@@ -12,8 +12,8 @@ import type { CredencialBeds24, DiaCalendario, EnvioCalendario, EscritorBeds24, 
 type Obj = Record<string, unknown>;
 const somarDias = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
-/** Os escopos que o convite novo deve pedir (desenho 7, D10): escrita de reservas, sem escrita pessoal, sem "all" e sem apagar. */
-export const ESCOPOS_ESPERADOS_FALSO = ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "write:inventory"];
+/** A resposta de uma credencial feita com exatamente os escopos do convite (desenho 7, D10). */
+export const ESCOPOS_ESPERADOS_FALSO = ["read:bookings", "write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "read:inventory", "write:inventory"];
 
 export class Beds24Falso implements LeitorBeds24, LeitorCredencialBeds24, EscritorBeds24 {
   bookings: Obj[] = [];

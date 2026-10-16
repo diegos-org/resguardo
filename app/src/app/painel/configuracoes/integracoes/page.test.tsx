@@ -84,7 +84,8 @@ it("M8.3a: as duas chaves do Beds24 (calendário e reservas do site), cada uma p
   expect(h).toContain("envio para o Beds24 desligado (BEDS24_ESCRITA)");
   expect(h).toContain("reservas do site no Beds24: chave desligada (BEDS24_ESCRITA_RESERVAS)");
   expect(h).toContain("Reservas do site no Beds24 só com BEDS24_ESCRITA_RESERVAS=ligada");
-  expect(h).toContain("nunca escrita nem all em bookings-personal");
+  expect(h).toContain("o convite novo pede exatamente leitura e escrita em bookings, leitura em bookings-personal, bookings-financial e properties e leitura e escrita em inventory, e nada além");
+  expect(h).toContain("qualquer outro escopo (escrita ou all em bookings-personal, all, apagar ou outra área) conta como a mais");
   expect(h).toContain("O refresh token de escrita vai só no ambiente Production da Vercel");
   // A seção nova.
   expect(h).toContain('aria-label="Reservas do site no Beds24"');

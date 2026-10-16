@@ -41,7 +41,7 @@ export function AcaoReservasBeds24({ acao, rotulo, pergunta, imovelId, desabilit
 }
 
 const SITUACAO_ESCOPOS: Record<Extract<EscoposDaCredencial, { lidos: true }>["avaliacao"]["situacao"], string> = {
-  em_ordem: "Em ordem: tem todos os escopos do convite e nada além deles (sem apagar, sem \"all\" e sem escrever dados pessoais).",
+  em_ordem: "Em ordem: tem exatamente os escopos do convite, nada a mais e nada a menos (sem apagar, sem \"all\" e sem escrever dados pessoais).",
   escopo_excessivo: "Permissões demais: nada será escrito com esta credencial. Gere um convite novo só com os escopos acima.",
   ilegivel: "Não deu para ler os escopos na resposta do Beds24: conta como fora de ordem.",
   incompleto: "Faltam escopos do convite: conta como fora de ordem. Gere um convite novo com todos os escopos acima.",

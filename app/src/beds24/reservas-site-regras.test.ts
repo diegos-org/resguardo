@@ -15,6 +15,8 @@ import {
   type ContextoParaBeds24,
   type EsperadoBeds24,
   MOTIVOS_ACOMPANHAMENTO_BEDS24,
+  MOTIVOS_CONFIGURACAO_BEDS24,
+  motivoDosEscoposBeds24,
   reservaDoSiteParaBeds24,
   type ReservaParaBeds24,
   SITUACOES_OPERACAO_ATIVAS,
@@ -170,44 +172,55 @@ describe("assinatura e chaves (desenho 3.3)", () => {
 
   it("motivos: a lista fechada do desenho, sem repetição", () => {
     expect(new Set(MOTIVOS_ACOMPANHAMENTO_BEDS24).size).toBe(MOTIVOS_ACOMPANHAMENTO_BEDS24.length);
-    expect(MOTIVOS_ACOMPANHAMENTO_BEDS24).toHaveLength(20);
+    expect(MOTIVOS_ACOMPANHAMENTO_BEDS24).toHaveLength(21);
   });
 });
 
 describe("escopos da credencial (prontidão, desenho 7)", () => {
   const em = (escopos: string[] | null, ilegiveis: string[] = []) => avaliarEscoposBeds24({ escopos, ilegiveis });
 
-  const CONVITE = ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "write:inventory"];
+  const CONVITE = ["read:bookings", "write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "read:inventory", "write:inventory"];
 
-  it("em ordem só com todos os escopos do convite e nada além deles", () => {
+  it("em ordem só com exatamente os escopos do convite, as leituras explícitas inclusive", () => {
     expect(ESCOPOS_OBRIGATORIOS_BEDS24).toEqual(CONVITE);
     expect(em(CONVITE)).toEqual({ situacao: "em_ordem", excessivos: [], faltando: [] });
-    // A leitura das áreas que já têm escrita não é a mais (a escrita já dá essa leitura).
-    expect(em([...CONVITE, "read:bookings", "read:inventory"])).toEqual({ situacao: "em_ordem", excessivos: [], faltando: [] });
+    expect(em([...CONVITE].reverse())).toEqual({ situacao: "em_ordem", excessivos: [], faltando: [] });
+    // Sem supor que a escrita dá a leitura: os cinco da primeira versão do convite não bastam.
+    expect(em(["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "write:inventory"])).toEqual({ situacao: "incompleto", excessivos: [], faltando: ["read:bookings", "read:inventory"] });
   });
 
   it("all, apagar ou escrita de dados pessoais: escopo_excessivo (vence até a leitura torta)", () => {
     expect(em([...CONVITE, "all:bookings"])).toEqual({ situacao: "escopo_excessivo", excessivos: ["all:bookings"], faltando: [] });
     expect(em([...CONVITE, "write:bookings-personal"])).toEqual({ situacao: "escopo_excessivo", excessivos: ["write:bookings-personal"], faltando: [] });
-    expect(em(["write:bookings", "delete:bookings", "all:inventory"], ["???"])).toMatchObject({ situacao: "escopo_excessivo", excessivos: ["delete:bookings", "all:inventory"] });
+    // Com item fora do formato, o que parece faltar pode estar lá: não diz que falta.
+    expect(em(["write:bookings", "delete:bookings", "all:inventory"], ["???"])).toEqual({ situacao: "escopo_excessivo", excessivos: ["delete:bookings", "all:inventory"], faltando: [] });
   });
 
   it("qualquer escopo fora da lista do convite também é a mais, escrita ou leitura de outra área", () => {
     expect(em([...CONVITE, "write:properties"])).toEqual({ situacao: "escopo_excessivo", excessivos: ["write:properties"], faltando: [] });
-    expect(em([...CONVITE, "write:accounts", "read:channels"])).toMatchObject({ situacao: "escopo_excessivo", excessivos: ["write:accounts", "read:channels"] });
-    // A mais vence a falta: a credencial é trocada de qualquer jeito.
-    expect(em(["write:bookings", "write:properties"])).toMatchObject({ situacao: "escopo_excessivo", excessivos: ["write:properties"] });
+    expect(em([...CONVITE, "write:accounts", "read:channels"])).toEqual({ situacao: "escopo_excessivo", excessivos: ["write:accounts", "read:channels"], faltando: [] });
+    // A mais vence a falta (a credencial é trocada de qualquer jeito), e a tela mostra as duas listas.
+    expect(em(["write:bookings", "write:properties"])).toEqual({ situacao: "escopo_excessivo", excessivos: ["write:properties"], faltando: CONVITE.filter((e) => e !== "write:bookings") });
   });
 
-  it("formato desconhecido nunca conta como em ordem: não deu para ler", () => {
+  it("formato desconhecido nunca conta como em ordem nem diz o que falta: não deu para ler", () => {
     expect(em(null)).toEqual({ situacao: "ilegivel", excessivos: [], faltando: [] });
-    expect(em(CONVITE, ["bookings.write"])).toMatchObject({ situacao: "ilegivel" });
+    expect(em(CONVITE, ["bookings.write"])).toEqual({ situacao: "ilegivel", excessivos: [], faltando: [] });
+    // A lista veio, mas nenhum item no formato conhecido: nada é dado como faltando.
+    expect(em([], ["bookings:write", "bookings-personal:read"])).toEqual({ situacao: "ilegivel", excessivos: [], faltando: [] });
   });
 
-  it("falta um obrigatório (a escrita de reservas ou qualquer outro): incompleto, com o que falta", () => {
+  it("falta um da lista (a escrita de reservas ou qualquer outro): incompleto, com o que falta", () => {
     for (const e of CONVITE) expect(em(CONVITE.filter((x) => x !== e))).toEqual({ situacao: "incompleto", excessivos: [], faltando: [e] });
-    expect(em(["write:bookings"])).toEqual({ situacao: "incompleto", excessivos: [], faltando: CONVITE.slice(1) });
-    expect(em(["read:bookings", "write:inventory"])).toMatchObject({ situacao: "incompleto", faltando: ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties"] });
+    expect(em(["write:bookings"])).toEqual({ situacao: "incompleto", excessivos: [], faltando: CONVITE.filter((e) => e !== "write:bookings") });
     expect(em([])).toEqual({ situacao: "incompleto", excessivos: [], faltando: CONVITE });
+  });
+
+  it("o motivo de configuração de cada situação: a mais, fora de ordem ou nenhum", () => {
+    expect(motivoDosEscoposBeds24({ situacao: "em_ordem" })).toBeNull();
+    expect(motivoDosEscoposBeds24({ situacao: "escopo_excessivo" })).toBe("escopo_excessivo");
+    expect(motivoDosEscoposBeds24({ situacao: "incompleto" })).toBe("escopo_fora_de_ordem");
+    expect(motivoDosEscoposBeds24({ situacao: "ilegivel" })).toBe("escopo_fora_de_ordem");
+    for (const m of ["escopo_excessivo", "escopo_fora_de_ordem"]) expect(MOTIVOS_CONFIGURACAO_BEDS24).toContain(m);
   });
 });

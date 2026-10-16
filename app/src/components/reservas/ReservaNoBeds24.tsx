@@ -30,6 +30,7 @@ export const NOMES_MOTIVO_NO_BEDS24: Record<MotivoAcompanhamentoBeds24, string> 
   sem_vinculo: "o imóvel não tem um vínculo único e válido com um quarto do Beds24",
   sem_credencial: "falta a credencial de escrita",
   escopo_excessivo: "a credencial tem permissões além das do convite (como apagar, tudo ou dados pessoais)",
+  escopo_fora_de_ordem: "faltam permissões do convite na credencial, ou elas não deram para ler",
   sem_ensaio: "falta um ensaio conferido com a credencial atual",
   marca_ilegivel: "a marca do SCL não foi lida de volta no Beds24",
   anterior_a_ligar: "confirmada antes de o imóvel ser ligado",

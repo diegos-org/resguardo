@@ -24,7 +24,7 @@ export const SITUACOES_ACOMPANHAMENTO_BEDS24 = ["pendente", "em_envio", "conferi
 export type SituacaoAcompanhamentoBeds24 = (typeof SITUACOES_ACOMPANHAMENTO_BEDS24)[number];
 
 /** Motivos de configuração: param as criações e viram um aviso só (não um por reserva). */
-export const MOTIVOS_CONFIGURACAO_BEDS24 = ["sem_vinculo", "sem_credencial", "escopo_excessivo", "sem_ensaio", "marca_ilegivel"] as const;
+export const MOTIVOS_CONFIGURACAO_BEDS24 = ["sem_vinculo", "sem_credencial", "escopo_excessivo", "escopo_fora_de_ordem", "sem_ensaio", "marca_ilegivel"] as const;
 /**
  * Motivo do acompanhamento: lista fechada, sem resposta crua do provedor e sem dado pessoal. Os rótulos ficam na tela
  * (o domínio devolve só códigos).
@@ -298,30 +298,51 @@ export function regraDeAdocao(comMarca: readonly ReservaBeds24[], esperado: Espe
 
 // ---------------------------------------------------------------- escopos da credencial (prontidão, desenho 7)
 
-/** Os escopos que o convite novo pede, exatamente (desenho 7, D10): todos precisam estar na credencial. */
-export const ESCOPOS_OBRIGATORIOS_BEDS24 = ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "write:inventory"] as const;
-
-/** Além dos obrigatórios, só a leitura das áreas que já têm escrita (a escrita já dá essa leitura); qualquer outro é a mais. */
-export const ESCOPOS_PERMITIDOS_BEDS24: readonly string[] = [...ESCOPOS_OBRIGATORIOS_BEDS24, "read:bookings", "read:inventory"];
+/**
+ * Os escopos que o convite novo pede, exatamente (desenho 7, D10): todos precisam estar na credencial, e nenhum outro.
+ * As leituras de reservas e de calendário vêm explícitas, sem supor que a escrita já as dá (a confirmar com o suporte,
+ * seção 12, item 7): a importação e as releituras usam a mesma credencial.
+ */
+export const ESCOPOS_OBRIGATORIOS_BEDS24: readonly string[] = [
+  "read:bookings",
+  "write:bookings",
+  "read:bookings-personal",
+  "read:bookings-financial",
+  "read:properties",
+  "read:inventory",
+  "write:inventory",
+];
 
 /**
- * O que a prontidão diz dos escopos lidos em GET /authentication/details, comparando com a lista do convite:
- * - `escopo_excessivo`: qualquer escopo fora da lista permitida, o que inclui "all", apagar, escrita de dados pessoais
- *   (`write:bookings-personal`, que daria POST /bookings/messages) e qualquer outra escrita — nada é escrito;
+ * O que a prontidão diz dos escopos lidos em GET /authentication/details, comparando com a lista exata do convite:
+ * - `escopo_excessivo`: qualquer escopo fora da lista, o que inclui "all", apagar, escrita de dados pessoais
+ *   (`write:bookings-personal`, que daria POST /bookings/messages) e qualquer outra escrita ou leitura — nada é escrito;
  * - `ilegivel`: a resposta não deu para ler, ou trouxe item fora do formato conhecido (nunca conta como em ordem);
- * - `incompleto`: falta algum dos escopos obrigatórios (`faltando`), a escrita de reservas inclusive;
- * - `em_ordem`: todos os obrigatórios e nada além da lista permitida.
+ * - `incompleto`: falta algum dos escopos da lista (`faltando`), a escrita de reservas inclusive;
+ * - `em_ordem`: exatamente a lista, nada a mais e nada a menos.
+ * `faltando` só vem quando a lista foi lida inteira: com item fora do formato, o que parece faltar pode estar lá.
  */
 export type ProntidaoEscoposBeds24 = { situacao: "em_ordem" | "escopo_excessivo" | "ilegivel" | "incompleto"; excessivos: string[]; faltando: string[] };
 
-export const escopoExcessivoBeds24 = (e: string): boolean => !ESCOPOS_PERMITIDOS_BEDS24.includes(e);
+export const escopoExcessivoBeds24 = (e: string): boolean => !ESCOPOS_OBRIGATORIOS_BEDS24.includes(e);
 
 export function avaliarEscoposBeds24(c: Pick<CredencialBeds24, "escopos" | "ilegiveis">): ProntidaoEscoposBeds24 {
   const escopos = c.escopos ?? [];
+  const legivel = c.escopos !== null && !c.ilegiveis.length;
   const excessivos = escopos.filter(escopoExcessivoBeds24);
-  const faltando = c.escopos ? ESCOPOS_OBRIGATORIOS_BEDS24.filter((e) => !escopos.includes(e)) : [];
+  const faltando = legivel ? ESCOPOS_OBRIGATORIOS_BEDS24.filter((e) => !escopos.includes(e)) : [];
   if (excessivos.length) return { situacao: "escopo_excessivo", excessivos, faltando };
-  if (!c.escopos || c.ilegiveis.length) return { situacao: "ilegivel", excessivos, faltando };
+  if (!legivel) return { situacao: "ilegivel", excessivos, faltando };
   if (faltando.length) return { situacao: "incompleto", excessivos, faltando };
   return { situacao: "em_ordem", excessivos, faltando };
+}
+
+/**
+ * O motivo de configuração que a prontidão grava para os escopos (desenho 2.4 e 3.2), o único lugar desta tradução:
+ * a mais é `escopo_excessivo` (nada é escrito); faltando ou ilegível é `escopo_fora_de_ordem` (as criações param);
+ * em ordem não tem motivo.
+ */
+export function motivoDosEscoposBeds24(a: Pick<ProntidaoEscoposBeds24, "situacao">): "escopo_excessivo" | "escopo_fora_de_ordem" | null {
+  if (a.situacao === "em_ordem") return null;
+  return a.situacao === "escopo_excessivo" ? "escopo_excessivo" : "escopo_fora_de_ordem";
 }
