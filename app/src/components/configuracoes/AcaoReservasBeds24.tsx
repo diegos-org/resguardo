@@ -41,10 +41,10 @@ export function AcaoReservasBeds24({ acao, rotulo, pergunta, imovelId, desabilit
 }
 
 const SITUACAO_ESCOPOS: Record<Extract<EscoposDaCredencial, { lidos: true }>["avaliacao"]["situacao"], string> = {
-  em_ordem: "Em ordem: escreve reservas, sem apagar, sem \"all\" e sem escrever dados pessoais.",
+  em_ordem: "Em ordem: tem todos os escopos do convite e nada além deles (sem apagar, sem \"all\" e sem escrever dados pessoais).",
   escopo_excessivo: "Permissões demais: nada será escrito com esta credencial. Gere um convite novo só com os escopos acima.",
   ilegivel: "Não deu para ler os escopos na resposta do Beds24: conta como fora de ordem.",
-  sem_escrita: "Falta a escrita de reservas (write:bookings).",
+  incompleto: "Faltam escopos do convite: conta como fora de ordem. Gere um convite novo com todos os escopos acima.",
 };
 const NAO_LIDOS: Record<Exclude<EscoposDaCredencial, { lidos: true }>["motivo"], string> = {
   fora_da_producao: "Não lido: os escopos só são lidos no deploy de produção (aqui é prévia, computador ou teste).",
@@ -58,7 +58,8 @@ function textoDosEscopos(r: EscoposDaCredencial): string {
   const lista = r.escopos.length ? r.escopos.join(", ") : "nenhum";
   const tortos = r.ilegiveis.length ? ` · fora do formato: ${r.ilegiveis.join(", ")}` : "";
   const demais = r.avaliacao.excessivos.length ? ` · a mais: ${r.avaliacao.excessivos.join(", ")}` : "";
-  return `${SITUACAO_ESCOPOS[r.avaliacao.situacao]} Lidos: ${lista}${tortos}${demais}.`;
+  const faltam = r.avaliacao.faltando.length ? ` · faltando: ${r.avaliacao.faltando.join(", ")}` : "";
+  return `${SITUACAO_ESCOPOS[r.avaliacao.situacao]} Lidos: ${lista}${tortos}${demais}${faltam}.`;
 }
 
 /** Prontidão: conferir os escopos da credencial (só leitura; nada é gravado). */

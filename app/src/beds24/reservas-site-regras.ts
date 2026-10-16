@@ -298,22 +298,30 @@ export function regraDeAdocao(comMarca: readonly ReservaBeds24[], esperado: Espe
 
 // ---------------------------------------------------------------- escopos da credencial (prontidão, desenho 7)
 
-/**
- * O que a prontidão diz dos escopos lidos em GET /authentication/details:
- * - `escopo_excessivo`: "all", apagar ou escrita de dados pessoais (`write:bookings-personal`, que daria
- *   POST /bookings/messages) — nada é escrito;
- * - `ilegivel`: a resposta não deu para ler, ou trouxe item fora do formato conhecido (nunca conta como em ordem);
- * - `sem_escrita`: falta a escrita de reservas (`write:bookings`);
- * - `em_ordem`.
- */
-export type ProntidaoEscoposBeds24 = { situacao: "em_ordem" | "escopo_excessivo" | "ilegivel" | "sem_escrita"; excessivos: string[] };
+/** Os escopos que o convite novo pede, exatamente (desenho 7, D10): todos precisam estar na credencial. */
+export const ESCOPOS_OBRIGATORIOS_BEDS24 = ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "write:inventory"] as const;
 
-export const escopoExcessivoBeds24 = (e: string): boolean => e.startsWith("all:") || e.startsWith("delete:") || e === "write:bookings-personal";
+/** Além dos obrigatórios, só a leitura das áreas que já têm escrita (a escrita já dá essa leitura); qualquer outro é a mais. */
+export const ESCOPOS_PERMITIDOS_BEDS24: readonly string[] = [...ESCOPOS_OBRIGATORIOS_BEDS24, "read:bookings", "read:inventory"];
+
+/**
+ * O que a prontidão diz dos escopos lidos em GET /authentication/details, comparando com a lista do convite:
+ * - `escopo_excessivo`: qualquer escopo fora da lista permitida, o que inclui "all", apagar, escrita de dados pessoais
+ *   (`write:bookings-personal`, que daria POST /bookings/messages) e qualquer outra escrita — nada é escrito;
+ * - `ilegivel`: a resposta não deu para ler, ou trouxe item fora do formato conhecido (nunca conta como em ordem);
+ * - `incompleto`: falta algum dos escopos obrigatórios (`faltando`), a escrita de reservas inclusive;
+ * - `em_ordem`: todos os obrigatórios e nada além da lista permitida.
+ */
+export type ProntidaoEscoposBeds24 = { situacao: "em_ordem" | "escopo_excessivo" | "ilegivel" | "incompleto"; excessivos: string[]; faltando: string[] };
+
+export const escopoExcessivoBeds24 = (e: string): boolean => !ESCOPOS_PERMITIDOS_BEDS24.includes(e);
 
 export function avaliarEscoposBeds24(c: Pick<CredencialBeds24, "escopos" | "ilegiveis">): ProntidaoEscoposBeds24 {
-  const excessivos = (c.escopos ?? []).filter(escopoExcessivoBeds24);
-  if (excessivos.length) return { situacao: "escopo_excessivo", excessivos };
-  if (!c.escopos || c.ilegiveis.length) return { situacao: "ilegivel", excessivos };
-  if (!c.escopos.includes("write:bookings")) return { situacao: "sem_escrita", excessivos };
-  return { situacao: "em_ordem", excessivos };
+  const escopos = c.escopos ?? [];
+  const excessivos = escopos.filter(escopoExcessivoBeds24);
+  const faltando = c.escopos ? ESCOPOS_OBRIGATORIOS_BEDS24.filter((e) => !escopos.includes(e)) : [];
+  if (excessivos.length) return { situacao: "escopo_excessivo", excessivos, faltando };
+  if (!c.escopos || c.ilegiveis.length) return { situacao: "ilegivel", excessivos, faltando };
+  if (faltando.length) return { situacao: "incompleto", excessivos, faltando };
+  return { situacao: "em_ordem", excessivos, faltando };
 }

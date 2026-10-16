@@ -623,7 +623,15 @@ E nunca:
 - escrita nem `all` em `bookings-personal`, que dariam `POST /bookings/messages` (`API_V2.wiki:98-104`);
 - `all` nem o método de apagar (`all:bookings` apaga, `API_V2.wiki:140`; apagar o item principal exige DELETE, `:157`).
 
-**Conferência dos escopos.** A prontidão lê `GET /authentication/details` **[C]** (`yaml:3155-3197`) sob demanda e uma vez por dia na rotina. Com DELETE, `all` ou escrita pessoal: motivo `escopo_excessivo`, nada é escrito, e Integrações mostra os escopos. **A confirmar** o formato dos escopos na resposta. Se o suporte disser que a escrita em `bookings-personal` é indispensável, a regra passa por Diego.
+**Conferência dos escopos.** A prontidão lê `GET /authentication/details` **[C]** (`yaml:3155-3197`) sob demanda e uma vez por dia na rotina, e compara com a lista exata acima (`ESCOPOS_OBRIGATORIOS_BEDS24`, em `beds24/reservas-site-regras.ts`):
+- **a mais** (`escopo_excessivo`): qualquer escopo fora da lista, o que inclui DELETE, `all`, escrita pessoal e qualquer outra escrita. Só a leitura das áreas que já têm escrita (`read:bookings`, `read:inventory`) não conta como a mais, porque a escrita já dá essa leitura. Nada é escrito, e Integrações mostra os escopos a mais;
+- **faltando** (`incompleto`): falta qualquer um dos cinco, a escrita de reservas inclusive. Conta como fora de ordem, e Integrações mostra o que falta;
+- **não deu para ler** (`ilegivel`): também fora de ordem;
+- **em ordem**: os cinco e nada além.
+
+**A confirmar** o formato dos escopos na resposta. Se o suporte disser que a escrita em `bookings-personal` é indispensável, a regra passa por Diego.
+
+*Mudança de 16/10 (revisão do Codex no PR do M8.3a).* Antes, a conferência só barrava DELETE, `all` e escrita pessoal e só exigia a escrita de reservas: uma credencial sem a leitura de dados pessoais, de imóveis ou sem a escrita de calendário, ou com outra escrita qualquer, aparecia "em ordem". Agora ela exige os cinco do convite e barra qualquer escopo fora da lista. Motivo: a lista do convite é exata (D10), e a prontidão só pode dizer "em ordem" para a credencial que o desenho pede. Objetivo: nenhuma escrita de reservas com credencial diferente da combinada. A situação `sem_escrita` deixou de existir: a falta da escrita de reservas aparece como `incompleto`, com `write:bookings` na lista do que falta.
 
 **A troca do token afeta tudo.**
 - O refresh token tem prioridade também na importação e no envio (`beds24/http.ts:166-170`).

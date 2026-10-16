@@ -53,8 +53,9 @@ it("ligar manda o imóvel e mostra a recusa do servidor; desabilitado, nem pergu
 
 it.each([
   [{ resultado: { lidos: false, motivo: "fora_da_producao" } }, "os escopos só são lidos no deploy de produção"],
-  [{ resultado: { lidos: true, avaliacao: { situacao: "em_ordem", excessivos: [] }, escopos: ["write:bookings", "read:properties"], ilegiveis: [], lidoEm: "2026-10-16T12:00:00Z" } }, "Em ordem: escreve reservas"],
-  [{ resultado: { lidos: true, avaliacao: { situacao: "escopo_excessivo", excessivos: ["all:bookings"] }, escopos: ["write:bookings", "all:bookings"], ilegiveis: [], lidoEm: "2026-10-16T12:00:00Z" } }, "a mais: all:bookings"],
+  [{ resultado: { lidos: true, avaliacao: { situacao: "em_ordem", excessivos: [], faltando: [] }, escopos: ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "write:inventory"], ilegiveis: [], lidoEm: "2026-10-16T12:00:00Z" } }, "Em ordem: tem todos os escopos do convite"],
+  [{ resultado: { lidos: true, avaliacao: { situacao: "escopo_excessivo", excessivos: ["all:bookings"], faltando: [] }, escopos: ["write:bookings", "all:bookings"], ilegiveis: [], lidoEm: "2026-10-16T12:00:00Z" } }, "a mais: all:bookings"],
+  [{ resultado: { lidos: true, avaliacao: { situacao: "incompleto", excessivos: [], faltando: ["write:inventory"] }, escopos: ["write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties"], ilegiveis: [], lidoEm: "2026-10-16T12:00:00Z" } }, "Faltam escopos do convite: conta como fora de ordem. Gere um convite novo com todos os escopos acima. Lidos: write:bookings, read:bookings-personal, read:bookings-financial, read:properties · faltando: write:inventory."],
   [{ resultado: { lidos: false, motivo: "falhou", erro: "Beds24 respondeu HTTP 401." } }, "Não deu para ler no Beds24: Beds24 respondeu HTTP 401."],
   [{ mensagem: "Somente quem edita as configurações muda o envio das reservas do site ao Beds24." }, "Somente quem edita as configurações"],
 ])("prontidão: os escopos lidos ou por que não leu (%#)", async (resposta, texto) => {
