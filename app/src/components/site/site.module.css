@@ -87,7 +87,7 @@
   width: 100%;
 }
 
-/* Páginas internas: conteúdo centralizado com respiro lateral. */
+/* Páginas internas: conteúdo centralizado com respiro lateral (a largura entra no `sizes` da galeria, GaleriaImovel.tsx). */
 .miolo {
   width: 100%;
   max-width: 1240px;
@@ -778,7 +778,11 @@
   text-transform: uppercase;
 }
 
-/* Galeria da página do imóvel: principal 3:2 e miniaturas ao lado */
+/*
+ * Galeria da página do imóvel: principal 3:2 e miniaturas ao lado. A largura do quadro principal (com o .miolo) e as
+ * proporções 3:2 e 16:9 estão também em GaleriaImovel.tsx (SIZES_GALERIA e PROPORCAO_QUADRO, M7.19), para o navegador
+ * escolher a versão da foto: mudou aqui, muda lá.
+ */
 .galeria {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
