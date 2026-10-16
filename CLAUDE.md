@@ -133,5 +133,7 @@ liberação acima, com regras, porque sem o acesso ao banco o trabalho não anda
   no Git. Dados de teste são fictícios.
 - Escrever em sistemas externos reais (Beds24, Mercado Pago, WhatsApp) sem o item do
   ROADMAP autorizar explicitamente. (Beds24: escrita de calendário/preços autorizada no
-  M3.7, mas sempre atrás da variável `BEDS24_ESCRITA=ligada`, que só o Diego liga.)
+  M3.7, mas sempre atrás da variável `BEDS24_ESCRITA=ligada`, que só o Diego liga. Escrita
+  das reservas do site autorizada por Diego em 16/10 para o M8.3, atrás de outra variável,
+  `BEDS24_ESCRITA_RESERVAS=ligada`, que também só o Diego liga, e nunca nas prévias.)
 - Abrir PR só de documentação de status.

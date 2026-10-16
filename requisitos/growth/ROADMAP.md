@@ -194,3 +194,41 @@ hipóteses, não compromissos:
 - **Campanhas pagas:** conexão com Google e Meta para acompanhar gasto, cliques e reservas.
 - **Cupons de desconto** para reservas diretas (também listado como ideia de produto).
 
+
+## Direção do crescimento (Diego, 16/10/2026)
+
+Registrado a partir da conversa de 16/10. A decisão principal (o marketplace como modelo principal) está em
+"Decisões registradas" do `ROADMAP.md`. O resto desta seção são ideias para depois da validação do Leblon, não
+compromissos: "por enquanto vamos ficar onde a gente está para não sair dos trilhos".
+
+- **Por que o marketplace:** Diego tem seis imóveis na gestão total e não espera ir muito além disso; cada um dá
+  o trabalho de cinco a oito do marketplace. O caminho para crescer é o digital: site, reserva direta, experiência
+  do hóspede e interesses alinhados entre hóspede, proprietário e SCL. Referência de Diego: "se a gente conseguir,
+  sei lá, 100 apartamentos de marketplace em 2 anos". São uns quatro imóveis novos por mês. O limite tende a ser a
+  captação e a confiança do proprietário, não o sistema; por isso o portal e o repasse certo e em dia são o
+  argumento de venda.
+- **Marcas por bairro e marca principal:**
+  1. validar a Sua Casa Leblon no ar;
+  2. Ipanema como segundo piloto (`suacasaipanema.com`, registrado por Diego em 15/10);
+  3. depois, uma marca principal que valha para tudo: um domínio genérico registrado por Diego em 15/10, ou o nome
+     da empresa. A escolher.
+  - Depois: outros bairros do Rio, bairros de São Paulo, Florianópolis e lugares no Nordeste.
+  - **No sistema:** hoje ele serve um site por empresa: um domínio, um nome, uma vitrine. Vários sites com as
+    mesmas casas pedem um item novo: cada site com o seu domínio, nome, cores, textos e as casas do bairro; a marca
+    principal mostra todas.
+  - **Cuidado (Claude, 16/10):** cada domínio novo começa do zero no Google. Dez sites fracos podem render menos
+    que um forte com uma página por bairro. Testar com Ipanema e medir antes de abrir os outros.
+- **Suítes para outros gestores:** uma menor para quem cuida de 2 a 5 imóveis e uma mais completa para
+  profissionais. O sistema já separa os dados por empresa (`organizacaoId` em todas as tabelas), o que deixa a porta
+  aberta. É quase outro negócio (suporte, cobrança, cadastro de clientes, dados de terceiros), então só depois de
+  o marketplace dar certo; o nicho e os subprodutos ficam para decidir.
+  - **Referência:** o Giro Temporada, um produto anterior de Diego e a primeira versão do que virou a Sua Casa
+    Leblon: assinatura de R$ 27,90 por mês, com agenda de limpeza, integração e sincronização de calendário, preços,
+    registro de despesas e receitas e o resultado do mês, para quem cuida de poucos apartamentos. Ele está noutro
+    repositório, fora desta sessão; quando a frente voltar, Diego aponta onde.
+- **Captação e segmentação de proprietários:** complementa "Prospecção de proprietários" (acima).
+  - Pesquisa de mercado com dados públicos e agregados (preços, ocupação, número de anúncios por bairro) pode usar
+    ferramentas de busca e coleta (Firecrawl, Apify ou pesquisa paga).
+  - **Cuidado (Claude, 16/10):** montar listas de anfitriões copiando dados do Airbnb ou do Booking vai contra as
+    regras dessas plataformas e tem risco com a LGPD. Caminhos mais seguros: anúncio direcionado, a página "Anuncie
+    seu imóvel" (M7.7) e indicação.
