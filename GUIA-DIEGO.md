@@ -3813,8 +3813,8 @@ ambiente).
        linha de comando, não os dois abertos ao mesmo tempo; no Claude Code, uma sessão por vez. Dois programas
        renovando a mesma conexão juntos parecem uma cópia e derrubam a conexão; aí é só conectar de novo. Isso vale
        desde o começo, para todos os assistentes. Eu acompanho quantas vezes uma conexão cai assim; se acontecer com
-       frequência, inclusive no Claude ou no ChatGPT, eu te trago as opções. E se o assistente disser que o limite de
-       consultas do dia acabou, no dia seguinte peça para ele continuar de onde parou: a própria resposta diz como
+       frequência, inclusive no Claude ou no ChatGPT, eu te trago as opções. E se o assistente disser que o limite do
+       dia acabou, no dia seguinte peça para ele continuar de onde parou: a própria resposta diz como
        continuar.
     8. **Mais tarde, a trava extra no banco (decisão 11, M13.11):** o seu "pode" vem antes. O resto vem depois que o
        M13.11 estiver no ar e eu avisar, porque no banco de verdade a base desse acesso só existe depois que a
