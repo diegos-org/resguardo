@@ -86,6 +86,7 @@ O que protege Diego:
   | 12 | — | Defesas novas: login recente, proteção contra enquadramento, uma conexão por assistente, teto diário, alertas, faixas de saída, suspensão ao religar, regra para sessões de agente | Ver as seções correspondentes |
   | 13 | Escrita fora do M13, só como proposta em `requisitos/labs/` | As regras da fase 2 e o histórico protegido entram no desenho e no ROADMAP (M13.12 e M13.13) | Diego aprovou em 16/10 as duas fases e o histórico persistente ("para ninguém poder apagar") e pediu que fossem para o ROADMAP ("Se quiser colocar tudo isso no roadmap, por favor"). A primeira versão do desenho deixou isso de fora |
   | 14 | Na conversa de 16/10, o Claude disse a Diego que as consultas trariam "o nome do hóspede abreviado" (Diego: "Gostei") | Sem nomes na v1 (nível 0); primeiro nome e inicial só no M13.9, com a D2 e a D4 | As duas revisões leram o nome, mesmo abreviado, como dado pessoal que vai para empresas de fora do Brasil; sem nomes, o advogado avalia um caso menor. O GUIA conta a mudança a Diego |
+  | 15 | Repetição da renovação em até 30 s devolvia o mesmo par já emitido (linha 7) | Sem tolerância: qualquer reuso derruba a conexão e avisa | Revisão do Codex de 16/10: com cliente público e sem prova de quem envia, os 30 s entregariam a conexão a quem copiou o token. O custo é Diego reconectar se o assistente repetir por falha de rede |
 
 - **Objetivo final, que não mudou:** Diego consulta o SCL pelo assistente que já paga, com o login do painel, sem risco de o assistente mudar nada e sem expor dados pessoais além do mínimo.
 
@@ -435,9 +436,9 @@ O token nunca é repassado a outro serviço; a especificação proíbe.
   - troca a cada renovação, como manda a regra para cliente público, e devolve o token novo na mesma resposta;
   - renovação vencida, revogada ou de outra conexão recebe `invalid_grant`, que é o que o Claude espera.
 - **Reuso de um token de renovação já trocado:**
-  - **em até 30 s** (repetição por falha de rede): devolve **o mesmo par** já emitido, guardado cifrado só por esses 30 s. A chave de cifragem é definida no M13.3, por exemplo derivada do segredo do ambiente (**a confirmar**). Nunca emite um par novo, porque um par novo entregaria a conexão a quem copiou o token e invalidaria o do assistente de Diego;
-  - **se esse par devolvido já tiver sido usado, ou depois de 30 s:** é reuso. A conexão inteira cai, e sai o aviso no Início e por e-mail;
-  - **alternativa:** eliminar a tolerância, se ficar confirmado que o Claude e o ChatGPT não repetem a renovação (**a confirmar**).
+  - **sem tolerância:** qualquer reuso, a qualquer momento, derruba a conexão inteira (os dois tokens), e sai o aviso no Início e por e-mail. O servidor nunca devolve um par já emitido nem emite um par novo para quem repete o token: o cliente é público, sem prova de quem o envia, e o servidor não consegue separar uma repetição por falha de rede de alguém que copiou o token;
+  - **custo:** se o assistente repetir a renovação por falha de rede, Diego precisa conectar de novo. O aviso diz isso ("pode ter sido uma falha de rede; se foi você, conecte de novo");
+  - **antes (16/10, primeira revisão):** em até 30 s, o servidor devolvia o mesmo par já emitido. Saiu na revisão do Codex de 16/10, porque entregaria a conexão a quem copiou o token e o repetiu nesses 30 s.
 - **Tempo de resposta:** poucos segundos. O Claude espera 10 s na descoberta e no token, e 30 s na renovação.
 
 ### Tokens, expiração e revogação
@@ -993,8 +994,8 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
    - **Renovação:**
      - trocada a cada uso;
      - `invalid_grant` quando não vale;
-     - dentro de 30 s, devolve o mesmo par;
-     - o par devolvido já usado, ou reuso depois de 30 s, derruba a conexão e gera aviso.
+     - qualquer reuso, mesmo logo depois da troca, derruba a conexão e gera aviso;
+     - o servidor nunca devolve de novo um par já emitido.
    - **Revogação:** RFC 7009.
    - **CIMD**, pelo adaptador falso com as cópias dos três documentos reais:
      - o ChatGPT é aceito pelo `"none"` do plural;
@@ -1088,7 +1089,7 @@ Vale para conta de assistente invadida, conexão que Diego não reconhece ou avi
 | Consentimento enganado: o atacante adiciona o conector na conta dele e manda o link de autorização a Diego (os retornos do claude.ai e do chatgpt.com são compartilhados por todos os usuários) | Login recente; uma conexão por assistente, com aviso da existente e confirmação a mais; domínio do retorno na tela; texto "só continue se foi você"; aviso no Início e e-mail com "não fui eu"; v1 só para Diego. Com retorno local, o golpe não funciona |
 | Clique disfarçado na tela de consentimento | `frame-ancestors 'none'` e `X-Frame-Options: DENY` em `/oauth/*`, `/entrar` e `/api/oauth/*` |
 | Conta de Diego no Claude ou no ChatGPT invadida: o invasor usa o conector já ligado, sem conexão nova nem reuso de token | Alertas de uso fora do padrão; resumo semanal; validade curta (30 dias, 7 na saída); teto diário de linhas; verificação em duas etapas nas contas; plano de incidente |
-| Token vazado e usado de outro lugar | Token curto, opaco, guardado como hash e ligado ao endereço MCP; nunca em endereço ou log; renovação trocada a cada uso, com reuso derrubando a conexão; tolerância de 30 s que devolve o mesmo par; faixas de saída para as conexões hospedadas |
+| Token vazado e usado de outro lugar | Token curto, opaco, guardado como hash e ligado ao endereço MCP; nunca em endereço ou log; renovação trocada a cada uso, com qualquer reuso derrubando a conexão, sem tolerância; faixas de saída para as conexões hospedadas |
 | Falha de autorização expõe dados (lista vazia virando "todos", linha crua do banco, busca do painel achando por nome) | Lista fechada; guarda sobre a lista final; código por igualdade exata; `autorizar` por item; testes de varredura; papel do banco só de leitura (opcional, M13.11) |
 | Nome do proprietário nos avisos do Início | Avisos remontados de dados estruturados, feitos na origem, com teste de cada gerador |
 | Dado pessoal no assistente (memória, histórico, treino) | Nível 0 sem nomes nem contatos; links em vez de conteúdo; treino desligado antes de conectar; conversa própria para o SCL |
@@ -1119,7 +1120,7 @@ Vale para conta de assistente invadida, conexão que Diego não reconhece ou avi
 - **Reaproveitar o modelo das rotinas** (`Bearer ${CRON_SECRET}`, `app/src/app/api/cron/agenda/route.ts:12-13`): é um segredo compartilhado, sem pessoa, e passaria por cima da política por usuário.
 - **Reaproveitar `app/src/lib/token-assinado.ts`:** não tem hora de emissão, não respeita `sessaoValidaDesde` e não pode ser revogado.
 - **DCR na v1:** nenhum dos quatro assistentes precisa dele com CIMD anunciado. Ele aumentaria a superfície exposta e o tamanho do M13.3 e do M13.4.
-- **Emitir um par novo na repetição da renovação em 30 s:** entregaria a conexão a quem copiou o token, sem aviso.
+- **Emitir um par novo, ou devolver o mesmo par, na repetição da renovação em 30 s:** entregaria a conexão a quem copiou o token e o repetiu nesse tempo, sem aviso (revisão do Codex de 16/10).
 
 ## Pontos a confirmar
 
@@ -1128,7 +1129,7 @@ Vale para conta de assistente invadida, conexão que Diego não reconhece ou avi
 | Endereço e conteúdo do documento CIMD do claude.ai (web) | Na primeira conexão na homologação ou antes de liberar a produção | Claude web na produção |
 | Se o Claude Code, com o conector do claude.ai, chama pelo proxy da Anthropic | Antes de ligar as faixas de saída (M13.7) | A trava das faixas para a família Claude |
 | Se `ENABLE_CLAUDEAI_MCP_SERVERS=false` desliga os conectores do claude.ai nas sessões de agente, e onde configurar | M13.7 | A regra D12 na prática |
-| Se Claude e ChatGPT repetem a renovação (para manter ou eliminar a tolerância de 30 s) | M13.3 | Nada |
+| Se Claude e ChatGPT repetem a renovação por falha de rede (sem tolerância, cada repetição obriga a conectar de novo; medir no uso e, se for frequente, levar a Diego) | M13.7 | Nada |
 | Quais `Origin` os assistentes mandam | M13.5 e homologação | Nada (sem `Origin` também passa) |
 | Quando o Claude passa a falar a 2026-07-28 (hoje é inferência pela documentação) | Acompanhamento | Nada |
 | Data de publicação do `@modelcontextprotocol/server` 2.3.1; se a 2.2.0 do `mcp-handler` tem o mesmo suporte; versão exata do zod | Na instalação (M13.5) | Nada |
