@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { salvarEmpresa } from "@/configuracoes/empresa";
 import { salvarTextosSite, TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
@@ -6,7 +7,30 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
 import { guardarFoto } from "@/imoveis/fotos";
-import { conteudoDoSite, destinoDoLinkAntigo, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, tituloDoSite, linkWhatsapp, montarConsulta, numeroWhatsapp, organizacaoDoSite } from "./site";
+import { jpgComMedidas } from "@/imoveis/fotos-testing";
+import { cabecalhoPng, pngFicticio } from "./icone.testing";
+import { definirImagemSite, lerImagensSite, tirarImagemSite } from "./imagens-site";
+import {
+  ASSUNTO_CONSULTA,
+  CASA_FORA_DO_SITE,
+  canalDeContato,
+  conferirDatasEPessoas,
+  contatoDoSite,
+  conteudoDoSite,
+  destinoDoLinkAntigo,
+  hojeMaisCedo,
+  imovelDoSite,
+  imoveisDoSite,
+  lerPedidoConsulta,
+  mensagemDaBusca,
+  metadadosDeAcesso,
+  tituloDoSite,
+  linkWhatsapp,
+  montarConsulta,
+  numeroWhatsapp,
+  organizacaoDoSite,
+  temCasaNoSite,
+} from "./site";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -71,6 +95,33 @@ describe("site público (M7.1)", () => {
     expect(JSON.stringify(s)).not.toContain(studio);
   });
 
+  it("medidas das fotos (M7.19): só a galeria da página da casa traz as das duas versões; as listas e os outros usos, não", async () => {
+    const f = await guardarFoto(db, org, { imovelId: studio, arquivo: { nome: "a.jpg", conteudo: jpgComMedidas(2000, 1333) }, miniatura: jpgComMedidas(800, 533) }, null);
+    if (!f.ok) throw new Error("foto");
+    const semMedidas = [{ grande: `/fotos/${f.id}`, pequena: `/fotos/${f.id}/pequena`, legenda: "" }];
+    const casa = await imovelDoSite(db, org, "403", "galeria");
+    expect(casa?.fotos).toEqual([{ ...semMedidas[0], medidas: { grande: { largura: 2000, altura: 1333 }, pequena: { largura: 800, altura: 533 } } }]);
+    // Sem pedir (o redirecionamento dos links antigos e a consulta, que só precisam do código e do nome): sem medidas.
+    expect((await imovelDoSite(db, org, "403"))?.fotos).toEqual(semMedidas);
+    // As listas (o cartão usa sempre a pequena), também não.
+    const lista = await imoveisDoSite(db, org);
+    expect(lista.find((i) => i.codigo === "403")?.fotos).toEqual(semMedidas);
+    // Nem as medidas levam o id do imóvel ou do arquivo para o objeto público.
+    expect(JSON.stringify(casa)).not.toContain(studio);
+  });
+
+  it("frase de abertura (M7.17): vazia em todo imóvel até ser escrita; a lista e a página leem a gravada, só das casas do site", async () => {
+    expect((await imoveisDoSite(db, org)).map((i) => i.frase)).toEqual(["", ""]);
+    await db.update(imoveis).set({ frase: "Frase fictícia de abertura." }).where(eq(imoveis.id, studio));
+    await db.update(imoveis).set({ frase: "Frase de uma casa fora do site." }).where(eq(imoveis.codigo, "buzios"));
+    expect((await imoveisDoSite(db, org)).map((i) => [i.codigo, i.frase])).toEqual([["102", ""], ["403", "Frase fictícia de abertura."]]);
+    expect(await imovelDoSite(db, org, "403")).toMatchObject({ frase: "Frase fictícia de abertura.", descricao: "Studio fictício." });
+    expect(await imovelDoSite(db, org, "buzios")).toBeNull();
+    // Só espaços (gravados fora do formulário, que já apara) contam como sem frase.
+    await db.update(imoveis).set({ frase: "   " }).where(eq(imoveis.id, studio));
+    expect((await imovelDoSite(db, org, "403"))?.frase).toBe("");
+  });
+
   it("página do imóvel: só se for público e ativo", async () => {
     expect(await imovelDoSite(db, org, "403")).toMatchObject({ nome: "Studio Exemplo Leblon" });
     expect(await imovelDoSite(db, org, "buzios")).toBeNull();
@@ -92,6 +143,41 @@ describe("site público (M7.1)", () => {
     const empresa = { nome: "Sua Casa Exemplo", razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", email: "", telefone: "", endereco: "Rua Fictícia, 100", encarregado: "", site: "", chavePix: "" };
     await salvarEmpresa(db, org, empresa, null);
     expect((await conteudoDoSite(db))?.identidade).toEqual({ razaoSocial: "Casa Exemplo Temporada Ltda.", cnpj: "00.000.000/0001-00", endereco: "Rua Fictícia, 100" });
+  });
+
+  it("prévia dos links (M7.13): o campo Site da empresa e a capa do site, na versão pequena quando houver", async () => {
+    expect(await conteudoDoSite(db)).toMatchObject({ site: "", imagens: { capa: null, previa: null } });
+    const empresa = { nome: "Sua Casa Exemplo", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", encarregado: "", site: "https://casa-exemplo.vercel.app", chavePix: "" };
+    await salvarEmpresa(db, org, empresa, null);
+    const jpg = (n: number) => Uint8Array.from({ length: 32 }, (_, i) => [0xff, 0xd8, 0xff, 0xe0][i] ?? n);
+    await definirImagemSite(db, org, "capa", { nome: "capa.jpg", conteudo: jpg(1) }, null, { nome: "capa-pequena.jpg", conteudo: jpg(2) });
+    const { capa, capaPequena } = await lerImagensSite(db, org);
+    expect(await conteudoDoSite(db)).toMatchObject({ site: "https://casa-exemplo.vercel.app", imagens: { capa: `/imagens-site/${capa}`, previa: `/imagens-site/${capaPequena}` } });
+    // Capa sem a versão pequena: a prévia usa a grande.
+    await definirImagemSite(db, org, "capa", { nome: "capa.jpg", conteudo: jpg(3) }, null);
+    const sem = await lerImagensSite(db, org);
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ capa: `/imagens-site/${sem.capa}`, previa: `/imagens-site/${sem.capa}` });
+  });
+
+  it("ícone da aba (M7.18): a marca enviada só quando é PNG quadrado; JPG, retângulo ou nenhuma, os ícones da marca do estudo", async () => {
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: "/marca.png", icone: null });
+    await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo: pngFicticio(256, 256) }, null);
+    let marca = (await lerImagensSite(db, org)).marca;
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: `/imagens-site/${marca}`, icone: { url: `/imagens-site/${marca}`, lado: 256, atalho: true } });
+    // Com transparência (ou sem conferir): a aba usa a marca enviada, o atalho do celular não.
+    for (const conteudo of [pngFicticio(256, 256, { tipoDeCor: 6 }), cabecalhoPng(256, 256)]) {
+      await definirImagemSite(db, org, "marca", { nome: "marca.png", conteudo }, null);
+      marca = (await lerImagensSite(db, org)).marca;
+      expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: `/imagens-site/${marca}`, icone: { url: `/imagens-site/${marca}`, lado: 256, atalho: false } });
+    }
+    // A marca continua no topo e no rodapé; só o ícone volta ao do estudo.
+    for (const conteudo of [Uint8Array.from({ length: 32 }, (_, i) => [0xff, 0xd8, 0xff, 0xe0][i] ?? 1), cabecalhoPng(400, 200)]) {
+      await definirImagemSite(db, org, "marca", { nome: "marca", conteudo }, null);
+      marca = (await lerImagensSite(db, org)).marca;
+      expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: `/imagens-site/${marca}`, icone: null });
+    }
+    await tirarImagemSite(db, org, "marca", null);
+    expect((await conteudoDoSite(db))?.imagens).toMatchObject({ marca: "/marca.png", icone: null });
   });
 
   it("número do WhatsApp a partir do telefone do cadastro", () => {
@@ -139,27 +225,112 @@ describe("site público (M7.1)", () => {
     expect(tituloDoSite(null, "Consulta")).toBe("Consulta");
   });
 
-  it("links antigos /property/<código>: levam à página do imóvel só com os critérios de estadia válidos", async () => {
+  it("telas de acesso (M7.10): título com o nome da empresa e a descrição da própria tela; sem site, só o nome da tela", () => {
+    expect(metadadosDeAcesso({ nomeEmpresa: " Empresa Exemplo " }, "Entrar", "Descrição da tela.")).toEqual({ title: "Entrar — Empresa Exemplo", description: "Descrição da tela." });
+    expect(metadadosDeAcesso(null, "Entrar", "Descrição da tela.")).toEqual({ title: "Entrar", description: "Descrição da tela." });
+  });
+
+  it("links antigos /property/<código>: levam à página do imóvel só com os critérios de estadia válidos; casa fora do site, à consulta", async () => {
     const imovel = await imovelDoSite(db, org, "403");
     const q = (o: Record<string, string>) => new URLSearchParams(o);
     const valido = { checkin: "2026-10-10", checkout: "2026-10-12", guests: "2" };
     // 25/09/2026, 12:00 em São Paulo.
     const agora = new Date("2026-09-25T15:00:00Z");
-    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), imovel, agora)).toEqual({
+    expect(destinoDoLinkAntigo(q({ ...valido, email: "x@example.com", token: "t", property: "102" }), "403", imovel, agora)).toEqual({
       status: 308,
       destino: "/imoveis/403?checkin=2026-10-10&checkout=2026-10-12&guests=2",
     });
-    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), imovel, agora)).toEqual({ status: 308, destino: "/imoveis/403" });
+    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), "403", imovel, agora)).toEqual({ status: 308, destino: "/imoveis/403" });
     for (const ruim of [{ guests: "5" }, { checkin: "2026-02-30" }, { checkout: "2026-10-10" }, { guests: "2e0" }, { checkin: "2020-01-01" }])
-      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q({ guests: "2" }), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), imovel, agora)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q(valido), null, agora)).toEqual({ status: 404 });
+      expect(destinoDoLinkAntigo(q({ ...valido, ...ruim }), "403", imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q({ guests: "2" }), "403", imovel, agora)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(new URLSearchParams(`${q(valido)}&guests=3`), "403", imovel, agora)).toMatchObject({ status: 400 });
+    // Casa que não está (mais) no site (M7.9): a consulta, com o aviso, e as datas e pessoas do link (cada uma uma vez).
+    expect(destinoDoLinkAntigo(q(valido), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303&entrada=2026-10-10&saida=2026-10-12&hospedes=2" });
+    expect(destinoDoLinkAntigo(q({ email: "x@example.com" }), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303" });
+    expect(destinoDoLinkAntigo(new URLSearchParams("checkin=2026-10-10&checkin=2026-10-11&guests=2"), "303", null, agora)).toEqual({ status: 307, destino: "/consulta?imovel=303&hospedes=2" });
+    expect(destinoDoLinkAntigo(q(valido), "../x?y", null, agora)).toEqual({ status: 307, destino: "/consulta?entrada=2026-10-10&saida=2026-10-12&hospedes=2" });
+    expect(destinoDoLinkAntigo(q({}), "a b", null, agora)).toEqual({ status: 307, destino: "/consulta" });
     // "Hoje" no fuso do imóvel: 00:30 em São Paulo (03:30Z) ainda é dia 9 em Rio Branco, então entrada em 9/10 é válida lá.
     const madrugada = new Date("2026-10-10T03:30:00Z");
     const hojeLink = { checkin: "2026-10-09", checkout: "2026-10-12", guests: "2" };
-    expect(destinoDoLinkAntigo(q(hojeLink), imovel, madrugada)).toMatchObject({ status: 400 });
-    expect(destinoDoLinkAntigo(q(hojeLink), { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
+    expect(destinoDoLinkAntigo(q(hojeLink), "403", imovel, madrugada)).toMatchObject({ status: 400 });
+    expect(destinoDoLinkAntigo(q(hojeLink), "403", { ...imovel!, fuso: "America/Rio_Branco" }, madrugada)).toMatchObject({ status: 308 });
+  });
+});
+
+describe("temCasaNoSite (M7.8)", () => {
+  it("há casa no site quando há algum imóvel público e ativo da organização, com a mesma regra da lista", async () => {
+    expect(await temCasaNoSite(db, org)).toBe(true);
+    expect((await imoveisDoSite(db, org)).length).toBeGreaterThan(0);
+    // Outra organização só com imóvel fora do site (não público, ou público e inativo): nenhuma casa, como a lista.
+    const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "Outra" }).returning();
+    expect(await temCasaNoSite(db, outra)).toBe(false);
+    await db.insert(imoveis).values([
+      { organizacaoId: outra, codigo: "A1", nome: "Fora do site", publico: false },
+      { organizacaoId: outra, codigo: "A2", nome: "Inativo", publico: true, ativo: false },
+    ]);
+    expect(await temCasaNoSite(db, outra)).toBe(false);
+    expect(await imoveisDoSite(db, outra)).toEqual([]);
+    await db.insert(imoveis).values({ organizacaoId: outra, codigo: "A3", nome: "No site", publico: true });
+    expect(await temCasaNoSite(db, outra)).toBe(true);
+  });
+});
+
+describe("canal de contato do site (M7.8): uma regra só", () => {
+  it("WhatsApp antes do e-mail; e-mail só de espaços não é canal; o botão segue sempre o canal", () => {
+    const casos = [
+      { whatsapp: "5521900000000", email: "contato@exemplo.com" },
+      { whatsapp: "5521900000000", email: "" },
+      { whatsapp: null, email: " contato@exemplo.com " },
+      { whatsapp: null, email: "   " },
+      { whatsapp: null, email: "" },
+    ];
+    expect(casos.map(canalDeContato)).toEqual(["whatsapp", "whatsapp", "email", null, null]);
+    // O botão do aviso do site sem casas e o canal da consulta nunca divergem.
+    const doBotao = (c: (typeof casos)[number]) => {
+      const r = contatoDoSite(c);
+      return r ? (r.href.startsWith("https://wa.me/") ? "whatsapp" : "email") : null;
+    };
+    for (const c of casos) expect(doBotao(c), JSON.stringify(c)).toBe(canalDeContato(c));
+  });
+});
+
+describe("contatoDoSite (M7.8)", () => {
+  it("WhatsApp antes do e-mail, como a consulta; sem os dois, nenhum botão", () => {
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "contato@exemplo.com" })).toEqual({
+      href: "https://wa.me/5521900000000?text=Ol%C3%A1!%20Vim%20pelo%20site%20e%20gostaria%20de%20falar%20com%20a%20equipe.",
+      rotulo: "Falar pelo WhatsApp",
+      externo: true,
+    });
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " })).toEqual({ href: "mailto:contato@exemplo.com?subject=Contato%20pelo%20site", rotulo: "Enviar um e-mail", externo: false });
+    expect(contatoDoSite({ whatsapp: null, email: "  " })).toBeNull();
+  });
+
+  it("com uma mensagem, ela vai no WhatsApp e no corpo do e-mail; o canal e os rótulos não mudam", () => {
+    const texto = mensagemDaBusca({ entrada: "2099-10-12", saida: "2099-10-15" }, 2);
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "contato@exemplo.com" }, { mensagem: texto })).toEqual({ href: linkWhatsapp("5521900000000", texto), rotulo: "Falar pelo WhatsApp", externo: true });
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " }, { mensagem: texto })).toEqual({
+      href: `mailto:contato@exemplo.com?subject=Contato%20pelo%20site&body=${encodeURIComponent(texto)}`,
+      rotulo: "Enviar um e-mail",
+      externo: false,
+    });
+    expect(contatoDoSite({ whatsapp: null, email: "" }, { mensagem: texto })).toBeNull();
+  });
+
+  it("com o assunto da consulta (a busca do M7.9, com ou sem casas no site, e o envio da consulta): só o assunto do e-mail muda", () => {
+    const texto = mensagemDaBusca({ entrada: "2099-10-12", saida: "2099-10-15" }, 2);
+    expect(ASSUNTO_CONSULTA).toBe("Consulta de disponibilidade");
+    expect(contatoDoSite({ whatsapp: null, email: " contato@exemplo.com " }, { mensagem: texto, assunto: ASSUNTO_CONSULTA })).toEqual({
+      href: `mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade&body=${encodeURIComponent(texto)}`,
+      rotulo: "Enviar um e-mail",
+      externo: false,
+    });
+    // Sem mensagem (a busca com datas erradas no site sem casas): o assunto da consulta, sem corpo.
+    expect(contatoDoSite({ whatsapp: null, email: "contato@exemplo.com" }, { assunto: ASSUNTO_CONSULTA })?.href).toBe("mailto:contato@exemplo.com?subject=Consulta%20de%20disponibilidade");
+    // O WhatsApp não tem assunto: o mesmo link com ou sem ele.
+    expect(contatoDoSite({ whatsapp: "5521900000000", email: "" }, { mensagem: texto, assunto: ASSUNTO_CONSULTA })).toEqual(contatoDoSite({ whatsapp: "5521900000000", email: "" }, { mensagem: texto }));
+    expect(contatoDoSite({ whatsapp: null, email: "" }, { assunto: ASSUNTO_CONSULTA })).toBeNull();
   });
 });
 
@@ -170,5 +341,31 @@ describe("hojeMaisCedo", () => {
     expect(hojeMaisCedo([{ fuso: "America/Sao_Paulo" }, { fuso: "America/Rio_Branco" }], agora)).toBe("2026-10-11");
     expect(hojeMaisCedo([{ fuso: "America/Sao_Paulo" }], agora)).toBe("2026-10-12");
     expect(hojeMaisCedo([], agora)).toBe("2026-10-12");
+  });
+});
+
+describe("busca em todas as casas (M7.9): a conferência e a mensagem sem casa", () => {
+  it("datas e pessoas conferidas como na consulta de uma casa, sem exigir a casa; a capacidade fica para cada casa", () => {
+    const base = { entrada: "2026-10-10", saida: "2026-10-13", hospedes: "12" };
+    expect(conferirDatasEPessoas(base, "2026-09-25")).toEqual({ erros: {}, hospedes: 12 });
+    expect(conferirDatasEPessoas({ ...base, entrada: "2026-09-01" }, "2026-09-25").erros).toEqual({ entrada: "A entrada não pode ser antes de hoje." });
+    expect(conferirDatasEPessoas({ ...base, saida: "2026-10-10" }, "2026-09-25").erros).toEqual({ saida: "A saída precisa ser depois da entrada." });
+    expect(conferirDatasEPessoas({ entrada: "", saida: "x", hospedes: "0" }, "2026-09-25").erros).toEqual({ entrada: "Informe a data de entrada.", saida: "Informe a data de saída.", hospedes: "Informe quantas pessoas." });
+    expect(conferirDatasEPessoas({ ...base, hospedes: "2e0" }, "2026-09-25")).toMatchObject({ erros: { hospedes: "Informe quantas pessoas." } });
+    // A consulta de uma casa continua com o erro da casa primeiro e a capacidade dela.
+    expect(Object.keys((montarConsulta({ imovel: "", ...base, entrada: "" }, null, "2026-09-25") as { erros: object }).erros)).toEqual(["imovel", "entrada"]);
+  });
+
+  it("casa pedida que não está no site (link antigo): o erro diz isso e oferece buscar em todas, sem pedir para escolher uma casa", () => {
+    const base = { entrada: "2026-10-10", saida: "2026-10-13", hospedes: "2" };
+    expect(montarConsulta({ imovel: "303", ...base }, null, "2026-09-25")).toEqual({ ok: false, erros: { imovel: CASA_FORA_DO_SITE } });
+    expect(CASA_FORA_DO_SITE).toBe("Essa casa não está mais no site. Escolha outra ou busque em todas as casas.");
+    // Sem casa nenhuma pedida, continua o pedido de escolher.
+    expect(montarConsulta({ imovel: " ", ...base }, null, "2026-09-25")).toEqual({ ok: false, erros: { imovel: "Escolha um apartamento." } });
+  });
+
+  it("mensagem para a equipe com as datas e as pessoas, sem casa e sem valor", () => {
+    expect(mensagemDaBusca({ entrada: "2026-10-10", saida: "2026-10-13" }, 3)).toBe("Olá! Gostaria de consultar uma estadia numa das casas.\nEntrada: 10/10/2026 · Saída: 13/10/2026 · 3 pessoas.");
+    expect(mensagemDaBusca({ entrada: "2026-10-10", saida: "2026-10-11" }, 1)).toContain("· 1 pessoa.");
   });
 });

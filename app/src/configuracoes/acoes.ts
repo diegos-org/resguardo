@@ -1,12 +1,14 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { exigir } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { hojeISO } from "@/lib/datas";
 import { TIPOS_MENSAGEM_HOSPEDE } from "@/db/schema";
 import { salvarConfigMensagens } from "@/mensagens/hospede";
+import { FORMULARIOS_PROPRIETARIO, type FormularioProprietario } from "@/proprietarios/autorizacao";
+import { CAIXAS_AUTORIZACAO, publicarTextoAutorizacao } from "./autorizacao-proprietarios";
 import { type ErrosEmpresa, salvarEmpresa, validarEmpresa } from "./empresa";
 import { atualizarModelo, criarModelo, type ErrosModelo, excluirModelo } from "./modelos";
 import { lerFormRegras } from "./regras-financeiras";
@@ -15,7 +17,7 @@ import { publicarComoFunciona, validarSecoes } from "./como-funciona";
 import { publicarPaginaLegal } from "./paginas-legais";
 import { DOCUMENTOS_LEGAIS, type DocumentoLegal, PAGINAS_LEGAIS, validarPaginaLegal } from "./paginas-legais-texto";
 import { type ErrosMercado, salvarMercado, salvarTextosProprietarios, type TextosProprietarios, validarMercado, validarTextosProprietarios } from "./pagina-proprietarios";
-import { salvarTextosSite, type TextosSite, validarTextosSite } from "./textos-site";
+import { salvarTextosSiteDoFormulario, type TextosSite } from "./textos-site";
 import { alterarUsuario, criarUsuarioEquipe } from "./usuarios";
 
 /** `valores`: o que foi digitado, devolvido quando há erro (o React limpa o formulário após enviar). */
@@ -52,11 +54,11 @@ export async function salvarRegrasAcao(_a: EstadoForm, form: FormData): Promise<
 
 export async function salvarTextosAcao(_a: EstadoForm<Partial<TextosSite>>, form: FormData): Promise<EstadoForm<Partial<TextosSite>>> {
   const sessao = await sessaoConfig();
-  const v = validarTextosSite(campos(form));
-  if (!v.ok) return { erros: v.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
-  const mudou = await salvarTextosSite(getDb(), sessao.organizacaoId, v.textos, sessao.usuarioId);
+  // Campo que não veio no envio fica como estava (a tela aberta antes de ele existir); ver `salvarTextosSiteDoFormulario`.
+  const r = await salvarTextosSiteDoFormulario(getDb(), sessao.organizacaoId, campos(form), sessao.usuarioId);
+  if (!r.ok) return { erros: r.erros, mensagem: "Confira os campos destacados.", valores: campos(form) };
   revalidatePath("/painel/configuracoes/site");
-  return { ok: true, aviso: mudou ? "Salvo." : "Nada mudou." };
+  return { ok: true, aviso: r.mudou ? "Salvo." : "Nada mudou." };
 }
 
 /** Página para proprietários do site (M7.7): textos. */
@@ -123,6 +125,43 @@ export async function publicarPaginaLegalAcao(_a: EstadoForm, form: FormData): P
   return {
     ok: true,
     aviso: r.mudou ? `Versão ${r.versao.numero} publicada em ${data}. O site já mostra esta versão; os próximos pagamentos pedem o aceite dela.` : `Nada mudou: a versão ${r.versao.numero}, de ${data}, continua valendo.`,
+  };
+}
+
+/**
+ * Texto da caixa de autorização de um formulário de "Anuncie seu imóvel" (M7.15): publica a versão seguinte quando o
+ * texto mudou. Recusada por texto vazio ou inválido, nada é revalidado e o formulário mantém o que foi digitado. Recusada
+ * porque outra pessoa publicou no meio, a tela é atualizada (`refresh`, sem recarregar a página): recebe a versão nova
+ * e mantém o texto digitado no campo, e o formulário oferece usar o texto novo ou continuar com o seu.
+ */
+export async function publicarAutorizacaoAcao(_a: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const sessao = await sessaoConfig();
+  const f = String(form.get("formulario") ?? "");
+  if (!(FORMULARIOS_PROPRIETARIO as readonly string[]).includes(f)) return { mensagem: "Formulário desconhecido. Recarregue a página." };
+  const formulario = f as FormularioProprietario;
+  const base = String(form.get("versaoBase") ?? "");
+  if (!/^\d{1,6}$/.test(base)) return { mensagem: "Recarregue a página e tente de novo.", valores: campos(form) };
+  const r = await publicarTextoAutorizacao(getDb(), sessao.organizacaoId, formulario, form.get("texto"), sessao.usuarioId, hojeISO(), Number(base));
+  if (!r.ok) {
+    const emVigor = r.atual?.numero ?? 0;
+    if (emVigor === Number(base)) return { mensagem: r.erro, erros: r.erros, valores: campos(form) };
+    // Outra versão entrou em vigor desde que a tela abriu: a tela precisa recebê-la para mostrar a escolha.
+    refresh();
+    if (r.erros) return { mensagem: r.erro, erros: r.erros, valores: campos(form) };
+    const quando = r.atual?.data ? ` em ${r.atual.data.split("-").reverse().join("/")}` : "";
+    return {
+      mensagem: `Enquanto você editava, a versão ${emVigor} foi publicada por outra pessoa${quando}. O seu texto não foi publicado e continua no campo: escolha entre usar o texto novo ou continuar com o seu.`,
+      valores: campos(form),
+    };
+  }
+  revalidatePath("/painel/configuracoes/autorizacao-proprietarios");
+  revalidatePath("/anunciar", "layout");
+  const caixa = CAIXAS_AUTORIZACAO[formulario].titulo.toLowerCase();
+  if (!r.mudou) return { ok: true, aviso: `Nada mudou no texto: a versão ${r.versao.numero} continua valendo.` };
+  const data = r.versao.data.split("-").reverse().join("/");
+  return {
+    ok: true,
+    aviso: `Versão ${r.versao.numero} publicada em ${data}. A caixa do ${caixa} já mostra o texto novo; os pedidos já recebidos continuam com o texto que guardam.`,
   };
 }
 

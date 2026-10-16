@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { signOut } from "@/acesso/auth";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { Menu } from "@/components/painel/Menu";
-import { marcaComDestaque } from "@/components/site/Moldura";
+import { marcaComDestaque } from "@/components/site/MolduraBase";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
 import styles from "@/components/painel/painel.module.css";

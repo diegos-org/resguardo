@@ -60,7 +60,10 @@ it("datas seguradas: prazo no fuso do imóvel, pedido e botão do WhatsApp com a
   render(<Cotacao vista={vista({ estado: "segurada", reserva: { codigo: "SCL-TESTE1", estado: "pedido" } }, { estado: "segurada", holdAte })} whatsapp="5521999990000" email="" />);
   expect(screen.getByRole("heading", { name: "Datas seguradas" })).toBeTruthy();
   expect(screen.getByText(/pedido SCL-TESTE1/).textContent).toContain("12:30");
-  const link = screen.getByRole("link", { name: "Falar com a equipe pelo WhatsApp" }).getAttribute("href") ?? "";
+  // Abre outra janela (M7.11): o fim do link, só para o leitor de tela, avisa.
+  const botao = screen.getByRole("link", { name: /^Falar com a equipe pelo WhatsApp/ });
+  expect(botao.textContent).toBe("Falar com a equipe pelo WhatsApp (abre em nova janela)");
+  const link = botao.getAttribute("href") ?? "";
   expect(link.startsWith("https://wa.me/5521999990000?text=")).toBe(true);
   expect(decodeURIComponent(link)).toContain("COT-ABCDEFGH");
   expect(decodeURIComponent(link)).toContain("seguradas para mim até 01/10, 12:30");
@@ -104,18 +107,21 @@ it("formulário de contato envia código e dados; mostra o erro do servidor por 
 
 it("aviso de como os dados são usados (M7.4): com a Política de privacidade publicada, o link para a versão em vigor numa aba nova; sem ela, o aviso sem link", () => {
   const { container } = render(<FormSegurar codigo="COT-ABCDEFGH" minutos={30} acao={acao} comPagamento privacidade={2} />);
-  expect(container.textContent).toContain("Usamos seus dados só para a sua reserva, como explica a Política de privacidade. Nada é cobrado ao segurar: o Pix aparece logo depois, nesta página.");
-  const link = screen.getByRole("link", { name: "Política de privacidade" });
+  expect(container.textContent).toContain(
+    "Usamos seus dados só para a sua reserva, como explica a Política de privacidade (abre em nova janela). Nada é cobrado ao segurar: o Pix aparece logo depois, nesta página.",
+  );
+  const link = screen.getByRole("link", { name: /^Política de privacidade/ });
+  expect(link.textContent).toBe("Política de privacidade (abre em nova janela)");
   expect(link.getAttribute("href")).toBe("/privacidade?versao=2");
   expect(link.getAttribute("target")).toBe("_blank");
   expect(container.textContent).not.toContain("Seus dados vão só para a equipe");
   cleanup();
   const sem = render(<FormSegurar codigo="COT-ABCDEFGH" minutos={30} acao={acao} />);
   expect(sem.container.textContent).toContain("Usamos seus dados só para confirmar a reserva com você. Nenhum pagamento é feito aqui.");
-  expect(screen.queryByRole("link", { name: "Política de privacidade" })).toBeNull();
+  expect(screen.queryByRole("link", { name: /Política de privacidade/ })).toBeNull();
   cleanup();
   render(<FormSegurar codigo="COT-ABCDEFGH" minutos={30} acao={acao} privacidade={1} />);
-  expect(screen.getByRole("link", { name: "Política de privacidade" }).getAttribute("href")).toBe("/privacidade?versao=1");
+  expect(screen.getByRole("link", { name: /^Política de privacidade/ }).getAttribute("href")).toBe("/privacidade?versao=1");
 });
 
 it("chamada 'segurar estas datas' leva o pedido da consulta escondido e avisa quando é 'a confirmar'", () => {

@@ -17,6 +17,7 @@
   padding: 12px max(4vw, 16px);
   background: var(--scl-floresta);
   color: var(--scl-creme);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
 }
 
 .marca {
@@ -31,6 +32,15 @@
 .marca em {
   font-style: italic;
   color: var(--scl-dourado);
+}
+
+/* Só a marca do estudo, sem o nome da empresa (a página de erro, que não lê o banco — M7.8). */
+.marcaIcone {
+  display: block;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  object-fit: contain;
 }
 
 .topoTitulo {
@@ -64,6 +74,7 @@
   padding: 18px max(4vw, 16px);
   background: var(--scl-profundo);
   color: var(--scl-sobre-escuro);
+  --scl-foco-cor: var(--scl-foco-sobre-verde); /* foco claro sobre o verde (M7.11) */
   font-size: 0.75rem;
   display: flex;
   justify-content: space-between;

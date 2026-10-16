@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import type { EstadoSegurar } from "@/site/acoes";
+import { LinkNovaJanela } from "./Acessibilidade";
 import styles from "./site.module.css";
 
 type Acao = (a: EstadoSegurar, f: FormData) => Promise<EstadoSegurar>;
@@ -45,9 +46,7 @@ export function FormSegurar({
   const comoExplica = privacidade ? (
     <>
       , como explica a{" "}
-      <a href={`/privacidade?versao=${privacidade}`} target="_blank" rel="noopener noreferrer">
-        Política de privacidade
-      </a>
+      <LinkNovaJanela href={`/privacidade?versao=${privacidade}`}>Política de privacidade</LinkNovaJanela>
     </>
   ) : null;
   return (

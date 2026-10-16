@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import type { EstadoFormImovel } from "@/imoveis/acoes";
-import type { DadosImovel } from "@/imoveis/validacao";
+import { type DadosImovel, LIMITE_FRASE } from "@/imoveis/validacao";
 import styles from "../formularios.module.css";
 
 type Props = {
@@ -14,6 +14,10 @@ type Props = {
 
 export function FormImovel({ acao, id, inicial = {} }: Props) {
   const [estado, enviar, enviando] = useActionState(acao, {});
+  // Frase controlada (M7.17): o navegador não corta o texto colado (avisa o tamanho, como no M7.15) e, depois de um erro,
+  // o que foi digitado continua no campo.
+  const [frase, setFrase] = useState(inicial.frase ?? "");
+  const tamanhoFrase = frase.trim().length;
   const erro = (campo: keyof DadosImovel) =>
     estado.erros?.[campo] ? (
       <span className={styles.erro} id={`erro-${campo}`}>
@@ -71,6 +75,22 @@ export function FormImovel({ acao, id, inicial = {} }: Props) {
           </label>
         ))}
       </div>
+      <label>
+        Frase de abertura (site)
+        <input name="frase" value={frase} onChange={(e) => setFrase(e.target.value)} {...invalido("frase")} />
+        {/* Dentro do rótulo, como a dica dos campos de Configurações (FormCampos). */}
+        <span style={{ fontSize: "0.8125rem" }}>
+          Abre a página da casa no site, em letra grande, acima da descrição; vai também para o cartão da casa (nas vitrines
+          do site e da página para proprietários) e para a prévia do link. Até {LIMITE_FRASE} caracteres, numa linha só: agora são{" "}
+          {tamanhoFrase}. Em
+          branco, nada aparece acima da descrição, e o cartão e a prévia usam a primeira frase da descrição (sem descrição, o
+          bairro e a cidade); a aba Anúncios mostra qual.
+        </span>
+        {tamanhoFrase > LIMITE_FRASE && !estado.erros?.frase && (
+          <span className={styles.erro}>Passou de {LIMITE_FRASE} caracteres: encurte antes de salvar (o sistema não corta a frase).</span>
+        )}
+        {erro("frase")}
+      </label>
       <label>
         Descrição
         <textarea name="descricao" rows={4} defaultValue={inicial.descricao} {...invalido("descricao")} />

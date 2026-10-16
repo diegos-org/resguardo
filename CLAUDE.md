@@ -104,6 +104,27 @@ já autorizado continuam sendo de Diego.
 - Se houver bloqueio concreto que dependa de Diego (decisão, informação ou acesso), avisar
   qual é; não fazer merge pendente nem declarar uma revisão concluída sem evidência.
 
+## Banco de dados no Neon (autorizado por Diego em 14/10/2026)
+
+Diego autoriza Claude e Codex a acessar o Neon (projeto `scl-sistema`), para ler e para
+gravar, com estas regras:
+- **Banco das prévias** (branch `preview`, o das prévias da Vercel): ler e gravar livremente
+  dados de teste fictícios, por exemplo para montar o cenário de um teste. Nunca dado real.
+- **Banco de produção** (branch `main`): ler para conferir e investigar, de preferência com
+  contagens e somas em vez de linhas com dados pessoais. Dado muda só pelo próprio sistema
+  (telas e migrações versionadas do deploy). Correção à mão em dado real só com o "pode" de
+  Diego para aquele caso, com snapshot antes, e registrada na descrição do PR ou no guia.
+- **Sempre perguntar antes de:** apagar projeto, branch, banco ou snapshot; restaurar backup
+  ou refazer uma branch a partir da outra; mudar configurações do projeto (histórico,
+  snapshots, IPs, computação).
+- Dado real nunca sai do banco para o Git, o chat, logs ou a página de pendências. A senha do
+  banco (connection string) nunca é impressa nem copiada para fora do Neon e da Vercel.
+
+Registro: de 4/10 a 14/10, resumos de sessão trataram "Neon: não mexer mais" como uma
+proibição de Diego. Era só uma anotação de uma sessão do Claude, num lembrete de 4/10, para não
+refazer o ajuste de backup de 3/10. Diego nunca proibiu o acesso. Em 14/10 ele confirmou a
+liberação acima, com regras, porque sem o acesso ao banco o trabalho não anda.
+
 ## Nunca
 
 - Force push ou apagar branches.

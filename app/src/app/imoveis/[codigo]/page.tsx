@@ -2,28 +2,46 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BairroAPorta } from "@/components/site/BairroAPorta";
+import { altDaCapa } from "@/components/site/CapaDoImovel";
 import { olhoImovel, resumoImovel } from "@/components/site/CartaoImovel";
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
-import { canalDeContato, FormConsulta } from "@/components/site/FormConsulta";
+import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
+import { metadadosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
 import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
-import { FotoProvisoria, Moldura, SiteEmConfiguracao } from "@/components/site/Moldura";
+import { FotoProvisoria, Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
+import { tituloDaSecao } from "@/configuracoes/textos-site";
 import { hojeISO } from "@/lib/datas";
 import { criarCotacaoAcao } from "@/site/acoes";
 import { lugaresDoSite } from "@/site/bairro";
+import { linkDaCasa } from "@/site/link-da-casa";
 import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
+import { fraseDoImovel } from "@/site/frase-do-imovel";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
+import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
   const { codigo } = await params;
   const { db, conteudo } = await carregarSite();
-  const i = conteudo ? await imovelDoSite(db, conteudo.organizacaoId, codigo) : null;
-  return metadadosDoSite(i?.nome);
+  if (!conteudo) return metadadosDoSite(undefined);
+  // A mesma leitura da página (com `cache`, uma vez só por requisição: por isso, os mesmos argumentos, com "galeria").
+  const i = await imovelDoSite(db, conteudo.organizacaoId, codigo, "galeria");
+  // Casa que não existe ou saiu do site (M7.8): o título da aba é o da "Casa não encontrada" já aqui, o mesmo de
+  // ./not-found.tsx, para não depender só do título da not-found (que o Next pode trocar pelo do layout).
+  if (!i) return metadadosDaNaoEncontrada("casa");
+  // Prévia do link (M7.13): o nome, a frase do cartão (`fraseDoImovel`: a frase de abertura da casa, M7.17, ou a primeira
+  // frase da descrição; sem descrição, bairro e cidade) e a versão pequena da capa da casa
+  // (sem foto, sem imagem: nunca a capa do site no lugar). O endereço principal é o da casa, sem as datas do link.
+  const capa = i.fotos[0];
+  return metadadosDoSite(i.nome, {
+    descricao: fraseDoImovel(i),
+    imagem: capa ? { url: capa.pequena, alt: altDaCapa(i.nome, capa) } : null,
+    caminho: linkDaCasa(i.codigo) ?? undefined,
+  });
 }
 
 export default async function PaginaImovel({ params, searchParams }: PageProps<"/imoveis/[codigo]">) {
@@ -32,7 +50,8 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   const pedido = lerPedidoConsulta(await searchParams);
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return <SiteEmConfiguracao />;
-  const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo), imoveisDoSite(db, conteudo.organizacaoId)]);
+  // Com as medidas das fotos (M7.19), para a galeria; a mesma leitura dos metadados acima.
+  const [imovel, todos] = await Promise.all([imovelDoSite(db, conteudo.organizacaoId, codigo, "galeria"), imoveisDoSite(db, conteudo.organizacaoId)]);
   if (!imovel) notFound();
   const bairro = await lugaresDoSite(db, conteudo.organizacaoId, imovel.bairro);
   // "Hoje" no fuso do imóvel, o mesmo que a disponibilidade usa.
@@ -94,10 +113,15 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
         <div className={styles.editorial}>
           {disponibilidade && <Disponibilidade resultado={disponibilidade} entrada={pedido.entrada} saida={pedido.saida} fuso={imovel.fuso} comPagamento={comPix} />}
           {segurar && <SegurarDatas pedido={consulta} aConfirmar={segurar.situacao === "a_confirmar"} acao={criarCotacaoAcao} comPagamento={comPix} />}
+          {/* Frase de abertura da casa (M7.17), acima da descrição, em serifa como no estudo; h2 logo abaixo do h1. Sem frase, nada. */}
+          {imovel.frase && <h2 className={styles.fraseDaCasa}>{imovel.frase}</h2>}
           {imovel.descricao && <p className={styles.texto}>{imovel.descricao}</p>}
           {imovel.comodidades.length > 0 && (
             <section aria-labelledby="titulo-comodidades">
-              <h3 id="titulo-comodidades">O que você encontra</h3>
+              {/* h2 abaixo do h1 do imóvel (M7.11), no tamanho menor das partes da ficha. */}
+              <h2 id="titulo-comodidades" className={styles.tituloFicha}>
+                O que você encontra
+              </h2>
               <ul className={styles.comodidades}>
                 {imovel.comodidades.map((c) => (
                   <li key={c}>
@@ -110,7 +134,9 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
           )}
           {imovel.camas.length > 0 && (
             <section aria-labelledby="titulo-camas">
-              <h3 id="titulo-camas">Camas</h3>
+              <h2 id="titulo-camas" className={styles.tituloFicha}>
+                Camas
+              </h2>
               <ul className={styles.fichas}>
                 {imovel.camas.map((c) => (
                   <li key={c}>{c}</li>
@@ -119,7 +145,9 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
             </section>
           )}
           <section aria-labelledby="titulo-regras">
-            <h3 id="titulo-regras">Regras da casa</h3>
+            <h2 id="titulo-regras" className={styles.tituloFicha}>
+              Regras da casa
+            </h2>
             <ul className={styles.fichas}>
               {regras.map((r) => (
                 <li key={r}>{r}</li>
@@ -132,9 +160,18 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
             )}
           </section>
         </div>
+        {/* Cartão da consulta (M7.16): olho, título e frase de Configurações → Textos do site (olho e frase vazios não
+            aparecem; título vazio volta ao texto inicial). */}
         <aside id="planejar" className={styles.lateral} aria-labelledby="titulo-planejar">
-          <p className={styles.olho}>Planeje sua estadia</p>
-          <h2 id="titulo-planejar">Consultar disponibilidade</h2>
+          {conteudo.textos.planejarOlho && <p className={styles.olho}>{conteudo.textos.planejarOlho}</p>}
+          <h2 id="titulo-planejar">
+            <TextoComDestaque texto={tituloDaSecao(conteudo.textos, "planejarTitulo")} />
+          </h2>
+          {conteudo.textos.planejarTexto && (
+            <p className={styles.texto} style={{ margin: 0 }}>
+              {conteudo.textos.planejarTexto}
+            </p>
+          )}
           <FormConsulta imoveis={todos} valores={consulta} hoje={hojeMaisCedo([imovel, ...todos])} canal={canalDeContato(conteudo)} variante="lateral" comPagamento={gate.ok} />
         </aside>
       </div>

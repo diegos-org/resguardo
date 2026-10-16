@@ -1,6 +1,7 @@
 "use client";
 
-import { type CSSProperties, useActionState } from "react";
+import { type CSSProperties, useActionState, useState } from "react";
+import { CAMPO_AUTORIZACAO, type TextoAutorizacao } from "@/proprietarios/autorizacao";
 import type { CampoPedidoContato } from "@/proprietarios/pedidos-contato";
 import { pedirContatoProprietarioAcao } from "@/site/acoes-contato";
 import styles from "./site.module.css";
@@ -11,9 +12,22 @@ const ISCA: CSSProperties = { position: "absolute", left: "-10000px", top: "auto
 /**
  * "Pedir contato para a gestão completa" (página Anuncie seu imóvel, M7.7). Vai para a equipe no painel; não cria
  * conta nem publica nada. Depois de um erro, volta com o que foi digitado. `acao` só é trocada nos testes.
+ * O texto da caixa de autorização (`autorizacao`) é a versão em vigor, lida pela página no servidor (M7.15), a mesma que o
+ * servidor confere e grava no envio (M7.14); o campo escondido leva só a marca desse texto. Se ele mudou depois que a
+ * página abriu, o servidor devolve o texto novo, que continua na tela nos erros seguintes (eles não trazem o texto de novo).
  */
-export function FormContatoProprietario({ empresa, acao = pedirContatoProprietarioAcao }: { empresa: string; acao?: typeof pedirContatoProprietarioAcao }) {
+export function FormContatoProprietario({
+  empresa,
+  autorizacao: daPagina,
+  acao = pedirContatoProprietarioAcao,
+}: {
+  empresa: string;
+  autorizacao: TextoAutorizacao;
+  acao?: typeof pedirContatoProprietarioAcao;
+}) {
   const [estado, enviar, enviando] = useActionState(acao, {});
+  const [doServidor, setDoServidor] = useState<TextoAutorizacao | undefined>(estado.autorizacao);
+  if (estado.autorizacao && estado.autorizacao.marca !== doServidor?.marca) setDoServidor(estado.autorizacao);
   if (estado.ok)
     return (
       <p role="status" className={styles.aviso}>
@@ -21,6 +35,7 @@ export function FormContatoProprietario({ empresa, acao = pedirContatoProprietar
       </p>
     );
   const v = (k: CampoPedidoContato, padrao = "") => estado.valores?.[k] ?? padrao;
+  const autorizacao = estado.autorizacao ?? doServidor ?? daPagina;
   const id = (k: CampoPedidoContato) => `contato-proprietario-erro-${k}`;
   // Campo com erro: marcado como inválido e ligado à mensagem (leitor de tela lê os dois juntos).
   const marca = (k: CampoPedidoContato) => (estado.erros?.[k] ? { "aria-invalid": true as const, "aria-describedby": id(k) } : {});
@@ -95,9 +110,10 @@ export function FormContatoProprietario({ empresa, acao = pedirContatoProprietar
           <input name="site" tabIndex={-1} autoComplete="off" defaultValue="" />
         </label>
       </div>
+      <input type="hidden" name={CAMPO_AUTORIZACAO} value={autorizacao.marca} />
       <label className={styles.opcao}>
-        <input type="checkbox" name="consentimento" required defaultChecked={v("consentimento") === "on"} {...marca("consentimento")} /> Autorizo o uso destes dados só para a{" "}
-        {empresa} me responder sobre a gestão do imóvel.
+        {/* A caixa é do texto ao lado: se o texto muda, ela volta desmarcada (a chave é a marca do texto). */}
+        <input key={autorizacao.marca} type="checkbox" name="consentimento" required defaultChecked={v("consentimento") === "on"} {...marca("consentimento")} /> {autorizacao.texto}
       </label>
       {erro("consentimento")}
       {estado.mensagem && (

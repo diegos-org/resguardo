@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+import { regrasForaDosBuscadores } from "./src/site/fora-dos-buscadores";
+import { MARCA_PADRAO } from "./src/site/marca";
 import { politicaDaPaginaDePagamento } from "./src/site/politica-de-frames";
 
 const nextConfig: NextConfig = {
@@ -6,10 +8,10 @@ const nextConfig: NextConfig = {
     // Comprovante do repasse (M4.10): até 5 MB pelo formulário, mais a sobra do multipart.
     serverActions: { bodySizeLimit: "6mb" },
   },
-  // Página da cotação, onde o hóspede paga (M8.2a): nenhum outro site pode enquadrá-la (contra clique disfarçado); ela só
-  // enquadra o Mercado Pago (formulário do cartão e desafio do banco, M8.2b).
   async headers() {
     return [
+      // Página da cotação, onde o hóspede paga (M8.2a): nenhum outro site pode enquadrá-la (contra clique disfarçado); ela
+      // só enquadra o Mercado Pago (formulário do cartão e desafio do banco, M8.2b).
       {
         source: "/reservar/:path*",
         headers: [
@@ -17,6 +19,17 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
         ],
       },
+      // Páginas pessoais e internas fora dos buscadores (M7.10); a lista fica em src/site/fora-dos-buscadores.ts. As
+      // regras se somam: a cotação recebe as duas.
+      ...regrasForaDosBuscadores(),
+    ];
+  },
+  async rewrites() {
+    return [
+      // M7.18: o navegador pede /favicon.ico sozinho quando a página não declara ícone (um PDF, uma foto aberta direto).
+      // Recebe o arquivo da marca do estudo, o mesmo ícone do layout raiz (src/site/icone.ts), sem passar pela página não
+      // encontrada nem pelo banco.
+      { source: "/favicon.ico", destination: MARCA_PADRAO },
     ];
   },
 };

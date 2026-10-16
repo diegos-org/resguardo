@@ -1,6 +1,10 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { marcaComDestaque } from "@/components/site/Moldura";
+import { ID_CONTEUDO, PularParaConteudo } from "@/components/site/Acessibilidade";
+// Da moldura sem banco: assim a página de erro do portal (componente de cliente, M7.8) também usa esta moldura.
+import { marcaComDestaque } from "@/components/site/MolduraBase";
+import { MARCA_PADRAO } from "@/site/marca";
 import styles from "./portal.module.css";
 
 /**
@@ -22,13 +26,17 @@ export function MolduraPortal({
   estreito?: boolean;
   children: ReactNode;
 }) {
-  const nome = empresa.trim() || "Início";
+  // Sem o nome da empresa (a página de erro, que não lê o banco): o topo mostra só a marca do estudo, como a moldura do
+  // site, com o link "Início" para quem usa leitor de tela, e o rodapé fica sem o ©. Nenhum nome de reserva aparece.
+  const nome = empresa.trim();
   return (
     <div className={styles.pagina}>
+      {/* M7.11: o mesmo "Pular para o conteúdo" do site, primeiro elemento focável. */}
+      <PularParaConteudo />
       <header className={styles.topo}>
         <div className={styles.topoAcoes}>
-          <Link href="/" className={styles.marca}>
-            {marcaComDestaque(nome)}
+          <Link href="/" className={styles.marca} aria-label={nome ? undefined : "Início"}>
+            {nome ? marcaComDestaque(nome) : <Image src={MARCA_PADRAO} alt="" width={36} height={36} unoptimized className={styles.marcaIcone} />}
           </Link>
           {titulo && <span className={styles.topoTitulo}>{titulo}</span>}
         </div>
@@ -40,11 +48,15 @@ export function MolduraPortal({
           </form>
         )}
       </header>
-      <main className={estreito ? `${styles.miolo} ${styles.estreito}` : styles.miolo}>{children}</main>
+      <main id={ID_CONTEUDO} tabIndex={-1} className={estreito ? `${styles.miolo} ${styles.estreito}` : styles.miolo}>
+        {children}
+      </main>
       <footer className={styles.rodape}>
-        <span>
-          © {new Date().getFullYear()} {nome}
-        </span>
+        {nome && (
+          <span>
+            © {new Date().getFullYear()} {nome}
+          </span>
+        )}
         <Link href="/">Site</Link>
       </footer>
     </div>

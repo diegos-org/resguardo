@@ -3,7 +3,7 @@
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
 > **Regras de preservação (9/10/2026):** Claude e Codex trabalham em cópias e branches novas, preservando originais, acervos e o histórico. Cada PR explica o que mudou, por quê, com qual objetivo e onde retomar. Decisões substituídas continuam registradas; voltar atrás acontece por uma nova mudança, sem apagar o passado. O visual continua tomando o acervo do Sage como referência, depois das entregas funcionais.
 > **Conferência da equipe (9/10/2026):** protegido também o caso de um cadastro ligado por engano a uma conta de outro perfil ou outra empresa. O sistema recusa alterar esse acesso, preserva a conta e não usa seu e-mail nos avisos da equipe. Os testes usam dados fictícios; isso não afirma que os cadastros reais foram inspecionados.
-> **Última atualização:** 11/10/2026, **disputa do pagamento (contestação), em teste (M8.2e):** quando alguém pede ao banco para desfazer a cobrança de uma reserva paga pelo site (a contestação no cartão), pede a devolução de um Pix pelo mecanismo do Banco Central (o MED) ou abre uma reclamação no Mercado Pago, o sistema registra a disputa, avisa a equipe no Início e por e-mail e segura a parte do proprietário dessa reserva que ainda não foi repassada, sem descontar nada de ninguém, até você registrar quem arca: o proprietário, a SCL ou cada um na proporção da sua parte (o sistema nunca escolhe). Com a decisão, o valor do proprietário fica segurado nos próximos repasses até o resultado: se a SCL ganhar, volta; se perder, fica definitivo. O resultado é sempre você quem confirma: o sistema mostra o que o Mercado Pago diz, mas não decide sozinho, porque as páginas do Mercado Pago já deram sentidos opostos ao mesmo código. Antes da entrada, dá para "Cancelar a reserva contestada" sem devolução pelo sistema (o dinheiro volta a quem pagou, pela disputa, se ele ganhar). O proprietário vê a disputa no extrato, no portal e no e-mail do repasse; o hóspede só vê "pagamento em conferência", e nenhuma mensagem automática sai. O Mercado Pago de teste não cria disputas: no teste, você registra uma à mão num pagamento de teste (seção 2; o que fazer no item 46 da seção 6, o texto do "Como funciona" no item 42 e o evento novo dos avisos no item 37; 14 decisões novas na seção 7). **Com isso, as cinco partes do pagamento pelo site estão prontas no teste**; o pagamento de verdade continua desligado e espera as suas decisões marcadas com ★ (seção 7). Antes, em 10/10, **alteração de reserva paga pelo site, em teste (M8.2d):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) muda as datas, o número de pessoas ou o valor **antes da entrada**: o sistema mostra antes o valor novo, a diferença e o que acontece com o dinheiro, e segura as noites novas por um tempo que você escolhe. Se o valor sobe, o hóspede paga a diferença por Pix ou cartão na página da reserva e a alteração vale sozinha; se desce, a diferença segue a Política de cancelamento que ele aceitou, contando da entrada original ou da nova, a que vier primeiro: dentro do prazo, volta; fora, fica e é dividida como uma reserva normal. O financeiro é refeito sozinho, e a devolução de parte do valor só é pedida ao Mercado Pago depois que ele libera o pagamento (no teste, registre a liberação à mão). Também ficou pronto o que faltava das devoluções: mais de uma devolução no mesmo pagamento, o restante de um pagamento já devolvido em parte e a devolução que o Mercado Pago fez a menos. Nada é escrito no Beds24: o Início avisa quando mudar o bloqueio nas OTAs, mesmo com o envio ao Beds24 ligado (o envio manda só os bloqueios do SCL, nunca as datas das reservas; o mesmo vale para os avisos de reserva paga e cancelada). Como o Pix, o cartão e o cancelamento, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 44 e 45 da seção 6 e as frases novas da política no item 42; decisões novas na seção 7). Antes, também em 10/10, **cancelamento de reserva paga pelo site, em teste (M8.2c):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) calcula o cancelamento pela Política de cancelamento que o hóspede aceitou, vê o resultado antes (devolução integral ou nada, e por quê) e cancela; o sistema pede a devolução ao Mercado Pago, acompanha até ela sair e acerta o financeiro sozinho: reserva, comissão, parte do proprietário, a taxa que não voltar (despesa da empresa) e, se a parte do proprietário já tinha sido paga, o desconto no próximo repasse dele. Sem devolução, o valor fica e é dividido como uma reserva normal. O hóspede pode pedir o cancelamento em Minha reserva (ele só pede, e a hora fica registrada; quem cancela é a equipe), a página da reserva mostra a situação e há três mensagens novas ao hóspede, prontas para copiar, que saem sozinhas quando você ligar as mensagens. Como o Pix e o cartão, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 41 a 43 da seção 6; decisões novas na seção 7). Também em 10/10, **conferências com dados fictícios:** equipe (senha provisória, troca da própria senha, cidades e avisos) e cartão (liberação imediata, em 14 e em 30 dias). A previsão não vira dinheiro recebido: precisa da confirmação do provedor, e o proprietário espera também o check-in. Não houve criação de contas reais, envio de avisos reais nem cobrança. **Visual:** componentes atuais renderizados localmente em computador (1512 px) e celular (390 px), comparados com o acervo do Sage; sem estouro horizontal, imagens carregadas e campos de no mínimo 44 px. Essa conferência de aparência não valida navegação, autenticação ou pagamentos no site publicado.
+> **Última atualização:** 16/10/2026, **nomes entram como estão nos textos do proprietário (M5.10), pronto:** no "Como funciona" e no e-mail do fechamento, o nome da empresa e o do proprietário entram exatamente como estão no cadastro. Antes, um nome com certos sinais, como `$&`, saía trocado por outro texto (por exemplo, "Casa $& Lar" virava "Casa {empresa} Lar"). Para nomes comuns, nada muda. Para você: nada. Antes, em 15/10, **fotos mais leves na página da casa (M7.19), pronto:** na página de cada casa, a foto em destaque da galeria passa a vir na versão leve (a mesma das miniaturas) quando ela basta para a tela, em vez de vir sempre na versão grande, bem mais pesada. Quem escolhe é o navegador de quem visita, pelo tamanho e pela nitidez da tela, também ao trocar de foto. A aparência não muda: mesma foto, mesmo recorte, mesmo tamanho. O ganho fica nos celulares de tela menos nítida e, quando a casa tem mais de uma foto, nos computadores de tela menos nítida; com uma foto só, ela ocupa a largura toda e, no computador, continua vindo na grande. Nos celulares de tela mais nítida (como os iPhones recentes) a foto precisa da versão grande e continua vindo nela. A capa da página inicial continua com a foto grande: no celular ela cobre um quadro mais alto que largo e aparece mais larga que a tela, e a versão leve ficaria borrada. As miniaturas e os cartões das casas já usavam a versão leve. Para você: nada. Antes, também em 15/10, **ícone da aba com a marca do site (M7.18), pronto:** a aba do navegador mostrava um círculo preto com um triângulo branco, o ícone padrão da ferramenta com que o sistema é feito. Agora a aba e o atalho na tela do celular mostram a marca da Sua Casa Leblon. No site, vale a marca que você enviar em Configurações → Site, quando ela é um PNG quadrado (no atalho do celular, também sem fundo transparente); até lá, a marca do estudo visual, que fica sempre no painel e nos portais do proprietário e do hóspede. Se a marca enviada não servir de ícone (em JPG, fora do quadrado ou, no atalho, com fundo transparente), fica a do estudo, e a tela da marca diz isso e por quê. No celular, a barra do navegador fica no verde do site. Nada mais muda nas páginas nem na prévia dos links. Hoje o site de verdade não tem marca enviada: a aba mostra a do estudo. Para você: nada obrigatório; se enviar uma marca nova, prefira PNG quadrado. Antes, também em 15/10, **títulos e frases do site editáveis no painel (M7.16), pronto:** os títulos, as linhas pequenas acima deles e as frases que estavam fixos no site passam para Configurações → Textos do site: o topo de Nossas casas, o quadro da consulta na página de cada casa, o quadro "Resumo da viagem" da consulta e as seções Como reservar e Contato da página inicial. A linha pequena de "O bairro à sua porta" fica junto do título e do subtítulo dessa seção, em Configurações → Textos do site, no quadro O bairro à sua porta (mais abaixo na mesma tela). Cada campo já vem com o texto que o site mostra hoje, então nada muda até você editar; os textos do estudo aprovado ficam como sugestão na seção 2. Linha pequena ou frase apagada some do site; título apagado volta ao texto de hoje. A prévia do link de Nossas casas não muda: continua com a frase da vitrine de casas da página inicial. Ficaram de fora, ainda fixos, os nomes do menu, do rodapé e dos botões, os textos do formulário da consulta, alguns avisos e os títulos da ficha da casa (a lista está na seção 2). Para você: nada obrigatório; duas perguntas na seção 7: se quer editar também esses nomes e textos, e se a prévia de Nossas casas deve passar a usar a frase da própria página. Antes, também em 15/10, **frase de abertura de cada casa (M7.17), pronto:** na ficha de cada imóvel no painel, logo antes da descrição, há o campo novo "Frase de abertura (site)". A frase que você escrever ali abre a página da casa no site, em letra grande, acima da descrição, como no estudo aprovado ("Dias leves entre a praia e os restaurantes."). Ela passa a ser também a frase do cartão da casa (inclusive na vitrine de "Anuncie seu imóvel", que os proprietários leem) e da prévia do link no WhatsApp. Em branco, nada aparece acima da descrição, e o cartão continua como antes: a primeira frase da descrição ou, sem descrição, o bairro e a cidade. Nenhuma casa ganhou frase sozinha. Na aba Anúncios, o quadro do site mostra a frase ou, sem ela, a frase que o cartão está usando. A nota do preço base deixou de dizer que o site não mostra valores: agora ela diz, conforme a fonte de preços da casa, se esse preço entra no valor da noite no site. Para você: escrever a frase de cada casa quando quiser; as frases do estudo estão na seção 2 como sugestão (seção 6, item 48). Antes, também em 15/10, **texto das caixas de autorização dos proprietários editável no painel (M7.15), pronto:** o texto ao lado da caixa de autorização dos dois formulários de "Anuncie seu imóvel" (o pedido de contato para a gestão completa e o cadastro do marketplace) agora se muda pelo painel, na aba nova **Configurações → Autorização dos proprietários**, sem mexer em código. Cada mudança publicada vira uma versão nova, com número e data, e vale dali em diante: os pedidos já recebidos continuam com o texto que a pessoa viu. A versão 1 é o texto de hoje, que veio com o sistema; a primeira que você publicar será a versão 2. O nome da empresa continua entrando sozinho no texto (escreva {empresa} onde ele deve aparecer). O sistema não deixa publicar texto vazio, porque a caixa é obrigatória, e avisa enquanto você digita se algo não pode entrar (quebra de linha, por exemplo). Para quem preenche, nada muda até você publicar um texto novo. Para você: nada obrigatório; quando o advogado mandar o texto das caixas (seção 6, item 39), cole lá e publique (seção 2). Antes, também em 15/10, **prévia dos links do site no WhatsApp e nas redes (M7.13), pronto:** quem manda o link do site ou de uma casa pelo WhatsApp, Instagram, Facebook ou X vê uma prévia com a foto (a primeira foto da casa ou, nas outras páginas, a foto da capa do site, na versão leve), o título com o nome da empresa e a frase da própria página, tirada dos textos que você já edita no painel; sem foto, a prévia sai sem imagem, nunca com uma genérica. Enquanto o site não tem casa publicada (como hoje), a prévia da consulta, de Nossas casas e das páginas não encontradas usa o aviso do site sem casas, o mesmo que essas páginas mostram. A prévia e os links das mensagens ao hóspede usam o campo Site de Configurações → Empresa, que precisa ter o endereço em que o sistema abre hoje, com https:// no começo e sem o caminho de uma página; enquanto ele tiver outro endereço, a prévia usa o endereço da Vercel. Para você: conferir o campo Site (seção 6, item 47): na produção ele tem um endereço que não é o do sistema. Antes, também em 15/10, **faixa "Prévia de teste" (M7.12):** nas prévias da Vercel (a versão de teste, com banco próprio e o pagamento de teste do Mercado Pago), todas as páginas — site, cotação, Minha reserva, portais, painel e as telas de erro — mostram no topo uma faixa fina: "Prévia de teste · não é o site de verdade · nenhuma cobrança real". Assim, você e quem você mandar testar não confundem a prévia com o site de verdade, que continua sem a faixa. Na página da cotação, a frase "Ambiente de teste: nenhuma cobrança real." deixou de aparecer nas prévias, porque a faixa do topo já diz isso. Duas perguntas para você, sem pressa: quer a faixa também no site de verdade até a entrada no ar? E o selo "Homologação · dados fictícios" do painel, que aparece também no de verdade, fica ou sai? (seção 2 e seção 7). Antes, também em 15/10, **registro da autorização dos proprietários (M7.14), pronto:** nos dois formulários de "Anuncie seu imóvel" (o pedido de contato para a gestão completa e o cadastro do marketplace), a partir da publicação desta mudança, cada envio guarda o dia e a hora em que chegou com a caixa de autorização marcada e o texto exato que a pessoa viu; você vê isso no painel, em Proprietários → Pedidos de contato e em Cadastros pelo site. Os pedidos de antes aparecem como "Sem registro" (a caixa já era obrigatória), sem data inventada. O texto-base da Política de privacidade passa a citar esse registro na linha dos proprietários. Para quem preenche, nada muda. Para você: nada obrigatório; se você já publicou a Política de privacidade, inclua a frase nova na próxima versão, e a pergunta sobre guardar também o endereço de internet (IP) continua na lista do advogado (seção 6, item 39). O próximo passo, deixar o texto das caixas editável no painel, ficou como um item novo (M7.15). Antes, em 14/10, **buscar as datas em todas as casas de uma vez (M7.9), pronto:** quem só sabe as datas e quantas pessoas vão escolhe "Todas as casas" em "Seu lugar" e vê uma página com as casas que recebem o grupo, cada uma com a situação de verdade naquelas datas (disponível, indisponível ou a confirmar, pela mesma conferência da página da casa) e o valor com o desconto do site à mostra; o cartão leva à página da casa já com as datas, onde se segura e paga como antes. Na página de uma casa, escolher outra casa no "Planeje sua estadia" e tocar em "Continuar" abre a outra com as mesmas datas. A linha pequena, o título, o aviso, a frase de quando nenhuma casa recebe o grupo e a frase do contato ficam em Configurações → Textos do site. Enquanto o site não tem casa publicada (como hoje), a busca mostra o mesmo aviso do site sem casas descrito abaixo (M7.8), com o seu WhatsApp, e não um segundo texto para o mesmo caso. A página da busca segue as regras de acessibilidade do M7.11 (logo abaixo): o botão do WhatsApp avisa a quem usa leitor de tela que abre outra janela e os títulos seguem em ordem, sem pular nível. Para você: nada obrigatório; uma escolha pequena na seção 7 (mostrar ou esconder as casas sem vaga). Antes, também em 14/10, **site mais fácil de usar pelo teclado e pelo leitor de tela (M7.11):** quem navega pela tecla Tab vê um contorno em volta do link ou do botão em que está; nas partes verdes do site, dos portais e do menu do painel esse contorno laranja quase sumia, e agora ali ele é creme, bem visível. A foto escolhida na galeria do imóvel ganhou um anel dourado escuro, mais fácil de ver. Cada página do site e dos portais tem, no primeiro Tab, o link "Pular para o conteúdo", que só aparece para quem usa o teclado. Os links que abrem outra janela (WhatsApp, Pix no Mercado Pago, páginas legais) avisam isso a quem usa leitor de tela, sem mudar nada na tela. E a ordem dos títulos, que o leitor de tela usa para navegar, deixou de pular um nível na página do imóvel, em Nossas casas e na página para proprietários. Para quem usa o mouse, nada muda. Você não precisa fazer nada (seção 2). Antes, também em 14/10, **páginas de "não encontrada" e de erro no site, e o aviso de quando não há casa publicada (M7.8):** um endereço errado ou o link de uma casa que saiu do site agora mostra uma página em português, no visual do site, com o botão "Conhecer as casas" (antes aparecia uma página em inglês, sem o cabeçalho e o rodapé). Um erro inesperado mostra uma tela curta de "tente de novo". O painel e o portal do proprietário ganharam as suas, no visual deles. E, enquanto nenhuma casa está publicada, como hoje no site de verdade, a página inicial, Nossas casas, a consulta e a própria página não encontrada dizem isso com clareza e oferecem o seu WhatsApp (ou o e-mail), no lugar do "Em breve." e de um formulário que não dava para enviar; na página não encontrada, no lugar de "Conhecer as casas", aparecem esse aviso e "Voltar ao início". Os textos novos estão em Configurações → Textos do site, já preenchidos: os títulos e as frases da página não encontrada vêm do estudo aprovado; o aviso de quando não há casa publicada é um texto novo, escrito agora, para você revisar (é ele que aparece hoje no site de verdade). Você não precisa fazer nada além dessa revisão, quando quiser (seção 2). Antes, também em 14/10, **páginas pessoais e internas fora do Google (M7.10):** o Google e os outros buscadores passam a receber o pedido de não listar as páginas que são de uma pessoa ou só da equipe: a cotação de cada hóspede, Minha reserva, o link do convite, as etapas do cadastro do proprietário (inclusive a de digitar o código, que mostra o e-mail da pessoa), a entrada, o painel, o portal e a tela da equipe. Os buscadores sérios atendem esse pedido. A aparência não muda. As páginas públicas (início, casas, consulta, página para proprietários e páginas legais) ficam como estão: se elas aparecem no Google continua decisão sua. A entrada, o convite e a tela da equipe deixaram de mostrar a descrição interna "Sistema de gestão" na aba e na prévia do link, e o convite usa o nome da empresa de Configurações → Empresa. Nada para você fazer (seção 2). Antes, também em 14/10, **teste do pagamento pronto para você e acesso ao banco com regras:** a prévia da Vercel foi publicada de novo depois das suas chaves de teste da conta negócio nova, e o banco das prévias, que estava vazio, recebeu dados fictícios para o teste (um imóvel de teste com preço, contrato, páginas legais e o pagamento e o cartão ligados). A consulta do imóvel de teste já oferece o Pix no site, o que mostra que o Mercado Pago conferiu as suas chaves como de teste. O passo a passo do Pix e do cartão está na página de pendências e na seção 6, item 37, que ganhou o Redeploy depois das chaves e o aviso de que a prévia tem um banco só dela. Você liberou em 14/10 o acesso de Claude e Codex ao Neon, com regras: no banco de verdade, só leitura e mudanças pelo próprio sistema, e correção à mão só com o seu "pode" (regras do projeto, seção "Banco de dados no Neon"; seção 5, linha do Neon). Corrigido também um erro meu: o "não mexer no Neon" que eu repeti como pedido seu era uma anotação minha de 4/10, não uma decisão sua. Antes, em 11/10, **disputa do pagamento (contestação), em teste (M8.2e):** quando alguém pede ao banco para desfazer a cobrança de uma reserva paga pelo site (a contestação no cartão), pede a devolução de um Pix pelo mecanismo do Banco Central (o MED) ou abre uma reclamação no Mercado Pago, o sistema registra a disputa, avisa a equipe no Início e por e-mail e segura a parte do proprietário dessa reserva que ainda não foi repassada, sem descontar nada de ninguém, até você registrar quem arca: o proprietário, a SCL ou cada um na proporção da sua parte (o sistema nunca escolhe). Com a decisão, o valor do proprietário fica segurado nos próximos repasses até o resultado: se a SCL ganhar, volta; se perder, fica definitivo. O resultado é sempre você quem confirma: o sistema mostra o que o Mercado Pago diz, mas não decide sozinho, porque as páginas do Mercado Pago já deram sentidos opostos ao mesmo código. Antes da entrada, dá para "Cancelar a reserva contestada" sem devolução pelo sistema (o dinheiro volta a quem pagou, pela disputa, se ele ganhar). O proprietário vê a disputa no extrato, no portal e no e-mail do repasse; o hóspede só vê "pagamento em conferência", e nenhuma mensagem automática sai. O Mercado Pago de teste não cria disputas: no teste, você registra uma à mão num pagamento de teste (seção 2; o que fazer no item 46 da seção 6, o texto do "Como funciona" no item 42 e o evento novo dos avisos no item 37; 14 decisões novas na seção 7). **Com isso, as cinco partes do pagamento pelo site estão prontas no teste**; o pagamento de verdade continua desligado e espera as suas decisões marcadas com ★ (seção 7). Antes, em 10/10, **alteração de reserva paga pelo site, em teste (M8.2d):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) muda as datas, o número de pessoas ou o valor **antes da entrada**: o sistema mostra antes o valor novo, a diferença e o que acontece com o dinheiro, e segura as noites novas por um tempo que você escolhe. Se o valor sobe, o hóspede paga a diferença por Pix ou cartão na página da reserva e a alteração vale sozinha; se desce, a diferença segue a Política de cancelamento que ele aceitou, contando da entrada original ou da nova, a que vier primeiro: dentro do prazo, volta; fora, fica e é dividida como uma reserva normal. O financeiro é refeito sozinho, e a devolução de parte do valor só é pedida ao Mercado Pago depois que ele libera o pagamento (no teste, registre a liberação à mão). Também ficou pronto o que faltava das devoluções: mais de uma devolução no mesmo pagamento, o restante de um pagamento já devolvido em parte e a devolução que o Mercado Pago fez a menos. Nada é escrito no Beds24: o Início avisa quando mudar o bloqueio nas OTAs, mesmo com o envio ao Beds24 ligado (o envio manda só os bloqueios do SCL, nunca as datas das reservas; o mesmo vale para os avisos de reserva paga e cancelada). Como o Pix, o cartão e o cancelamento, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 44 e 45 da seção 6 e as frases novas da política no item 42; decisões novas na seção 7). Antes, também em 10/10, **cancelamento de reserva paga pelo site, em teste (M8.2c):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) calcula o cancelamento pela Política de cancelamento que o hóspede aceitou, vê o resultado antes (devolução integral ou nada, e por quê) e cancela; o sistema pede a devolução ao Mercado Pago, acompanha até ela sair e acerta o financeiro sozinho: reserva, comissão, parte do proprietário, a taxa que não voltar (despesa da empresa) e, se a parte do proprietário já tinha sido paga, o desconto no próximo repasse dele. Sem devolução, o valor fica e é dividido como uma reserva normal. O hóspede pode pedir o cancelamento em Minha reserva (ele só pede, e a hora fica registrada; quem cancela é a equipe), a página da reserva mostra a situação e há três mensagens novas ao hóspede, prontas para copiar, que saem sozinhas quando você ligar as mensagens. Como o Pix e o cartão, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 41 a 43 da seção 6; decisões novas na seção 7). Também em 10/10, **conferências com dados fictícios:** equipe (senha provisória, troca da própria senha, cidades e avisos) e cartão (liberação imediata, em 14 e em 30 dias). A previsão não vira dinheiro recebido: precisa da confirmação do provedor, e o proprietário espera também o check-in. Não houve criação de contas reais, envio de avisos reais nem cobrança. **Visual:** componentes atuais renderizados localmente em computador (1512 px) e celular (390 px), comparados com o acervo do Sage; sem estouro horizontal, imagens carregadas e campos de no mínimo 44 px. Essa conferência de aparência não valida navegação, autenticação ou pagamentos no site publicado.
 > **Entregas de 9/10/2026:** **pagamento com cartão no site, em teste (M8.2b):** depois de segurar as datas, o hóspede escolhe entre o Pix (recomendado, já marcado) e o cartão de crédito; o formulário do cartão é do Mercado Pago (os dados do cartão nunca passam pelo nosso sistema), aceita só crédito e parcela com os juros pagos pelo hóspede; quando o banco pede, a verificação do banco aparece na própria página. A reserva confirma sozinha quando o cartão é aprovado, e um cartão em análise no Mercado Pago segura as datas por mais um tempo que você escolhe. Contra quem testa cartões roubados, toda recusa mostra a mesma mensagem e, com muitas recusas, o cartão desliga sozinho (o Pix continua). O cartão vem **desligado**: você liga em Configurações → Pagamento no site. Como o Pix, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago: nada é cobrado de verdade (seção 2; o que fazer no item 40 da seção 6; decisões novas na seção 7: verificação do banco, prazo de liberação do cartão, e-mail do formulário e devolução por fora). Também em 9/10, **páginas legais do site prontas (M7.4):** o site ganhou as três páginas que a lei pede para vender pela internet — Termos de uso, Política de privacidade e Política de cancelamento —, com links no rodapé de todas as páginas. Você revisa e publica cada uma em Configurações → Páginas legais do site, com prévia, versão datada e histórico; os dados da empresa entram sozinhos (preencha antes o novo campo "encarregado" em Configurações → Empresa). Antes de gerar o Pix, o hóspede lê o resumo da política de cancelamento, vê até que dia tem o reembolso integral daquela reserva e marca que aceita; na ficha da reserva você vê o que ele aceitou. Os textos são um texto-base que eu escrevi a partir da lei: leve ao contador e, de preferência, a um advogado antes de publicar. **Atenção: enquanto as três não estiverem publicadas, o site não oferece o Pix — nem nas prévias da Vercel**, que usam outro banco e precisam ter as três publicadas lá também para o teste do pagamento continuar (seção 2; o que fazer no item 39 da seção 6). Também em 9/10, **sobras de feriado e evento com reserva (M3.10):** quando um feriadão ou evento já tem uma reserva confirmada, as noites livres dele passam a pedir o mínimo normal da semana (1 noite de domingo a quinta, 2 na sexta e no sábado), sem baixar o preço do evento, como você decidiu em 6/10. A regra vem ligada; desligue, evento por evento, em Configurações → Calendário e preços, nas temporadas longas como a alta temporada (seção 2; o que fazer no item 38 da seção 6). Também em 9/10, **pagamento por Pix no site, em teste (M8.2a):** depois de segurar as datas, a página da cotação mostra o Pix (copia e cola, QR e prazo) e confirma a reserva sozinha quando o pagamento é aprovado; no painel, a ficha da reserva ganha o quadro "Pagamento no site", há a lista em Financeiro → Pagamentos do site e a aba Configurações → Pagamento no site, onde você liga e desliga. Tudo roda só nas prévias da Vercel e só com a conta de teste do Mercado Pago: nada é cobrado de verdade (seção 2; o que fazer no item 37 da seção 6). Em 8/10, **página para proprietários pronta (M7.7):** "Anuncie seu imóvel" no site virou uma página completa, no visual do estudo: as duas formas de trabalhar (gestão completa e marketplace), como gerimos, a vitrine dos imóveis, o "Como funciona" publicado e um pedido de contato para a gestão completa, que chega em Proprietários → Pedidos de contato, com aviso no Início do painel e por e-mail; o cadastro do marketplace continua igual. Os textos começam com um texto-base para você revisar em Configurações → Página para proprietários, e os números de mercado só aparecem quando você digitar dados reais (seção 2; o que fazer no item 36 da seção 6). Em 7/10, **a equipe entra sem e-mail (M6.8):** em Limpezas → Profissionais você cria para cada pessoa um usuário e uma senha provisória (o sistema pode criar a senha), copia a mensagem pronta e manda pelo WhatsApp; ela entra em "Entrar com usuário e senha" e troca a senha no acesso dela. Na mesma tela você escolhe a cidade da agenda de cada uma: quem é de Búzios vê só Búzios, quem é do Rio vê só o Rio (seção 2; o que fazer no item 7 da seção 6). Também em 7/10, **site do hóspede no visual do estudo (M7.6):** a página inicial ganhou a foto de capa que você escolher em Configurações → Site (sem foto, fica o fundo verde), a legenda vertical, a vitrine "Seu endereço no Leblon" em carrossel com setas e botão de pausa, cartões com selo e ícones das comodidades, e "Por que reservar direto" com um texto-base para você revisar; a página do imóvel ganhou "O bairro à sua porta" (lugares que você cadastra no painel, com foto opcional); as datas são escolhidas num calendário próprio, com as noites ocupadas marcadas; a consulta ficou em duas colunas com o "Resumo da viagem"; a marca do logotipo aparece no topo e no rodapé (seção 2; o que fazer no item 35 da seção 6). Também em 7/10, **pesos do marketplace no padrão 6/3/3 (M12.5):** quem nunca salvou a aba Marketplace e desconto do site já usa hóspede 1, proprietário 1 e SCL 2 (desconto do site de cerca de 3%); se o que está salvo é o 1/1/1 antigo, a aba avisa e oferece o botão "Usar o padrão novo" (seção 6, item 24). Também em 7/10, **fotos reais dos imóveis prontas (M7.3):** na ficha de cada imóvel, no painel, há a parte **Fotos**: você sobe várias de uma vez (pode ser a original do celular, o sistema reduz antes de subir), escolhe a capa, muda a ordem e escreve a legenda; o site mostra a capa nos cartões e a galeria na página do imóvel, e a capa do relatório mensal usa a mesma foto (seção 2; o que fazer no item 34 da seção 6). Também em 7/10, **Beds24 fora do que o proprietário e o hóspede leem (M5.9, pronto):** o portal passa a falar de "nosso sistema", "os canais" e "sua ferramenta de preços"; o site, quando o preço de uma data ainda não foi lido, diz só que o preço é confirmado na conversa; o painel continua dizendo Beds24 (seção 2). Também em 7/10, **sua segunda rodada de respostas de 7/10 no plano** (seção 7): a equipe entra de vários jeitos (conta Google, e-mail com senha ou usuário e senha criados por você), sem verificação em duas etapas, e cada pessoa vê só a agenda da cidade dela (M6.8 sai de "bloqueado"); no reembolso integral do site, a taxa que o Mercado Pago não devolver fica com a empresa; a posição sobre o arrependimento de 7 dias eu escrevo e você confere com o contador; dois itens novos para o site: o site do hóspede pronto pelas referências do Sage (M7.6) e a página para proprietários (M7.7). Antes, **suas respostas de 7/10 registradas no plano** (seção 7): no marketplace, relatório e extrato mostram só o que passa pela SCL (as reservas do site e o dinheiro que a empresa receber); o Beds24 fica nos bastidores, sem aparecer para proprietário e hóspede (item novo M5.9); contestação perdida fica com quem deu causa ao motivo, decidido caso a caso; cancelamento do site com a base de 14 dias; pesos 6/3/3 confirmados (item novo M12.5); fotos liberadas (M7.3 sai de "bloqueado"); só o Leblon no site público no começo; e-mail não serve para a equipe (item novo M6.8, espera você decidir como a equipe entra); ideia de serviços à parte com valor mensal fixo (item novo M4.14, espera a sua lista). **O que depende de você agora fica na página "Pendências do Diego"** (https://claude.ai/artifact/PVim3wJVrYgsRVvzabUv6K), onde você marca o que fez e pergunta; esta seção 6 continua como referência completa. Você fez em 7/10: início do sistema e acerto por fora, recebimentos de outubro, chaves Pix, "Como funciona" versão 1 publicada e o remetente do e-mail. Antes, em 5/10: **relatório mensal com os ajustes que você pediu (M5.8):** o quadro diz "noites ocupadas", entraram "receita por noite disponível" (o RevPAN do setor) e "reservas e estadia média", e o segundo gráfico é a ocupação por mês com a diária média sobre cada barra — a opção 1, que você escolheu em 5/10 (seção 2); **dia do fechamento passou para o dia 2 (M4.13, sua decisão de 5/10):** o fechamento mensal, o repasse mensal e o e-mail do relatório saem sozinhos no dia 2 do mês seguinte (o Airbnb só paga no dia 1º a reserva com check-in no último dia do mês); dá para mudar de 1 a 5 em Configurações → Repasses, valendo do fechamento do mês atual em diante; no dia 1º você ainda pode fechar e enviar à mão, e o proprietário baixa o PDF no portal a qualquer hora (seção 2; item 33 da seção 6); **relatório mensal no modelo oficial pronto (M5.7):** o PDF do portal, do painel e do e-mail do fechamento saiu em quatro páginas (capa com o resultado e "como chega até você", números e reservas do mês com o gráfico de 12 meses, conciliação e repasses, extratos dos canais no fim), com os ajustes que você pediu (quadros dois a dois, nada com rolagem lateral no celular); **antes do fechamento de outubro, guarde os extratos dos canais em Financeiro → Repasses → "Extratos dos canais"** para irem no e-mail (item 32 da seção 6); os e-mails do fechamento e do repasse ganharam a versão bonita (HTML) na mesma ordem do texto; **documento "Como funciona" para o proprietário pronto (M5.6):** texto por seção em Configurações → Como funciona (proprietário), versão datada a cada publicação, aceite registrado no convite e no portal (quem, quando, qual versão) — **nada aparece no portal até você revisar o rascunho e publicar a versão 1** (seção 6, item 31); **reserva paga antes do início é acertada inteira por fora (M4.12):** o corte do início do sistema passou a ser pela data em que o canal pagou a reserva, não por noite — a reserva de 29/9 a 2/10 paga em 30/9 é toda de antes, com a noite de outubro; a paga a partir de 1/10 entra inteira; Booking, site e direta que atravessam 30/9→1/10 precisam do recebimento registrado **com a data em que o canal pagou** antes da marcação (item 29 da seção 6); Configurações → Regras financeiras ganhou "em quantos dias depois do check-in o canal paga" (Airbnb: 1) — seção 2; **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
@@ -35,14 +35,472 @@
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta; sobras de feriado e evento com reserva usam o mínimo normal da semana (M3.10, 9/10) |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); início do sistema e acerto por fora do que é de antes (M4.11); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago; reserva paga antes do início acertada inteira por fora, pela data em que o canal pagou (M4.12); dia do fechamento no dia 2, editável de 1 a 5 (M4.13, 5/10) |
-| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto e com a versão 1 publicada por você em 7/10 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail; ajustes de 5/10 no relatório prontos (M5.8: noites ocupadas, receita por noite disponível, estadia média, gráfico de ocupação); Beds24 fora dos textos do portal e do site (M5.9, 7/10) pronto |
+| M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto e com a versão 1 publicada por você em 7/10 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail; ajustes de 5/10 no relatório prontos (M5.8: noites ocupadas, receita por noite disponível, estadia média, gráfico de ocupação); Beds24 fora dos textos do portal e do site (M5.9, 7/10) pronto; nomes da empresa e do proprietário sempre como estão no cadastro, no "Como funciona" e no e-mail do fechamento (M5.10, 16/10) |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento; a equipe entra sem e-mail e vê só a agenda da cidade dela (M6.8, 7/10); aviso pelo WhatsApp depende do M10 |
-| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais prontas (M7.4, 9/10): você revisa e publica; fotos reais prontas (M7.3, 7/10: você sobe na ficha do imóvel); site do hóspede no visual do estudo pronto (M7.6, 7/10); página para proprietários pronta (M7.7, 8/10) |
-| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, testado nas prévias com as suas chaves de teste; **cartão em teste pronto (M8.2b, 9/10)**, desligado até você ligar; **cancelamento de reserva paga pelo site em teste pronto (M8.2c, 10/10)**, pela política que o hóspede aceitou; **alteração de reserva paga pelo site em teste pronta (M8.2d, 10/10)**, antes da entrada, com a diferença paga pelo site ou devolvida pela política, e a devolução de parte do valor; **disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10)**: as cinco partes estão prontas no teste, e o pagamento de verdade espera as suas decisões ★ (seção 7) |
+| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais prontas (M7.4, 9/10): você revisa e publica; fotos reais prontas (M7.3, 7/10: você sobe na ficha do imóvel); site do hóspede no visual do estudo pronto (M7.6, 7/10); página para proprietários pronta (M7.7, 8/10); páginas de "não encontrada" e de erro em português e aviso de quando não há casa publicada prontos (M7.8, 14/10); busca das datas em todas as casas de uma vez pronta (M7.9, 14/10, com as regras de acessibilidade do M7.11); páginas pessoais e internas fora do Google (M7.10, 14/10); acessibilidade do site pronta (M7.11, 14/10: contorno do teclado visível nas partes verdes, "Pular para o conteúdo", aviso dos links que abrem outra janela e ordem dos títulos); faixa "Prévia de teste" no topo das prévias pronta (M7.12, 15/10: duas perguntas para você); prévia dos links no WhatsApp e nas redes, com a foto e a frase de cada página, pronta (M7.13, 15/10: confira o campo Site, seção 6, item 47); registro da autorização dos proprietários nos formulários de "Anuncie seu imóvel" pronto (M7.14, 15/10: data e hora do envio e texto exato da caixa, no painel); texto das caixas de autorização editável no painel, com versão nova a cada mudança, pronto (M7.15, 15/10: Configurações → Autorização dos proprietários); títulos e frases que estavam fixos no site editáveis em Textos do site (M7.16, 15/10: com o texto de hoje; as sugestões do estudo estão nesta seção); frase de abertura de cada casa, escrita na ficha do imóvel, pronta (M7.17, 15/10: você escreve as frases, seção 6, item 48); ícone da aba e do atalho no celular com a marca do site, e a barra do navegador no celular no verde do site, prontos (M7.18, 15/10); foto em destaque da página da casa mais leve quando a tela permite (M7.19, 15/10: nada para você; a capa da página inicial continua com a foto grande) |
+| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, com a prévia preparada em 14/10 para o seu primeiro teste com as chaves da conta negócio nova (antes disso, nenhum teste com as suas chaves tinha acontecido); **cartão em teste pronto (M8.2b, 9/10)**, desligado até você ligar; **cancelamento de reserva paga pelo site em teste pronto (M8.2c, 10/10)**, pela política que o hóspede aceitou; **alteração de reserva paga pelo site em teste pronta (M8.2d, 10/10)**, antes da entrada, com a diferença paga pelo site ou devolvida pela política, e a devolução de parte do valor; **disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10)**: as cinco partes estão prontas no teste, e o pagamento de verdade espera as suas decisões ★ (seção 7) |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto; desde 10/10, o hóspede pede o cancelamento da reserva paga pelo site em Minha reserva, e há três mensagens novas do cancelamento (M8.2c); também em 10/10, Minha reserva avisa a alteração que espera o hóspede, e há duas mensagens novas da alteração (M8.2d) |
 | M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10); pesos 6/3/3 no padrão do sistema (M12.5, 7/10) |
+
+### Nomes nos textos do proprietário — M5.10 (16/10)
+
+Ficou de fora do M7.15 (texto das caixas de autorização), que já tinha esse cuidado. O "Como funciona" e o e-mail do
+fechamento trocam marcadores pelo nome: `{empresa}` pelo nome de Configurações → Empresa, e `{nome}` pelo nome do
+proprietário.
+
+- **O que muda:** o nome entra exatamente como está no cadastro. Antes, um nome com certos sinais, como `$&`, saía
+  trocado por outro texto ("Casa $& Lar" virava "Casa {empresa} Lar"), e um proprietário com `{mes}` escrito no nome
+  recebia o mês no lugar.
+- **Para nomes comuns:** nada muda. As versões já publicadas do "Como funciona" continuam as mesmas.
+- **O que você precisa fazer:** nada.
+
+### Ícone da aba com a marca do site — M7.18 (15/10)
+
+Também do seu pedido de 14/10 (avançar o site no que não depende de você) e do levantamento feito no mesmo dia. A aba
+do navegador mostrava um círculo preto com um triângulo branco, o ícone padrão da ferramenta com que o sistema é feito,
+e não a marca da Sua Casa Leblon. No estudo que você aprovou, a aba mostra o logotipo.
+
+- **No site:** a aba do navegador mostra a marca que você enviar em **Configurações → Site**, a mesma do topo e do
+  rodapé, quando ela é um arquivo PNG quadrado. O atalho na tela do celular também mostra essa marca, se ela não tiver
+  fundo transparente. Enquanto você não enviar uma, vale a marca do estudo visual.
+- **Marca que não serve de ícone:** se a marca enviada estiver em JPG ou não for quadrada, a aba e o atalho continuam
+  com a marca do estudo. No topo e no rodapé do site, a sua marca aparece normalmente. Na tela da marca, em
+  Configurações → Site, aparece uma nota que diz isso e o motivo (por exemplo, as medidas da imagem). Para resolver,
+  envie a marca em PNG quadrado.
+- **Marca com fundo transparente:** a aba mostra a sua marca, mas o atalho no celular fica com a marca do estudo,
+  porque o iPhone pinta de preto o fundo transparente do atalho. A tela da marca avisa. Para o atalho usar a sua marca,
+  ela precisa de um fundo, e esse fundo aparece também no topo e no rodapé do site. Você escolhe o que prefere.
+- **Painel e portais:** a aba mostra sempre a marca do estudo: no painel, no portal do proprietário, em Minha reserva
+  (do hóspede), na tela de entrada, no convite, na tela da equipe de limpeza e nas telas de erro.
+- **Atalho no iPhone:** quando vale a marca do estudo (no painel, nos portais, ou no site sem uma marca enviada que
+  sirva), o sistema usa uma cópia um pouco maior dela, porque o atalho pede uma imagem maior. Nada é desenhado por cima.
+- **Celular:** a barra do navegador fica no verde do site, o mesmo do topo das páginas.
+- **Arquivos abertos no navegador:** quando o navegador pede o ícone sozinho, como num PDF aberto nele, recebe a marca
+  do estudo.
+- **Hoje, no site de verdade:** nenhuma marca enviada (conferido em 15/10, só por contagem). A aba mostra a marca do
+  estudo.
+- **Nada mais muda:** o conteúdo das páginas e a prévia dos links no WhatsApp e nas redes continuam iguais.
+- **O que você precisa fazer:** nada. Se enviar uma marca nova, prefira PNG quadrado, de 200 a 400 px de lado, como a
+  tela sugere, para ela aparecer também na aba.
+- **Ficou de fora:** instalar o site como aplicativo no celular.
+
+### Títulos e frases do site editáveis — M7.16 (15/10)
+
+Também do seu pedido de 14/10 (avançar o site no que não depende de você) e do levantamento feito no mesmo dia. Alguns
+títulos, linhas pequenas acima dos títulos e frases do site estavam fixos no sistema: para mudar, era preciso mexer no
+código. Agora eles estão em **Configurações → Textos do site**, cada um perto dos outros textos da mesma página:
+
+- **Nossas casas** (a página com todas as casas): o título e a frase abaixo dele. A linha pequena acima do título
+  continua montada com os bairros das casas do site ("Apartamentos · Leblon"): ela vem do cadastro, não é um texto.
+- **Página de cada casa, quadro da consulta** (ao lado da descrição): a linha pequena, o título e uma frase abaixo do
+  título. Esse quadro não tinha frase: o campo vem vazio e só aparece se você escrever.
+- **Consulta, quadro "Resumo da viagem"**: a linha pequena, o título e a frase que aparece antes da consulta. Se você
+  preencher o texto de "Como reservar", é ele que aparece ali, como já acontecia.
+- **Página inicial, seções Como reservar e Contato**: a linha pequena e o título de cada uma. As duas seções continuam
+  aparecendo só quando o texto delas está preenchido (de fábrica, os dois textos vêm vazios).
+- **"O bairro à sua porta"**: a linha pequena acima do título fica na mesma tela, mais abaixo, no quadro **O bairro à
+  sua porta**, junto do título e do subtítulo da seção, para cada texto ter um lugar só.
+
+Como funciona:
+
+- **Nada muda até você editar.** Cada campo já vem com o texto que o site mostra hoje. Se a tela estava aberta desde
+  antes desta mudança e você salvar, os campos novos (que essa tela antiga não tem) ficam como estavam.
+- **Apagar:** a linha pequena ou a frase apagada some do site, sem deixar espaço vazio. O título apagado volta ao
+  texto de hoje, porque a página não pode ficar sem título.
+- **Itálico:** nos títulos, a parte entre asteriscos sai em itálico, como nos outros títulos (por exemplo,
+  "Encontre sua casa \*no Leblon.\*").
+- **Prévia do link de Nossas casas:** não muda. Continua com a frase da vitrine de casas da página inicial, como
+  antes, mesmo que você mude a frase de Nossas casas. O nome da aba continua "Nossas casas", o mesmo do menu. Passar a
+  prévia para a frase da própria página é uma pergunta para você (seção 7).
+
+O texto de hoje fica e o estudo aprovado sugere outros. Se quiser usar as sugestões, é só copiar para o campo:
+
+| Onde | Texto de hoje (fica) | Sugestão do estudo |
+|---|---|---|
+| Nossas casas: linha pequena | "Apartamentos" e os bairros das casas (ex.: "Apartamentos · Leblon") | "Encontre seu lugar" (não dá para trocar aqui) |
+| Nossas casas: título | "Nossas casas" | "Encontre sua casa \*no Leblon.\*" |
+| Nossas casas: frase | "Escolha um apartamento para ver o que ele oferece e consultar as datas." | "Escolha o espaço que combina com a sua viagem." |
+| Casa, quadro da consulta: linha pequena | "Planeje sua estadia" | "Planeje sua estadia" |
+| Casa, quadro da consulta: título | "Consultar disponibilidade" | "Quais são seus planos?" |
+| Casa, quadro da consulta: frase | (nenhuma) | "Consulte as datas para receber disponibilidade, total e condições." |
+| Resumo da viagem: linha pequena | "Sua estadia, sem surpresas" | "Sua estadia, sem surpresas" |
+| Resumo da viagem: título | "Resumo da viagem" | "Resumo da viagem" |
+| Resumo da viagem: frase | "Escolha o apartamento, as datas e quantas pessoas." | "Escolha sua casa e suas datas." |
+| Como reservar: linha pequena e título | "Passo a passo" e "Como reservar" | (o estudo não tem) |
+| Contato: linha pequena e título | "Fale com a gente" e "Contato" | (o estudo não tem) |
+| O bairro à sua porta: linha pequena | "O bairro à sua porta" | "O bairro à sua porta" |
+
+- **Ficou de fora** (continua fixo):
+  - os nomes do menu, do rodapé e dos botões ("Nossas casas", "Planeje sua estadia", "Ver todas as casas",
+    "Continuar", "Conhecer as casas"…);
+  - os textos do formulário da consulta: o título "Consultar disponibilidade" no alto do formulário da página de
+    consulta, os nomes dos campos ("Seu lugar", "Hóspedes") e as dicas abaixo do botão, que mudam conforme o contato
+    (WhatsApp ou e-mail) e o Pix;
+  - os avisos de situação: "Fotos em breve." da casa sem foto, "Site em configuração", "O contato ainda não foi
+    configurado", a frase "Nada é cobrado nem reservado na consulta." (ou "…por aqui."), no fim do "Resumo da
+    viagem", que muda conforme o Pix, e o título "Sua mensagem", que só aparece depois da consulta;
+  - os títulos da ficha da casa ("O que você encontra", "Camas", "Regras da casa").
+
+  Editar os nomes e os textos do formulário é uma pergunta para você (seção 7). O "Em breve." da lista vazia já tinha
+  saído em 14/10: no lugar dele aparece o aviso do site sem casas, que você já edita.
+- **O que você precisa fazer:** nada obrigatório. Se quiser, revise esses textos perto da entrada no ar (seção 6,
+  item 35) e responda as duas perguntas da seção 7.
+
+### Fotos mais leves na página da casa — M7.19 (15/10)
+
+Também do seu pedido de 14/10 (avançar o site no que não depende de você) e do levantamento feito no mesmo dia. Desde
+7/10, cada foto das casas fica guardada em duas versões: a grande, para a galeria, e a leve, para os cartões e as
+miniaturas. A foto em destaque da galeria vinha sempre na grande, mesmo quando a leve bastava.
+
+- **O que muda:** na página de cada casa, a foto em destaque oferece as duas versões, e o navegador de quem visita
+  escolhe a que basta para a tela. Vale também quando a pessoa troca de foto pelas miniaturas.
+- **A aparência não muda:** mesma foto, mesmo recorte, mesmo tamanho na tela e o mesmo texto para o leitor de tela.
+- **Onde fica mais leve:** nos celulares de tela menos nítida e, quando a casa tem mais de uma foto, nos computadores de
+  tela menos nítida. Com uma foto só, ela ocupa a largura toda e, no computador, continua vindo na grande. Nos celulares
+  de tela mais nítida (como os iPhones recentes) e nas telas Retina, a foto precisa da versão grande para ficar nítida, e
+  ela continua vindo. Uma terceira versão, de tamanho intermediário, ficou de fora deste item: ela valeria só para as
+  fotos subidas depois, ou exigiria refazer as que já estão guardadas.
+- **Foto em pé:** o sistema confere o tamanho de verdade de cada versão, no próprio arquivo. A versão leve de uma foto
+  em pé é mais estreita, e o navegador só a usa quando ela basta.
+- **Foto sem versão leve, ou que o sistema não consegue medir:** continua só com a grande, como antes. Nada some.
+- **Capa da página inicial:** continua com a foto grande. No celular, ela cobre um quadro mais alto que largo e aparece
+  mais larga que a tela; a versão leve ficaria borrada. A versão leve da capa continua servindo à prévia do link no
+  WhatsApp.
+- **Já eram leves:** as miniaturas da galeria e os cartões das casas (página inicial, Nossas casas, busca e "Anuncie seu
+  imóvel"). As fotos de "O bairro à sua porta" têm uma versão só e ficam como estão.
+- **Regra de uma hora:** continua valendo. A foto removida, ou de uma casa que saiu do site, some do site em até uma hora,
+  nas duas versões.
+- **O que você precisa fazer:** nada.
+
+### Frase de abertura de cada casa — M7.17 (15/10)
+
+Também do seu pedido de 14/10 (avançar o site no que não depende de você) e do levantamento feito no mesmo dia. No
+estudo que você aprovou em 4/10, a página de cada casa abre o texto com uma frase própria, em letra grande, antes da
+descrição (por exemplo "Dias leves entre a praia e os restaurantes."). O sistema não tinha onde guardar essa frase.
+
+- **Onde escrever:** em **Imóveis → o imóvel**, logo antes da descrição, há o campo novo **Frase de abertura (site)**,
+  com uma explicação curta embaixo. Até 120 caracteres, numa linha só: o campo mostra quantos tem e avisa quando passa,
+  sem cortar o que você colou (você encurta antes de salvar). Espaços sobrando no começo e no fim saem
+  sozinhos.
+- **O que o hóspede vê:** na página da casa, a frase aparece acima da descrição, em letra grande, na mesma letra dos
+  títulos do site. Quando o link chega com datas, ela vem logo depois do quadro da disponibilidade.
+- **Cartão e prévia do link:** a mesma frase passa a ser a frase do cartão da casa e a frase da prévia do link da casa
+  no WhatsApp e nas redes. O cartão aparece na página inicial, em Nossas casas, na busca e também na vitrine da página
+  "Anuncie seu imóvel", que os proprietários leem. Você escreve num lugar só, e ela aparece em todos esses lugares.
+- **Sem frase:** nada aparece no lugar, e o cartão e a prévia continuam como antes: a primeira frase da descrição ou,
+  sem descrição, o bairro e a cidade. Nenhuma casa ganhou frase sozinha: hoje todas estão em branco.
+- **Histórico:** cada mudança na frase fica no histórico da ficha do imóvel, com quem mudou, com o nome "Frase de
+  abertura (site)".
+- **Só do painel:** a frase é sua. A importação de reservas e nenhuma outra leitura de fora preenchem, trocam ou apagam
+  a frase.
+- **Ficha aberta desde antes:** se uma ficha de imóvel estava aberta desde antes desta mudança (sem o campo novo) e for
+  salva, a frase já escrita não se perde.
+- **Leitor de tela:** a frase entra como um título da página, logo abaixo do nome da casa, sem pular nível.
+- **Aba Anúncios:** o quadro do site de cada imóvel mostra a frase junto do título e da descrição. Sem frase, ele diz
+  "Não cadastrada" e mostra a frase que o cartão e a prévia do link estão usando no lugar.
+- **Nota do preço base, na mesma aba:** ela dizia "O site ainda não publica cotações de estadia.", o que deixou de ser
+  verdade desde a cotação do site. Agora depende da fonte de preços da casa (na ficha do imóvel):
+  - com os preços automáticos do SCL ou os digitados no cadastro, diz que o preço base é a base do valor da noite no
+    site, com os ajustes e o desconto do site por cima;
+  - com os preços do Beds24, diz que ele fica só como referência interna, porque o site usa o preço lido do Beds24.
+- **Sugestões de frase:** as do estudo, só como exemplo (nada foi gravado):
+  - 102, Studio Inteligente: "Um refúgio para dois, com o Leblon à porta."
+  - 103, Studio Boutique: "Dias leves entre a praia e os restaurantes."
+  - 303, Quadra Praia: "Mais espaço para estar junto."
+  - 399, Studio Orgânico: "Texturas e personalidade no coração do bairro."
+  - 403, Studio Mezanino: "Seu lugar para descobrir o Rio sem pressa."
+- **O que você precisa fazer:** escrever a frase de cada casa quando quiser (seção 6, item 48). Sem pressa: sem frase, o
+  site continua como hoje.
+- **Ficou de fora:** o proprietário do marketplace não edita a frase pelo portal nem pelo cadastro do site; ela fica com
+  a equipe, no painel.
+
+### Texto das caixas de autorização editável — M7.15 (15/10)
+
+Era o que tinha ficado de fora do M7.14, pelo seu princípio "tudo editável pelo painel". O texto ao lado da caixa de
+autorização dos dois formulários de "Anuncie seu imóvel" (o pedido de contato para a gestão completa e o cadastro do
+marketplace) agora se muda pelo painel.
+
+- **Onde:** **Configurações → Autorização dos proprietários** (aba nova, ao lado de "Página para proprietários"). Ela
+  fica numa aba própria porque funciona como as páginas legais: cada texto vira uma versão, em vez de ser salvo por cima.
+  Cada caixa tem o seu quadro, com o que aparece no site agora, o campo do texto, uma prévia de como fica e a lista das
+  versões (com a data, quem publicou e quantos envios ficaram registrados com cada uma).
+- **Cada mudança vira versão nova:** ao clicar em "Publicar a versão 2" (o sistema pergunta antes), o texto novo passa a
+  valer naquele momento, com número e data. Os pedidos já recebidos continuam com o texto que a pessoa viu, e quem
+  estiver com a página aberta precisa ler o texto novo e marcar de novo. Publicar o mesmo texto não cria versão.
+- **A versão 1 é o texto de hoje**, que veio com o sistema (na lista aparece "veio com o sistema"). Enquanto você não
+  publicar nada, ela continua valendo, como antes. Os pedidos já registrados como "versão 1" são desse texto.
+- **Nome da empresa:** escreva {empresa} onde o nome deve aparecer; o sistema troca pelo nome de Configurações →
+  Empresa, como hoje no pedido de contato. Se você mudar o nome da empresa, o texto da caixa muda junto, sem versão nova
+  (cada pedido guarda o nome daquele momento).
+- **O que não dá para publicar:** texto vazio (a caixa é obrigatória pela lei de proteção de dados), mais de 500
+  letras, quebra de linha (ao lado da caixa o texto aparece corrido), os sinais < e >, chaves fora do {empresa} e
+  caracteres invisíveis que às vezes vêm ao colar de outro programa. O painel avisa enquanto você digita. Se você colar
+  um texto maior que 500 letras, nada é cortado: o painel diz quantas letras o texto tem, e você encurta antes de
+  publicar.
+- **Nada fica guardado antes de publicar:** se você mudou o texto e tenta sair da tela (outra aba das Configurações,
+  o Voltar do navegador, fechar ou recarregar), o sistema pergunta antes, como nas páginas legais.
+- **Se alguém publicar enquanto você edita** (outra pessoa, ou você em outra janela), nada é publicado por cima sem
+  você saber. Ao tocar em publicar, a tela recebe a versão nova sozinha, sem recarregar a página: o seu texto fica no
+  campo, com um aviso, e você escolhe entre usar o texto que acabou de ser publicado ou continuar com o seu (que vira a
+  versão seguinte).
+- **Quem pode:** só quem tem o perfil de administrador, o mesmo que mexe nas outras configurações; a equipe de
+  operação, os proprietários e as limpezas não veem a aba.
+- **O que você precisa fazer:** nada obrigatório. Quando o advogado responder sobre os formulários dos proprietários
+  (seção 6, item 39), cole o texto que ele aprovar e publique.
+
+### Prévia dos links no WhatsApp e nas redes — M7.13 (15/10)
+
+Também do seu pedido de 14/10 (avançar o site no que não depende de você) e do levantamento feito no mesmo dia. Quando
+alguém manda o link do site pelo WhatsApp, Instagram, Facebook ou X, o aplicativo mostra uma "prévia": um quadrinho com
+foto, título e uma frase. Até aqui, todas as páginas do site tinham a mesma frase (o subtítulo da capa) e nenhuma foto.
+Agora:
+
+- **Cada página tem a sua frase**, tirada de um texto que você já edita no painel, em geral o que a própria página
+  mostra:
+  - página inicial: o subtítulo da capa;
+  - Nossas casas: a frase da vitrine de casas da página inicial (a página Nossas casas tinha uma frase fixa; desde
+    15/10, M7.16, essa frase se edita em Textos do site, mas a prévia continua com a da vitrine; mudar isso é uma
+    pergunta para você, na seção 7);
+  - página de uma casa: a primeira frase da descrição da casa (a mesma do cartão; sem descrição, o bairro e a cidade,
+    também como no cartão); desde o M7.17, a frase de abertura da casa, quando você escrever uma;
+  - consulta: a frase abaixo do título; "Sua busca" (todas as casas): o aviso acima das casas;
+  - página para proprietários: a frase da capa dela;
+  - "Página não encontrada" e "Casa não encontrada": a frase delas, com o mesmo título de antes.
+
+  Enquanto o site não tem nenhuma casa publicada (como hoje), a consulta, "Sua busca", Nossas casas e as páginas não
+  encontradas mostram o aviso do site sem casas no lugar da frase; a prévia usa esse mesmo aviso. Nas outras páginas
+  (páginas legais, Minha reserva, a página da cotação) e sempre que a frase da página estiver vazia, vale o subtítulo
+  da capa. O site nunca inventa um texto.
+- **O nome da empresa** aparece como o nome do site na prévia, e o título é o da página com o nome da empresa.
+- **Foto:** na página de uma casa, a primeira foto dela, na versão leve que o site já guarda; a legenda da foto, quando
+  existe, é a descrição dela para quem usa leitor de tela. Nas outras páginas, a foto da capa do site. Sem foto, a
+  prévia sai sem imagem: nunca uma imagem genérica, e a casa sem foto não pega a capa do site emprestada.
+- **Foto da capa em versão leve:** ao enviar a foto da capa em **Configurações → Site**, o sistema prepara agora, além
+  da grande, uma versão leve (800 px) só para a prévia, porque o WhatsApp não mostra bem fotos pesadas. Trocar ou
+  tirar a capa troca ou tira as duas juntas. Uma capa enviada antes de hoje não tem a versão leve: a prévia usa a foto
+  grande, e a tela avisa para enviar a mesma foto de novo. Conferido em 15/10: na produção ainda não há foto de capa,
+  então lá não há nada a reenviar.
+- **Endereço do site:** o campo **Site** de **Configurações → Empresa** é lido por uma regra só, para os links das
+  mensagens ao hóspede e para a prévia. Ele só vale com https:// no começo e só com o endereço do site, sem o caminho de
+  uma página (por exemplo, sem o "/imoveis/403" do link de uma casa). Fora disso, os links das mensagens ficam faltando
+  (o painel avisa, como já fazia com o campo vazio; antes, um endereço com http:// ainda montava o link) e a prévia sai
+  pelo endereço da Vercel.
+  - Na prévia, o campo só vale quando é o endereço pelo qual a página foi aberta. Um endereço que ainda não abre o
+    sistema (o domínio próprio antes de ser ligado) deixaria a foto da prévia quebrada; nesse caso, a prévia usa o
+    endereço da Vercel.
+  - Com o campo certo, a página de cada casa e a consulta indicam o seu endereço principal, sem as datas e as pessoas
+    (para a mesma casa não parecer várias páginas diferentes). "Sua busca" não indica nenhum, para o Facebook não trocar
+    a prévia dela pela da consulta.
+  - Uma nota junto do campo avisa quando ele não serve: sem https, com o caminho de uma página ou com um endereço
+    diferente do endereço do sistema na Vercel (o de produção, mesmo que você tenha aberto o painel por outro endereço
+    da Vercel, como o de uma prévia).
+- **Google:** nada mudou sobre aparecer ou não no Google; essa decisão continua sua (M7.10).
+- **O que você precisa fazer:** conferir o campo Site (seção 6, item 47).
+- **Ficou de fora:** uma imagem montada só para a prévia (com o nome por cima da foto), a frase da busca conforme o
+  resultado (a prévia de "Sua busca" usa sempre o aviso acima das casas) e a prévia das telas do painel e do portal do
+  proprietário.
+
+### Faixa "Prévia de teste" — M7.12 (15/10)
+
+Também do seu pedido de 14/10 (avançar o site no que não depende de você) e do levantamento feito no mesmo dia. A
+especificação visual que você aprovou em 4/10 já previa uma "faixa fina acima quando for prévia", como a do estudo do Sage.
+
+- **O que aparece:** nas prévias da Vercel (o endereço de teste de cada mudança, com banco próprio e o pagamento de teste
+  do Mercado Pago), todas as páginas mostram no topo uma faixa fina, cor de areia: "Prévia de teste · não é o site de
+  verdade · nenhuma cobrança real". Vale para o site, a cotação, Minha reserva, os portais, a entrada, o convite, a tela
+  da equipe, o painel e as telas de erro e de "não encontrada". No site de verdade, nada muda.
+- **Por que esse texto:** a faixa só diz o que o sistema garante sozinho sempre que ela aparece: ali não é o site de
+  verdade, e nenhuma cobrança real é feita. Ela não diz "dados fictícios" nem "banco separado": isso depende de como as
+  prévias foram configuradas (conferido em 3/10 e em 14/10), e o sistema não tem como conferir. O texto é fixo, como os
+  nomes dos botões: não fica em Textos do site porque não é conteúdo do site, e sim um aviso sobre onde a pessoa está.
+- **Na página da cotação:** a frase "Ambiente de teste: nenhuma cobrança real." saiu das prévias, para o aviso não
+  aparecer duas vezes.
+- **Teclado e leitor de tela:** a faixa não tem link nem botão, e o "Pular para o conteúdo" continua sendo o primeiro
+  Tab. O texto escuro sobre a areia é bem legível.
+- **O que você precisa fazer:** responder, quando quiser, duas perguntas (também na seção 7):
+  1. **Faixa no site de verdade?** Quer que uma faixa assim (com outro texto, por exemplo "Site em preparação") apareça
+     também no site de verdade até a entrada no ar? Hoje ela aparece só nas prévias.
+  2. **Selo do painel:** desde setembro, o cabeçalho do painel mostra o selo "Homologação · dados fictícios" em todo
+     lugar, inclusive no painel de verdade, que usa o banco de verdade, e não o das prévias. Nas prévias, ele agora
+     aparece junto com a faixa. Quer que ele saia, que fique, ou que a faixa tome o lugar dele também no de verdade?
+     Por enquanto ele continua como estava.
+
+### Registro da autorização dos proprietários — M7.14 (15/10)
+
+Do levantamento do site de 14/10 e do seu pedido de avançar o site no que não depende de você. Na página "Anuncie seu
+imóvel", os dois formulários para proprietários (o pedido de contato para a gestão completa e o cadastro do
+marketplace) têm uma caixa obrigatória em que a pessoa autoriza o uso dos dados. Pela lei de proteção de dados (LGPD),
+quem precisa provar essa autorização é a empresa. Até agora o sistema exigia a caixa marcada, mas não guardava a prova;
+a partir da publicação desta mudança (M7.14, feita em 15/10/2026), guarda.
+
+- **O que você passa a ver:** em **Proprietários → Pedidos de contato** e em **Proprietários → Cadastros pelo site**,
+  cada pedido (novo ou já tratado) tem a linha **Autorização**, com o dia e a hora (de Brasília) em que o formulário foi
+  enviado com a caixa marcada (pelo relógio do servidor, a mesma hora do pedido; o momento do clique na caixa não é
+  guardado) e o texto exato que a pessoa viu, com o número da versão do texto. Exemplo: "Autorizado em 15/10/2026, 14:32
+  (texto da versão 1): “Autorizo o uso destes dados só para a Sua Casa Leblon me responder sobre a gestão do imóvel.”"
+- **Pedidos de antes:** os enviados antes de esta mudança entrar no ar aparecem com "Sem registro: enviado antes de o
+  sistema passar a guardar a autorização. A caixa já era obrigatória." O sistema não inventa data nem texto para eles. O
+  aviso não traz data porque o registro começa no dia em que a mudança for publicada, que pode ser depois de 15/10; o
+  primeiro pedido com registro mostra quando ele começou.
+- **Se o texto mudar:** cada pedido guarda o texto daquele momento. Se um dia o texto da caixa mudar (ou o nome da
+  empresa, que aparece no texto do pedido de contato), os pedidos antigos continuam mostrando o texto que a pessoa viu.
+  Se a mudança acontecer enquanto alguém está com a página aberta, o envio volta pedindo para ler o texto novo e marcar
+  a caixa de novo.
+- **Para quem preenche:** nada muda.
+- **O que não é guardado:** o endereço de internet (IP) e o navegador de quem marcou. Se isso é preciso, é uma pergunta
+  para o advogado (seção 6, item 39).
+- **Política de privacidade:** o texto-base (o que aparece em **Configurações → Páginas legais do site** enquanto a
+  política não tem versão publicada) passa a dizer, na linha dos proprietários que nos procuram pelo site, que guardamos
+  também "o registro da autorização dada no formulário (o texto autorizado, a versão dele e a data e a hora do envio)".
+  A versão publicada não muda sozinha.
+- **O que você precisa fazer:** nada obrigatório. Se você já publicou a Política de privacidade, inclua essa frase na
+  próxima versão (seção 6, item 39).
+- **Ficou de fora:** o texto das caixas continuou fixo no sistema no M7.14; deixá-lo editável no painel, com versão
+  nova a cada mudança, ficou como o item **M7.15** do planejamento (os pedidos já gravados continuam com o texto que
+  guardam). **Atualizado em 15/10 (M7.15, pronto):** o texto agora se muda em **Configurações → Autorização dos
+  proprietários** (seção acima). O e-mail que avisa a equipe de um pedido novo continua igual (o registro fica no painel).
+
+### Acessibilidade do site — M7.11 (14/10)
+
+Também do seu pedido de 14/10 (avançar o site no que não depende de você) e do levantamento feito no mesmo dia. Este
+item deixa o site mais fácil de usar para quem navega pelo teclado ou usa um leitor de tela (programa que lê a página
+em voz alta para quem não enxerga bem). Para quem usa o mouse, nada muda.
+
+- **Contorno de quem usa o teclado:** quem navega com a tecla Tab vê um contorno laranja em volta do link ou do botão
+  em que está. Nas partes verdes (cabeçalho, faixa das casas, faixa final e rodapé do site, o dia escolhido no
+  calendário de datas, o menu do painel e o topo e o rodapé dos portais), o laranja quase sumia. Agora, ali, o contorno
+  é creme, bem visível; nas partes claras continua laranja, inclusive no quadro claro de "nenhuma casa publicada",
+  que fica dentro da faixa verde das casas. No calendário de datas, o contorno fica inteiro por dentro do dia, também
+  nos dias que não dá para escolher. O contorno também ficou um pouco mais afastado do botão,
+  como pede a especificação visual, e deixou de ser cortado nas faixas que rolam para o lado (as casas da página
+  inicial, as fotos menores da página do imóvel, o menu do painel no celular). O botão redondo do WhatsApp, que passa
+  por cima de partes claras e verdes, ganha um halo creme com o contorno laranja por cima.
+- **Foto escolhida na galeria:** a foto menor que está em destaque ganha um anel dourado escuro por dentro da borda
+  (antes era um contorno dourado claro, difícil de ver no fundo claro). O contorno do teclado fica por fora, e os dois
+  aparecem juntos sem se misturar.
+- **"Pular para o conteúdo":** no primeiro Tab de cada página do site e dos portais aparece o link "Pular para o
+  conteúdo", que leva direto ao miolo da página, sem passar por todo o menu. Ele só aparece para quem usa o teclado. É
+  o mesmo do estudo aprovado.
+- **Links que abrem outra janela:** o WhatsApp, o Pix no Mercado Pago e as páginas legais na versão aceita abrem em
+  outra janela; agora o leitor de tela avisa isso ("abre em nova janela"). O aviso não aparece na tela.
+- **Ordem dos títulos:** quem usa leitor de tela pula de título em título. Na página do imóvel, "O que você encontra",
+  "Camas" e "Regras da casa" pulavam um nível; em Nossas casas, o nome de cada casa também; na página para
+  proprietários, o cadastro, quando aparece sozinho no meio do caminho, começava sem o título principal. Corrigido, sem
+  mudar o tamanho das letras.
+- **O que você precisa fazer:** nada.
+- **Ficou de fora:** o painel interno, que só ganhou o contorno creme nas partes verdes; os links do painel que abrem
+  outra janela continuam como estavam.
+
+### Páginas de "não encontrada" e de erro, e o site sem casas — M7.8 (14/10)
+
+Você pediu em 14/10 para avançar o site no que não depende de você. Este item cuida do que o visitante vê
+quando algo não está lá:
+
+- **Endereço errado ou casa que saiu do site:** antes aparecia uma página padrão, em inglês ("This page could not be
+  found."), sem o cabeçalho e o rodapé. Agora aparece uma página em português, no visual do site, como a do estudo
+  aprovado: o nome da empresa, "Página não encontrada" (ou "Casa não encontrada", quando é o link de uma casa), uma
+  frase curta e o botão **Conhecer as casas**. A aba do navegador diz o mesmo. Os buscadores não guardam essa página.
+  Enquanto não houver nenhuma casa publicada (como hoje), o botão levaria a uma lista vazia: no lugar da frase e de
+  **Conhecer as casas**, a página mostra o aviso do site sem casas, com o seu WhatsApp (ou o e-mail), e **Voltar ao
+  início**.
+- **Erro inesperado** (por exemplo, o sistema fora do ar por um instante): uma tela curta, "Algo não saiu como
+  esperado", com **Tentar de novo** e a volta ao início. Esse texto é fixo, de propósito: ele precisa aparecer mesmo
+  quando o próprio sistema está com problema.
+- **Painel e portal do proprietário:** cada um tem a sua página de "não encontrada" e de erro, no visual dele. No
+  painel, ela aparece dentro do menu, só para quem entrou; a equipe nunca vê o botão "Conhecer as casas" do site.
+- **Site sem nenhuma casa publicada** (hoje, no site de verdade): a página inicial, Nossas casas, a consulta e a
+  página não encontrada passam a dizer isso com clareza e mostram o botão do seu WhatsApp (ou do e-mail, se não houver
+  telefone em Empresa). Sem telefone e sem e-mail em Empresa, no lugar do botão aparece "O contato ainda não foi
+  configurado. Volte em breve.", a mesma frase que a consulta já usava. Antes, a página inicial e Nossas casas diziam
+  só "Em breve." e a consulta mostrava um campo "Seu lugar" vazio, que não deixava enviar. Quando você publicar a
+  primeira casa, o aviso some sozinho.
+- **Textos editáveis** em **Configurações → Textos do site** (já preenchidos; os títulos e o aviso não podem ficar vazios):
+  - o título e a frase da página não encontrada (do estudo aprovado);
+  - o título e a frase da casa não encontrada (do estudo aprovado);
+  - o aviso de quando não há casa publicada: "No momento, nenhuma casa está aberta para reserva pelo site. Se quiser,
+    fale com a gente." Este não vem do estudo (lá não havia esse caso): é um texto novo, escrito agora, para você
+    revisar. É ele que aparece hoje no site de verdade, na página inicial, em Nossas casas, na consulta e na página não
+    encontrada.
+- **Erro sem o nome da empresa:** a tela de erro não lê o cadastro (o erro pode ser justamente esse), então mostra só
+  a marca no topo e o rodapé sem o nome e sem o "©", em vez de colocar uma palavra qualquer no lugar do nome.
+- **O que você precisa fazer:** revisar, quando quiser, o aviso de quando não há casa publicada (é o único texto novo
+  que não veio do estudo). Os outros textos novos também podem ser revistos perto da entrada no ar, junto com os demais.
+- **Ficou de fora:** o link antigo de imóvel no formato do site anterior ("/property/" seguido do código) ainda
+  responde com uma linha de texto simples quando o código não existe ou as datas do link estão erradas. (Mudou no
+  M7.9, logo abaixo: o link de uma casa que não existe ou saiu do site agora leva à consulta, com o aviso; a linha de
+  texto ficou só para o link de uma casa que está no site com as datas erradas.)
+
+### Buscar as datas em todas as casas — M7.9 (14/10)
+
+Você pediu em 14/10 para avançar o site no que não depende de você. Na referência visual que você aprovou em 4/10,
+a busca do site deixa o "Seu lugar" em branco ("Todos os imóveis"), e o nosso site obrigava a escolher uma casa antes.
+Agora:
+
+- **"Todas as casas" em "Seu lugar"**, na busca da capa, na página de consulta e no cartão "Planeje sua estadia" da
+  página de cada casa. Escolher uma casa continua funcionando como antes.
+- **Página "Sua busca":** com as datas e as pessoas e sem casa escolhida, o site mostra um cartão para cada casa que
+  recebe o grupo, com a situação de verdade naquelas datas: **Disponível**, **Indisponível nessas datas** ou
+  **Disponibilidade a confirmar**, pela mesma conferência da página da casa (sem a leitura recente da agenda, nunca
+  aparece "Disponível"). Quando há valor, o cartão mostra o valor cheio, o desconto do site e o total. As livres vêm
+  primeiro.
+- **O cartão leva à página da casa já com as datas e as pessoas**, onde o hóspede segura as datas e paga como hoje.
+- **Casa sem a capacidade cadastrada** aparece com "Capacidade não informada" (um aviso só no cartão) e fica "a
+  confirmar": o site nunca supõe que o grupo cabe. Casa que recebe menos pessoas fica de fora (a página diz quantas).
+  Se nenhuma casa recebe o grupo, aparece um aviso e o botão para falar com a equipe pelo WhatsApp (ou e-mail).
+- **Trocar a casa na página de uma casa:** escolher outra casa no "Planeje sua estadia" e tocar em "Continuar" abre a
+  página dela com as mesmas datas e pessoas, mesmo quando a outra casa está ocupada nessas datas (a página dela diz
+  que está indisponível, e o calendário dela marca as noites ocupadas). Só mudar o campo não troca de página, para quem usa o teclado conseguir
+  passar pelas casas da lista sem ser levado para outra página a cada tecla.
+- **Calendário sem casa escolhida:** avisa que as noites ocupadas não aparecem ali (a situação de cada casa vem na
+  página seguinte), em vez de parecer tudo livre.
+- **Link antigo para uma casa que saiu do site:** o link do site anterior ("/property/" seguido do código) leva à
+  consulta, que diz "Essa casa não está mais no site. Escolha outra ou busque em todas as casas.", já com as datas e
+  as pessoas do link, em vez de uma linha de texto solta (antes, como o M7.8 deixou anotado). A linha de texto ficou
+  só para o link de uma casa que está no site com as datas erradas. A consulta mostra o mesmo aviso quando o link dela
+  aponta para uma casa que não está no site, com ou sem datas.
+- **Site ainda sem casa publicada (junto com o M7.8):** enquanto nenhuma casa está publicada (como hoje), a busca não
+  mostra um formulário que não acharia nada: mostra o mesmo aviso do site sem casas do M7.8, com o botão do seu WhatsApp
+  (ou do e-mail). Se a pessoa já informou as datas e quantas pessoas vão, elas seguem junto na mensagem. A busca tinha
+  uma frase própria para esse caso; ela saiu antes de chegar ao site, para o mesmo caso ter um aviso só, o que você já
+  edita em Textos do site. Com o site sem casas, o link de uma casa que saiu também mostra esse aviso.
+- **Acessibilidade (junto com o M7.11, acima):** a página da busca segue as mesmas regras do resto do site: o botão do
+  WhatsApp avisa a quem usa leitor de tela que abre outra janela, e os títulos seguem em ordem, sem pular nível (o da
+  página, o da lista de casas e o nome de cada casa).
+
+Nada é gravado na busca. Para não pesar, o site confere até 10 casas por busca; acima disso, as outras aparecem com
+"Veja as datas na página da casa", numa etiqueta azul clara, diferente da cinza de "Indisponível" (essas casas não foram
+conferidas, o que não quer dizer que estão ocupadas). Em **Configurações → Textos do site** você muda a linha pequena,
+o título, o aviso acima das casas, a frase de quando nenhuma casa recebe o grupo e a frase ao lado do botão de
+contato, com o texto-base do estudo ("Sua busca" / "Encontre seu lugar."). Ainda ficam fixas, como nas outras páginas do site, as dicas embaixo do formulário, a mensagem pronta que vai para o WhatsApp e o
+nome da aba do navegador; ficam anotadas para quando as outras frases fixas do site forem para o painel. Uma
+escolha pequena para você está na seção 7.
+
+### Páginas pessoais fora do Google — M7.10 (14/10)
+
+Você pediu em 14/10 para avançar o site no que não depende de você. Este é um ajuste de privacidade:
+o Google e os outros buscadores passam a receber, em cada página que é de uma pessoa ou só da equipe,
+o pedido de **não listar a página** (nem seguir os links dela). Nada muda na aparência.
+
+- **Fora do Google:** a cotação de cada hóspede (o link que ele recebe para pagar), Minha reserva e a
+  entrada do hóspede, o link pessoal do convite do proprietário, as etapas do cadastro do proprietário
+  no marketplace (a de digitar o código, que mostra o e-mail da pessoa, e as seguintes), a entrada da
+  equipe e dos proprietários, o painel, o
+  portal do proprietário (com o relatório e o comprovante em PDF), a tela da equipe de limpeza e os
+  endereços internos do sistema. Vale também para quem abre esses endereços sem ter entrado.
+- **Continuam como estão:** o início, as casas, a consulta, a página para proprietários (Anuncie seu
+  imóvel, antes de a pessoa informar o e-mail) e as páginas legais. **Se o site aparece no Google é decisão sua**; quando você decidir, entra
+  o mapa do site. (As prévias da Vercel já ficam fora do Google pela própria Vercel.)
+- **Aba do navegador e prévia do link:** a entrada, o convite e a tela da equipe mostravam a descrição
+  interna "Sistema de gestão da Sua Casa Leblon". Agora cada uma tem o seu título e a sua descrição
+  (por exemplo, "Seu convite" e "Convite para acompanhar seus imóveis no portal do proprietário"), que
+  também aparecem na prévia quando o link é mandado por WhatsApp.
+- **Nome da empresa:** a entrada e o convite usam o nome de **Configurações → Empresa**, e não mais
+  "Sua Casa Leblon" escrito fixo. O convite cancelado ou vencido diz "Peça um novo à" e o nome da
+  empresa. Na tela da equipe, o título da aba usa o nome da empresa de quem entrou, o mesmo do topo
+  da tela.
+- **Para você fazer:** nada.
 
 ### Disputa do pagamento (contestação), em teste — M8.2e (11/10)
 
@@ -596,7 +1054,9 @@ agora é essa página, no mesmo visual do site:
   cadastro, a página mostra só ele.
 
 Tudo que é texto se muda em **Configurações → Página para proprietários**, com um texto-base para você
-revisar. O texto-base só diz o que a empresa de fato faz (o mesmo do "Como funciona").
+revisar. O texto-base só diz o que a empresa de fato faz (o mesmo do "Como funciona"). A exceção, desde 15/10
+(M7.15): o texto ao lado das caixas de autorização dos dois formulários fica em **Configurações → Autorização dos
+proprietários**, com versão a cada mudança (seção do M7.15, acima).
 
 ### Site do hóspede no visual do estudo — M7.6 (7/10)
 
@@ -2228,10 +2688,10 @@ e escreva normalmente.
 | **GitHub** (`al-life/scl-reconstrucao`) | Guarda o código e o histórico | ✅ conectado; backup automático ativo em conta separada desde 4/10 (M0.7) | Olhar a aba *Actions* da conta de backup quando o lembrete chegar; renovar as duas chaves em um ano (seção 6, item 23, passo 8) |
 | **Claude Code** | Programa o sistema; rotina a cada 3h | ✅ ativo | — |
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
-| **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10 | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
-| **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador. Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3) |
+| **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10. **Acesso de Claude e Codex liberado por você em 14/10, com regras** (no banco de verdade, só leitura e mudanças pelo próprio sistema; correção à mão só com o seu "pode"; nunca apagar nem restaurar sem perguntar). Em 14/10, o banco das prévias, que estava vazio, recebeu dados fictícios para o teste do pagamento | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
+| **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador e, desde 14/10, as chaves de teste do Mercado Pago (só no ambiente Preview). Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3). **Uma variável nova só vale numa publicação nova:** depois de criar ou mudar uma, faça o Redeploy de uma prévia (ou me peça) |
 | **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
-| **Mercado Pago** | Pagamentos da reserva direta | 🟡 Conta Negócio no CNPJ aberta por você (8/10); Pix em teste pronto (M8.2a); cartão em teste pronto (M8.2b, 9/10); cancelamento com devolução em teste pronto (M8.2c, 10/10); alteração e devolução de parte do valor em teste prontas (M8.2d, 10/10); disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10) | Criar a aplicação, pôr as chaves de teste só no ambiente Preview da Vercel e testar um Pix (seção 6, item 37); depois, o cartão (item 40), o cancelamento (item 41), a alteração (item 44), a disputa (item 46), o evento "Contestações" nos avisos (item 37) e os ajustes da conta logo abaixo |
+| **Mercado Pago** | Pagamentos da reserva direta | 🟡 Conta Negócio no CNPJ aberta por você (8/10) e, em 14/10, uma conta negócio nova, separada da sua pessoal, com a aplicação e as chaves de teste (conferidas pelo Mercado Pago como de teste em 14/10); nada do sistema dependia da conta anterior; Pix em teste pronto (M8.2a); cartão em teste pronto (M8.2b, 9/10); cancelamento com devolução em teste pronto (M8.2c, 10/10); alteração e devolução de parte do valor em teste prontas (M8.2d, 10/10); disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10) | Testar um Pix e um cartão na prévia preparada em 14/10 (passo a passo na página de pendências e na seção 6, item 37); depois, o cartão (item 40), o cancelamento (item 41), a alteração (item 44), a disputa (item 46), o evento "Contestações" nos avisos (item 37) e os ajustes da conta logo abaixo |
 | **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Entrar no Meta (o login voltava para a tela de entrada, 8/10) e decidir qual número o sistema vai usar; a verificação da empresa pode esperar o site no ar (seção 6, item 4) |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
@@ -2712,6 +3172,10 @@ ambiente).
       foto sua. Só fotos com direito de uso.
     - **Textos:** leia o texto-base de "Por que reservar direto" e os textos novos (vitrine, consulta,
       legenda vertical) e ajuste. Pode deixar para perto da entrada no ar, como combinamos.
+      Desde 15/10 (M7.16), também estão lá os títulos e as frases de Nossas casas, do quadro da consulta
+      na página de cada casa, do "Resumo da viagem" e das seções Como reservar e Contato, com o texto de
+      hoje; as sugestões do estudo estão na seção 2. A linha pequena de "O bairro à sua porta" fica no
+      quadro dessa seção, na mesma tela.
 
     Depois abra o site da preview no celular e no computador. Confira o carrossel, o calendário das
     datas e a consulta, e me diga o que destoa.
@@ -2732,11 +3196,22 @@ ambiente).
     - **Chaves de teste na Vercel, só no ambiente Preview:** em Testes → Credenciais de teste, copie
       a Public Key e o Access Token. Na Vercel, em *Settings → Environment Variables*, crie
       `MERCADOPAGO_PUBLIC_KEY` e `MERCADOPAGO_ACCESS_TOKEN` (marque *Sensitive*), marcando só
-      **Preview**. Nunca mande as chaves no chat.
+      **Preview**. Nunca mande as chaves no chat. **Depois de salvar, publique de novo uma prévia**
+      (em *Deployments*, a prévia mais nova, os três pontinhos, *Redeploy*, ou me peça): uma
+      variável nova só vale numa publicação feita depois dela. O Redeploy da produção não serve,
+      porque a produção não usa essas chaves. Feito em 14/10, com a conta negócio nova.
     - **Chave Pix na conta do Mercado Pago:** sem ela, o Pix não aparece. Se o CNPJ já é chave em
       outro banco, use uma chave aleatória.
-    - **Conferir:** abra o link da prévia do PR, entre no painel e veja em **Integrações** que aparece
-      "conta de teste conferida".
+    - **A prévia tem um banco só dela:** o que você cadastra no painel de verdade não aparece lá,
+      e o contrário também. Para entrar no painel da prévia, use **Receber código por e-mail**
+      com o seu e-mail; o primeiro acesso cria o seu usuário lá. Em 14/10 eu deixei esse banco
+      pronto para o teste, com dados fictícios: o imóvel **Apartamento de teste (fictício)**, com
+      preço e taxa de limpeza, um proprietário e um contrato de teste, as três páginas legais
+      publicadas e o pagamento e o cartão ligados. **Não use "Importar agora"** (Configurações →
+      Integrações) na prévia: isso apagaria o calendário do imóvel de teste.
+    - **Conferir:** abra o link da prévia, entre no painel e veja em **Configurações →
+      Integrações** a linha "Conta de teste: Conferida no Mercado Pago: é uma conta de teste.".
+      Conferido em 14/10 pelo próprio site: a consulta do imóvel de teste oferece o Pix.
     - **Ligar a oferta:** em **Configurações → Pagamento no site**, marque **Oferecer pagamento no
       site** e salve. Ela vem **desligada**: sem isso, o site não oferece o Pix (por segurança, nada
       cobra enquanto você não ligar). Na mesma tela, veja se o imóvel do teste tem ✓. Desde 9/10, o
@@ -2820,8 +3295,17 @@ ambiente).
     - Se os dados vão de fato para a **contabilidade**, como a política diz.
     - **Cópias dos documentos da portaria** que passam pelo WhatsApp ou pelo e-mail: uma regra para
       apagar.
-    - **Formulários dos proprietários:** a autorização é obrigatória, mas o sistema não registra quando
-      foi dada.
+    - **Formulários dos proprietários:** a autorização é obrigatória. Antes do M7.14 o sistema não registrava
+      quando ela era dada; desde a publicação do M7.14 (feito em 15/10/2026) registra, em cada pedido de contato
+      e em cada cadastro do marketplace, o dia e a hora em que o formulário foi enviado com a caixa marcada (pelo
+      relógio do servidor; o momento do clique na caixa não é guardado) e o texto exato que a pessoa viu (com o
+      número da versão). Os pedidos de antes ficam sem registro. A Política de privacidade (texto-base) cita esse
+      registro na linha dos proprietários; se você já publicou uma versão, inclua a frase na próxima.
+      **Texto das caixas:** leve também os dois textos de hoje (o pedido de contato e o cadastro do marketplace). Se o
+      advogado pedir outro texto, desde o M7.15 (15/10) você mesmo muda em **Configurações → Autorização dos
+      proprietários** e publica: vira a versão seguinte, e os pedidos já recebidos continuam com o texto que viram.
+      **Pergunta:** o sistema não guarda o endereço de internet (IP) nem o navegador de quem marcou; isso basta
+      como prova ou é preciso guardar também?
     - **Idade mínima de 18 anos** para reservar.
     - **Encerrar a estadia por violação grave** (festa, mais pessoas que o reservado): hoje não está no
       texto.
@@ -3027,12 +3511,39 @@ ambiente).
     10. **Me conte o que viu** e qualquer passo que não bateu com este roteiro. Se um dia aparecer uma disputa real na
         conta de teste ou na de verdade, me mande o que o painel do Mercado Pago mostra (o estado, os valores e as
         datas): é isso que vai permitir o sistema sugerir o resultado sozinho.
+47. **Campo Site, para a prévia dos links e os links das mensagens (M7.13, pronto em 15/10):** em **Configurações →
+    Empresa**, o campo **Site** precisa ter o endereço em que o sistema abre **hoje**, com https:// no começo — hoje,
+    `https://scl-reconstrucao.vercel.app` —, e não o domínio próprio que ainda vai ser ligado (M11.2). Os links das
+    mensagens ao hóspede e a prévia dos links do site usam esse campo: um endereço que ainda não abre o sistema deixa
+    os links das mensagens quebrados, e a prévia passa a usar o endereço da Vercel. Use só o endereço, sem o caminho de
+    uma página.
+    1. **Confira o campo:** conferido em 15/10, sem ler o valor: na produção, o campo tem um endereço com https que não
+       é o do sistema na Vercel. Abra **Configurações → Empresa**; se aparecer a nota embaixo do campo, troque pelo
+       endereço de hoje e salve. Quando o domínio próprio estiver ligado ao sistema, troque o campo por ele.
+    2. **Foto da capa:** se você já tinha enviado uma foto da capa (numa prévia da Vercel, por exemplo) e a tela mostrar
+       o aviso "Esta foto foi enviada antes da versão leve…", envie a mesma foto de novo.
+    3. **Para ver:** mande para você mesmo, no WhatsApp, o link do site. Hoje (conferido em 15/10, só por contagem), a
+       produção não tem foto da capa nem casa publicada: a prévia mostra só o título e a frase, sem foto, e ainda não há
+       link de casa para testar. A foto aparece no link do site depois que você enviar a foto da capa em **Configurações
+       → Site**, e no link de uma casa depois que você publicar uma casa com fotos. O WhatsApp guarda a prévia de um link
+       por um tempo; depois de trocar a foto ou o texto, teste com o link de outra página ou espere um pouco.
+48. **Frase de abertura de cada casa (M7.17, pronto em 15/10):** em **Imóveis → o imóvel**, escreva no campo **Frase de
+    abertura (site)**, logo antes da descrição, uma frase curta que abra a página da casa (até 120 caracteres, numa
+    linha só). Ela aparece acima da descrição, no cartão da casa e na prévia do link. O cartão aparece também na vitrine
+    de "Anuncie seu imóvel", lida por proprietários: escreva pensando nos dois públicos. Se quiser, comece pelas frases do
+    estudo (lista na seção 2, em "Frase de abertura de cada casa") e ajuste. Com a casa publicada no site, abra a página
+    dela e confira no celular. Sem pressa: em branco, o site fica como está.
 
 ---
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
+- **Textos do site que continuam fixos (M7.16, 15/10) — duas perguntas:** (1) os títulos e as frases listados na seção 2 (M7.16) já se editam em Configurações → Textos do site. Continuam fixos os nomes do menu ("Nossas casas", "Planeje sua estadia"), do rodapé e dos botões ("Ver todas as casas", "Continuar", "Conhecer as casas") e os textos do formulário da consulta (o título "Consultar disponibilidade" no alto do formulário, os nomes dos campos e as dicas abaixo do botão). Quer poder mudar esses também pelo painel? (2) A prévia do link de Nossas casas (no WhatsApp e nas redes) usa a frase da vitrine de casas da página inicial. Quer que ela passe a usar a frase da própria página Nossas casas, que agora você edita? Enquanto você não responde, tudo fica como está.
+- **Faixa "Prévia de teste" (M7.12, 15/10) — duas perguntas** (detalhes na seção 2): (1) quer uma faixa também no site de verdade até a entrada no ar (por exemplo "Site em preparação")? Hoje ela aparece só nas prévias. (2) O selo "Homologação · dados fictícios" do cabeçalho do painel, que aparece também no painel de verdade (que usa o banco de verdade): sai, fica, ou a faixa toma o lugar dele? Enquanto você não responde, nada muda no site e no painel de verdade.
+- **Busca em todas as casas (M7.9, 14/10): mostrar ou esconder as casas sem vaga.** Padrão (como no estudo): a página
+  mostra todas as casas que recebem o grupo, com a situação de cada uma, as livres primeiro. A alternativa é mostrar só
+  as livres e as "a confirmar". Sem resposta, fica o padrão; dá para mudar depois sem perder nada.
 - **Disputa do pagamento — contestação (M8.2e, 11/10) — decisões suas** (o teste está no item 46 da seção 6). Em cada
   uma deixei um padrão, e o sistema já funciona assim; as marcadas com ★ preciso antes do pagamento de verdade:
   1. ★ **Quanto o proprietário perde quando "o proprietário arca".** Numa reserva de R$ 1.000,00 (parte dele R$ 807,67,

@@ -4,6 +4,7 @@ import { FormContatoProprietario } from "@/components/site/FormContatoProprietar
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { VitrineCasas } from "@/components/site/VitrineCasas";
+import { autorizacaoEmVigor } from "@/configuracoes/autorizacao-proprietarios";
 import { lerComoFunciona, secoesParaMostrar, versaoAtual } from "@/configuracoes/como-funciona";
 import { lerMercado, lerTextosProprietarios, mercadoParaMostrar, mesPorExtenso } from "@/configuracoes/pagina-proprietarios";
 import { blocosDoTexto, tituloSimples } from "@/configuracoes/textos-site";
@@ -14,7 +15,12 @@ import { entrarCadastroAcao, pedirCodigoCadastroAcao } from "@/marketplace/acoes
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { imoveisDoSite } from "@/site/site";
 
-export const generateMetadata = () => metadadosDoSite("Anuncie seu imóvel");
+/** Prévia do link (M7.13): a frase da capa da página (Configurações → Página para proprietários) e a capa do site. */
+export async function generateMetadata() {
+  const { db, conteudo } = await carregarSite();
+  const textos = conteudo ? await lerTextosProprietarios(db, conteudo.organizacaoId) : null;
+  return metadadosDoSite("Anuncie seu imóvel", { descricao: textos?.subtitulo });
+}
 
 const MENSAGENS: Record<string, string> = {
   "email-vazio": "Informe seu e-mail.",
@@ -40,16 +46,19 @@ export default async function Anunciar({ searchParams }: PageProps<"/anunciar">)
   const emailInformado = typeof email === "string" ? email.slice(0, 200) : "";
   const digitarCodigo = configurado && etapa === "codigo" && emailInformado;
   const org = conteudo.organizacaoId;
-  const [textos, mercadoGravado, versoes] = await Promise.all([lerTextosProprietarios(db, org), lerMercado(db, org), lerComoFunciona(db, org)]);
+  // O texto da caixa de autorização do pedido de contato: a versão em vigor (M7.15), a mesma que o servidor confere no envio.
+  const [textos, mercadoGravado, versoes, autorizacaoContato] = await Promise.all([lerTextosProprietarios(db, org), lerMercado(db, org), lerComoFunciona(db, org), autorizacaoEmVigor(db, org, "contato")]);
 
+  // No meio do cadastro, ele é a página inteira: o título dele é o h1 (M7.11), com o mesmo visual do h2 da página toda.
+  const TituloCadastro = digitarCodigo || mensagem ? "h1" : "h2";
   const cadastro = (
     <section className={styles.secao} id="marketplace" aria-labelledby="titulo-cadastro">
       <div className={`${styles.dentro} ${styles.cadastroProprietario}`}>
         <div>
           {textos.cadastroOlho && <p className={styles.olho}>{textos.cadastroOlho}</p>}
-          <h2 id="titulo-cadastro">
+          <TituloCadastro id="titulo-cadastro">
             <TextoComDestaque texto={textos.cadastroTitulo} />
-          </h2>
+          </TituloCadastro>
           {textos.cadastroTexto && <p className={styles.texto}>{textos.cadastroTexto}</p>}
         </div>
         <div>
@@ -113,6 +122,8 @@ export default async function Anunciar({ searchParams }: PageProps<"/anunciar">)
   const mercado = mercadoParaMostrar(mercadoGravado);
   const versao = versaoAtual(versoes);
   const secoes = versao ? secoesParaMostrar(versao, conteudo.nomeEmpresa) : [];
+  // O título da faixa das ofertas é opcional: sem ele, os das duas ofertas sobem para h2, logo abaixo do h1 (M7.11).
+  const TituloOferta = textos.ofertasTitulo ? "h3" : "h2";
 
   return (
     <Moldura conteudo={conteudo} largura="cheia">
@@ -148,14 +159,18 @@ export default async function Anunciar({ searchParams }: PageProps<"/anunciar">)
           )}
           <div className={styles.ofertas}>
             <article className={styles.oferta} aria-labelledby="titulo-gestao">
-              <h3 id="titulo-gestao">{textos.gestaoTitulo}</h3>
+              <TituloOferta id="titulo-gestao" className={styles.tituloOferta}>
+                {textos.gestaoTitulo}
+              </TituloOferta>
               {textos.gestaoTexto && <p>{textos.gestaoTexto}</p>}
               <a href="#contato" className={styles.linkTexto}>
                 Pedir contato ↓
               </a>
             </article>
             <article className={styles.oferta} aria-labelledby="titulo-marketplace">
-              <h3 id="titulo-marketplace">{textos.marketplaceTitulo}</h3>
+              <TituloOferta id="titulo-marketplace" className={styles.tituloOferta}>
+                {textos.marketplaceTitulo}
+              </TituloOferta>
               {textos.marketplaceTexto && <p>{textos.marketplaceTexto}</p>}
               <a href="#marketplace" className={styles.linkTexto}>
                 Cadastrar meu imóvel ↓
@@ -285,7 +300,7 @@ export default async function Anunciar({ searchParams }: PageProps<"/anunciar">)
             </h2>
             {textos.contatoTexto && <p className={styles.texto}>{textos.contatoTexto}</p>}
           </div>
-          <FormContatoProprietario empresa={conteudo.nomeEmpresa} />
+          <FormContatoProprietario empresa={conteudo.nomeEmpresa} autorizacao={autorizacaoContato} />
         </div>
       </section>
 

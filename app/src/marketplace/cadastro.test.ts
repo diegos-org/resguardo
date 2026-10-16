@@ -6,6 +6,9 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { CorreioMemoria } from "@/email/correio";
 import { criarToken, lerToken } from "@/lib/token-assinado";
+import { salvarEmpresa } from "@/configuracoes/empresa";
+import { publicarTextoAutorizacao } from "@/configuracoes/autorizacao-proprietarios";
+import { autorizacaoDeOrigem, ERRO_AUTORIZACAO_MUDOU, montarAutorizacao } from "@/proprietarios/autorizacao";
 import {
   aprovarCadastro,
   contarPendentes,
@@ -25,6 +28,9 @@ let org: string;
 let correio: CorreioMemoria;
 const segredo = "segredo-de-teste";
 const agora = new Date("2026-09-25T15:00:00Z");
+/** Marca do texto da caixa que a página mostra (M7.14). */
+const marca = (empresa = "Sua Casa Exemplo") => autorizacaoDeOrigem("cadastro", empresa).marca;
+const TEXTO_V1 = "Autorizo a equipe a usar estes dados para analisar o cadastro e entrar em contato comigo.";
 
 const form = (over: Record<string, string> = {}) => ({
   nome: "Maria Exemplo",
@@ -41,6 +47,7 @@ const form = (over: Record<string, string> = {}) => ({
   imovel_descricao: "Perto da praia.",
   anuncio: "ja_anuncio",
   links: "https://www.airbnb.com/rooms/000000",
+  autorizacao: marca(),
   ...over,
 });
 
@@ -63,6 +70,7 @@ describe("formulário do cadastro (M12.3)", () => {
         imovel: { nome: "Apartamento Exemplo", bairro: "Ipanema", cidade: "Rio de Janeiro", endereco: "Rua Fictícia, 100", capacidade: 4, quartos: 2, banheiros: 1, descricao: "Perto da praia." },
         anuncio: "ja_anuncio",
         links: ["https://www.airbnb.com/rooms/000000"],
+        marcaAutorizacao: marca(),
       },
     });
     // Anúncio novo: links ignorados; quartos/banheiros podem ficar em branco.
@@ -194,5 +202,50 @@ describe("pedido e revisão (M12.3)", () => {
     const l = await listarCadastros(db, org);
     expect(l.pendentes).toHaveLength(0);
     expect(l.decididos[0]).toMatchObject({ situacao: "recusado", motivoRecusa: "Fora da região atendida." });
+  });
+});
+
+describe("registro da autorização (M7.14)", () => {
+  const enviar = async (email = "maria@example.com", over: Record<string, string> = {}, quando = agora) => {
+    const v = validarCadastro(form(over));
+    if (!v.ok) throw new Error("form inválido");
+    return enviarCadastro(db, org, email, v.dados, quando);
+  };
+  const linhas = () => db.select().from(cadastrosMarketplace);
+
+  it("grava quando, a versão e o texto da caixa no mesmo insert do cadastro; o texto vem do servidor", async () => {
+    // Texto mandado pelo navegador não entra em lugar nenhum.
+    expect(await enviar("maria@example.com", { autorizacaoTexto: "Autorizo tudo (texto forjado)" })).toMatchObject({ ok: true });
+    expect(await linhas()).toEqual([expect.objectContaining({ situacao: "pendente", criadoEm: agora, autorizadoEm: agora, autorizacaoVersao: 1, autorizacaoTexto: TEXTO_V1 })]);
+    expect(JSON.stringify(await linhas())).not.toContain("forjado");
+  });
+
+  it("marca que não é a do texto atual (ou nenhuma): recusa com o texto atual e não grava nada", async () => {
+    for (const enviada of [TEXTO_V1, "v1.qualquer", ""]) {
+      expect(await enviar("maria@example.com", { autorizacao: enviada })).toEqual({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: autorizacaoDeOrigem("cadastro", "Sua Casa Exemplo") });
+    }
+    expect(await linhas()).toEqual([]);
+  });
+
+  it("versão nova do texto publicada no painel (M7.15): a marca antiga é recusada, o envio grava a versão nova e os cadastros antigos não mudam, nem depois de aprovado ou com outro nome da empresa", async () => {
+    const r = await enviar();
+    const marcaV1 = marca();
+    const modeloV2 = "Texto fictício da versão 2: autorizo a {empresa} a analisar o cadastro.";
+    expect(await publicarTextoAutorizacao(db, org, "cadastro", modeloV2, null, "2026-09-26", 1)).toMatchObject({ ok: true, versao: { numero: 2 } });
+    const v2 = montarAutorizacao(2, modeloV2, "Sua Casa Exemplo");
+    expect(await enviar("outra@example.com", { autorizacao: marcaV1 })).toEqual({ ok: false, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao: v2 });
+    expect(await enviar("outra@example.com", { autorizacao: v2.marca })).toMatchObject({ ok: true });
+    await salvarEmpresa(db, org, { nome: "Casa Nova Exemplo", razaoSocial: "", cnpj: "", email: "", telefone: "", endereco: "", encarregado: "", site: "", chavePix: "" }, null);
+    if (!r.ok) throw new Error("não gravou");
+    expect(await aprovarCadastro(db, org, r.id, "ipa-200", null, agora)).toMatchObject({ ok: true });
+    const { decididos, pendentes } = await listarCadastros(db, org);
+    expect(decididos[0]).toMatchObject({ id: r.id, situacao: "aprovado", autorizadoEm: agora, autorizacaoVersao: 1, autorizacaoTexto: TEXTO_V1 });
+    expect(pendentes[0]).toMatchObject({ autorizacaoVersao: 2, autorizacaoTexto: "Texto fictício da versão 2: autorizo a Sua Casa Exemplo a analisar o cadastro." });
+  });
+
+  it("recusa sem a caixa marcada: o formulário volta com o erro e nada chega a ser gravado", () => {
+    for (const consentimento of ["", "off"]) {
+      expect(validarCadastro(form({ consentimento }))).toEqual({ ok: false, erros: { consentimento: "É preciso autorizar o uso dos dados para a análise." } });
+    }
   });
 });

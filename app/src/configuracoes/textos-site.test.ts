@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blocosDoTexto, CAMPOS_TEXTOS_SITE, partesDoTitulo, TEXTOS_SITE_INICIAIS, TEXTOS_SITE_OBRIGATORIOS, tituloSimples, validarTextosSite } from "./textos-site";
+import { blocosDoTexto, CAMPOS_TEXTOS_SITE, partesDoTitulo, TEXTOS_SITE_INICIAIS, TEXTOS_SITE_OBRIGATORIOS, tituloDaSecao, tituloSimples, validarTextosSite } from "./textos-site";
 
 describe("textos do site (M7.5): destaque no título e blocos do texto", () => {
   it("palavra entre asteriscos vira destaque; sem asteriscos, uma parte só", () => {
@@ -172,5 +172,139 @@ describe("texto do pagamento em conferência (M8.2e): editável, com texto-base,
 
   it("o texto-base nunca diz contestação nem acusa, nem cita o Beds24, valores ou dados pessoais", () => {
     expect(TEXTOS_SITE_INICIAIS.pagamentoEmConferencia).not.toMatch(/contesta|chargeback|fraude|disputa|beds24|R\$|\d|@/i);
+  });
+});
+
+describe("página não encontrada e site sem casas (M7.8): editáveis, com o texto-base do estudo", () => {
+  const chaves = ["naoEncontradoTitulo", "naoEncontradoTexto", "casaNaoEncontradaTitulo", "casaNaoEncontradaTexto", "semCasasTexto"] as const;
+
+  it("o texto-base é o do estudo aprovado (prototipos/scl-publico) e cabe no limite de cada campo", () => {
+    expect(TEXTOS_SITE_INICIAIS.naoEncontradoTitulo).toBe("Página não encontrada");
+    expect(TEXTOS_SITE_INICIAIS.naoEncontradoTexto).toBe("Você pode voltar ao catálogo para escolher sua casa.");
+    expect(TEXTOS_SITE_INICIAIS.casaNaoEncontradaTitulo).toBe("Casa não encontrada");
+    expect(TEXTOS_SITE_INICIAIS.casaNaoEncontradaTexto).toBe("Conheça os imóveis disponíveis no catálogo.");
+    for (const k of chaves) {
+      const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === k);
+      expect(campo, k).toBeTruthy();
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeLessThanOrEqual(campo!.limite);
+    }
+  });
+
+  it("os títulos e o aviso do site sem casas não podem ficar vazios; as frases abaixo do título podem", () => {
+    const obrigatorias = ["naoEncontradoTitulo", "casaNaoEncontradaTitulo", "semCasasTexto"];
+    for (const k of chaves) expect(TEXTOS_SITE_OBRIGATORIOS.includes(k), k).toBe(obrigatorias.includes(k));
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, naoEncontradoTitulo: " ", casaNaoEncontradaTitulo: "", semCasasTexto: "" })).toEqual({
+      ok: false,
+      erros: { naoEncontradoTitulo: "Este texto não pode ficar vazio.", casaNaoEncontradaTitulo: "Este texto não pode ficar vazio.", semCasasTexto: "Este texto não pode ficar vazio." },
+    });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, naoEncontradoTexto: "", casaNaoEncontradaTexto: "" })).toMatchObject({ ok: true });
+  });
+
+  it("o aviso do site sem casas é neutro: não promete data nem novidade e não cita o Beds24", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/beds24|em breve|logo mais|novidade|\d|@/i);
+  });
+});
+
+describe("textos da busca em todas as casas (M7.9): editáveis, com o texto-base do estudo", () => {
+  it("olho, título, aviso, frase sem casa para o grupo e a do contato com texto-base dentro do limite; o aviso e o contato podem ficar vazios, a frase sem casa não", () => {
+    for (const k of ["buscaOlho", "buscaTitulo", "buscaAviso", "buscaSemCasa", "buscaContato"] as const) {
+      const campo = CAMPOS_TEXTOS_SITE.find((c) => c.chave === k)!;
+      expect(campo).toBeTruthy();
+      expect(TEXTOS_SITE_INICIAIS[k].length).toBeGreaterThan(0);
+      expect(TEXTOS_SITE_INICIAIS[k].length).toBeLessThanOrEqual(campo.limite);
+    }
+    expect([TEXTOS_SITE_INICIAIS.buscaOlho, TEXTOS_SITE_INICIAIS.buscaTitulo]).toEqual(["Sua busca", "Encontre seu lugar."]);
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, buscaAviso: "", buscaOlho: "", buscaContato: "" })).toMatchObject({ ok: true });
+    expect(TEXTOS_SITE_OBRIGATORIOS).toContain("buscaSemCasa");
+    expect(TEXTOS_SITE_OBRIGATORIOS).not.toContain("buscaContato");
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, buscaSemCasa: " " })).toEqual({ ok: false, erros: { buscaSemCasa: "Este texto não pode ficar vazio." } });
+  });
+
+  it("site sem nenhuma casa: um texto só, o aviso do site sem casas (M7.8), também na busca; nenhum segundo campo para o mesmo caso", () => {
+    const chaves: string[] = CAMPOS_TEXTOS_SITE.map((c) => c.chave);
+    expect(chaves).toContain("semCasasTexto");
+    expect(chaves).not.toContain("buscaSemCasasNoSite");
+    expect(CAMPOS_TEXTOS_SITE.find((c) => c.chave === "semCasasTexto")!.rotulo).toContain("busca em todas as casas");
+  });
+
+  it("o texto-base não cita o Beds24 nem diz que alguma casa está livre ou que cabe o grupo (a situação é a da consulta de cada casa)", () => {
+    for (const k of ["buscaOlho", "buscaTitulo", "buscaAviso", "buscaSemCasa", "buscaContato"] as const)
+      expect(TEXTOS_SITE_INICIAIS[k]).not.toMatch(/beds24|dispon[ií]ve(l|is)|livres?\b/i);
+    // O estudo dizia "ainda não confirmada"; aqui a situação de cada casa é a real, e nada fica reservado pela busca.
+    expect(TEXTOS_SITE_INICIAIS.buscaAviso).toContain("Nada fica reservado pela busca");
+    // A lista inclui casas sem capacidade cadastrada: o aviso diz "podem receber", nunca que todas recebem o grupo.
+    expect(TEXTOS_SITE_INICIAIS.buscaAviso).toContain("podem receber o seu grupo");
+    expect(TEXTOS_SITE_INICIAIS.buscaAviso).not.toMatch(/por partes|agenda de agora/);
+  });
+});
+
+describe("títulos e frases que eram fixos no código (M7.16): editáveis, com o texto de antes", () => {
+  // O texto que o site mostrava fixo no código até o M7.16: o inicial é exatamente esse, para nada mudar até Diego editar.
+  const DE_ANTES = {
+    comoReservarOlho: "Passo a passo",
+    comoReservarTitulo: "Como reservar",
+    catalogoTitulo: "Nossas casas",
+    catalogoTexto: "Escolha um apartamento para ver o que ele oferece e consultar as datas.",
+    planejarOlho: "Planeje sua estadia",
+    planejarTitulo: "Consultar disponibilidade",
+    planejarTexto: "",
+    resumoOlho: "Sua estadia, sem surpresas",
+    resumoTitulo: "Resumo da viagem",
+    resumoTexto: "Escolha o apartamento, as datas e quantas pessoas.",
+    contatoOlho: "Fale com a gente",
+    contatoTitulo: "Contato",
+  } as const;
+  const chaves = Object.keys(DE_ANTES) as (keyof typeof DE_ANTES)[];
+  const campo = (k: string) => CAMPOS_TEXTOS_SITE.find((c) => c.chave === k)!;
+
+  it("o texto inicial de cada campo novo é o que o site mostrava; o cartão da casa, que não tinha frase, nasce vazio", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).toBe(DE_ANTES[k]);
+    // Os textos do estudo aprovado são só sugestão (no guia), nunca gravados aqui.
+    const textos = chaves.map((k) => TEXTOS_SITE_INICIAIS[k]).join(" | ");
+    for (const doEstudo of ["Encontre sua casa", "Escolha o espaço que combina", "Quais são seus planos?", "Consulte as datas para receber", "Escolha sua casa e suas datas."]) expect(textos).not.toContain(doEstudo);
+  });
+
+  it("os campos aparecem na tela com os limites dos campos parecidos: olho 60, título 120 e frase 240; nenhum é obrigatório", () => {
+    for (const k of chaves) {
+      const c = campo(k);
+      expect(c, k).toBeTruthy();
+      const limite = k.endsWith("Olho") ? 60 : k.endsWith("Titulo") ? 120 : 240;
+      expect(c.limite, k).toBe(limite);
+      expect(TEXTOS_SITE_INICIAIS[k].length, k).toBeLessThanOrEqual(limite);
+      expect(TEXTOS_SITE_OBRIGATORIOS.includes(k), k).toBe(false);
+      // Os títulos aceitam a parte entre asteriscos em itálico, como os outros títulos; o rótulo diz o que vale vazio.
+      if (k.endsWith("Titulo")) expect(c.rotulo, k).toContain(`a parte entre *asteriscos* sai em itálico; vazio = "${DE_ANTES[k]}"`);
+    }
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, ...Object.fromEntries(chaves.map((k) => [k, ""])) })).toMatchObject({ ok: true });
+    expect(validarTextosSite({ ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "x".repeat(121), resumoOlho: "x".repeat(61), planejarTexto: "x".repeat(241) })).toEqual({
+      ok: false,
+      erros: { catalogoTitulo: "Máximo de 120 caracteres.", resumoOlho: "Máximo de 60 caracteres.", planejarTexto: "Máximo de 240 caracteres." },
+    });
+  });
+
+  it("na tela, cada campo novo fica junto da sua página: Como reservar e Contato com o texto da seção, o Resumo da viagem com a consulta", () => {
+    const ordem: string[] = CAMPOS_TEXTOS_SITE.map((c) => c.chave);
+    const junto = (antes: string[], depois: string) => expect(ordem.slice(ordem.indexOf(depois) - antes.length, ordem.indexOf(depois))).toEqual(antes);
+    junto(["comoReservarOlho", "comoReservarTitulo"], "comoReservar");
+    junto(["contatoOlho", "contatoTitulo"], "contato");
+    junto(["consultaTexto", "resumoOlho", "resumoTitulo"], "resumoTexto");
+    junto(["catalogoTitulo", "catalogoTexto", "planejarOlho", "planejarTitulo", "planejarTexto"], "consultaOlho");
+    // "Como reservar" aparece também no Resumo da viagem da consulta (desde o M7.1): o rótulo diz isso.
+    expect(campo("comoReservar").rotulo).toContain("Resumo da viagem");
+    expect(campo("resumoTexto").rotulo).toContain("Como reservar");
+  });
+
+  it("título salvo vazio volta ao texto inicial (a página nunca fica sem o título); salvo com texto, vale o salvo", () => {
+    const vazios = { ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "", planejarTitulo: " ", resumoTitulo: "", comoReservarTitulo: "", contatoTitulo: "" };
+    expect(tituloDaSecao(vazios, "catalogoTitulo")).toBe("Nossas casas");
+    expect(tituloDaSecao(vazios, "planejarTitulo")).toBe("Consultar disponibilidade");
+    expect(tituloDaSecao(vazios, "resumoTitulo")).toBe("Resumo da viagem");
+    expect(tituloDaSecao(vazios, "comoReservarTitulo")).toBe("Como reservar");
+    expect(tituloDaSecao(vazios, "contatoTitulo")).toBe("Contato");
+    expect(tituloDaSecao({ ...TEXTOS_SITE_INICIAIS, catalogoTitulo: "Encontre sua casa *no Leblon.*" }, "catalogoTitulo")).toBe("Encontre sua casa *no Leblon.*");
+  });
+
+  it("o texto inicial não cita o Beds24", () => {
+    for (const k of chaves) expect(TEXTOS_SITE_INICIAIS[k], k).not.toMatch(/beds24/i);
   });
 });

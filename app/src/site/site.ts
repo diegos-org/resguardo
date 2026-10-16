@@ -8,6 +8,7 @@
  * direta e cotação ficam para o M7.2/M8.
  */
 import { and, asc, eq } from "drizzle-orm";
+import { cache } from "react";
 import { lerEmpresa } from "@/configuracoes/empresa";
 import { lerTextosSite, type TextosSite } from "@/configuracoes/textos-site";
 import { imoveis, imoveisDetalhes, organizacoes } from "@/db/schema";
@@ -16,7 +17,9 @@ import { TIPOS_CAMA, type TipoCama } from "@/imoveis/cadastro-opcoes";
 import { type FotoPublica, fotosParaOSite } from "@/imoveis/fotos";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
-import { enderecoImagemSite, lerImagensSite } from "./imagens-site";
+import type { IconeEnviado } from "./icone";
+import { enderecoImagemSite, iconeDaMarcaEnviada, lerImagensSite } from "./imagens-site";
+import { MARCA_PADRAO } from "./marca";
 
 export type ImovelPublico = {
   codigo: string;
@@ -29,6 +32,11 @@ export type ImovelPublico = {
   quartos: number | null;
   banheiros: number | null;
   descricao: string;
+  /**
+   * Frase de abertura da casa (M7.17), escrita na ficha do imóvel: título acima da descrição na página da casa e, pela
+   * `fraseDoImovel`, a frase do cartão e da prévia do link. Vazia = a página não mostra nada no lugar.
+   */
+  frase: string;
   /** Ex.: ["1 cama Queen", "1 Sofá-cama"]. */
   camas: string[];
   comodidades: string[];
@@ -50,8 +58,19 @@ export type ConteudoSite = {
   /** Número do WhatsApp da empresa (só dígitos, com DDI) ou null se não há telefone no cadastro. */
   whatsapp: string | null;
   email: string;
-  /** Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). */
-  imagens: { capa: string | null; marca: string };
+  /**
+   * Endereços das imagens do site (M7.6): foto da capa (null = o fundo verde) e marca (sem a enviada, a do estudo). `previa`
+   * (M7.13): a versão pequena da capa, para a prévia dos links (sem ela, a grande). `icone` (M7.18): a marca enviada como
+   * ícone da aba, só quando ela serve (PNG quadrado, `./icone`), e se ela serve também no atalho do celular (sem
+   * transparência); null = os ícones da marca do estudo. Os dois opcionais só
+   * para os testes.
+   */
+  imagens: { capa: string | null; marca: string; previa?: string | null; icone?: IconeEnviado | null };
+  /**
+   * Campo "Site" de Configurações → Empresa (M7.13): a base dos endereços completos da prévia dos links e do endereço
+   * principal das páginas (`baseDoSite`, em ./compartilhamento). Opcional só para os testes.
+   */
+  site?: string;
   /**
    * Identificação da empresa no rodapé (M7.4, Decreto 7.962, art. 2º): os dados atuais de Configurações → Empresa. As
    * páginas legais mostram os dados congelados na versão; o rodapé, sempre os de agora. Opcional só para os testes.
@@ -59,8 +78,8 @@ export type ConteudoSite = {
   identidade?: { razaoSocial: string; cnpj: string; endereco: string };
 };
 
-/** Marca do estudo (o ícone do logotipo), usada enquanto nenhuma outra é enviada em Configurações → Site. */
-export const MARCA_PADRAO = "/marca.png";
+/** Marca do estudo, usada enquanto nenhuma outra é enviada (definida em `./marca`, que a moldura de cliente lê sem o banco). */
+export { MARCA_PADRAO };
 
 /**
  * De qual organização é o site: a da variável SITE_ORGANIZACAO_ID, se existir; senão, a única
@@ -88,15 +107,26 @@ export function numeroWhatsapp(telefone: string): string | null {
 export async function conteudoDoSite(db: Db): Promise<ConteudoSite | null> {
   const organizacaoId = await organizacaoDoSite(db);
   if (!organizacaoId) return null;
-  const [textos, empresa, imagens] = await Promise.all([lerTextosSite(db, organizacaoId), lerEmpresa(db, organizacaoId), lerImagensSite(db, organizacaoId)]);
+  const [textos, empresa, { imagens, icone }] = await Promise.all([
+    lerTextosSite(db, organizacaoId),
+    lerEmpresa(db, organizacaoId),
+    // A marca enviada serve de ícone? Só o começo do arquivo dela é lido (M7.18).
+    lerImagensSite(db, organizacaoId).then(async (imagens) => ({ imagens, icone: await iconeDaMarcaEnviada(db, organizacaoId, imagens.marca) })),
+  ]);
   return {
     organizacaoId,
     nomeEmpresa: empresa.nome,
     textos,
     whatsapp: numeroWhatsapp(empresa.telefone),
     email: empresa.email,
-    imagens: { capa: imagens.capa && enderecoImagemSite(imagens.capa), marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO },
+    imagens: {
+      capa: imagens.capa && enderecoImagemSite(imagens.capa),
+      marca: imagens.marca ? enderecoImagemSite(imagens.marca) : MARCA_PADRAO,
+      previa: imagens.capa ? enderecoImagemSite(imagens.capaPequena ?? imagens.capa) : null,
+      icone: imagens.marca && icone?.serve ? { url: enderecoImagemSite(imagens.marca), lado: icone.lado, atalho: icone.fundo === "opaco" } : null,
+    },
     identidade: { razaoSocial: empresa.razaoSocial, cnpj: empresa.cnpj, endereco: empresa.endereco },
+    site: empresa.site,
   };
 }
 
@@ -121,6 +151,7 @@ const colunasPublicas = {
   quartos: imoveis.quartos,
   banheiros: imoveis.banheiros,
   descricao: imoveis.descricao,
+  frase: imoveis.frase,
   camas: imoveisDetalhes.camas,
   comodidades: imoveisDetalhes.comodidades,
   regrasCasa: imoveisDetalhes.regrasCasa,
@@ -145,6 +176,8 @@ function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
     quartos: l.quartos,
     banheiros: l.banheiros,
     descricao: l.descricao ?? "",
+    // Aparada aqui também (o cadastro já apara): só espaços não viram um título vazio na página da casa.
+    frase: (l.frase ?? "").trim(),
     camas: descreverCamas(l.camas ?? {}),
     comodidades: l.comodidades ?? [],
     regrasCasa: l.regrasCasa ?? "",
@@ -158,32 +191,55 @@ function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
   };
 }
 
-async function comFotos(db: Db, organizacaoId: string, linhas: Linha[]): Promise<ImovelPublico[]> {
-  const fotos = await fotosParaOSite(db, organizacaoId, linhas.map((l) => l.id).filter((id): id is string => !!id));
+async function comFotos(db: Db, organizacaoId: string, linhas: Linha[], opcoes: { medidas?: boolean } = {}): Promise<ImovelPublico[]> {
+  const fotos = await fotosParaOSite(
+    db,
+    organizacaoId,
+    linhas.map((l) => l.id).filter((id): id is string => !!id),
+    opcoes,
+  );
   return linhas.map((l) => publico(l, (l.id && fotos.get(l.id)) || []));
 }
 
-/** Imóveis que aparecem no site: públicos e ativos, pelo código. */
-export async function imoveisDoSite(db: Db, organizacaoId: string): Promise<ImovelPublico[]> {
-  const linhas = await db
-    .select(colunasPublicas)
-    .from(imoveis)
-    .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
-    .where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.publico, true), eq(imoveis.ativo, true)))
-    .orderBy(asc(imoveis.codigo));
-  return comFotos(db, organizacaoId, linhas);
-}
+/** Quais imóveis aparecem no site: os públicos e ativos da organização do site (a lista, a página e a conferência leem daqui). */
+const noSite = (organizacaoId: string) => and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.publico, true), eq(imoveis.ativo, true));
 
-/** Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. */
-export async function imovelDoSite(db: Db, organizacaoId: string, codigo: string): Promise<ImovelPublico | null> {
+/**
+ * Imóveis que aparecem no site: públicos e ativos, pelo código. Com `cache` do React (M7.13), os metadados e a página da
+ * mesma requisição (a consulta e Nossas casas, que olham a lista para saber se há casa no site) leem o banco uma vez só
+ * (com o mesmo `db`, o de `carregarSite`); fora de uma página, lê sempre.
+ */
+export const imoveisDoSite = cache(async function imoveisDoSite(db: Db, organizacaoId: string): Promise<ImovelPublico[]> {
+  const linhas = await db.select(colunasPublicas).from(imoveis).leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id)).where(noSite(organizacaoId)).orderBy(asc(imoveis.codigo));
+  return comFotos(db, organizacaoId, linhas);
+});
+
+/**
+ * Se há alguma casa no site (M7.8), sem montar a lista nem buscar fotos: a página não encontrada só precisa disso para
+ * decidir entre "Conhecer as casas" e o aviso do site sem casas (um endereço errado, até de robô, faz uma leitura curta).
+ * Com `cache` (M7.13): os metadados da página não encontrada (a frase da prévia) e a própria página leem uma vez só.
+ */
+export const temCasaNoSite = cache(async function temCasaNoSite(db: Db, organizacaoId: string): Promise<boolean> {
+  const [l] = await db.select({ id: imoveis.id }).from(imoveis).where(noSite(organizacaoId)).limit(1);
+  return !!l;
+});
+
+/**
+ * Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. Com `cache` (M7.13): os
+ * metadados da página da casa (a prévia do link) e a própria página leem o banco uma vez só na mesma requisição, desde
+ * que as duas chamem com os mesmos argumentos. Com `"galeria"` (só a página da casa, M7.19), as fotos vêm com as
+ * medidas das duas versões, para a galeria deixar o navegador escolher entre elas; sem, como antes (o redirecionamento
+ * dos links antigos e a consulta só precisam do código e do nome, e não leem o começo dos arquivos).
+ */
+export const imovelDoSite = cache(async function imovelDoSite(db: Db, organizacaoId: string, codigo: string, para?: "galeria"): Promise<ImovelPublico | null> {
   if (!/^[\w-]{1,40}$/.test(codigo)) return null;
   const [l] = await db
     .select(colunasPublicas)
     .from(imoveis)
     .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
-    .where(and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.codigo, codigo), eq(imoveis.publico, true), eq(imoveis.ativo, true)));
-  return l ? (await comFotos(db, organizacaoId, [l]))[0] : null;
-}
+    .where(and(noSite(organizacaoId), eq(imoveis.codigo, codigo)));
+  return l ? (await comFotos(db, organizacaoId, [l], { medidas: para === "galeria" }))[0] : null;
+});
 
 export type PedidoConsulta = { imovel: string; entrada: string; saida: string; hospedes: string };
 /** Nomes aceitos no endereço: os do site e os do contrato de links já divulgado (`property`, `checkin`…). */
@@ -213,6 +269,25 @@ const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFrac
  */
 export type ResumoCotacao = { situacao: "disponivel" | "indisponivel" | "a_confirmar" | "invalida"; noites: number; total: number | null; /** Desconto do site já aplicado em `total` (M12.1); omitido ou zero = sem desconto. */ desconto?: number };
 
+/** Erro do "Seu lugar" quando a casa pedida não está no site (link antigo ou casa que saiu do site), M7.9. */
+export const CASA_FORA_DO_SITE = "Essa casa não está mais no site. Escolha outra ou busque em todas as casas.";
+
+/**
+ * Datas e pessoas da consulta, sem o imóvel (a consulta de uma casa e a busca em todas as casas, M7.9, usam a mesma
+ * conferência). `hospedes` é o número pedido (NaN quando não é um número inteiro de pessoas).
+ */
+export function conferirDatasEPessoas(p: Pick<PedidoConsulta, "entrada" | "saida" | "hospedes">, hoje: string): { erros: ErrosConsulta; hospedes: number } {
+  const erros: ErrosConsulta = {};
+  if (!dataValida(p.entrada)) erros.entrada = "Informe a data de entrada.";
+  else if (p.entrada < hoje) erros.entrada = "A entrada não pode ser antes de hoje.";
+  if (!dataValida(p.saida)) erros.saida = "Informe a data de saída.";
+  else if (dataValida(p.entrada) && p.saida <= p.entrada) erros.saida = "A saída precisa ser depois da entrada.";
+  // Só dígitos: a mesma regra da disponibilidade (M7.2), para "2e0" não virar "2 pessoas".
+  const hospedes = /^\d+$/.test(p.hospedes) ? Number(p.hospedes) : NaN;
+  if (!Number.isInteger(hospedes) || hospedes < 1) erros.hospedes = "Informe quantas pessoas.";
+  return { erros, hospedes };
+}
+
 export function montarConsulta(
   p: PedidoConsulta,
   imovel: ImovelPublico | null,
@@ -221,15 +296,13 @@ export function montarConsulta(
   cotacao?: ResumoCotacao | null,
 ): { ok: true; texto: string } | { ok: false; erros: ErrosConsulta } {
   const erros: ErrosConsulta = {};
-  if (!imovel) erros.imovel = "Escolha um apartamento.";
-  if (!dataValida(p.entrada)) erros.entrada = "Informe a data de entrada.";
-  else if (p.entrada < hoje) erros.entrada = "A entrada não pode ser antes de hoje.";
-  if (!dataValida(p.saida)) erros.saida = "Informe a data de saída.";
-  else if (dataValida(p.entrada) && p.saida <= p.entrada) erros.saida = "A saída precisa ser depois da entrada.";
-  // Só dígitos: a mesma regra da disponibilidade (M7.2), para "2e0" não virar "2 pessoas".
-  const hospedes = /^\d+$/.test(p.hospedes) ? Number(p.hospedes) : NaN;
-  if (!Number.isInteger(hospedes) || hospedes < 1) erros.hospedes = "Informe quantas pessoas.";
-  else if (imovel?.capacidade && hospedes > imovel.capacidade) erros.hospedes = `Este apartamento recebe até ${imovel.capacidade} pessoas.`;
+  // Casa pedida que não está (mais) no site, como num link antigo: o campo volta em "Todas as casas" (a opção dela não
+  // existe), então a mensagem não pede para escolher uma casa como se buscar em todas fosse proibido (M7.9).
+  if (!imovel) erros.imovel = p.imovel.trim() ? CASA_FORA_DO_SITE : "Escolha um apartamento.";
+  const base = conferirDatasEPessoas(p, hoje);
+  Object.assign(erros, base.erros);
+  const hospedes = base.hospedes;
+  if (!erros.hospedes && imovel?.capacidade && hospedes > imovel.capacidade) erros.hospedes = `Este apartamento recebe até ${imovel.capacidade} pessoas.`;
   if (Object.keys(erros).length || !imovel) return { ok: false, erros };
   const linhas = [
     `Olá! Gostaria de consultar a disponibilidade do ${imovel.nome} (${imovel.codigo}).`,
@@ -242,6 +315,14 @@ export function montarConsulta(
   return { ok: true, texto: linhas.join("\n") };
 }
 
+/**
+ * Mensagem da busca em todas as casas (M7.9) para continuar a conversa com a equipe: só as datas e as pessoas (nenhuma
+ * casa, nenhum valor). Nada é gravado nem enviado pelo sistema.
+ */
+export function mensagemDaBusca(p: Pick<PedidoConsulta, "entrada" | "saida">, hospedes: number): string {
+  return [`Olá! Gostaria de consultar uma estadia numa das casas.`, `Entrada: ${dataBr(p.entrada)} · Saída: ${dataBr(p.saida)} · ${hospedes} ${hospedes === 1 ? "pessoa" : "pessoas"}.`].join("\n");
+}
+
 /** Título da aba/busca: "Página — Nome da empresa" (o nome vem do cadastro da empresa no painel). */
 export function tituloDoSite(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null, pagina?: string): string {
   const nome = conteudo?.nomeEmpresa.trim() ?? "";
@@ -249,16 +330,38 @@ export function tituloDoSite(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null,
 }
 
 /**
+ * Metadados das telas de acesso (entrada, convite do proprietário e equipe de limpeza; M7.10): o título com o nome da
+ * empresa do site e a descrição da própria tela, e não a do layout (que é a do painel interno). Essas telas ficam fora
+ * dos buscadores pelo `next.config.ts`; título e descrição aparecem na aba do navegador e na prévia do link (o convite
+ * mandado por WhatsApp, por exemplo). Sem site configurado, o título fica só com o nome da tela.
+ */
+export function metadadosDeAcesso(conteudo: Pick<ConteudoSite, "nomeEmpresa"> | null, pagina: string, descricao: string): { title: string; description: string } {
+  return { title: tituloDoSite(conteudo, pagina), description: descricao };
+}
+
+/**
  * Links antigos do site (`/property/<código>?checkin=…&checkout=…&guests=…`, do contrato de links
  * já divulgado): levam à página do imóvel com só os critérios de estadia, conferidos. Critério
  * inválido, incompleto ou repetido: avisa (400) em vez de supor; outros parâmetros são descartados.
+ * Casa que não está (mais) no site (M7.9): leva à consulta, que avisa "Essa casa não está mais no site" e oferece
+ * as outras casas e a busca em todas, com as datas e as pessoas do link quando vêm uma vez cada (a consulta confere).
+ * Redirecionamento temporário (307), porque a casa pode voltar ao site.
  */
 export function destinoDoLinkAntigo(
   sp: URLSearchParams,
+  codigo: string,
   imovel: ImovelPublico | null,
   agora: Date = new Date(),
-): { status: 308; destino: string } | { status: 400; erro: string } | { status: 404 } {
-  if (!imovel) return { status: 404 };
+): { status: 308 | 307; destino: string } | { status: 400; erro: string } {
+  if (!imovel) {
+    const consulta = new URLSearchParams();
+    if (/^[\w-]{1,40}$/.test(codigo)) consulta.set("imovel", codigo);
+    for (const [antigo, novo] of [["checkin", "entrada"], ["checkout", "saida"], ["guests", "hospedes"]] as const) {
+      const v = sp.getAll(antigo);
+      if (v.length === 1 && v[0]) consulta.set(novo, v[0].slice(0, 40));
+    }
+    return { status: 307, destino: consulta.size ? `/consulta?${consulta}` : "/consulta" };
+  }
   // "Hoje" no fuso do imóvel, como a página do imóvel e a consulta: uma entrada válida em fuso mais atrasado não vira erro.
   const hoje = hojeISO(imovel.fuso, agora);
   const base = `/imoveis/${encodeURIComponent(imovel.codigo)}`;
@@ -274,6 +377,44 @@ export function destinoDoLinkAntigo(
 }
 
 export const linkWhatsapp = (numero: string, texto: string) => `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+
+/** Primeira mensagem de quem chama pelo site sem uma consulta montada (botão flutuante e aviso do site sem casas). */
+export const MENSAGEM_CONTATO_SITE = "Olá! Vim pelo site e gostaria de falar com a equipe.";
+
+export type CanalContato = "whatsapp" | "email" | null;
+/**
+ * Por onde a conversa com a empresa continua, em todo o site (a consulta, a busca em todas as casas, a página do
+ * imóvel e o aviso do site sem casas): o WhatsApp do cadastro da empresa, senão o e-mail; sem os dois, nenhum (a página avisa, não inventa um canal).
+ */
+export const canalDeContato = (c: Pick<ConteudoSite, "whatsapp" | "email">): CanalContato => (c.whatsapp ? "whatsapp" : c.email.trim() ? "email" : null);
+
+/** Aviso de quando não há WhatsApp nem e-mail no cadastro da empresa (o mesmo na consulta e no aviso do site sem casas). */
+export const AVISO_SEM_CONTATO = "O contato ainda não foi configurado. Volte em breve.";
+
+/** Assunto do e-mail de contato do site sem uma consulta montada (botão do aviso do site sem casas). */
+export const ASSUNTO_CONTATO_SITE = "Contato pelo site";
+/** Assunto do e-mail que continua uma consulta ou uma busca (datas e pessoas na mensagem). */
+export const ASSUNTO_CONSULTA = "Consulta de disponibilidade";
+
+export type OpcoesDoContato = {
+  /** A primeira mensagem da conversa, no WhatsApp e no corpo do e-mail (padrão: `MENSAGEM_CONTATO_SITE`, e o e-mail sai sem corpo). */
+  mensagem?: string;
+  /** Assunto do e-mail (padrão: `ASSUNTO_CONTATO_SITE`). */
+  assunto?: string;
+};
+
+/**
+ * Link de contato do site (M7.8), pelo canal de `canalDeContato`; sem canal, nenhum (quem mostra avisa). É o único lugar
+ * que monta o link do WhatsApp ou do e-mail para a conversa com a equipe: o aviso do site sem casas, a busca em todas as
+ * casas (M7.9, com as datas e as pessoas e o assunto `ASSUNTO_CONSULTA`, também no site sem casas) e o envio da consulta.
+ */
+export function contatoDoSite(c: Pick<ConteudoSite, "whatsapp" | "email">, { mensagem, assunto = ASSUNTO_CONTATO_SITE }: OpcoesDoContato = {}): { href: string; rotulo: string; externo: boolean } | null {
+  const canal = canalDeContato(c);
+  if (canal === "whatsapp" && c.whatsapp) return { href: linkWhatsapp(c.whatsapp, mensagem ?? MENSAGEM_CONTATO_SITE), rotulo: "Falar pelo WhatsApp", externo: true };
+  if (canal === "email")
+    return { href: `mailto:${c.email.trim()}?subject=${encodeURIComponent(assunto)}${mensagem ? `&body=${encodeURIComponent(mensagem)}` : ""}`, rotulo: "Enviar um e-mail", externo: false };
+  return null;
+}
 
 /**
  * Mínimo do campo de data quando o formulário lista vários imóveis: o "hoje" mais cedo entre os fusos.

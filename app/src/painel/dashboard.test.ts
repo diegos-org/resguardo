@@ -11,6 +11,7 @@ import { listarImoveis } from "@/imoveis/repositorio";
 import type { DadosReserva } from "@/reservas/regras";
 import { criarReserva, listarReservas } from "@/reservas/repositorio";
 import { criarRotina } from "@/rotinas/rotinas";
+import { autorizacaoDeOrigem } from "@/proprietarios/autorizacao";
 import { arquivarPedido, registrarPedidoContato } from "@/proprietarios/pedidos-contato";
 import { conferirTentativa } from "@/pagamentos/conferencia";
 import { ProvedorFalso } from "@/pagamentos/falso";
@@ -272,7 +273,7 @@ describe("painel inicial", () => {
     const doSite = (alertas: { link?: string }[]) => alertas.filter((x) => x.link?.startsWith("/painel/proprietarios"));
     expect(doSite((await carregarDashboard(db, org, { ...base, verProprietarios: true })).alertas)).toEqual([]);
 
-    const dados = { nome: "Maria Exemplo", telefone: "(21) 90000-0000", bairro: "Ipanema", cidade: "Rio de Janeiro", quartos: null, anunciaHoje: null, mensagem: "" };
+    const dados = { nome: "Maria Exemplo", telefone: "(21) 90000-0000", bairro: "Ipanema", cidade: "Rio de Janeiro", quartos: null, anunciaHoje: null, mensagem: "", marcaAutorizacao: autorizacaoDeOrigem("contato", "A").marca };
     const agora = new Date("2026-10-08T12:00:00Z");
     await registrarPedidoContato(db, org, { ...dados, email: "maria@exemplo.com" }, agora);
     const r = await registrarPedidoContato(db, org, { ...dados, email: "joao@exemplo.com" }, agora);

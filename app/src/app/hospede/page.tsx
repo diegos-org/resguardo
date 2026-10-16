@@ -8,11 +8,12 @@ import { pedirCancelamentoAcao, sairHospede } from "@/hospede/acoes";
 import { type CancelamentoNoPortal, cancelamentoNoPortal, ESTADIA_COMECOU, JA_CANCELADA, NAO_DA, PEDIDO_DESLIGADO, PEDIDO_OCUPADO, perguntaDoPedidoDeCancelamento, textoDaPoliticaNoPortal } from "@/hospede/cancelamento";
 import { INSTRUCOES_HORA, type ReservaDoHospede, reservasDoHospede } from "@/hospede/portal";
 import { emailDoHospede } from "@/hospede/sessao-atual";
-import { carregarSite, metadadosDoSite } from "@/site/pagina";
+import { carregarSite, metadadosDeMinhaReserva } from "@/site/pagina";
 import { TEXTO_PARA_CANCELAR_FALE_COM_A_EQUIPE } from "@/pagamentos/contestacao-regras";
 import { linkWhatsapp } from "@/site/site";
 
-export const generateMetadata = () => metadadosDoSite("Minha reserva");
+// M7.18: o ícone da aba fica com a marca do estudo, como nos outros portais.
+export const generateMetadata = () => metadadosDeMinhaReserva();
 
 const data = (d: string) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${d}T00:00:00Z`));

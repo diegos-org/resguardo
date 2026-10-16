@@ -5,17 +5,25 @@ import { MERCADO_VAZIO, TEXTOS_PROPRIETARIOS_INICIAIS } from "@/configuracoes/pa
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
 import Page from "./page";
 
-const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), textos: vi.fn(), mercado: vi.fn(), comoFunciona: vi.fn(), correio: vi.fn() }));
+const m = vi.hoisted(() => ({ site: vi.fn(), imoveis: vi.fn(), textos: vi.fn(), mercado: vi.fn(), comoFunciona: vi.fn(), correio: vi.fn(), autorizacao: vi.fn() }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imoveisDoSite: m.imoveis }));
 vi.mock("@/configuracoes/pagina-proprietarios", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/pagina-proprietarios")>()), lerTextosProprietarios: m.textos, lerMercado: m.mercado }));
 vi.mock("@/configuracoes/como-funciona", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/como-funciona")>()), lerComoFunciona: m.comoFunciona }));
 vi.mock("@/email/correio", () => ({ correioDoAmbiente: m.correio }));
 vi.mock("@/marketplace/acoes", () => ({ entrarCadastroAcao: vi.fn(), pedirCodigoCadastroAcao: vi.fn() }));
-vi.mock("@/components/site/FormContatoProprietario", () => ({ FormContatoProprietario: ({ empresa }: { empresa: string }) => <form aria-label="Pedir contato para a gestão completa">{empresa}</form> }));
+// O texto da caixa de autorização em vigor (M7.15), lido pela página no servidor e passado ao formulário.
+vi.mock("@/configuracoes/autorizacao-proprietarios", () => ({ autorizacaoEmVigor: m.autorizacao }));
+vi.mock("@/components/site/FormContatoProprietario", () => ({
+  FormContatoProprietario: ({ empresa, autorizacao }: { empresa: string; autorizacao: { versao: number; texto: string; marca: string } }) => (
+    <form aria-label="Pedir contato para a gestão completa">
+      {empresa}|{autorizacao.texto}|{autorizacao.marca}
+    </form>
+  ),
+}));
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
 
-const imovel = { codigo: "403", fuso: "America/Sao_Paulo", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null, fotos: [] };
+const imovel = { codigo: "403", fuso: "America/Sao_Paulo", nome: "Studio Exemplo", bairro: "Leblon", cidade: "Rio de Janeiro", capacidade: 4, quartos: 0, banheiros: 1, descricao: "", frase: "", camas: [], comodidades: [], regrasCasa: "", aceitaAnimais: false, permiteFumar: false, permiteFestas: false, checkinAPartirDe: "15:00", checkoutAte: "11:00", estadiaMinima: null, fotos: [] };
 const conteudo = { organizacaoId: "org", nomeEmpresa: "Casa Exemplo", textos: TEXTOS_SITE_INICIAIS, whatsapp: null, email: "", imagens: { capa: null, marca: "/marca.png" } };
 const segredo = process.env.AUTH_SECRET;
 
@@ -28,6 +36,7 @@ beforeEach(() => {
   m.mercado.mockResolvedValue(MERCADO_VAZIO);
   m.comoFunciona.mockResolvedValue([]);
   m.correio.mockReturnValue({ nome: "memoria" });
+  m.autorizacao.mockResolvedValue({ versao: 2, texto: "Texto fictício da versão 2.", marca: "v2.fict" });
 });
 afterEach(() => {
   if (segredo === undefined) delete process.env.AUTH_SECRET;
@@ -52,6 +61,10 @@ it("página inteira: capa, as duas formas de trabalhar, como gerimos, vitrine, p
   // Pedido de contato (formulário próprio) com o nome da empresa, e o cadastro do marketplace (passo 1: e-mail).
   expect(h).toContain('id="contato"');
   expect(h).toContain('aria-label="Pedir contato para a gestão completa"');
+  // O nome é o de Configurações → Empresa (o mesmo que o servidor lê no envio para conferir o texto da autorização, M7.14).
+  expect(h).toContain(">Casa Exemplo|Texto fictício da versão 2.|v2.fict</form>");
+  // O texto da caixa é a versão em vigor da organização do site (a mesma que o servidor confere no envio).
+  expect(m.autorizacao).toHaveBeenCalledWith({}, "org", "contato");
   expect(h).toContain('id="marketplace"');
   expect(h).toContain('aria-label="Confirmar e-mail"');
   // Sem números de mercado e sem "Como funciona" publicado, essas seções não aparecem.
@@ -117,4 +130,26 @@ it("sem e-mail configurado no servidor, o cadastro avisa que ainda não está di
   expect(h).toContain("O cadastro pelo site ainda não está disponível.");
   expect(h).not.toContain('aria-label="Confirmar e-mail"');
   expect(h).toContain('id="contato"');
+});
+
+it("ordem dos títulos sem saltos (M7.11): página inteira, faixa das ofertas sem título e o cadastro sozinho com o seu h1", async () => {
+  const niveis = (h: string) => [...h.matchAll(/<h([1-6])\b/g)].map((n) => Number(n[1]));
+  const semSalto = (lista: number[]) => lista[0] === 1 && lista.filter((n) => n === 1).length === 1 && lista.every((n, i) => i === 0 || n <= lista[i - 1] + 1);
+  m.mercado.mockResolvedValue({ referencia: "2026-09", fonte: "reservas fictícias", linhas: [{ tipo: "Studio", diaria: 45000, ocupacao: 7250, liquido: null }] });
+  m.comoFunciona.mockResolvedValue([{ numero: 2, data: "2026-10-07", autorId: null, secoes: RASCUNHO_COMO_FUNCIONA, empresa: "Casa Exemplo" }]);
+  const inteira = await html();
+  expect(semSalto(niveis(inteira))).toBe(true);
+  // As ofertas ficam abaixo do título da faixa (h3); sem ele (é opcional), sobem para h2, logo abaixo do h1.
+  expect(inteira).toMatch(/<h3 id="titulo-gestao"/);
+  m.textos.mockResolvedValue({ ...TEXTOS_PROPRIETARIOS_INICIAIS, ofertasTitulo: "" });
+  const semTituloDasOfertas = await html();
+  expect(semTituloDasOfertas).toMatch(/<h2 id="titulo-gestao"/);
+  expect(semSalto(niveis(semTituloDasOfertas))).toBe(true);
+  // No meio do cadastro, ele é a página: o título dele é o h1 (antes a página começava num h2).
+  const meioDoCadastro: Record<string, string>[] = [{ etapa: "codigo", email: "maria@exemplo.com" }, { erro: "codigo" }];
+  for (const params of meioDoCadastro) {
+    const h = await html(params);
+    expect(niveis(h)).toEqual([1]);
+    expect(h).toMatch(/<h1 id="titulo-cadastro">/);
+  }
 });

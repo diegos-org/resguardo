@@ -20,7 +20,14 @@
   --scl-texto-2: #5b604f; /* texto secundário */
   --scl-borda: #cfc1a9; /* bordas de cartões e campos */
   --scl-borda-campo: #babaa9; /* linha inferior dos campos */
-  --scl-foco: #b66630; /* contorno de foco do teclado */
+  --scl-foco: #b66630; /* contorno de foco do teclado sobre os fundos claros (3,68:1 no creme, 3,88:1 no papel) */
+  --scl-foco-sobre-verde: var(--scl-creme); /* contorno de foco sobre os verdes (M7.11): o laranja some neles */
+  /* A cor do contorno em uso. Os contêineres verdes (cabeçalho, faixas, rodapé, menu do painel) trocam para
+     --scl-foco-sobre-verde no próprio seletor do fundo; o resto da página herda o laranja. */
+  --scl-foco-cor: var(--scl-foco);
+  /* Peças que flutuam sobre fundos claros e verdes (botão do WhatsApp, "Pular para o conteúdo"): o contorno laranja vai
+     sobre um halo creme, que contrasta com os verdes; o laranja contrasta com o halo e com os fundos claros. */
+  --scl-foco-halo: 0 0 0 10px var(--scl-creme);
   --scl-branco: #ffffff;
   --scl-sobre-escuro: #dadacf; /* texto de apoio sobre os verdes */
 
@@ -111,14 +118,88 @@ textarea {
   font: inherit;
 }
 
+/* Foco do teclado (DESIGN.md): 3px, deslocado 5px; a cor muda nos contêineres verdes (--scl-foco-cor, M7.11). */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid var(--scl-foco);
-  outline-offset: 3px;
+  outline: 3px solid var(--scl-foco-cor);
+  outline-offset: 5px;
+}
+
+/* "Pular para o conteúdo" (M7.11, como o `.skip` do estudo em prototipos/scl-publico): o primeiro link da moldura do
+   site e dos portais, escondido até receber o foco; então aparece no canto, sobre o cabeçalho. */
+.scl-pular {
+  position: fixed;
+  top: -100px;
+  left: 10px;
+  z-index: 20;
+  padding: 14px 16px;
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-papel);
+  color: var(--scl-tinta);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.scl-pular:focus {
+  top: 10px;
+}
+
+.scl-pular:focus-visible {
+  box-shadow: var(--scl-foco-halo);
+}
+
+/* O miolo recebe o foco pelo "Pular para o conteúdo" (tabIndex -1): é um contêiner, não um controle, e não ganha contorno. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/* Faixa "Prévia de teste" (M7.12): fina, no topo de toda página, só fora do deploy de produção (FaixaPrevia.tsx). Visual
+   do `.preview` do estudo aprovado (prototipos/acervo-visual-2026-10/site-publico): areia, texto escuro, 11px (10px no
+   celular). Tinta sobre areia: 10,66:1. Nada focável dentro. */
+.scl-previa {
+  padding: 8px 16px;
+  background: var(--scl-areia);
+  color: var(--scl-tinta);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .scl-previa {
+    font-size: 0.625rem;
+  }
+}
+
+/* Com a faixa, a moldura logo abaixo dela (site, portais e painel têm min-height: 100vh) passaria do fim da tela pela
+   altura da faixa, e toda página curta ganharia uma rolagem que a produção não tem. Só quando a faixa existe (:has): o
+   corpo vira coluna (o body já tem min-height: 100vh) e a moldura ocupa o resto da tela, sem os 100vh dela. Sem altura
+   fixa: no celular estreito o texto da faixa pode ter duas linhas. Na produção, sem a faixa, nada disto se aplica. */
+body:has(> .scl-previa) {
+  display: flex;
+  flex-direction: column;
+}
+
+body:has(> .scl-previa) > .scl-previa + * {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+
+/* Texto só para quem usa leitor de tela (ex.: "abre em nova janela"): fora da tela, mas lido. */
+.scl-so-leitor {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 button:disabled {

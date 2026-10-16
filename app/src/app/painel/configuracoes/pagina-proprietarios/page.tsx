@@ -19,7 +19,8 @@ export default async function PaginaProprietarios() {
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 }}>
         Os textos da página <Link href="/anunciar">Anuncie seu imóvel</Link> do site. Começam com um texto-base para você revisar antes da entrada no ar. A
         vitrine mostra os imóveis públicos do site; &ldquo;Como funciona&rdquo; mostra a versão publicada em Configurações → Como funciona; os pedidos de
-        contato chegam em Proprietários → Pedidos de contato.
+        contato chegam em Proprietários → Pedidos de contato. O texto das caixas de autorização dos dois formulários, versionado, fica em{" "}
+        <Link href="/painel/configuracoes/autorizacao-proprietarios">Autorização dos proprietários</Link>.
       </p>
       <FormCampos
         titulo="Textos da página para proprietários"

@@ -129,16 +129,22 @@ describe("a alteração na página da reserva (M8.2d)", () => {
     const { container } = mostrar(segurada());
     const caixa = screen.getByRole("checkbox") as HTMLInputElement;
     expect(caixa.required).toBe(true);
-    expect(caixa.closest("label")?.textContent).toBe("Li e aceito os Termos (versão 2) e li a Privacidade (versão 1). A sua reserva continua na Política de cancelamento versão 1, aceita em 01/10.");
-    expect(screen.getByRole("link", { name: "Termos (versão 2)" }).getAttribute("href")).toBe("/termos?versao=2");
-    expect(screen.getByRole("link", { name: "Privacidade (versão 1)" }).getAttribute("href")).toBe("/privacidade?versao=1");
-    expect(screen.getByRole("link", { name: "Política de cancelamento versão 1" }).getAttribute("href")).toBe("/cancelamento?versao=1");
+    // Cada link abre a página legal em outra janela, com o aviso para o leitor de tela (M7.11).
+    expect(caixa.closest("label")?.textContent).toBe(
+      "Li e aceito os Termos (versão 2) (abre em nova janela) e li a Privacidade (versão 1) (abre em nova janela). A sua reserva continua na Política de cancelamento versão 1 (abre em nova janela), aceita em 01/10.",
+    );
+    const link = (texto: string) => screen.getAllByRole("link").find((a) => a.textContent === `${texto} (abre em nova janela)`)?.getAttribute("href");
+    expect(link("Termos (versão 2)")).toBe("/termos?versao=2");
+    expect(link("Privacidade (versão 1)")).toBe("/privacidade?versao=1");
+    expect(link("Política de cancelamento versão 1")).toBe("/cancelamento?versao=1");
     expect(container.textContent).toContain("Resumo da Política de cancelamento da sua reserva:");
     expect(container.textContent).toContain("RESUMO DA POLÍTICA 1");
     cleanup();
     const feito = mostrar(segurada(), { aceite: aceiteD11({ aceito: { em: "2026-10-01T15:21:00.000Z", versoes: { termos: 2, privacidade: 1, cancelamento: 1 } } }) });
     expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(feito.container.textContent).toContain("Você aceitou os Termos de uso (versão 2), a Política de cancelamento (versão 1) e leu a Política de privacidade (versão 1) em 01/10 às 12:21.");
+    expect(feito.container.textContent).toContain(
+      "Você aceitou os Termos de uso (versão 2) (abre em nova janela), a Política de cancelamento (versão 1) (abre em nova janela) e leu a Política de privacidade (versão 1) (abre em nova janela) em 01/10 às 12:21.",
+    );
   });
 
   it("o cartão da diferença: o título com as duas formas e, sem o cookie, só 'Continuar o pagamento'", () => {

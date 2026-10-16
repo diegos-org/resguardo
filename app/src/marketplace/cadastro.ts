@@ -8,11 +8,18 @@
  * 3. A equipe revisa no painel. Aprovar cria, de uma vez: o proprietário, o imóvel (NÃO público —
  *    publicar é decisão separada, no cadastro do imóvel) e o convite do portal para aquele e-mail.
  *    Recusar guarda o motivo. Nada vira conta, imóvel ou anúncio sem essa revisão.
+ *
+ * Autorização (M7.14): o envio do passo 2 guarda, no mesmo insert, quando o envio com a caixa marcada chegou ao servidor
+ * (relógio do servidor, o mesmo `criadoEm`), a versão e o texto exato dela (`proprietarios/autorizacao`). O texto gravado é
+ * sempre o do servidor — desde o M7.15, a versão em vigor editada no painel (`configuracoes/autorizacao-proprietarios`);
+ * o formulário manda só a marca do texto que mostrou, e marca que não confere (texto mudou depois que a página abriu) é
+ * recusada.
  */
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { emitirCodigo, emailValido, type OpcoesCodigo, type ResultadoPedido, verificarCodigo } from "@/acesso/codigo-email";
 import { normalizarEmail } from "@/acesso/entrada";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { conferirAutorizacao } from "@/configuracoes/autorizacao-proprietarios";
 import { lerEmpresa } from "@/configuracoes/empresa";
 import { criarConvite } from "@/convites/convites";
 import { ANUNCIO_CADASTRO, type AnuncioCadastro, cadastrosMarketplace, type ImovelCadastro, proprietarioImoveis } from "@/db/schema";
@@ -21,6 +28,7 @@ import type { Correio } from "@/email/correio";
 import { CodigoDuplicado, criarImovel } from "@/imoveis/repositorio";
 import { validarImovel } from "@/imoveis/validacao";
 import { uuidValido } from "@/lib/ids";
+import { ERRO_AUTORIZACAO_MUDOU, marcaDoFormulario, type TextoAutorizacao } from "@/proprietarios/autorizacao";
 import { ERRO_TELEFONE_DDD, telefoneComDddValido } from "@/proprietarios/documento";
 import { criarProprietario } from "@/proprietarios/repositorio";
 
@@ -37,6 +45,8 @@ export type DadosCadastro = {
   imovel: ImovelCadastro;
   anuncio: AnuncioCadastro;
   links: string[];
+  /** Marca do texto da autorização que o formulário mostrou (campo escondido). Só é conferida: o texto gravado vem do servidor. */
+  marcaAutorizacao: string;
 };
 /** Erros por nome do campo do formulário (os do imóvel com prefixo "imovel_"). */
 export type ErrosCadastro = Partial<Record<"nome" | "telefone" | "consentimento" | "anuncio" | "links" | `imovel_${keyof ImovelCadastro}`, string>>;
@@ -114,6 +124,7 @@ export function validarCadastro(e: Entrada): { ok: true; dados: DadosCadastro } 
       imovel: { nome: texto.nome, bairro: texto.bairro, cidade: texto.cidade, endereco: texto.endereco, capacidade, quartos, banheiros, descricao },
       anuncio,
       links: anuncio === "ja_anuncio" ? links : [],
+      marcaAutorizacao: marcaDoFormulario(e),
     },
   };
 }
@@ -143,9 +154,14 @@ export async function pedirCodigoCadastro(
 export const verificarCodigoCadastro = (db: Db, email: string, codigo: string, o: { segredo: string; agora?: Date }) =>
   verificarCodigo(db, email, codigo, { segredo: o.segredo, agora: o.agora, escopo: "cadastro" });
 
-export type ResultadoEnvio = { ok: true; id: string } | { ok: false; erro: string };
+/** `autorizacao`: o texto da caixa mudou depois que a página abriu; é o texto atual, para o formulário mostrar. */
+export type ResultadoEnvio = { ok: true; id: string } | { ok: false; erro: string; autorizacao?: TextoAutorizacao };
 
-/** Grava o pedido (e-mail já confirmado pelo código, vindo da sessão assinada). */
+/**
+ * Grava o pedido (e-mail já confirmado pelo código, vindo da sessão assinada). Junto, no mesmo insert, o registro da
+ * autorização: agora, a versão em vigor do texto da caixa e o texto dela — se a marca do formulário não for a desse
+ * texto, nada é gravado.
+ */
 export async function enviarCadastro(db: Db, organizacaoId: string, emailBruto: string, dados: DadosCadastro, agora: Date): Promise<ResultadoEnvio> {
   const email = normalizarEmail(emailBruto);
   if (!emailValido(email)) return { ok: false, erro: "E-mail inválido." };
@@ -161,9 +177,25 @@ export async function enviarCadastro(db: Db, organizacaoId: string, emailBruto: 
     if ((await pendentes(eq(cadastrosMarketplace.email, email))) >= MAX_PENDENTES_POR_EMAIL)
       return { ok: false as const, erro: `Você já tem ${MAX_PENDENTES_POR_EMAIL} cadastros em análise. Aguarde a nossa resposta por e-mail.` };
     if ((await pendentes()) >= MAX_PENDENTES_TOTAL) return { ok: false as const, erro: "No momento não estamos recebendo novos cadastros por aqui. Fale com a gente pelo contato do site." };
+    // O texto que se grava é o do servidor: a versão em vigor (M7.15), com o nome da empresa de agora (o mesmo que a página mostra).
+    const { ok: confere, autorizacao } = await conferirAutorizacao(tx, organizacaoId, "cadastro", dados.marcaAutorizacao);
+    if (!confere) return { ok: false as const, erro: ERRO_AUTORIZACAO_MUDOU, autorizacao };
     const [c] = await tx
       .insert(cadastrosMarketplace)
-      .values({ organizacaoId, email, nome: dados.nome, tipo: dados.tipo, telefone: dados.telefone, imovel: dados.imovel, anuncio: dados.anuncio, links: dados.links, criadoEm: agora })
+      .values({
+        organizacaoId,
+        email,
+        nome: dados.nome,
+        tipo: dados.tipo,
+        telefone: dados.telefone,
+        imovel: dados.imovel,
+        anuncio: dados.anuncio,
+        links: dados.links,
+        criadoEm: agora,
+        autorizadoEm: agora,
+        autorizacaoVersao: autorizacao.versao,
+        autorizacaoTexto: autorizacao.texto,
+      })
       .returning({ id: cadastrosMarketplace.id });
     return { ok: true as const, id: c.id };
   });

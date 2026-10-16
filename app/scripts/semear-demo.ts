@@ -56,6 +56,8 @@ async function semear(db: Db) {
     quartos: 1,
     banheiros: 1,
     descricao: "Imóvel fictício para demonstração.",
+    // Sem frase de abertura (M7.17): nenhum texto do site é inventado.
+    frase: "",
   };
   const lista = [
     { codigo: "102", nome: "Studio Demo 102", bairro: "Leblon", capacidade: 2 },

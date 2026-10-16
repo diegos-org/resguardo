@@ -6,15 +6,35 @@ import { type FormEvent, useRef, useState, useTransition } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { ErroFoto, nomeJpg, reduzirFoto } from "@/imoveis/reduzir-foto";
 import { enviarImagemSiteAcao, type ResultadoImagemSite, tirarImagemSiteAcao } from "@/site/acoes-imagens-site";
+import { TAMANHO_SUGERIDO_DA_MARCA } from "@/site/marca";
 import styles from "../formularios.module.css";
 
 type Aviso = { ok: boolean; texto: string } | null;
 
+/** Capa enviada antes da versão leve (M7.13): a prévia dos links usa a foto grande até a foto ser enviada de novo. */
+export const AVISO_CAPA_SEM_PREVIA =
+  "Esta foto foi enviada antes da versão leve que aparece na prévia dos links. Até você enviar a foto de novo, a prévia usa a foto grande, que é pesada para o WhatsApp e pode não aparecer lá. Envie a mesma foto de novo para resolver.";
+
 /**
  * Foto da capa e marca do site (M7.6). A foto da capa é reduzida no navegador antes de subir (pode ser a original do
- * celular); a marca sobe como está, para o PNG transparente continuar transparente.
+ * celular); a marca sobe como está, para o PNG transparente continuar transparente. `capaSemPrevia` (M7.13): a capa
+ * enviada antes da versão leve da prévia dos links — a tela avisa e pede para enviar a foto de novo. `notaIcone` (M7.18):
+ * a marca enviada não serve de ícone da aba (não é PNG quadrado) ou do atalho do celular (tem transparência) — a tela diz
+ * o que usa a marca do estudo e por quê.
  */
-export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null; marca: string | null; marcaPadrao: string }) {
+export function ImagensSite({
+  capa,
+  capaSemPrevia = false,
+  marca,
+  marcaPadrao,
+  notaIcone = null,
+}: {
+  capa: string | null;
+  capaSemPrevia?: boolean;
+  marca: string | null;
+  marcaPadrao: string;
+  notaIcone?: string | null;
+}) {
   const router = useRouter();
   const [aviso, setAviso] = useState<Aviso>(null);
   const [enviando, setEnviando] = useState<string | null>(null);
@@ -38,8 +58,10 @@ export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null;
       const form = new FormData();
       form.set("qual", qual);
       if (qual === "capa") {
-        const { grande } = await reduzirFoto(arquivo);
+        // A grande para a capa e a pequena (800 px) para a prévia dos links no WhatsApp e nas redes (M7.13).
+        const { grande, pequena } = await reduzirFoto(arquivo);
         form.set("arquivo", new File([grande], nomeJpg(arquivo.name), { type: "image/jpeg" }));
+        form.set("pequena", new File([pequena], nomeJpg(arquivo.name).replace(/\.jpg$/, "-pequena.jpg"), { type: "image/jpeg" }));
       } else form.set("arquivo", arquivo);
       concluir(await enviarImagemSiteAcao(form), qual === "capa" ? "Foto da capa trocada: já está no site." : "Marca trocada: já está no site.");
     } catch (e) {
@@ -63,8 +85,9 @@ export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null;
         Imagens do site
       </h2>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
-        A foto da capa fica atrás do título da página inicial; sem foto, a capa fica no fundo verde (nunca uma imagem genérica). Use só fotos que você tem direito de
-        usar. A marca é o ícone ao lado do nome, no topo e no rodapé; enquanto você não enviar outra, vale a do estudo visual.
+        A foto da capa fica atrás do título da página inicial e aparece na prévia quando alguém manda o link do site pelo WhatsApp ou pelas redes; sem foto, a capa fica no fundo verde e a prévia sai sem imagem (nunca uma imagem genérica). Use só fotos que você tem direito de
+        usar. A marca é o ícone ao lado do nome, no topo e no rodapé. Nas páginas do site, ela também é o ícone da aba do navegador, quando é um PNG quadrado, e do atalho na tela do
+        celular, quando é um PNG quadrado sem transparência; o painel e os portais ficam sempre com a marca do estudo. Enquanto você não enviar outra, vale a do estudo visual.
       </p>
       {aviso && (
         <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? styles.sucesso : styles.erro}>
@@ -81,6 +104,11 @@ export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null;
               <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>Sem foto: fundo verde</span>
             )}
           </div>
+          {capa && capaSemPrevia && (
+            <p role="note" style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)", margin: 0 }}>
+              {AVISO_CAPA_SEM_PREVIA}
+            </p>
+          )}
           <form onSubmit={(ev) => enviar(ev, "capa")} className={styles.form} aria-label="Enviar foto da capa">
             <label>
               {capa ? "Trocar a foto (JPG ou PNG; pode ser a original do celular)" : "Enviar a foto (JPG ou PNG; pode ser a original do celular)"}
@@ -111,9 +139,14 @@ export function ImagensSite({ capa, marca, marcaPadrao }: { capa: string | null;
             <Image src={marca ?? marcaPadrao} alt="Marca do site" fill sizes="96px" unoptimized style={{ objectFit: "contain" }} />
           </div>
           <span style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>{marca ? "Marca enviada por você." : "Marca do estudo visual (padrão)."}</span>
+          {marca && notaIcone && (
+            <p role="note" style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)", margin: 0 }}>
+              {notaIcone}
+            </p>
+          )}
           <form onSubmit={(ev) => enviar(ev, "marca")} className={styles.form} aria-label="Enviar marca">
             <label>
-              Trocar a marca (PNG ou JPG quadrado, até 512 KB)
+              {`Trocar a marca (PNG quadrado, ${TAMANHO_SUGERIDO_DA_MARCA}, até 512 KB; em JPG, ela aparece no topo e no rodapé, mas não na aba)`}
               <input ref={entradaMarca} type="file" accept="image/png,image/jpeg" disabled={ocupado} />
             </label>
             <div className={styles.acoes}>

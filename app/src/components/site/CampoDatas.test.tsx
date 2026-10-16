@@ -74,8 +74,11 @@ describe("campo de datas do site (M7.6)", () => {
     expect((quadro().getByRole("button", { name: "Mês anterior" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(quadro().getByRole("button", { name: "Próximo mês" }));
     expect(quadro().getAllByRole("grid").map((g) => document.getElementById(g.getAttribute("aria-labelledby")!)?.textContent)).toEqual(["novembro de 2026", "dezembro de 2026"]);
-    // Sem lugar escolhido: nenhuma marca de ocupação, nenhuma leitura, e o aviso para escolher o lugar.
-    expect(quadro().getByText("Escolha o lugar para ver as noites ocupadas.")).toBeTruthy();
+    // Sem lugar escolhido ("Todas as casas", M7.9): nenhuma marca de ocupação, nenhuma leitura, e o aviso de que as noites
+    // ocupadas não aparecem (a situação de cada casa vem na busca), em vez de parecer tudo livre.
+    expect(quadro().getByText("Com todas as casas, as noites ocupadas não aparecem aqui: a situação de cada casa vem na próxima tela.")).toBeTruthy();
+    expect(quadro().queryByText("Noites ocupadas")).toBeNull();
+    expect(quadro().getAllByRole("button").filter((b) => /ocupada/.test(b.getAttribute("aria-label") ?? ""))).toEqual([]);
     expect(buscar).not.toHaveBeenCalled();
   });
 
@@ -137,8 +140,29 @@ describe("campo de datas do site (M7.6)", () => {
     // Sem lugar: o aviso volta e nada é marcado.
     fireEvent.change(screen.getByRole("combobox", { name: /Seu lugar/ }), { target: { value: "" } });
     fireEvent.click(campo("Entrada"));
-    expect(quadro().getByText("Escolha o lugar para ver as noites ocupadas.")).toBeTruthy();
+    expect(quadro().getByText("Com todas as casas, as noites ocupadas não aparecem aqui: a situação de cada casa vem na próxima tela.")).toBeTruthy();
     expect(dia("14 de outubro de 2026").getAttribute("aria-label")).toBe("14 de outubro de 2026");
+  });
+
+  it("cartão da página de uma casa (M7.9): trocar para outra casa com noite ocupada no meio não desfaz a estadia; a da própria casa, sim", async () => {
+    render(<Formulario lugar="102" entrada="2026-10-12" saida="2026-10-16" casaDaPagina="102" />);
+    const lugar = screen.getByRole("combobox", { name: /Seu lugar/ });
+    fireEvent.change(lugar, { target: { value: "403" } });
+    await new Promise((r) => setTimeout(r, 20));
+    // O envio abre a página da 403 com as mesmas datas, que diz se ela está indisponível: nada é desfeito aqui.
+    expect([escondido("entrada"), escondido("saida")]).toEqual(["2026-10-12", "2026-10-16"]);
+    // Abrir o calendário com a 403 escolhida marca as noites dela, e a estadia continua.
+    fireEvent.click(campo("Entrada"));
+    await waitFor(() => expect(dia("14 de outubro de 2026").getAttribute("aria-label")).toContain("ocupada"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect([escondido("entrada"), escondido("saida")]).toEqual(["2026-10-12", "2026-10-16"]);
+    expect(fireEvent.submit(document.querySelector("form")!)).toBe(true);
+    cleanup();
+    // Na página da própria 403, a regra continua: a estadia que passa por noite ocupada dela é desfeita.
+    render(<Formulario lugar="403" entrada="2026-10-12" saida="2026-10-16" casaDaPagina="403" />);
+    fireEvent.click(campo("Entrada"));
+    await waitFor(() => expect(escondido("saida")).toBe(""));
+    expect(escondido("entrada")).toBe("2026-10-12");
   });
 
   it("troca rápida de lugar: a resposta atrasada do lugar anterior não desfaz a estadia do lugar escolhido agora", async () => {
