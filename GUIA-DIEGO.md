@@ -81,15 +81,15 @@ construído ainda.**
   do código, mas nada no banco impede apagar uma linha. O M13.12 põe essa trava no próprio banco: o sistema e um
   erro de programa não conseguem mais alterar nem apagar o histórico; uma correção vira um registro novo. Um
   limite, dito com franqueza: quem tem o acesso de dono do banco ainda consegue desligar a trava de propósito. Por
-  isso ela só muda por uma mudança revisada, que fica registrada, e a trava completa vem depois, num item próprio,
-  com o seu "pode" no Neon. O histórico entra no backup do banco e fica para sempre. Para isso não brigar com a
+  isso ela só muda por uma mudança revisada, que fica registrada, e a trava completa vem depois, num item próprio
+  (M13.15), com o seu "pode" no Neon. O histórico entra no backup do banco e fica para sempre. Para isso não brigar com a
   Política de privacidade, que promete apagar dados quando o prazo acaba e quando a pessoa pede, antes da trava o
   histórico passa a registrar só que um nome ou um contato mudou, sem guardar o valor. Os nomes e contatos que ele
   já guardou são trocados por "(anonimizado)" só depois de o advogado responder, num passo próprio (M13.14), com uma
   cópia de segurança do banco tirada antes, porque essa troca não tem volta. O prazo e o jeito de atender os pedidos
   vão ao advogado. O registro do que o assistente consultou é outra coisa e fica 6 meses.
 - **A ordem:** o M13 só começa depois da reserva no Beds24 (M8.3) e do cálculo do marketplace (M12.2), e não
-  atrasa a entrada no ar (M11). São 16 itens, M13.1 a M13.14, contando o 2a, o 2b, o 4a e o 4b; cada um é um PR.
+  atrasa a entrada no ar (M11). São 17 itens, M13.1 a M13.15, contando o 2a, o 2b, o 4a e o 4b; cada um é um PR.
   Os que dependem de você ficam bloqueados até a sua decisão. Na produção, o MCP só liga no M13.7, com todas as
   defesas prontas.
 - **Decisões de 16/10 que entraram no plano:**
@@ -3684,8 +3684,8 @@ ambiente).
     estudo (lista na seção 2, em "Frase de abertura de cada casa") e ajuste. Com a casa publicada no site, abra a página
     dela e confira no celular. Sem pressa: em branco, o site fica como está.
 49. **MCP do SCL (M13, desenho de 16/10), sem pressa:** nada para fazer agora; isto vale para quando o M13.7
-    estiver pronto (o passo 6, um pouco antes; o 8, bem depois). Antes de conectar o Claude, o ChatGPT ou o Codex
-    com os dados de verdade:
+    estiver pronto (o passo 5, bem antes, no M13.4a; o 6, um pouco antes; o 8 e o 9, bem depois). Antes de conectar
+    o Claude, o ChatGPT ou o Codex com os dados de verdade:
     1. **Campo Site:** o item 47, logo acima. O endereço do MCP sai dele.
     2. **Advogado:** mesmo sem nomes, códigos e valores das reservas vão para empresas de fora do Brasil. Estas
        perguntas entram no dossiê único para o advogado e o contador que combinamos em 16/10 (tudo de uma vez,
@@ -3697,26 +3697,45 @@ ambiente).
        conectar um assistente, e o SCL não tem como saber que não é você.
     4. **Sessões de trabalho (decisão D12):** as sessões em que eu e o Codex trabalhamos no código não podem ter o
        conector do SCL. Só ele sai: os outros conectores, como o do Neon, que você liberou em 14/10 para o trabalho,
-       continuam. Eu tiro o SCL dessas sessões por uma regra do próprio projeto; se só der por uma configuração da sua
-       conta ou do ambiente, eu te digo onde no M13.7. Não vou usar a opção que desliga todos os conectores de uma vez,
-       porque ela levaria junto o acesso ao banco. O MCP só liga na produção depois de eu conferir numa sessão que o
-       SCL não aparece e que o Neon continua lá. Se a saída for pelo Codex, o SCL fica numa configuração separada da
-       usada no código.
+       continuam. A ideia é tirar o SCL dessas sessões por uma regra do próprio projeto, mas ainda vou conferir no
+       M13.7 se essa regra funciona com um conector do Claude; se só der por uma configuração da sua conta ou do
+       ambiente, eu te digo onde. Não vou usar a opção que desliga todos os conectores de uma vez, porque ela levaria
+       junto o acesso ao banco. O MCP só liga na produção depois de eu conferir numa sessão que o SCL não aparece e
+       que o Neon continua lá. Se não houver jeito nenhum de tirar só o SCL, ele não fica ligado no Claude, e eu te
+       trago as opções que houver (por exemplo, usar o SCL só pelo ChatGPT) para você escolher. Se a saída for pelo
+       Codex, o SCL fica numa configuração separada da usada no código. Se o seu plano for o Plus, o ChatGPT no site
+       não aceitar o SCL e o Codex não tiver como separar essa configuração, não sobra saída pela OpenAI; eu te digo
+       isso no M13.7.
     5. **Google (opcional):** se o Google precisar de uma opção ligada para dizer ao SCL a hora do seu login, eu te
        digo onde no M13.4a. Sem ela, para conectar um assistente você entra com a senha ou com o código por e-mail.
     6. **Conferir o Claude antes de ligar:** quando o endereço do MCP já estiver no ar, com o acesso ainda desligado,
        eu te peço para tentar uma vez adicionar o SCL no Claude (eu te passo o caminho na hora). O certo é a tela do
        SCL dizer que o acesso por assistentes está desligado: isso mostra que o SCL reconhece o Claude, e nenhum dado
        sai. Se aparecer uma página de erro, eu ajusto e te peço de novo. Sem essa
-       tentativa, a produção não liga.
+       tentativa, a produção não liga, mesmo que você já tenha testado na versão de teste (decisão 10).
     7. **Um programa por vez:** use cada conexão do SCL num só programa de cada vez. No Codex, ou o aplicativo ou a
        linha de comando, não os dois abertos ao mesmo tempo; no Claude Code, uma sessão por vez. Dois programas
-       renovando a mesma conexão juntos parecem uma cópia e derrubam a conexão; aí é só conectar de novo.
-    8. **Mais tarde, a trava extra no banco (decisão 11, M13.11):** além do seu "pode", você roda no editor de SQL do
-       Neon um comando que eu te passo, uma vez no banco de verdade e outra no das prévias, com uma senha que você
-       cria e não me mostra, e guarda o endereço de conexão numa variável da Vercel. Não use o botão de criar papel
-       do Neon: o acesso criado por ali vira dono de tudo, e a trava não vale. Se o acesso tiver poder a mais, o MCP
-       para de responder e avisa no painel.
+       renovando a mesma conexão juntos parecem uma cópia e derrubam a conexão; aí é só conectar de novo. Isso vale
+       desde o começo, para todos os assistentes. Eu acompanho quantas vezes uma conexão cai assim; se acontecer com
+       frequência, inclusive no Claude ou no ChatGPT, eu te trago as opções.
+    8. **Mais tarde, a trava extra no banco (decisão 11, M13.11):** o seu "pode" vem antes. O resto vem depois que o
+       M13.11 estiver no ar e eu avisar, porque no banco de verdade a base desse acesso só existe depois que a
+       mudança entra no sistema:
+       - você roda no editor de SQL do Neon um comando que eu te passo, uma vez no banco de verdade e outra no das
+         prévias, com uma senha que você cria e não me mostra;
+       - guarda o endereço de conexão numa variável da Vercel com dois valores: o do banco de verdade só no ambiente
+         Production e o do banco das prévias só no Preview. Nunca o endereço do banco de verdade nas prévias, porque
+         elas passariam a ler dados reais;
+       - liga a opção "Usar o acesso só de leitura do banco" em Configurações, na aba Assistentes, uma vez no sistema de
+         verdade e outra na prévia. Ela só liga se o acesso passar na conferência. Até lá, o MCP continua funcionando
+         como antes, e o painel avisa que a trava extra ainda não está ligada.
+
+       Não use o botão de criar papel do Neon: o acesso criado por ali vira dono de tudo, e a trava não vale. Se o
+       acesso tiver poder a mais, o MCP para de responder e avisa no painel. Se os nomes (decisão 2, M13.9) vierem
+       também, o mesmo passo se repete uma vez para um segundo acesso, o dos nomes, com outra senha e outra
+       variável.
+    9. **Mais tarde, a trava completa do histórico (M13.15):** o seu "pode" no Neon, para o sistema usar um acesso
+       ao banco que não consegue mexer no histórico. Eu te explico o passo a passo quando esse item chegar.
 
 ---
 
@@ -3732,12 +3751,14 @@ ambiente).
      do painel. O nível seguinte, se você quiser, traz junto: o primeiro nome e a inicial do hóspede (o que eu tinha
      proposto e você gostou), o nome inteiro do proprietário, o código da reserva na plataforma (Airbnb, Booking) e a
      busca por nome e por esse código. Isso vem depois, no M13.9, com a Política de privacidade nova conferida pelo
-     advogado. Dá para escolher só uma parte (por exemplo, só o nome do hóspede), e eu ligo só o que você escolher.
+     advogado. Dá para escolher só uma parte (por exemplo, só o nome do hóspede), e eu ligo só o que você escolher;
+     o acesso do banco para os nomes também libera só essa parte. Uma parte nova depois pede outra resposta sua.
   3. **Login:** o do próprio SCL, o mesmo do painel, sem serviço de fora.
   4. **LGPD:** levar as perguntas ao advogado, no dossiê único, antes de ligar com os dados de verdade (seção 6,
      item 49).
   5. **Seus planos do Claude e do ChatGPT:** me diga quais são; antes de conectar, desligue o treino e ligue a
-     verificação em duas etapas.
+     verificação em duas etapas. No Plus, se o ChatGPT no site não aceitar o SCL e o Codex não tiver como separar a
+     configuração do SCL da usada no código, não sobra saída pela OpenAI (seção 6, item 49.4).
   6. **Endereço:** começar no endereço da Vercel e reconectar uma vez quando o domínio próprio entrar.
   7. **Validade de uma conexão:** 30 dias no Claude; 7 no ChatGPT e no Codex.
   8. **Avisos:** no Início e por e-mail a cada conexão nova, alertas de uso fora do padrão (a janela da madrugada
@@ -3745,13 +3766,19 @@ ambiente).
   9. **Registro do que o assistente consultou:** 6 meses.
   10. **Teste antes:** uma versão de teste fixa, com dados fictícios, para você experimentar antes do sistema de
       verdade. Pede o seu "pode", porque muda uma configuração da Vercel.
-  11. **Trava extra no banco:** mais tarde, um acesso ao banco só de leitura para o MCP. Pede o seu "pode" e um
-      passo seu: rodar no editor de SQL do Neon um comando que eu te passo, nas duas versões do banco, com uma senha
-      sua, e guardar o endereço na Vercel (seção 6, item 49). Nunca pelo botão de criar papel do Neon, que daria a
-      esse acesso o poder de dono.
+  11. **Trava extra no banco:** mais tarde, um acesso ao banco só de leitura para o MCP. Pede o seu "pode" antes e,
+      depois que essa parte estiver no ar e eu avisar, um passo seu: rodar no editor de SQL do Neon um comando que eu
+      te passo, nas duas versões do banco, com uma senha sua; guardar o endereço na Vercel com dois valores, o do
+      banco de verdade só em Production e o das prévias só em Preview; e ligar a opção no painel, que só liga se o
+      acesso passar na conferência (seção 6, item 49.8). Nunca pelo botão de criar papel do Neon, que daria a esse
+      acesso o poder de dono. Se os nomes (decisão 2) vierem, o mesmo passo se repete para o acesso dos nomes, com
+      outra senha e outra variável.
   12. **Sessões de trabalho:** as do Claude e do Codex no código não usam o conector do SCL; só ele sai delas, e o
-      do Neon e os outros continuam. Você usa o SCL numa conversa só para ele. Se tirar o SCL dessas sessões depender
-      de uma configuração sua, eu te digo onde, e a produção só liga depois disso (seção 6, item 49).
+      do Neon e os outros continuam. Você usa o SCL numa conversa só para ele. A ideia é uma regra do próprio
+      projeto, que eu ainda vou conferir no M13.7. Se tirar o SCL dessas sessões depender de uma configuração sua, eu
+      te digo onde, e a produção só liga depois disso. Se não houver jeito de tirar só o SCL, ele não fica ligado no
+      Claude, e eu te trago as opções (por exemplo, usar o SCL só pelo ChatGPT) para você escolher (seção 6, item
+      49.4).
   13. **Histórico das mudanças:** fica para sempre, protegido no banco, mas sem nomes e contatos: antes da trava, ele
       passa a registrar só que algo mudou. Os nomes e contatos que já guardou são anonimizados só depois da resposta
       do advogado (decisão 4), num passo próprio (M13.14), com uma cópia de segurança do banco antes, porque a troca
