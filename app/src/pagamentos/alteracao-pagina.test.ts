@@ -100,7 +100,7 @@ describe("a página da reserva mostra a alteração", () => {
     expect(retida.resultado).toMatchObject({ ok: true, situacao: "aplicada" });
     const vr = await pagina(y.cotacaoId, new Date(tarde.getTime() + 60_000));
     expect(vr?.alteracao).toMatchObject({ situacao: "aplicada", reducao: { direito: "nenhum" }, devolucao: null, valorNovo: TOTAL });
-    expect(texto(vr!.alteracao!, y.reservaCodigo).resumo).toContain(`Pela política, a diferença de R$ 200,00 não é devolvida (o pedido chegou depois de 06/10, 23h59, contando da entrada de 20/10). ${TEXTOS_SITE_INICIAIS.alteracaoSemDevolucao}`);
+    expect(texto(vr!.alteracao!, y.reservaCodigo).resumo).toContain(`Pela política, a diferença de R$ 200,00 não é devolvida (o pedido chegou depois de 06/10, 23:59, contando da entrada de 20/10). ${TEXTOS_SITE_INICIAIS.alteracaoSemDevolucao}`);
   });
 
   it("a que não vale mais (a equipe desistiu): por 7 dias", async () => {

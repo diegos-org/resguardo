@@ -14,7 +14,8 @@
  * no mês seguinte); o que já foi fechado não muda. Fechar ou enviar antes, à mão, continua possível.
  */
 import type { TipoContrato } from "@/db/schema";
-import { diaDaSemana, somarDias } from "@/imoveis/regras-venda";
+import { somarDias } from "@/imoveis/regras-venda";
+import { diaDaSemana, NOMES_DIA_SEMANA } from "@/lib/datas";
 
 export const PERIODICIDADES = ["mensal", "quinzenal", "semanal", "disponivel"] as const;
 export type PeriodicidadeRepasse = (typeof PERIODICIDADES)[number];
@@ -26,7 +27,8 @@ export const NOMES_PERIODICIDADE: Record<PeriodicidadeRepasse, string> = {
   disponivel: "Assim que disponível",
 };
 
-export const NOMES_DIA_SEMANA = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"] as const;
+/** Os nomes inteiros dos dias (0 = domingo), de lib/datas.ts: a lista de Configurações, Repasses e a frase do semanal. */
+export { NOMES_DIA_SEMANA };
 
 export const periodicidadeValida = (v: unknown): v is PeriodicidadeRepasse => typeof v === "string" && (PERIODICIDADES as readonly string[]).includes(v);
 
@@ -212,7 +214,8 @@ export function descreverPeriodicidade(p: PeriodicidadeRepasse, regras: RegrasRe
     case "quinzenal":
       return `quinzenal, nos dias ${regras.diasQuinzenal[0]} e ${regras.diasQuinzenal[1]} (e no dia ${dia}, junto com o fechamento)`;
     case "semanal":
-      return `semanal, toda ${NOMES_DIA_SEMANA[regras.diaSemanal]} (e no dia ${dia}, junto com o fechamento)`;
+      // "todo domingo" e "todo sábado"; "toda" nos dias que terminam em "-feira".
+      return `semanal, ${regras.diaSemanal === 0 || regras.diaSemanal === 6 ? "todo" : "toda"} ${NOMES_DIA_SEMANA[regras.diaSemanal]} (e no dia ${dia}, junto com o fechamento)`;
     case "disponivel":
       return "assim que disponível: no dia seguinte ao check-in, com o dinheiro já com a empresa";
   }

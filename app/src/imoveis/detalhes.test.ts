@@ -71,6 +71,20 @@ describe("validação do cadastro completo", () => {
     expect(r.dados).toEqual(DETALHES_VAZIOS);
   });
 
+  it("horários (M7.22): \"9:00\" e \"15h\" gravam \"09:00\" e \"15:00\"; \"25:00\" é recusado; vazio dá o padrão da casa", () => {
+    const r = validarDetalhes({ ...form, checkinAPartirDe: "15h", checkoutAte: "9:00" });
+    if (!r.ok) throw new Error(JSON.stringify(r.erros));
+    expect([r.dados.checkinAPartirDe, r.dados.checkoutAte]).toEqual(["15:00", "09:00"]);
+    const vazio = validarDetalhes({ ...form, checkinAPartirDe: "", checkoutAte: " " });
+    if (!vazio.ok) throw new Error(JSON.stringify(vazio.erros));
+    expect([vazio.dados.checkinAPartirDe, vazio.dados.checkoutAte]).toEqual(["15:00", "11:00"]);
+    for (const hora of ["25:00", "15", "3 da tarde", "15:7"]) {
+      const x = validarDetalhes({ ...form, checkoutAte: hora });
+      expect(x.ok, hora).toBe(false);
+      if (!x.ok) expect(x.erros, hora).toEqual({ checkoutAte: "Use o formato 15:00 (24 horas)." });
+    }
+  });
+
   it("recusa incoerências", () => {
     const r = validarDetalhes({ ...form, estadiaMinima: "10", estadiaMaxima: "5", checkinAPartirDe: "25:00", cep: "123", taxaLimpeza: "abc", hospedeExtraAPartirDe: "" });
     expect(r.ok).toBe(false);

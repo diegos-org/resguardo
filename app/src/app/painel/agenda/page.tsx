@@ -4,8 +4,10 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { enviarAgoraAcao, salvarAgendaAcao } from "@/agenda/acoes";
 import { cidadesDosImoveis, DIAS_AGENDA, DIAS_BUZIOS, diasDaCidade, FORMATOS, FRASE_FINAL, formatoDa, lerConfigAgenda, NOMES_FORMATO, previaDaAgenda, textoDaSecao } from "@/agenda/agenda";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { CampoHora } from "@/components/CampoHora";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
+import { dataHoraNoFuso } from "@/lib/datas";
 
 export default async function Agenda({ searchParams }: PageProps<"/painel/agenda">) {
   const sessao = await exigirSessaoPainel();
@@ -32,7 +34,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
     <>
       <h1>Agenda da equipe</h1>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", maxWidth: 820, margin: 0 }}>
-        Todo dia às 20h a equipe recebe por e-mail os próximos {DIAS_AGENDA} dias no Rio e {DIAS_BUZIOS} dias em Búzios. No Rio, as limpezas de cada
+        Todo dia às 20:00 a equipe recebe por e-mail os próximos {DIAS_AGENDA} dias no Rio e {DIAS_BUZIOS} dias em Búzios. No Rio, as limpezas de cada
         dia (com horário-limite quando alguém entra no mesmo dia) ficam separadas das entradas e chaves; em Búzios, todas as reservas relevantes, inclusive em andamento. Vão também as reservas novas desde a
         última agenda (mesmo fora dessa janela). A agenda só informa: não confirma limpeza. Abaixo, uma prévia do texto: cada pessoa recebe só as cidades
         dela e só as reservas novas que ainda não recebeu.
@@ -49,11 +51,11 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
       )}
       {configurar && !config.ativa && (
         <p role="note" className={styles.alerta}>
-          O envio das 20h está desligado. Informe quem recebe e ligue abaixo.
+          O envio das 20:00 está desligado. Informe quem recebe e ligue abaixo.
         </p>
       )}
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
-        Última agenda enviada: {ultima ? ultima.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "nenhuma ainda"}
+        Última agenda enviada: {ultima ? dataHoraNoFuso(ultima) : "nenhuma ainda"}
       </p>
 
       {agenda.secoes.length === 0 && <p>Nenhum imóvel ativo.</p>}
@@ -76,7 +78,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
           <form action={salvarAgendaAcao} className={styles.form}>
             <input type="hidden" name="linhas" value={linhas.length} />
             <label className={styles.check}>
-              <input type="checkbox" name="ativa" value="sim" defaultChecked={config.ativa} /> Enviar todo dia às 20h
+              <input type="checkbox" name="ativa" value="sim" defaultChecked={config.ativa} /> Enviar todo dia às 20:00
             </label>
             {linhas.map((d, i) => (
               <div key={i} className={styles.linha} style={{ alignItems: "center" }}>
@@ -114,11 +116,11 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
             <div className={styles.linha}>
               <label>
                 Horário padrão de entrada (quando o imóvel não tem cadastro)
-                <input name="horaEntrada" defaultValue={config.horaEntrada} maxLength={5} required placeholder="15h" />
+                <CampoHora name="horaEntrada" defaultValue={config.horaEntrada} required />
               </label>
               <label>
                 Horário padrão de saída (quando o imóvel não tem cadastro)
-                <input name="horaSaida" defaultValue={config.horaSaida} maxLength={5} required placeholder="11h" />
+                <CampoHora name="horaSaida" defaultValue={config.horaSaida} required />
               </label>
             </div>
             <div className={styles.acoes}>

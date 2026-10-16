@@ -3,7 +3,9 @@
  * do navegador só mostra texto, nunca calcula nem decide — e os textos de cada resultado. Puro (sem banco). A prévia leva
  * valores: só vai a quem calcula (reserva:editar + financeiro:editar, conferido na ação).
  */
+import { HORA_LIMITE_DO_DIA } from "@/configuracoes/politica-cancelamento";
 import type { CalculoCancelamento } from "@/db/schema";
+import { diaHoraNoFuso, diaMesBr, diaMesNoFuso, hojeISO, horaNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import type { MensagemPronta } from "@/mensagens/hospede";
 import { noites } from "@/reservas/regras";
@@ -54,17 +56,13 @@ export type PreviaAlteracaoParaTela = {
 };
 
 const FUSO = "America/Sao_Paulo";
-const fmt = (d: Date, o: Intl.DateTimeFormatOptions, fuso = FUSO) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
-const diaBr = (d: Date, fuso = FUSO) => fmt(d, { day: "2-digit", month: "2-digit" }, fuso);
-const horaBr = (d: Date, fuso = FUSO) => fmt(d, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, fuso);
+const diaBr = (d: Date, fuso = FUSO) => diaMesNoFuso(d, fuso);
 /** Um prazo: "HH:MM" quando acaba no dia de `agora`, senão "dd/mm às HH:MM" (o prazo das datas vai até 48 horas). */
-const prazoBr = (d: Date, agora: Date | undefined, fuso = FUSO) => (!agora || diaBr(d, fuso) === diaBr(agora, fuso) ? horaBr(d, fuso) : `${diaBr(d, fuso)} às ${horaBr(d, fuso)}`);
-/** "dd/mm" de uma data AAAA-MM-DD. */
-const dataBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+const prazoBr = (d: Date, agora: Date | undefined, fuso = FUSO) => (!agora || hojeISO(fuso, d) === hojeISO(fuso, agora) ? horaNoFuso(d, fuso) : diaHoraNoFuso(d, fuso));
 const nNoites = (n: number) => `${n} ${n === 1 ? "noite" : "noites"}`;
 const pessoas = (n: number | null) => (n === null ? "pessoas não informadas" : `${n} ${n === 1 ? "pessoa" : "pessoas"}`);
 /** "dd/mm–dd/mm, N noites, P pessoas". */
-const estadia = (e: { checkin: string; checkout: string; hospedes: number | null }) => `${dataBr(e.checkin)}–${dataBr(e.checkout)}, ${nNoites(noites(e.checkin, e.checkout))}, ${pessoas(e.hospedes)}`;
+const estadia = (e: { checkin: string; checkout: string; hospedes: number | null }) => `${diaMesBr(e.checkin)}–${diaMesBr(e.checkout)}, ${nNoites(noites(e.checkin, e.checkout))}, ${pessoas(e.hospedes)}`;
 /** Diferença com o sinal (+R$ 400,00; -R$ 3,96; R$ 0,00). */
 const comSinal = (n: number) => (n > 0 ? `+${formatBRL(n)}` : formatBRL(n));
 
@@ -138,11 +136,11 @@ export function previaAlteracaoParaTela(p: PreviaAlteracao, agora: Date, propost
     ? p.rumo === "reducao" && p.decisao
       ? [
           `Política aceita: versão ${p.politica.versao}`,
-          p.decisao.integralAte ? ` — reembolso integral para pedidos até ${dataBr(p.decisao.integralAte)} (23h59), contando da entrada de ${dataBr(p.entradaDaPolitica)}` : "",
-          p.decisao.arrependimentoAte ? `; arrependimento até ${dataBr(p.decisao.arrependimentoAte)}` : "",
+          p.decisao.integralAte ? ` — reembolso integral para pedidos até ${diaMesBr(p.decisao.integralAte)} (${HORA_LIMITE_DO_DIA}), contando da entrada de ${diaMesBr(p.entradaDaPolitica)}` : "",
+          p.decisao.arrependimentoAte ? `; arrependimento até ${diaMesBr(p.decisao.arrependimentoAte)}` : "",
           ".",
         ].join("")
-      : `Política aceita: versão ${p.politica.versao} (continua valendo para a reserva; prazos contados da entrada de ${dataBr(p.entradaDaPolitica)}).`
+      : `Política aceita: versão ${p.politica.versao} (continua valendo para a reserva; prazos contados da entrada de ${diaMesBr(p.entradaDaPolitica)}).`
     : null;
   const comoSai = p.partes.map((x) => {
     const forma = x.forma === "cartao" ? "Cartão" : "Pix";
@@ -158,13 +156,13 @@ export function previaAlteracaoParaTela(p: PreviaAlteracao, agora: Date, propost
   const ate = p.holdAte ?? (p.limiteDoPrazo && p.limiteDoPrazo.getTime() < novo.getTime() ? p.limiteDoPrazo : novo);
   const noitesNovas = p.noitesNovas
     ? p.holdAte
-      ? `Novas noites seguradas: ${dataBr(p.noitesNovas.inicio)}–${dataBr(p.noitesNovas.fim)} até ${prazoBr(p.holdAte, agora)}.`
-      : `Novas noites seguradas: ${dataBr(p.noitesNovas.inicio)}–${dataBr(p.noitesNovas.fim)} por ${p.holdMinutos} minutos.`
+      ? `Novas noites seguradas: ${diaMesBr(p.noitesNovas.inicio)}–${diaMesBr(p.noitesNovas.fim)} até ${prazoBr(p.holdAte, agora)}.`
+      : `Novas noites seguradas: ${diaMesBr(p.noitesNovas.inicio)}–${diaMesBr(p.noitesNovas.fim)} por ${p.holdMinutos} minutos.`
     : "Nenhuma noite nova: as novas datas cabem nas de agora.";
   const rota = rotaDaPrevia(p);
   const soSegurar =
     p.alteracaoId === null && p.rumo !== "aumento"
-      ? `Segurar as novas datas (${dataBr(p.depois.checkin)} a ${dataBr(p.depois.checkout)}, ${pessoas(p.depois.hospedes)}) até ${prazoBr(ate, agora)}, sem aplicar? A reserva continua como está (${dataBr(p.antes.checkin)} a ${dataBr(p.antes.checkout)}); depois que o hóspede aceitar por escrito, use "Aplicar a alteração", ou desista.`
+      ? `Segurar as novas datas (${diaMesBr(p.depois.checkin)} a ${diaMesBr(p.depois.checkout)}, ${pessoas(p.depois.hospedes)}) até ${prazoBr(ate, agora)}, sem aplicar? A reserva continua como está (${diaMesBr(p.antes.checkin)} a ${diaMesBr(p.antes.checkout)}); depois que o hóspede aceitar por escrito, use "Aplicar a alteração", ou desista.`
       : null;
   return {
     alteracaoId: p.alteracaoId,
@@ -218,7 +216,7 @@ export function textoDoResultadoDaAlteracao(v: unknown, ctx: { holdAte: Date | n
     case "aplicada_pedida":
       return `Alteração aplicada. Devolução${valor} pedida ao Mercado Pago: a confirmação aparece no quadro do pagamento quando ele concluir.`;
     case "aplicada_liberacao":
-      return `Alteração aplicada. Devolução${valor} pedida quando o Mercado Pago liberar o pagamento${ctx.previstaEm ? ` (previsto para ${dataBr(ctx.previstaEm)})` : ""}.`;
+      return `Alteração aplicada. Devolução${valor} pedida quando o Mercado Pago liberar o pagamento${ctx.previstaEm ? ` (previsto para ${diaMesBr(ctx.previstaEm)})` : ""}.`;
     case "aplicada_fora_do_prazo":
       return "Alteração aplicada. O pagamento tem mais de 78 dias: devolva a diferença pelo painel do Mercado Pago (cartão) e confirme aqui, ou por fora (Pix).";
     case "aplicada_sem_devolucao":

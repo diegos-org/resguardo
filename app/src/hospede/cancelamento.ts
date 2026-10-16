@@ -18,13 +18,13 @@ import { normalizarEmail } from "@/acesso/entrada";
 import { emailValido } from "@/acesso/codigo-email";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
-import { decidirPelaPolitica, entradaQueConta, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
+import { decidirPelaPolitica, entradaQueConta, HORA_LIMITE_DO_DIA, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import { cancelamentosReserva, contestacoesPagamento, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
-import { hojeISO, instanteLocal } from "@/lib/datas";
+import { diaHoraNoFuso, diaMesBr, FUSO_PADRAO, hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { disputaDoPagamentoOuSituacao } from "@/pagamentos/contestacao-regras";
 import { entradasDaReserva } from "@/pagamentos/entradas";
@@ -37,9 +37,9 @@ export type CancelamentoNoPortal = {
   podePedir: boolean;
   /** Pedido já recebido (e ainda sem decisão): quando chegou. */
   pedidoEm: Date | null;
-  /** Último dia do reembolso integral (até 23h59), pela versão aceita; null sem política. */
+  /** Último dia do reembolso integral (até 23:59, `HORA_LIMITE_DO_DIA`), pela versão aceita; null sem política. */
   integralAte: string | null;
-  /** Último dia do arrependimento (até 23h59); null sem política. */
+  /** Último dia do arrependimento (até 23:59, `HORA_LIMITE_DO_DIA`); null sem política. */
   arrependimentoAte: string | null;
   /** O arrependimento vale só até a entrada (pela versão aceita). */
   arrependimentoAteEntrada: boolean;
@@ -254,7 +254,7 @@ export async function pedirCancelamentoPeloHospede(
   }
 }
 
-const diaIso = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
+const diaIso = diaMesBr;
 
 /**
  * O que a política aceita diz em Minha reserva, sem valores (M9.1): o prazo do reembolso integral, o arrependimento (só
@@ -268,17 +268,15 @@ export function textoDaPoliticaNoPortal(c: Pick<CancelamentoNoPortal, "semPoliti
   if (pagaSemPrazoIntegral(c) && c.arrependimentoAte)
     return `Pela Política de cancelamento que você aceitou, esta reserva foi paga quando o prazo de devolução integral já tinha passado: há devolução integral só no arrependimento, até ${diaIso(c.arrependimentoAte)}${ateEntrada}. Pedido feito agora: ${agora}.`;
   const arrependimento = c.arrependimentoAte && c.arrependimentoAte > c.integralAte ? `, salvo o arrependimento até ${diaIso(c.arrependimentoAte)}${ateEntrada}` : "";
-  return `Pela Política de cancelamento que você aceitou: pedidos até ${diaIso(c.integralAte)} (23h59) têm devolução integral; depois disso, não há devolução${arrependimento}. Pedido feito agora: ${agora}.`;
+  return `Pela Política de cancelamento que você aceitou: pedidos até ${diaIso(c.integralAte)} (${HORA_LIMITE_DO_DIA}) têm devolução integral; depois disso, não há devolução${arrependimento}. Pedido feito agora: ${agora}.`;
 }
 
 /** A pergunta do botão "Pedir o cancelamento" (Minha reserva). Sem política aceita, não cita política nenhuma. */
 export const perguntaDoPedidoDeCancelamento = (codigo: string, semPolitica: boolean) =>
   `Pedir o cancelamento da reserva ${codigo}? A data e a hora em que recebemos o pedido ficam registradas agora. A equipe confirma com você, por escrito, o valor que será devolvido${semPolitica ? "" : " pela política que você aceitou ao pagar"}.`;
 
-const diaHoraBrasilia = (d: Date) => {
-  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(d);
-  return `${f({ day: "2-digit", month: "2-digit" })} às ${f({ hour: "2-digit", minute: "2-digit" })}`;
-};
+/** "16/10 às 22:30" no horário de Brasília (o que a política conta). */
+const diaHoraBrasilia = (d: Date) => diaHoraNoFuso(d, FUSO_PADRAO);
 
 /** O e-mail à equipe (puro): o código da reserva, o apartamento e a hora; nunca o nome nem o e-mail do hóspede. */
 export function mensagemPedidoDeCancelamento(d: { reservaCodigo: string; imovel: string; recebidoEm: Date }, linkPainel: string): { assunto: string; texto: string } {

@@ -103,6 +103,20 @@ describe("extrato e repasses no portal (M4.10)", () => {
     expect(h.match(/Pedir repasse agora/g)).toHaveLength(1);
   });
 
+  it("M7.22: o semanal diz o dia uma vez só, na descrição, sem o parêntese repetido ou vago depois do ponto", () => {
+    const semanal = (diaSemanal: number, descricao: string) =>
+      render({
+        regras: { ...REGRAS_REPASSES_PADRAO, diaSemanal },
+        periodicidades: [{ proprietarioId: "d1", escolha: "semanal", efetiva: "semanal", nome: "Semanal", descricao, tiposContrato: ["marketplace"], proximaData: "2026-10-19" }],
+      });
+    const segunda = semanal(1, "semanal, toda segunda-feira (e no dia 2, junto com o fechamento)");
+    expect(segunda).toContain("Hoje: semanal, toda segunda-feira (e no dia 2, junto com o fechamento). Próximo repasse previsto: <strong>19/10/2026</strong>.");
+    expect(segunda).not.toContain("(segundas)");
+    const sabado = semanal(6, "semanal, todo sábado (e no dia 2, junto com o fechamento)");
+    expect(sabado).toContain("Hoje: semanal, todo sábado");
+    expect(sabado).not.toContain("dia configurado pela empresa");
+  });
+
   it("M8.2e: a linha da disputa do pagamento aparece como 'Disputa do pagamento' (segurado, junto com a parte ou descontado), só com o código da reserva, com a explicação", () => {
     const disputa = { contestacaoId: "c1", situacao: "aberta" as const, resultadoEm: null, quemArca: "proporcional" as const, causa: "Problema do imóvel", exposicao: 100000, parteProprietario: 85000, explicacao: "" };
     const linha = parte({ lancamentoId: "d1", reservaId: "r9", codigoReserva: "SCL-DISP", valor: -85000, efeitoSaldo: -85000, hospede: "", origemLancamento: "contestacao_pagamento", disputa });

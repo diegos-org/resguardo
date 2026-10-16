@@ -51,9 +51,9 @@ export const EXEMPLO: Record<Variavel, string> = {
 /** Nome de cada mensagem automática ao hóspede (Configurações → Modelos de mensagem). */
 export const NOMES_TIPO: Record<TipoMensagemHospede, string> = {
   confirmacao: "Confirmação da reserva",
-  checkin: "Instruções de check-in (2 dias antes da entrada, 10h)",
-  checkout: "Lembrete de check-out (1 dia antes da saída, 14h)",
-  agradecimento: "Agradecimento (3 dias depois da saída, 10h)",
+  checkin: "Instruções de check-in (2 dias antes da entrada, 10:00)",
+  checkout: "Lembrete de check-out (1 dia antes da saída, 14:00)",
+  agradecimento: "Agradecimento (3 dias depois da saída, 10:00)",
   cancelamento_recebido: "Cancelamento: pedido recebido",
   cancelamento_decidido: "Cancelamento: decisão",
   // Serve também à devolução da diferença de uma alteração (M8.2d).

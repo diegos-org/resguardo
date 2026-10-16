@@ -24,7 +24,7 @@ import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas
 import { Recebimentos } from "@/components/reservas/Recebimentos";
 import { ReservaNoBeds24 } from "@/components/reservas/ReservaNoBeds24";
 import { fichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
-import { hojeISO } from "@/lib/datas";
+import { dataBr, dataHoraNoFuso, diaHoraNoFuso, hojeISO } from "@/lib/datas";
 import { alteracaoDoPortador, alteracoesDaReserva } from "@/pagamentos/alteracao-painel";
 import { textoDoResultadoDaAlteracao } from "@/pagamentos/alteracao-tela";
 import { cancelamentoDaReserva, momentosDoCancelamento } from "@/pagamentos/cancelamento-painel";
@@ -37,8 +37,7 @@ import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
 
 // M8.2d: a diferença de uma alteração também é valor (o histórico da reserva nunca leva o valor a quem não lê o financeiro).
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento", "diferenca"];
-const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d).replace(", ", " às ");
-const dataBr = (d: string) => d.split("-").reverse().join("/");
+const horaSP = (d: Date) => diaHoraNoFuso(d);
 const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c));
 
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
@@ -126,8 +125,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
     ["Origem", `${NOMES_ORIGEM[r.origem]}${r.codigoCanal ? ` (${r.codigoCanal})` : ""}`],
     ["Situação", NOMES_ESTADO[r.estado]],
-    ["Feita em (data da origem)", r.reservadaEm ? r.reservadaEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Não informada pela origem"],
-    ["Cadastrada no SCL em", r.criadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })],
+    ["Feita em (data da origem)", r.reservadaEm ? dataHoraNoFuso(r.reservadaEm) : "Não informada pela origem"],
+    ["Cadastrada no SCL em", dataHoraNoFuso(r.criadoEm)],
     ["Entrada → saída", `${dataBr(r.checkin)} → ${dataBr(r.checkout)} · ${noites(r.checkin, r.checkout)} noite(s)`],
     ["Hóspedes", r.hospedes === null ? "—" : String(r.hospedes)],
     ["Hóspede", r.hospedeNome || "—"],

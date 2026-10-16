@@ -174,7 +174,7 @@ describe("aumento: o hóspede paga a diferença na página da reserva", () => {
     expect(await c.reserva(x.reservaId)).toMatchObject({ checkin: "2026-10-12", checkout: "2026-10-15", valorBruto: TOTAL });
     const [portador] = await portadores();
     expect(portador).toMatchObject({ estado: "pedido", checkin: "2026-10-15", checkout: "2026-10-16", idFonte: resultado.alteracaoId, hospedeNome: `Alteração ${x.reservaCodigo}`, hospedeEmail: "", hospedeTelefone: "", valorBruto: null, taxaCanal: null });
-    expect(portador.observacoes).toContain("até 01/10, 13:20");
+    expect(portador.observacoes).toContain("até 01/10 às 13:20");
     expect(await alteracaoGravada(c, resultado.alteracaoId)).toMatchObject({ situacao: "segurada", holdReservaId: portador.id, diferenca: 52800, valorAntes: TOTAL, valorDepois: 235200, criadaPor: equipe });
 
     // O hóspede paga a diferença por Pix (taxa 1%): o prazo das datas acompanha o Pix e a aprovação aplica.

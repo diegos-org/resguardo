@@ -37,7 +37,7 @@ describe("a prévia do cancelamento na tela (M8.2c)", () => {
     expect(t).toMatchObject({ assinatura: "0123456789abcdef", rota: "pedida", direito: "integral", calculado: "integral", escolha: null, leitura: LEITURA });
     expect(t.pergunta).toContain("R$ 1.824,00");
     expect(t.momento).toBe("Pedido recebido em 01/10 às 12:30 (WhatsApp).");
-    expect(t.politica).toBe("Política aceita: versão 2 de 20/09 — reembolso integral para pedidos até 26/10 (23h59); arrependimento até 08/10, ou até a entrada.");
+    expect(t.politica).toBe("Política aceita: versão 2 de 20/09 — reembolso integral para pedidos até 26/10 (23:59); arrependimento até 08/10, ou até a entrada.");
     expect(t.resultado).toBe("Pela política: devolução integral de R$ 1.824,00 — pedido dentro do prazo de reembolso integral.");
     expect(t.componentes).toEqual(["Parte do proprietário: R$ 1.535,04 (sai do financeiro).", "Comissão da SCL: R$ 270,90 (sai do financeiro).", "Taxa do Mercado Pago: R$ 18,06."]);
     expect(t.comoSai).toBe("Como a devolução sai: pelo Mercado Pago agora.");

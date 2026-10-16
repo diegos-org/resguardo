@@ -515,7 +515,7 @@ describe("consistência entre telas (M4.8)", () => {
     expect(dinheiro(outubro)).toEqual(dinheiro(outubroAntes));
     const pdfOutubro = await pdfDe(10, "2026-11-10");
     expect(pdfOutubro).toEqual(pdfOutubroAntes);
-    expect(pdfOutubro.conciliacao.find((l) => l.rotulo === "Site A")).toMatchObject({ reservas: "1", bruto: "R$ 500,00", quemRecebeu: "pagou à A em 1/10", tipo: "canal" });
+    expect(pdfOutubro.conciliacao.find((l) => l.rotulo === "Site A")).toMatchObject({ reservas: "1", bruto: "R$ 500,00", quemRecebeu: "pagou à A em 01/10", tipo: "canal" });
     expect(pdfOutubro.conciliacao.some((l) => l.rotulo.startsWith("+ a receber") && l.rotulo.includes("Site A"))).toBe(false);
     // Novembro: o desconto (bruto −500, taxa +5, parte −420,75) entra no mês do cancelamento, igual em todas as telas.
     const novembro = await telas(NOVEMBRO, "2026-12-10");
@@ -532,7 +532,7 @@ describe("consistência entre telas (M4.8)", () => {
     // O PDF de novembro: a linha do desconto, a nota do bruto e a conciliação que fecha.
     const pdf = await pdfDe(11, "2026-12-10");
     expect(pdf.brutoAoResultado[0].etiqueta).toBe("inclui −R$ 500,00 de 1 reserva cancelada com devolução depois do repasse");
-    expect(pdf.reservas.find((l) => l.situacao.startsWith("cancelada com devolução"))).toMatchObject({ situacao: "cancelada com devolução ao hóspede (estadia de 1/10): desconto no próximo repasse", noites: "—", atravessa: false });
+    expect(pdf.reservas.find((l) => l.situacao.startsWith("cancelada com devolução"))).toMatchObject({ situacao: "cancelada com devolução ao hóspede (estadia de 01/10): desconto no próximo repasse", noites: "—", atravessa: false });
     expect(pdf.conciliacao.find((l) => l.rotulo.includes("desconto da parte já repassada"))).toMatchObject({ tipo: "ponte", quemRecebeu: "sai do próximo repasse" });
     expect(pdf.conciliacaoFecha).toBe(true);
     // Nenhum fechamento trava por causa dela.
@@ -608,11 +608,11 @@ describe("consistência entre telas (M4.8)", () => {
     for (const p of daReserva) expect(p.bruto - p.taxa - p.comissao).toBe(p.suaParte);
     const pdf = textosDoRelatorio(dados);
     expect(pdf.reservas.filter((l) => l.codigo === r.reserva.codigo).map((l) => [l.bruto, l.taxa, l.gestao, l.suaParte, l.situacao])).toEqual([
-      ["R$ 500,00", "R$ 5,00", "R$ 74,25", "R$ 420,75", "repassada em 5/10"],
-      ["-R$ 500,00", "-R$ 5,00", "-R$ 74,25", "-R$ 420,75", "cancelada com devolução ao hóspede (estadia de 1/10): desconto no próximo repasse"],
+      ["R$ 500,00", "R$ 5,00", "R$ 74,25", "R$ 420,75", "repassada em 05/10"],
+      ["-R$ 500,00", "-R$ 5,00", "-R$ 74,25", "-R$ 420,75", "cancelada com devolução ao hóspede (estadia de 01/10): desconto no próximo repasse"],
     ]);
     // A reserva fica no canal do site (o hóspede pagou em 1/10), o desconto na ponte, e a conciliação fecha.
-    expect(pdf.conciliacao.find((l) => l.rotulo === "Site A")).toMatchObject({ reservas: "1", bruto: "R$ 500,00", suaParte: "R$ 420,75", quemRecebeu: "pagou à A em 1/10" });
+    expect(pdf.conciliacao.find((l) => l.rotulo === "Site A")).toMatchObject({ reservas: "1", bruto: "R$ 500,00", suaParte: "R$ 420,75", quemRecebeu: "pagou à A em 01/10" });
     expect(pdf.conciliacao.find((l) => l.rotulo.includes("desconto da parte já repassada"))).toMatchObject({ bruto: "-R$ 500,00", suaParte: "-R$ 420,75", quemRecebeu: "sai do próximo repasse" });
     expect(pdf.conciliacao.some((l) => l.rotulo.startsWith("+ a receber") && l.rotulo.includes("Site A"))).toBe(false);
     expect(pdf.conciliacaoFecha).toBe(true);

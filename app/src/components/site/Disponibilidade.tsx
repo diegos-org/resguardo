@@ -1,10 +1,10 @@
+import { dataBr, dataHoraNoFuso } from "@/lib/datas";
 import type { Disponibilidade as Resultado } from "@/site/disponibilidade";
 import styles from "./site.module.css";
 
 export const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** Nome da situação para o visitante (a página da casa e os cartões da busca em todas as casas, M7.9, usam o mesmo). */
 export const TITULO_DA_SITUACAO: Record<Resultado["situacao"], string> = { disponivel: "Disponível", indisponivel: "Indisponível nessas datas", a_confirmar: "Disponibilidade a confirmar", invalida: "Confira os dados" };
-const quando = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
 
 /**
  * Resultado da consulta no site: situação em linguagem simples, valor por partes e o aviso de que a reserva se
@@ -30,14 +30,13 @@ export function Disponibilidade({
 }) {
   const r = resultado;
   const Titulo = nivel === 3 ? "h3" : "h2";
-  const dataBr = (d: string) => d.split("-").reverse().join("/");
   return (
     <section className={styles.bloco} aria-label="Disponibilidade e valor">
       <Titulo>{TITULO_DA_SITUACAO[r.situacao]}</Titulo>
       {r.noites > 0 && (
         <p className={styles.miudo}>
           {dataBr(entrada)} a {dataBr(saida)} · {r.noites} {r.noites === 1 ? "noite" : "noites"}
-          {r.leituraEm ? ` · agenda conferida em ${quando(r.leituraEm, fuso)}` : ""}
+          {r.leituraEm ? ` · agenda conferida em ${dataHoraNoFuso(r.leituraEm, fuso)}` : ""}
         </p>
       )}
       {r.motivos.length > 0 && (

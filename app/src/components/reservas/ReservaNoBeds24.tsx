@@ -5,15 +5,14 @@
  * rótulos ficam aqui. Só o painel importa este componente: nada do hóspede nem do portal cita o Beds24.
  */
 import styles from "@/components/formularios.module.css";
+import { dataBr, dataHoraNoFuso } from "@/lib/datas";
 import { simularReservaBeds24Acao } from "@/beds24/acoes-reservas";
 import type { FichaReservaNoBeds24, MotivoDesligadaBeds24 } from "@/beds24/reservas-site-painel";
 import type { MotivoSemSimulacao } from "@/beds24/reservas-site-simulacao";
 import type { MotivoAcompanhamentoBeds24, SituacaoAcompanhamentoBeds24, SituacaoOperacaoBeds24, TipoOperacaoBeds24 } from "@/beds24/reservas-site-regras";
 import type { EstadoBeds24 } from "@/beds24/tipos";
 
-const FUSO = "America/Sao_Paulo";
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: FUSO, dateStyle: "short", timeStyle: "short" });
-const dataBr = (d: string) => d.split("-").reverse().join("/");
+const quando = (d: Date) => dataHoraNoFuso(d);
 
 export const NOMES_SITUACAO_NO_BEDS24: Record<SituacaoAcompanhamentoBeds24, string> = {
   pendente: "Envio a fazer",

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { escreverHora } from "@/lib/datas";
+import { dataBr, diaHoraNoFuso, rotuloDoFuso } from "@/lib/datas";
 import { type CotacaoVista, motivoDaMudanca, textoDaCotacao } from "@/site/cotacoes";
 import { linkDaCasa } from "@/site/link-da-casa";
 import { frasesDosHorarios, type RegrasDaCasa as Regras } from "@/site/regras-da-casa";
@@ -9,9 +9,7 @@ import { RegrasDaCasa } from "./RegrasDaCasa";
 import styles from "./site.module.css";
 
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const dataBr = (d: string) => d.split("-").reverse().join("/");
 const noitesEntre = (entrada: string, saida: string) => Math.round((Date.parse(`${saida}T00:00:00Z`) - Date.parse(`${entrada}T00:00:00Z`)) / 86_400_000);
-const quando = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
 
 export const TITULO_COTACAO: Record<CotacaoVista["estado"], string> = {
   aberta: "Sua cotação",
@@ -131,7 +129,7 @@ export function Cotacao({
       {/* M7.20: horários e regras da casa antes do pagamento (os Termos citam "as regras da casa informadas"). */}
       {regras && (
         <>
-          <p className={styles.texto}>{frasesDosHorarios(regras, escreverHora).join(" · ")}</p>
+          <p className={styles.texto}>{frasesDosHorarios(regras).join(" · ")}</p>
           <RegrasDaCasa itens={regras.convivencia} texto={regras.texto} nivel={3} />
         </>
       )}
@@ -194,7 +192,7 @@ export function Cotacao({
       {estado === "segurada" && c.holdAte && (
         <>
           <p className={styles.texto} style={{ marginTop: 12 }}>
-            As datas estão seguradas para você até <strong>{quando(c.holdAte, c.fuso)}</strong>
+            As datas estão seguradas para você até <strong>{diaHoraNoFuso(c.holdAte, c.fuso)}</strong>, {rotuloDoFuso(c.fuso)}
             {vista.reserva ? ` (pedido ${vista.reserva.codigo})` : ""}. Fale com a equipe para confirmar a reserva; se o prazo passar sem confirmação, as datas voltam à venda.
           </p>
           {temContato ? (

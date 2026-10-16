@@ -191,5 +191,11 @@ describe("métricas do relatório mensal (M5.7, regras puras)", () => {
     expect(parcial[3]).toEqual({ valor: "7 reservas até 10/10", legenda: "estadia média de 1,0 noite por reserva no período (7 noites ÷ 7 reservas)", semDado: false });
     expect(parcial[4]).toMatchObject({ valor: "mês em andamento", legenda: expect.stringContaining("até 10/10"), semDado: true });
     expect(parcial[5]).toMatchObject({ valor: "mês em andamento", semDado: true });
+    // Dia e mês de um dígito saem com o zero, como na capa ("parcial até 05/03"), M7.22: antes, "até 5/3".
+    const marco = quadrosDoMes({ atual: mes({ mes: "2026-03", noitesOcupadas: 3, reservas: 1, noitesDoPeriodo: 5, diasImovel: 5, noitesBloqueadas: 0, bruto: 300000 }), anterior: mes({ mes: "2026-02" }), anoAnterior: null, parcialAte: 5 });
+    expect(marco[0].valor).toBe("3 noites ocupadas até 05/03");
+    expect(marco[3].valor).toBe("1 reserva até 05/03");
+    expect(marco[4].legenda).toBe("sem comparação com fevereiro de 2026 até o mês terminar (os números valem até 05/03)");
+    expect(JSON.stringify(marco)).not.toMatch(/\b5\/3\b/);
   });
 });

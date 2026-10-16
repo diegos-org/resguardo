@@ -35,7 +35,7 @@ import {
 } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
-import { hojeISO, instanteLocal } from "@/lib/datas";
+import { diaHoraNoFuso, hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { reservaCalculadaSql } from "@/portal/posse";
 import { politicaDoPagamento, versaoDaPoliticaDoPagamento } from "@/site/aceites";
@@ -1568,8 +1568,8 @@ export type ContagensPagamento = {
 
 const LINK_PAGAMENTOS = "/painel/financeiro/pagamentos-site";
 const LINK_CONFIG_PAGAMENTO = "/painel/configuracoes/pagamento-site";
-/** Hora em São Paulo (dd/mm, hh:mm) para os alertas. */
-const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
+/** Dia e hora em São Paulo ("16/10 às 15:05") para os alertas. */
+const horaSP = (d: Date) => diaHoraNoFuso(d);
 
 /**
  * Avisos do pagamento no site para o Início (da empresa toda, sem depender do filtro de imóveis). `contaDeTeste`
@@ -1810,10 +1810,7 @@ export const ATENCAO_PEDIDO_CANCELAMENTO_DIAS_ANTES = 3;
 /** Mensagem ao hóspede pendente vira "atenção" depois de 24 h. */
 export const ATENCAO_AVISAR_HOSPEDE_HORAS = 24;
 const LINK_PEDIDOS_CANCELAMENTO = "/painel/reservas?cancelamento=pedido";
-const diaHoraSP = (d: Date) => {
-  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(d);
-  return `${f({ day: "2-digit", month: "2-digit" })} às ${f({ hour: "2-digit", minute: "2-digit" })}`;
-};
+const diaHoraSP = (d: Date) => diaHoraNoFuso(d);
 const somarDiasISO = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 /**

@@ -175,6 +175,15 @@ describe("pedido e revisão (M12.3)", () => {
     expect(await aprovarCadastro(db, org, id, "ipa-101", null, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("já foi decidido") });
   });
 
+  it("a observação do proprietário aprovado diz o dia em São Paulo, em dd/mm/aaaa (às 22:30 de 16/10, não o dia 17 do UTC)", async () => {
+    const r = await enviar();
+    const noite = new Date("2026-10-17T01:30:00Z");
+    expect(await aprovarCadastro(db, org, r.ok ? r.id : "", "ipa-102", null, noite)).toMatchObject({ ok: true });
+    const [p] = await db.select().from(proprietarios);
+    expect(p.observacoes).toContain("Cadastro marketplace pelo site em 16/10/2026;");
+    expect(p.observacoes).not.toContain("2026-10-17");
+  });
+
   it("código de imóvel já usado ou e-mail da equipe: não aprova e não deixa nada pela metade", async () => {
     await db.insert(imoveis).values({ organizacaoId: org, codigo: "403", nome: "Já existe" });
     const r = await enviar();

@@ -4,6 +4,7 @@
  * serviço não foi testado nesta abertura (não afirmar que funciona sem ter conferido).
  */
 import { credencialDeEscritaForaDaProducao, escritaBeds24Ligada, escritaBeds24Pronta, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta } from "@/beds24/http";
+import { dataHoraNoFuso } from "@/lib/datas";
 import { ambienteDoSentry, situacaoDoSentry } from "@/observabilidade/sentry";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
@@ -16,7 +17,7 @@ export type Servico = { nome: string; paraQue: string; situacao: SituacaoServico
 export const NOME_MERCADO_PAGO = "Pagamentos (Mercado Pago)";
 export const NOME_SENTRY = "Avisos de erro (Sentry)";
 
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+const quando = (d: Date) => dataHoraNoFuso(d);
 
 /**
  * No deploy de produção sem as chaves de teste (que ficam só no ambiente Preview): é o esperado, não falta nada. Só no
@@ -131,7 +132,7 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
     },
     {
       nome: "Agendador (Vercel Cron)",
-      paraQue: "Roda as automações no horário (agenda diária às 20h)",
+      paraQue: "Roda as automações no horário (agenda diária às 20:00)",
       situacao: tem("CRON_SECRET") ? "configurado" : "nao_configurado",
       detalhe: tem("CRON_SECRET") ? "Configurado" : "Falta CRON_SECRET (sem ele, o agendador é recusado)",
     },

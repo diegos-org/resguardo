@@ -121,7 +121,7 @@ describe("Mercado Pago em Serviços e Integrações (M8.2a): a mesma situação 
   const vazio = {} as NodeJS.ProcessEnv;
   it("ok só com a conta conferida como de teste; não é de teste ou não conferida = com problema", () => {
     expect(servicoMercadoPago(mp(), vazio)).toMatchObject({ nome: NOME_MERCADO_PAGO, situacao: "ok", detalhe: expect.stringContaining("conta conferida como de teste") });
-    expect(servicoMercadoPago(mp(), vazio).detalhe).toContain("último aviso válido em 08/10/2026, 10:00 · 2 assinatura(s) recusada(s) hoje");
+    expect(servicoMercadoPago(mp(), vazio).detalhe).toContain("último aviso válido em 08/10/2026 às 10:00 · 2 assinatura(s) recusada(s) hoje");
     expect(servicoMercadoPago(mp({ contaDeTeste: false }), vazio)).toMatchObject({ situacao: "falha", detalhe: expect.stringContaining("NÃO é de teste") });
     expect(servicoMercadoPago(mp({ contaDeTeste: null }), vazio)).toMatchObject({ situacao: "falha", detalhe: expect.stringContaining("não deu para conferir") });
   });

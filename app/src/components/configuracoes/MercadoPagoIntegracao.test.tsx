@@ -24,7 +24,7 @@ it("na prévia: conexão, conta de teste conferida, ambiente, segredo, último a
   expect(h).toContain("Conferida no Mercado Pago: é uma conta de teste.");
   expect(h).toContain("teste · prévia da Vercel");
   expect(h).toContain("Configurado (MERCADOPAGO_WEBHOOK_SECRET)");
-  expect(h).toContain("08/10/2026, 10:00");
+  expect(h).toContain("08/10/2026 às 10:00");
   expect(h).toContain("<dd style=\"margin:0\">3</dd>");
   expect(h).toContain(`<code>${ENDERECO}</code>`);
   expect(h).toContain("Copiar endereço");

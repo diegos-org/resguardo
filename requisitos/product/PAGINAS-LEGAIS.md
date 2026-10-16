@@ -86,7 +86,7 @@ tentativa e a seção "Páginas legais aceitas".
    da LGPD; a base legal é a própria reserva (LGPD, art. 7º, V), não consentimento.
 2. No "Gerar Pix" (e no "Gerar outro Pix"), enquanto a cotação não aceitou as versões em vigor: o
    resumo da Política de cancelamento, a data-limite desta reserva ("o reembolso integral vale para
-   pedidos de cancelamento até 23h59 de dd/mm/aaaa (horário de Brasília)" ou "esta reserva já está a
+   pedidos de cancelamento até 23:59 de dd/mm/aaaa (horário de Brasília)" ou "esta reserva já está a
    menos de N dias da entrada…"), a caixa obrigatória "Li e aceito os Termos de uso e a Política de
    cancelamento, e li a Política de privacidade" (cada um com o link da versão, numa aba nova) e,
    escondidas, as três versões que a página mostrou.
@@ -148,7 +148,10 @@ Desenho e regra completos em `PAGAMENTO-SITE.md`, seção "Cancelamento pela pol
   Pagamento sem aceite (de antes de 9/10): o sistema não calcula; a equipe decide e escreve o motivo (quando
   a SCL cancela, sempre integral).
 - O prazo é o de `prazoDoReembolso(checkin, dias, hoje)`: último dia = entrada − dias (datas do
-  calendário no fuso do imóvel), até 23h59. Vale o momento em que a SCL **recebeu** o pedido.
+  calendário no fuso do imóvel), até 23:59 (`HORA_LIMITE_DO_DIA`). Vale o momento em que a SCL **recebeu** o pedido.
+  A hora é escrita "23:59" e "00:00" nas telas e no texto-base desde o M7.22 (decisão de Diego em 16/10/2026: a
+  hora no padrão do Brasil, igual em todo lugar); antes, "23h59" e "0h". A versão já publicada da política não muda:
+  o texto no site só muda quando Diego publicar uma versão nova pelo painel.
 - O arrependimento de 7 dias conta do `aprovadoEm` do pagamento (exclui o dia do pagamento e inclui o
   último, Código Civil, art. 132; `DIAS_ARREPENDIMENTO`, da lei, não editável), com devolução integral mesmo
   dentro dos N dias. **O limite "até o horário de entrada" virou regra da versão**,

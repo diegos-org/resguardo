@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DIAS_ARREPENDIMENTO, decidirPelaPolitica, type EntradaPolitica, entradaQueConta, fimDoArrependimento, HORA_ENTRADA_PADRAO, horaDeEntrada, regrasComPadrao } from "./politica-cancelamento";
+import { DIAS_ARREPENDIMENTO, decidirPelaPolitica, type EntradaPolitica, entradaQueConta, fimDoArrependimento, HORA_ENTRADA_PADRAO, HORA_LIMITE_DO_DIA, horaDeEntrada, regrasComPadrao } from "./politica-cancelamento";
 
 const SP = "America/Sao_Paulo";
 /** Um instante dado pelo relógio de São Paulo (UTC−3, sem horário de verão desde 2019). */
 const sp = (dataHora: string) => new Date(`${dataHora}:00-03:00`);
 
-// Política de 14 dias e entrada em 30/10 às 15:00: reembolso integral para pedidos até 16/10, 23h59.
+// Política de 14 dias e entrada em 30/10 às 15:00: reembolso integral para pedidos até 16/10, 23:59.
 const base: EntradaPolitica = {
   regras: { diasReembolsoIntegral: 14, arrependimentoAteEntrada: true },
   checkin: "2026-10-30",
@@ -19,7 +19,10 @@ const base: EntradaPolitica = {
 const decidir = (over: Partial<EntradaPolitica>) => decidirPelaPolitica({ ...base, ...over });
 
 describe("decidirPelaPolitica (M8.2c, regra pura)", () => {
-  it("prazo do reembolso integral: até 23h59 do último dia, no fuso do imóvel", () => {
+  it("prazo do reembolso integral: até 23:59 do último dia (HORA_LIMITE_DO_DIA), no fuso do imóvel", () => {
+    // A hora que as frases escrevem (M7.22: "23:59", não "23h59") é a última que a regra aceita.
+    expect(HORA_LIMITE_DO_DIA).toBe("23:59");
+    expect(decidir({ pedidoRecebidoEm: sp(`2026-10-16T${HORA_LIMITE_DO_DIA}`) })).toMatchObject({ calculado: "integral", base: "prazo" });
     expect(decidir({ pedidoRecebidoEm: sp("2026-10-16T23:59") })).toEqual({
       calculado: "integral",
       base: "prazo",
@@ -39,7 +42,7 @@ describe("decidirPelaPolitica (M8.2c, regra pura)", () => {
     expect(decidir({ pedidoRecebidoEm: instante, fuso: "UTC" })).toMatchObject({ calculado: "nenhum", base: "fora_do_prazo" });
   });
 
-  it("arrependimento: dia da aprovação + 7 dias, até 23h59, integral mesmo depois do prazo da política", () => {
+  it("arrependimento: dia da aprovação + 7 dias, até 23:59, integral mesmo depois do prazo da política", () => {
     expect(DIAS_ARREPENDIMENTO).toBe(7);
     // Entrada em 25/3 (14 dias: integral só até 11/3); pagamento aprovado em 10/3.
     const marco = { checkin: "2026-03-25", aprovadoEm: sp("2026-03-10T09:00") };

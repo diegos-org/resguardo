@@ -132,8 +132,8 @@ describe("cartão de crédito (M8.2b)", () => {
     let h = await html();
     expect(h).toContain("Desligado pelo disjuntor até 11:00 — 8 recusas em 30 minutos. O Pix continua.");
     expect(h).toContain("<strong>9</strong>");
-    expect(h).toContain("09/10/2026, 10:00");
-    expect(h).toContain("religado em 08/10/2026, 09:30");
+    expect(h).toContain("09/10/2026 às 10:00");
+    expect(h).toContain("religado em 08/10/2026 às 09:30");
     expect(h).toContain("Religar o cartão");
     m.disjuntor.mockResolvedValue({ ate: null, recusas: 20, abertoEm: new Date("2026-10-09T13:00:00Z"), janela: "24h" });
     h = await html();

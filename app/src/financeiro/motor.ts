@@ -20,6 +20,7 @@
  */
 import type { EstadoReserva, OrigemReserva, RecebimentoReserva, TipoContrato } from "@/db/schema";
 import { contratoVigente } from "@/contratos/regras";
+import { dataBr } from "@/lib/datas";
 import { comissao, ratear } from "@/lib/rateio";
 import { noites } from "@/reservas/regras";
 import type { NovoLancamento } from "./ledger";
@@ -120,7 +121,7 @@ export function calcularReserva(
   if (r.estado === "pendente") return { lancamentos: [], avisos: ["Reserva pendente: os valores entram quando ela for confirmada."] };
   if (r.valorBruto === null) return { lancamentos: [], avisos: ["Valor bruto não informado: cálculo pendente."] };
   const contrato = contratoVigente(contratos, r.checkin);
-  if (!contrato) return { lancamentos: [], avisos: [`Sem contrato vigente em ${r.checkin} para este imóvel.`] };
+  if (!contrato) return { lancamentos: [], avisos: [`Sem contrato vigente em ${dataBr(r.checkin)} para este imóvel.`] };
   if (contrato.comissaoBp === null) return { lancamentos: [], avisos: ["Contrato de marketplace: a divisão do modelo B (Configurações → Marketplace) entra no financeiro com o M12.2; nada lançado por enquanto."] };
 
   const taxa = r.taxaCanal ?? 0;

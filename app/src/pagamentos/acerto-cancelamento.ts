@@ -26,7 +26,7 @@ import type { Db } from "@/db/types";
 import { aplicarMotor } from "@/financeiro/aplicar";
 import { estornar, type Lancamento, lancar } from "@/financeiro/ledger";
 import { travarMotorDaReserva } from "@/financeiro/trava";
-import { hojeISO } from "@/lib/datas";
+import { dataBr, hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { chaveEspelhoDoCancelamento, lancarDescontoDoProprietario, mesDoDesconto, ORIGEM_CANCELAMENTO } from "@/repasses/descontos";
 import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
@@ -41,7 +41,6 @@ export const chaveSaidaDevolucao = (pagamentoId: string, devolucaoId: string) =>
 /** Como a devolução se realizou, para o lançamento de caixa: o dia, e se veio de uma leitura (conciliado) ou da equipe. */
 export type FatoDaDevolucao = { data: string; estado: "conciliado" | "realizado"; origem: "sincronizacao" | "manual" };
 
-const dataBr = (d: string) => d.slice(0, 10).split("-").reverse().join("/");
 const mesBr = (competencia: string) => `${competencia.slice(5, 7)}/${competencia.slice(0, 4)}`;
 const emVigor = () => and(isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`);
 

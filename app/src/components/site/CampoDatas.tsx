@@ -2,7 +2,8 @@
 
 import { type KeyboardEvent, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { diaDaSemana, diasEntre, somarDias } from "@/imoveis/regras-venda";
+import { diasEntre, somarDias } from "@/imoveis/regras-venda";
+import { DIAS_NA_ORDEM, posicaoNaSemana } from "@/lib/datas";
 import {
   cruzaOcupada,
   dataCurta,
@@ -319,12 +320,13 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
     setRecusa(null);
   };
 
+  // Setas andam um dia ou uma semana; Home e End vão ao começo e ao fim da semana mostrada, segunda e domingo (M7.22).
   const teclasDoDia = (e: KeyboardEvent<HTMLButtonElement>, dia: string) => {
     const passos: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
     let alvo: string | null = null;
     if (e.key in passos) alvo = somarDias(dia, passos[e.key]);
-    else if (e.key === "Home") alvo = somarDias(dia, -diaDaSemana(dia));
-    else if (e.key === "End") alvo = somarDias(dia, 6 - diaDaSemana(dia));
+    else if (e.key === "Home") alvo = somarDias(dia, -posicaoNaSemana(dia));
+    else if (e.key === "End") alvo = somarDias(dia, 6 - posicaoNaSemana(dia));
     else if (e.key === "PageUp" || e.key === "PageDown") {
       const m = somarMeses(dia, e.key === "PageUp" ? -1 : 1);
       alvo = `${m.slice(0, 8)}${String(Math.min(Number(dia.slice(8)), diasEntre(m, somarMeses(m, 1)))).padStart(2, "0")}`;
@@ -366,9 +368,9 @@ export function CampoDatas({ hoje, entrada = "", saida = "", imovel, campoImovel
       <table role="grid" className={css.grade} aria-labelledby={`${id}-${m}`} onMouseLeave={() => setPrevia(null)}>
         <thead>
           <tr>
-            {DIAS_DA_SEMANA_CURTOS.map((d, i) => (
-              <th key={d} scope="col" abbr={DIAS_SEMANA[i]}>
-                {d}
+            {DIAS_NA_ORDEM.map((n) => (
+              <th key={n} scope="col" abbr={DIAS_SEMANA[n]}>
+                {DIAS_DA_SEMANA_CURTOS[n]}
               </th>
             ))}
           </tr>

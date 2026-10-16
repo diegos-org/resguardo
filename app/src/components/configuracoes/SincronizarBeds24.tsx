@@ -59,7 +59,7 @@ export function SincronizarBeds24({ config, mapas, imoveis, execucoes }: { confi
       <p>Reservas e bloqueios já importados continuam sendo conferidos mesmo quando suas datas mudam para antes desse período.</p>
       <label>Dias de calendário para consultar<input type="number" name="diasCalendario" min={1} max={365} required defaultValue={config.diasCalendario} /></label>
       <label className={styles.check}><input type="checkbox" name="automatica" defaultChecked={config.automatica} />Importar automaticamente uma vez por dia</label>
-      <p>Deixe desligado no primeiro teste. Quando ligado, o agendamento roda diariamente entre 6h15 e 7h15, horário de Brasília. A atualização diária não serve como garantia de disponibilidade em tempo real para vendas.</p>
+      <p>Deixe desligado no primeiro teste. Quando ligado, o agendamento roda diariamente entre 06:15 e 07:15, horário de Brasília. A atualização diária não serve como garantia de disponibilidade em tempo real para vendas.</p>
       <div className={styles.acoes}><button type="submit" disabled={salvando || importando}>{salvando ? "Salvando…" : "Salvar configuração"}</button></div>
       <Resultado estado={salvo} />
     </form>

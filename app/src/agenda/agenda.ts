@@ -19,8 +19,9 @@ import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { periodoDoBloqueio } from "@/reservas/bloqueios";
 import { horarioEfetivo, lerHorariosReservas } from "@/reservas/horarios";
-import { hojeISO } from "@/lib/datas";
+import { diaCurto, escreverHora, hojeISO, lerHora, MENSAGEM_HORA } from "@/lib/datas";
 import { listarLimpezas, NOMES_ESTADO, sincronizarLimpezas } from "@/limpezas/limpezas";
+import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 
 export const DIAS_AGENDA = 5;
 export const DIAS_BUZIOS = 30;
@@ -29,8 +30,8 @@ export const diasDaCidade = (cidade: string) => /buzios/i.test(cidade.normalize(
 
 const dia = (d: string) => Date.parse(`${d}T00:00:00Z`);
 const somaDias = (d: string, n: number) => new Date(dia(d) + n * 86_400_000).toISOString().slice(0, 10);
-const SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-export const diaCurto = (d: string) => `${SEMANA[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.split("-").reverse().slice(0, 2).join("/")}`;
+/** O rótulo curto do dia ("sex 16/10") é o de lib/datas.ts, o mesmo das telas Limpezas e da profissional (M7.22). */
+export { diaCurto };
 
 // ——— Configuração (editável no painel) ———
 
@@ -46,15 +47,20 @@ export type ConfigAgenda = {
   destinatarios: Destinatario[];
   /** Formato de cada cidade; sem escolha, ver `formatoDa`. */
   formatos: Record<string, Formato>;
-  /** Horários do check-in e do checkout, como aparecem no texto (ex.: "15h", "11h"). */
+  /**
+   * Horários de entrada e de saída das casas sem horário na ficha, "HH:MM" ("15:00", "11:00"). A configuração salva antes
+   * do M7.22 guarda "15h" ou "15h30": a leitura entende e o próximo salvar grava "15:00" e "15:30".
+   */
   horaEntrada: string;
   horaSaida: string;
 };
 
-/** Horários das regras de atendimento (Diego, 23/09); editáveis na tela da agenda. */
-export const HORA_ENTRADA_PADRAO = "15h";
-export const HORA_SAIDA_PADRAO = "11h";
-const HORA = /^([01]?\d|2[0-3])h([0-5]\d)?$/;
+/**
+ * O padrão inicial da agenda é o horário da casa sem ficha (`HORARIOS_PADRAO`, 15:00 e 11:00), num lugar só (M7.22). Antes
+ * era uma cópia própria, "15h" e "11h" (regras de atendimento de Diego, 23/09). Continua editável na tela da agenda.
+ */
+export const HORA_ENTRADA_PADRAO = HORARIOS_PADRAO.entrada;
+export const HORA_SAIDA_PADRAO = HORARIOS_PADRAO.saida;
 
 /**
  * Formato de uma cidade: o escolhido na tela; sem escolha, casa única (um imóvel na cidade) vai
@@ -80,7 +86,8 @@ export async function lerConfigAgenda(db: Db, organizacaoId: string): Promise<Co
   if (c?.formatos && typeof c.formatos === "object" && !Array.isArray(c.formatos)) {
     for (const [cidade, f] of Object.entries(c.formatos as Record<string, unknown>)) if ((FORMATOS as readonly unknown[]).includes(f)) formatos[cidade] = f as Formato;
   }
-  const hora = (v: unknown, padrao: string) => (typeof v === "string" && HORA.test(v) ? v : padrao);
+  // "15h" (salvo antes do M7.22) é lido "15:00"; o que não é hora cai no padrão.
+  const hora = (v: unknown, padrao: string) => (typeof v === "string" ? lerHora(v) : null) ?? padrao;
   return { ativa: c?.ativa === true, destinatarios, formatos, horaEntrada: hora(c?.horaEntrada, HORA_ENTRADA_PADRAO), horaSaida: hora(c?.horaSaida, HORA_SAIDA_PADRAO) };
 }
 
@@ -116,9 +123,9 @@ export async function salvarConfigAgenda(db: Db, organizacaoId: string, c: NovaC
   }
   if (destinatarios.length > 30) return { ok: false, erro: "No máximo 30 destinatários." };
   if (c.ativa && !destinatarios.length) return { ok: false, erro: "Para ligar a agenda, informe pelo menos um destinatário." };
-  const horaEntrada = (c.horaEntrada ?? anterior.horaEntrada).trim().toLowerCase();
-  const horaSaida = (c.horaSaida ?? anterior.horaSaida).trim().toLowerCase();
-  if (!HORA.test(horaEntrada) || !HORA.test(horaSaida)) return { ok: false, erro: "Horário no formato 15h ou 15h30." };
+  const horaEntrada = lerHora(c.horaEntrada ?? anterior.horaEntrada);
+  const horaSaida = lerHora(c.horaSaida ?? anterior.horaSaida);
+  if (!horaEntrada || !horaSaida) return { ok: false, erro: MENSAGEM_HORA };
   const formatos: Record<string, Formato> = {};
   for (const [cidade, f] of Object.entries(c.formatos ?? anterior.formatos)) {
     if (!(FORMATOS as readonly string[]).includes(f)) return { ok: false, erro: `Formato inválido para ${cidade}.` };
@@ -370,8 +377,8 @@ export async function montarAgenda(db: Db, organizacaoId: string, hoje: string, 
 const pessoas = (n: number | null) => (n === null ? "nº de hóspedes não informado" : `${n} hóspede${n === 1 ? "" : "s"}`);
 const maiuscula = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const contato = (r: DetalhesOperacionais) => r.telefone ? ` · telefone: ${r.telefone}` : "";
-const entrada = (r: DetalhesOperacionais, o: OpcoesTexto) => r.horaEntrada ?? `${o.horaEntrada} (padrão)`;
-const saida = (r: DetalhesOperacionais, o: OpcoesTexto) => r.horaSaida ?? `${o.horaSaida} (padrão)`;
+const entrada = (r: DetalhesOperacionais, o: OpcoesTexto) => r.horaEntrada ?? `${escreverHora(o.horaEntrada)} (padrão)`;
+const saida = (r: DetalhesOperacionais, o: OpcoesTexto) => r.horaSaida ?? `${escreverHora(o.horaSaida)} (padrão)`;
 const estadia = (r: DetalhesOperacionais, o: OpcoesTexto) => `entrada ${r.checkin ? diaCurto(r.checkin) : "a confirmar"} às ${entrada(r, o)} · saída ${r.checkout ? diaCurto(r.checkout) : "a confirmar"} às ${saida(r, o)}`;
 
 /** `talvezJaVeio`: a reserva nova estava num envio anterior ainda sem confirmação (pode já ter chegado). */

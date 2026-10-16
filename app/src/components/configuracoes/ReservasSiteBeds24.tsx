@@ -6,12 +6,12 @@
 import type { MarcaLegivelBeds24, MotivoSemLigarBeds24, PainelReservasBeds24 } from "@/beds24/reservas-site-painel";
 import { SITUACOES_ACOMPANHAMENTO_BEDS24 } from "@/beds24/reservas-site-regras";
 import styles from "@/components/formularios.module.css";
+import { dataHoraNoFuso } from "@/lib/datas";
 import { NOMES_SITUACAO_NO_BEDS24 } from "@/components/reservas/ReservaNoBeds24";
 import { TEXTO_CREDENCIAL_ESCRITA_FORA_DA_PRODUCAO } from "@/sistema/servicos";
 import { AcaoReservasBeds24, ConferirEscoposBeds24 } from "./AcaoReservasBeds24";
 
-const FUSO = "America/Sao_Paulo";
-const quando = (iso: string) => new Date(iso).toLocaleString("pt-BR", { timeZone: FUSO, dateStyle: "short", timeStyle: "short" });
+const quando = (iso: string) => dataHoraNoFuso(new Date(iso));
 
 const MARCA: Record<MarcaLegivelBeds24, string> = {
   provada_no_ensaio: "legível: o último ensaio, com a credencial atual, leu a marca de volta",

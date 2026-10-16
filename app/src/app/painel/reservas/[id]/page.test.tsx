@@ -183,7 +183,7 @@ it("páginas legais aceitas no site (M7.4): a seção aparece para quem lê rese
   expect(h).toContain('<a href="/termos?versao=2" target="_blank" rel="noopener noreferrer">Termos de uso (versão 2)</a>');
   expect(h).toContain('<a href="/privacidade?versao=1" target="_blank" rel="noopener noreferrer">Política de privacidade (versão 1)</a>');
   expect(h).toContain('<a href="/cancelamento?versao=3" target="_blank" rel="noopener noreferrer">Política de cancelamento (versão 3)</a>');
-  expect(h).toContain("01/10/2026, 12:02, ao gerar o Pix");
+  expect(h).toContain("01/10/2026 às 12:02, ao gerar o Pix");
   // Sem reserva:ler (ex.: limpeza), nem se consulta.
   m.aceites.mockClear();
   m.sessao.mockResolvedValue({ papel: "limpeza", organizacaoId: "org", usuarioId: "u", imovelIds: [] });

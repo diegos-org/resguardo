@@ -4,6 +4,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { MercadoPagoIntegracao } from "@/components/configuracoes/MercadoPagoIntegracao";
 import { TestarBeds24 } from "@/components/configuracoes/TestarBeds24";
+import { dataHoraNoFuso } from "@/lib/datas";
 import { situacaoDoMercadoPago } from "@/pagamentos/integracao";
 import { NOME_MERCADO_PAGO, NOME_SENTRY, situacaoServicos } from "@/sistema/servicos";
 import { and, asc, eq } from "drizzle-orm";
@@ -74,7 +75,7 @@ export default async function Integracoes() {
       </div>
       <MercadoPagoIntegracao mp={mercadoPago} env={process.env} />
       <TestarBeds24 />
-      <SincronizarBeds24 config={config} mapas={mapas} imoveis={locais} execucoes={execucoes.map(e => ({ id: e.id, quando: e.iniciadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }), situacao: e.situacao, resumo: e.resumo, divergencias: e.divergencias }))} />
+      <SincronizarBeds24 config={config} mapas={mapas} imoveis={locais} execucoes={execucoes.map(e => ({ id: e.id, quando: dataHoraNoFuso(e.iniciadoEm), situacao: e.situacao, resumo: e.resumo, divergencias: e.divergencias }))} />
       <ReservasSiteBeds24 p={reservasNoBeds24} />
     </>
   );

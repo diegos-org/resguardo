@@ -184,6 +184,8 @@ describe("entrada da equipe sem e-mail (M6.8)", () => {
     const deAna = await agendaDaProfissional(db, org, ana, "2026-10-08");
     expect(deAna.secoes.map((s) => s.cidade)).toEqual(["Armação dos Búzios"]);
     expect(deAna.secoes[0].linhas.join("\n")).toContain("Carla");
+    // Horário da casa sem ficha, no formato 15:00 (M7.22).
+    expect(deAna.secoes[0].linhas.join("\n")).toContain("entrada seg 12/10 às 15:00 (padrão) · saída qui 15/10 às 11:00 (padrão)");
     expect(JSON.stringify(deAna)).not.toContain("Duda");
     expect(await definirCidades(db, org, bia, ["Rio de Janeiro"], null)).toEqual({ ok: true });
     const deBia = await agendaDaProfissional(db, org, bia, "2026-10-08");

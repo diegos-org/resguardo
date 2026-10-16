@@ -37,7 +37,7 @@ it("pedido válido mostra disponibilidade, valor por partes e a mensagem com o v
   const h = await html({ imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
   expect(m.disponibilidade).toHaveBeenCalledWith({}, "org", { imovel: "403", entrada: "2099-10-12", saida: "2099-10-15", hospedes: "2" });
   expect(h).toContain("Disponível");
-  expect(h).toContain("agenda conferida em 01/10/2026, 06:15");
+  expect(h).toContain("agenda conferida em 01/10/2026 às 06:15");
   expect(h).toContain("R$ 1.350,00");
   expect(h).toContain("R$ 1.600,00"); // valor cheio
   expect(h).toContain("R$ 64,00"); // desconto do site
@@ -73,7 +73,7 @@ it("as datas são conferidas no fuso do imóvel escolhido, não no de São Paulo
     const h1 = await html({ imovel: "403", entrada: "2026-10-11", saida: "2026-10-13", hospedes: "2" });
     expect(m.disponibilidade).toHaveBeenCalledTimes(1);
     // A hora da leitura (09:15 UTC) aparece no fuso do imóvel: 04:15 em Rio Branco, 06:15 em São Paulo.
-    expect(h1).toContain("agenda conferida em 01/10/2026, 04:15");
+    expect(h1).toContain("agenda conferida em 01/10/2026 às 04:15");
     m.disponibilidade.mockClear();
     m.imovel.mockResolvedValue(imovel);
     await html({ imovel: "403", entrada: "2026-10-11", saida: "2026-10-13", hospedes: "2" });
