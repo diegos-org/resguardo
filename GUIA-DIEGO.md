@@ -58,9 +58,13 @@ construído ainda.**
     proprietários. Recebe códigos, valores (se aquela conexão puder ver valores) e o link da tela do painel, que só
     abre com login. Antes eu tinha falado em mostrar o nome do hóspede abreviado; depois das revisões de
     segurança, a primeira fase fica sem nomes, e o primeiro nome com a inicial é a decisão 2 (seção 7).
-  - Só você conecta, pelo nome. Cada conexão nova gera um aviso no Início e um e-mail, com o botão "não fui eu". Uso
-    estranho (de madrugada, em volume grande, depois de dias parado) também avisa. Um botão no painel desconecta
-    tudo na hora.
+  - Só você conecta, pelo nome. Cada conexão nova gera um aviso no Início, com um botão para desconectar, e um e-mail
+    com o "não fui eu". Uso estranho (de madrugada, em volume grande, depois de dias parado) também avisa. O botão
+    "Desconectar todos", no painel, desconecta tudo na hora; desligar a chave só suspende.
+  - Se um dia algo parecer estranho, o plano tem poucos passos: desconectar todos e desligar a chave, encerrar os
+    seus logins abertos do painel (um botão novo) e trocar a senha e ligar a verificação em duas etapas no e-mail ou
+    no Google com que você entra no SCL e na conta do assistente. Eu deixo esse passo a passo pronto aqui no guia no
+    M13.7.
   - Nada muda pelo assistente nesta fase.
 - **Fase 2, para um dia o assistente fazer mudanças:** ficou registrada só como regras, que não autorizam construir
   nada. Valem todas juntas:
@@ -76,8 +80,10 @@ construído ainda.**
   erro de programa não conseguem mais alterar nem apagar o histórico; uma correção vira um registro novo. Um
   limite, dito com franqueza: quem tem o acesso de dono do banco ainda consegue desligar a trava de propósito. Por
   isso ela só muda por uma mudança revisada, que fica registrada, e a trava completa vem depois, num item próprio,
-  com o seu "pode" no Neon. O histórico entra no backup do banco e fica para sempre; os dados pessoais que ele
-  guarda, como o nome do hóspede, seguem o prazo da Política de privacidade, a conferir com o advogado. O registro
+  com o seu "pode" no Neon. O histórico entra no backup do banco e fica para sempre. Para isso não brigar com a
+  Política de privacidade, que promete apagar dados quando o prazo acaba e quando a pessoa pede, antes da trava o
+  histórico passa a registrar só que um nome ou um contato mudou, sem guardar o valor, e os nomes e contatos que ele
+  já guardou são trocados por "(anonimizado)". O prazo e o jeito de atender os pedidos vão ao advogado. O registro
   do que o assistente consultou é outra coisa e fica 6 meses.
 - **A ordem:** o M13 só começa depois da reserva no Beds24 (M8.3) e do cálculo do marketplace (M12.2), e não
   atrasa a entrada no ar (M11). São 15 itens, M13.1 a M13.13, contando o 2a, o 2b, o 4a e o 4b; cada um é um PR.
@@ -92,7 +98,8 @@ construído ainda.**
   - reserva paga pelo site no Beds24 (M8.3) autorizada, com uma chave própria das reservas, separada da do
     calendário. Hoje nenhuma das duas existe na Vercel (conferido em 16/10), então nada é escrito no Beds24.
 - **O que você precisa fazer:** nada agora. Quando quiser, as 14 decisões do MCP, cada uma com um padrão (seção 7).
-  Antes de ligar com os dados de verdade: o campo Site (seção 6, item 47), o advogado e as contas (seção 6, item 49).
+  Antes de ligar com os dados de verdade: o campo Site (seção 6, item 47), o advogado, as contas e, se for preciso, a
+  configuração das sessões de trabalho (seção 6, item 49).
 
 ### Horários e regras da casa na página da cotação — M7.20 (16/10)
 
@@ -3635,9 +3642,17 @@ ambiente).
     2. **Advogado:** mesmo sem nomes, códigos e valores das reservas vão para empresas de fora do Brasil. Estas
        perguntas entram no dossiê único para o advogado e o contador que combinamos em 16/10 (tudo de uma vez,
        perto do fim da construção). Eu monto o dossiê; você não precisa abrir o arquivo técnico (decisão D4).
-    3. **Contas:** ligue a verificação em duas etapas nas contas do Claude, do ChatGPT e do e-mail que recebe os
-       avisos do SCL, e desligue o uso das conversas para treino, se houver a opção. E me diga quais são os seus
-       planos do Claude e do ChatGPT (decisão D5).
+    3. **Contas:** ligue a verificação em duas etapas nas contas do Claude, do ChatGPT e do e-mail ou do Google com
+       que você entra no SCL e que recebe os avisos, e desligue o uso das conversas para treino, se houver a opção.
+       E me diga quais são os seus planos do Claude e do ChatGPT (decisão D5). Vale também bloquear a tela do
+       computador quando sair: com o seu Google ou o seu e-mail abertos, quem sentar ali consegue entrar no SCL e
+       conectar um assistente, e o SCL não tem como saber que não é você.
+    4. **Sessões de trabalho (decisão D12):** as sessões em que eu e o Codex trabalhamos no código não podem ter o
+       conector do SCL. Se desligar isso for uma configuração da sua conta ou do ambiente, eu te digo onde no M13.7, e
+       o MCP só liga na produção depois de eu conferir numa sessão que o SCL não aparece. Se a saída for pelo Codex,
+       o SCL fica numa configuração separada da usada no código.
+    5. **Google (opcional):** se o Google precisar de uma opção ligada para dizer ao SCL a hora do seu login, eu te
+       digo onde no M13.4a. Sem ela, para conectar um assistente você entra com a senha ou com o código por e-mail.
 
 ---
 
@@ -3646,10 +3661,12 @@ ambiente).
 **Preciso de você (sem pressa):**
 - **MCP do SCL (M13.1, 16/10) — 14 decisões, cada uma com um padrão** (detalhes em `requisitos/product/MCP-SCL.md`,
   "Decisões em aberto para Diego"). Sem resposta, vale o padrão, menos nas que pedem um passo ou um "pode" seu
-  (4, 5, 10, 11 e 14): essas esperam por você, e os itens do M13 que dependem delas ficam bloqueados. Nada disso
+  (4, 5, 10, 11, 12 e 14): essas esperam por você, e os itens do M13 que dependem delas ficam bloqueados. Nada disso
   trava o que vem antes do M13:
   1. **Quem conecta:** só você, pelo nome. A operação fica como opção desligada; o proprietário vem depois.
-  2. **O que o assistente vê:** sem nomes, contatos ou textos livres; só códigos, valores e o link da tela do painel.
+  2. **O que o assistente vê:** o padrão é sem nomes, contatos ou textos livres; só códigos, valores e o link da tela
+     do painel. Se você quiser o primeiro nome e a inicial do hóspede (o que eu tinha proposto e você gostou), isso
+     vem depois, no M13.9, com a Política de privacidade nova conferida pelo advogado.
   3. **Login:** o do próprio SCL, o mesmo do painel, sem serviço de fora.
   4. **LGPD:** levar as perguntas ao advogado, no dossiê único, antes de ligar com os dados de verdade (seção 6,
      item 49).
@@ -3664,9 +3681,11 @@ ambiente).
       verdade. Pede o seu "pode", porque muda uma configuração da Vercel.
   11. **Trava extra no banco:** mais tarde, um acesso ao banco só de leitura para o MCP. Pede o seu "pode" no Neon.
   12. **Sessões de trabalho:** as do Claude e do Codex no código não usam o conector; você usa o SCL numa conversa só
-      para ele.
-  13. **Histórico das mudanças:** fica para sempre, protegido no banco; os dados pessoais dentro dele seguem o prazo
-      da Política de privacidade (decisão 4).
+      para ele. Se desligar o conector nessas sessões for uma configuração sua, eu te digo onde, e a produção só
+      liga depois disso (seção 6, item 49).
+  13. **Histórico das mudanças:** fica para sempre, protegido no banco, mas sem nomes e contatos: antes da trava, ele
+      passa a registrar só que algo mudou, e os nomes e contatos que já guardou são anonimizados. O prazo e os
+      pedidos das pessoas vão ao advogado (decisão 4).
   14. **Fase 2:** nada antes de a fase 1 estar em uso. Depois, você escolhe a primeira ação; a sugestão é uma sem
       dinheiro e sem sistema externo, como bloquear datas no SCL.
 - **Textos do site que continuam fixos (M7.16, 15/10) — duas perguntas:** (1) os títulos e as frases listados na seção 2 (M7.16) já se editam em Configurações → Textos do site. Continuam fixos os nomes do menu ("Nossas casas", "Planeje sua estadia"), do rodapé e dos botões ("Ver todas as casas", "Continuar", "Conhecer as casas") e os textos do formulário da consulta (o título "Consultar disponibilidade" no alto do formulário, os nomes dos campos e as dicas abaixo do botão). Quer poder mudar esses também pelo painel? (2) A prévia do link de Nossas casas (no WhatsApp e nas redes) usa a frase da vitrine de casas da página inicial. Quer que ela passe a usar a frase da própria página Nossas casas, que agora você edita? Enquanto você não responde, tudo fica como está.
