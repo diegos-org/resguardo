@@ -10,7 +10,11 @@
  *   processada DEPOIS da resposta (`after`), lendo o provedor pelas mesmas travas da conferência. Sem provedor (o
  *   deploy de produção, onde o teste não roda) o evento fica "ignorado"; falha fica "erro" e a rotina confere depois.
  *
- * Nada aqui vai para o registro do servidor: nem corpo, nem cabeçalhos, nem segredo.
+ * Nada aqui vai para o registro do servidor: nem corpo, nem cabeçalhos, nem segredo. As falhas ao gravar o evento e ao
+ * processar a order vão para o Sentry (M0.9, `avisarErroDoServidor`): só o tipo do erro, o código técnico e a pilha, sem
+ * a mensagem (que pode repetir um valor gravado), sem o corpo nem os cabeçalhos do aviso. Da falha do provedor
+ * (`ErroProvedor`), vai também o tipo dela, de uma lista fechada (provedor fora do alcance, resposta incerta, chave
+ * recusada, limite de chamadas), para a equipe saber o que conferir.
  */
 import { after } from "next/server";
 import { getDb } from "@/db/client";
@@ -20,6 +24,9 @@ import { idDeOrder, processarAvisoDeOrder } from "@/pagamentos/conferencia";
 import { marcarResultadoDoEvento, registrarAssinaturaRecusada, registrarEventoDeAviso } from "@/pagamentos/eventos";
 import { segredoDoWebhook } from "@/pagamentos/integracao";
 import { provedorDeConferencia } from "@/pagamentos/oferta";
+import { avisarErroDoServidor } from "@/observabilidade/aviso-do-servidor";
+import { ErroDeRotina, type MotivoDeFalha, umaFalha } from "@/observabilidade/erro-de-rotina";
+import { ErroProvedor } from "@/pagamentos/provedor";
 
 export const dynamic = "force-dynamic";
 /** O processamento depois da resposta lê o provedor (cada chamada com tempo-limite de 15 s). */
@@ -62,6 +69,17 @@ function camposDoCorpo(texto: string): { acao: unknown; aoVivo: unknown } {
   return { acao: undefined, aoVivo: undefined };
 }
 
+/**
+ * O que vai ao Sentry de uma falha ao processar a order (M0.9): de um `ErroProvedor`, o tipo dele, que é um motivo da
+ * lista fechada do aviso (a anotação confere isso na compilação), sem a mensagem; de qualquer outro erro, o texto fixo de
+ * `erroParaOAviso`. Aqui nada fica guardado além do evento marcado como "erro", e o aviso diz isso.
+ */
+function erroDoProcessamento(erro: unknown): unknown {
+  if (!(erro instanceof ErroProvedor)) return erro;
+  const motivo: MotivoDeFalha = erro.tipo;
+  return new ErroDeRotina(erro.message, umaFalha(motivo), { cause: erro, detalheEm: "sem_registro" });
+}
+
 /** Depois da resposta: aplica a order pelo provedor de conferência (as mesmas travas do resto). */
 async function processarDepois(db: Db, dataId: string, eventoId: string): Promise<void> {
   try {
@@ -72,9 +90,10 @@ async function processarDepois(db: Db, dataId: string, eventoId: string): Promis
       return;
     }
     await processarAvisoDeOrder(db, gate.provedor, dataId, new Date(), { eventoId });
-  } catch {
+  } catch (erro) {
     // processarAvisoDeOrder já marca "erro"; aqui só garante a marca se a falha veio antes. A rotina confere depois.
     await marcarResultadoDoEvento(db, eventoId, "erro").catch(() => undefined);
+    await avisarErroDoServidor(erroDoProcessamento(erro), "aviso-mercadopago");
   }
 }
 
@@ -108,8 +127,9 @@ export async function POST(req: Request): Promise<Response> {
   let evento: { id: string; novo: boolean } | null;
   try {
     evento = dataId ? await registrarEventoDeAviso(db, { tipo, acao: corpo.acao, dataId, requestId: xRequestId, ts: lerCabecalhoAssinatura(xSignature)?.ts ?? null, aoVivo: corpo.aoVivo }) : null;
-  } catch {
+  } catch (erro) {
     // Sem gravar o evento não há como saber depois o que chegou: o provedor tenta de novo.
+    await avisarErroDoServidor(erro, "aviso-mercadopago");
     return resposta(500);
   }
   // Id fora do formato aceito, ou repetição (mesmo request-id, ts e id): nada a processar.

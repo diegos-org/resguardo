@@ -1,5 +1,6 @@
 import { executarCronBeds24 } from "@/beds24/cron";
 import { getDb } from "@/db/client";
+import { avisarErroDoServidor } from "@/observabilidade/aviso-do-servidor";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -12,7 +13,8 @@ export async function GET(req: Request) {
   try {
     await executarCronBeds24(getDb());
     return Response.json({ ok: true });
-  } catch {
+  } catch (erro) {
+    await avisarErroDoServidor(erro, "sync-beds24");
     return Response.json({ ok: false }, { status: 500 });
   }
 }

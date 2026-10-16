@@ -4,6 +4,12 @@ import { MARCA_PADRAO } from "./src/site/marca";
 import { politicaDaPaginaDePagamento } from "./src/site/politica-de-frames";
 
 const nextConfig: NextConfig = {
+  compiler: {
+    // M0.9: o pacote do Sentry sem a parte de medição de desempenho (desligada em src/observabilidade/sentry.ts) e sem as
+    // mensagens de depuração, o mesmo que o withSentryConfig faria: menos código em toda página. Booleanos, não textos
+    // (um texto "false" contaria como verdadeiro).
+    define: { __SENTRY_TRACING__: false, __SENTRY_DEBUG__: false },
+  },
   experimental: {
     // Comprovante do repasse (M4.10): até 5 MB pelo formulário, mais a sobra do multipart.
     serverActions: { bodySizeLimit: "6mb" },
