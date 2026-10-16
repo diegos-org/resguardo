@@ -15,6 +15,12 @@ describe("Configurações → Calendário e preços: o prazo das datas de uma al
     expect(h).toContain('<input type="number" min="5" max="240" name="siteMinutosHold" value="30"/>');
   });
 
+  it("o mínimo por dia da semana aparece de segunda a domingo (M7.22), cada campo com o número guardado (minimo_0 é o domingo)", () => {
+    const h = renderToStaticMarkup(<FormRegrasCalendario regras={REGRAS_CALENDARIO_PADRAO} imoveis={[]} salvar={salvar} />);
+    const campos = [...h.matchAll(/<label[^>]*>(\p{L}+)<input[^>]*name="minimo_(\d)"/gu)].map((m) => `${m[1]}:${m[2]}`);
+    expect(campos).toEqual(["segunda:1", "terça:2", "quarta:3", "quinta:4", "sexta:5", "sábado:6", "domingo:0"]);
+  });
+
   it("mostra o valor gravado", () => {
     const h = renderToStaticMarkup(<FormRegrasCalendario regras={{ ...REGRAS_CALENDARIO_PADRAO, site: { ...REGRAS_CALENDARIO_PADRAO.site, minutosHoldAlteracao: 240 } }} imoveis={[]} salvar={salvar} />);
     expect(h).toMatch(/name="siteMinutosHoldAlteracao"[^>]*value="240"/);

@@ -1,11 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
+import { CampoHora } from "@/components/CampoHora";
 import type { Detalhes } from "@/imoveis/detalhes";
 import type { EstadoDetalhes } from "@/imoveis/acoes";
 import { COMODIDADES, TIPOS_CAMA } from "@/imoveis/cadastro-opcoes";
 import { EXPLICACAO_FONTE_PRECOS, FONTES_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
-import { DIAS_SEMANA } from "@/imoveis/regras-venda";
+import { DIAS_NA_ORDEM, DIAS_SEMANA } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import styles from "../formularios.module.css";
 
@@ -114,12 +115,12 @@ export function FormDetalhes({ imovelId, inicial, salvar }: Props) {
           <div className={styles.linha}>
             <label>
               Entrada a partir de
-              <input name="checkinAPartirDe" type="time" defaultValue={campo("checkinAPartirDe", inicial.checkinAPartirDe)} {...invalido("checkinAPartirDe")} />
+              <CampoHora name="checkinAPartirDe" defaultValue={campo("checkinAPartirDe", inicial.checkinAPartirDe)} {...invalido("checkinAPartirDe")} />
               {erro("checkinAPartirDe")}
             </label>
             <label>
               Saída até
-              <input name="checkoutAte" type="time" defaultValue={campo("checkoutAte", inicial.checkoutAte)} {...invalido("checkoutAte")} />
+              <CampoHora name="checkoutAte" defaultValue={campo("checkoutAte", inicial.checkoutAte)} {...invalido("checkoutAte")} />
               {erro("checkoutAte")}
             </label>
           </div>
@@ -230,9 +231,9 @@ export function FormDetalhes({ imovelId, inicial, salvar }: Props) {
             <div key={k} style={{ fontSize: "0.875rem" }}>
               <span style={{ color: "var(--scl-texto-2)" }}>{k === "diasChegada" ? "Dias de entrada permitidos" : "Dias de saída permitidos"} (nenhum ou todos marcados = qualquer dia): </span>
               <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "4px 12px" }}>
-                {DIAS_SEMANA.map((d, i) => (
-                  <label key={d} className={styles.check} style={{ flex: "0 0 auto", minWidth: 0 }}>
-                    <input type="checkbox" name={k} value={String(i)} defaultChecked={diasTodos(k) || naLista(k, String(i))} /> {d}
+                {DIAS_NA_ORDEM.map((i) => (
+                  <label key={i} className={styles.check} style={{ flex: "0 0 auto", minWidth: 0 }}>
+                    <input type="checkbox" name={k} value={String(i)} defaultChecked={diasTodos(k) || naLista(k, String(i))} /> {DIAS_SEMANA[i]}
                   </label>
                 ))}
               </span>

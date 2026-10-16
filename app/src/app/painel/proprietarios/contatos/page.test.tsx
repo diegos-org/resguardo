@@ -36,7 +36,7 @@ const pedido = (over: Partial<PedidoContatoComAutor> = {}): PedidoContatoComAuto
 const TEXTO = "Autorizo o uso destes dados só para a Sua Casa Exemplo me responder sobre a gestão do imóvel.";
 const autorizado = { autorizadoEm: new Date("2026-10-15T15:30:00Z"), autorizacaoVersao: 1, autorizacaoTexto: TEXTO };
 /** Como o React escreve o texto no HTML (as aspas e os acentos não mudam; só & < > " são escapados). */
-const registroNoHtml = `Autorizado em 15/10/2026, 12:30 (texto da versão 1): “${TEXTO}”`;
+const registroNoHtml = `Autorizado em 15/10/2026 às 12:30 (texto da versão 1): “${TEXTO}”`;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -74,7 +74,7 @@ it("novo: mostra os dados, links de e-mail e WhatsApp e as duas ações", async 
   expect(h).toContain("Sim");
   expect(h).toContain("Apartamento fictício.");
   // Horário de Brasília.
-  expect(h).toContain("08/10/2026, 12:30");
+  expect(h).toContain("08/10/2026 às 12:30");
   expect(h).toContain('name="id" value="00000000-0000-4000-8000-0000000000a1"');
   expect(h).toContain('name="nota"');
   expect(h).toContain("Marcar como respondido");
@@ -100,7 +100,7 @@ it("já tratados: situação, quando, quem e nota; respondido ainda pode ser arq
   const h = await html();
   expect(h).toContain("Respondido");
   expect(h).toContain("Arquivado");
-  expect(h).toContain("09/10/2026, 10:00");
+  expect(h).toContain("09/10/2026 às 10:00");
   expect(h).toContain("Ana Equipe");
   expect(h).toContain("Liguei.");
   expect(h).toContain('aria-label="Arquivar o pedido de Beto Exemplo"');

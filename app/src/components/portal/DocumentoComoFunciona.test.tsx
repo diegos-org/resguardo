@@ -39,12 +39,12 @@ describe("documento 'Como funciona' no portal (M5.6)", () => {
   it("aceito: mostra quem e quando, sem formulário; versão antiga aceita pede a nova; sem ação não há formulário", () => {
     const aceitoEm = new Date("2026-10-07T15:00:00Z");
     const aceito = renderToStaticMarkup(<DocumentoComoFunciona versao={versao} empresa="SCL" dados={[]} donos={[{ nome: "Dona", aceite: { aceitoEm, email: "dona@example.com" }, ultimo: { versao: 2, aceitoEm } }]} aceitar={acao} />);
-    expect(soTexto(aceito)).toMatch(/Dona: versão 2 aceita em 07\/10\/2026,? 12:00 \(dona@example\.com\)\./);
+    expect(soTexto(aceito)).toMatch(/Dona: versão 2 aceita em 07\/10\/2026 às 12:00 \(dona@example\.com\)\./);
     expect(aceito).not.toContain('name="aceito"');
     const velha = soTexto(
       renderToStaticMarkup(<DocumentoComoFunciona versao={versao} empresa="SCL" dados={[]} donos={[{ nome: "Dona", aceite: null, ultimo: { versao: 1, aceitoEm } }]} aceitar={acao} mensagem={{ tipo: "erro", texto: "O documento mudou" }} />),
     );
-    expect(velha).toMatch(/Dona: a versão 1 foi aceita em 07\/10\/2026,? 12:00; o texto mudou em 06\/10\/2026 — leia e aceite a versão 2\./);
+    expect(velha).toMatch(/Dona: a versão 1 foi aceita em 07\/10\/2026 às 12:00; o texto mudou em 06\/10\/2026 — leia e aceite a versão 2\./);
     expect(velha).toContain("O documento mudou");
     expect(renderToStaticMarkup(<DocumentoComoFunciona versao={versao} empresa="SCL" dados={[]} donos={[{ nome: "Dona", aceite: null, ultimo: null }]} />)).not.toContain("<form");
   });

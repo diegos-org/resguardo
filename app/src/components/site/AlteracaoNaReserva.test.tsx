@@ -113,7 +113,7 @@ describe("a alteração na página da reserva (M8.2d)", () => {
     expect(screen.getByRole("region", { name: "Pagamento da diferença" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Pague a diferença com Pix" })).toBeTruthy();
     expect(texto).toContain("Diferença a pagar: R$ 528,00");
-    expect(texto).toContain("As novas datas estão seguradas para você até");
+    expect(texto).toContain("As novas datas estão seguradas para você até 01/10 às 13:20 (horário de Brasília).");
     expect(texto).not.toContain(TEXTOS_SITE_INICIAIS.pagamentoConvite);
     expect(texto).not.toMatch(/beds24/i);
     const escondido = container.querySelector('input[type="hidden"][name="alteracao"]') as HTMLInputElement;

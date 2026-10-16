@@ -5,10 +5,11 @@ import styles from "@/components/formularios.module.css";
 import { AutorizacaoRegistrada } from "@/components/proprietarios/AutorizacaoRegistrada";
 import { DecisaoCadastro } from "@/components/proprietarios/DecisaoCadastro";
 import { getDb } from "@/db/client";
+import { dataNoFuso } from "@/lib/datas";
 import { aprovarCadastroAcao, recusarCadastroAcao } from "@/marketplace/acoes";
 import { listarCadastros } from "@/marketplace/cadastro";
 
-const data = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+const data = (d: Date) => dataNoFuso(d);
 
 /** Cadastros de proprietários marketplace vindos do site (M12.3): revisar antes de qualquer coisa existir. */
 export default async function CadastrosMarketplace() {

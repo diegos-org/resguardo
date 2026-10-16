@@ -3,6 +3,7 @@
 import { startTransition, useActionState, useRef, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
+import { CampoHora } from "@/components/CampoHora";
 import styles from "@/components/formularios.module.css";
 import type { EstadoAlteracaoPainel } from "@/pagamentos/acoes-alteracao";
 import type { PreviaAlteracaoParaTela } from "@/pagamentos/alteracao-tela";
@@ -290,7 +291,7 @@ export function FormAlteracaoSite({
           </label>
           <label style={{ flex: "0 1 140px" }}>
             Hora (Brasília)
-            <input type="time" name="recebidoHora" defaultValue={agora.hora} required />
+            <CampoHora name="recebidoHora" defaultValue={agora.hora} required />
           </label>
           <label style={{ flex: "0 1 200px" }}>
             Como chegou
@@ -301,7 +302,7 @@ export function FormAlteracaoSite({
         </div>
       )}
       <label>
-        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14h10&rdquo;)
+        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14:10&rdquo;)
         <input name="nota" maxLength={300} />
       </label>
       {escolheSemPolitica && (

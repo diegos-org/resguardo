@@ -5,12 +5,11 @@ import styles from "@/components/formularios.module.css";
 import { FiltroGlobal } from "@/components/painel/FiltroGlobal";
 import { getDb } from "@/db/client";
 import { listarImoveis } from "@/imoveis/repositorio";
+import { dataBr, dataHoraNoFuso } from "@/lib/datas";
 import { descreverFiltros, lerFiltros, lerImoveisSelecionados, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
 import { NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
 import { lerFiltrosLista, linkLista, listarReservasPaginadas, resumoImportacao, TAMANHO_PAGINA } from "@/reservas/listagem";
-
-const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 export default async function ListaReservas({ searchParams }: PageProps<"/painel/reservas">) {
   const sessao = await exigirSessaoPainel();
@@ -57,7 +56,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
       </div>
       <p><Link href={linkLista({}, { escopo: "historico", ordem: "origem" })}>Ver reservas mais recentes na origem</Link> · <Link href={linkLista({}, { escopo: "historico", situacao: "consulta" })}>Ver consultas</Link></p>
       {ultima && <section aria-label="Mudanças da importação" className={styles.alerta}>
-        <strong>{local.execucao ? "Importação selecionada" : "Última importação concluída"} · {ultima.execucao.iniciadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</strong>
+        <strong>{local.execucao ? "Importação selecionada" : "Última importação concluída"} · {dataHoraNoFuso(ultima.execucao.iniciadoEm)}</strong>
         <p>{ultima.execucao.resumo}</p>
         <p>{ultima.totais.length ? ultima.totais.map(t => <span key={t.tipo} style={{ marginRight: 16 }}><Link href={linkLista({}, { escopo: "historico", ordem: "origem", execucao: ultima.execucao.id, mudanca: t.tipo })}>{t.total} {t.tipo === "adicionada" ? "adicionadas ao SCL" : t.tipo === "alterada" ? "alteradas" : "canceladas"}</Link></span>) : "Sem registros detalhados nesta execução. Importações antigas não têm esta lista de mudanças."}</p>
         <p>Adicionada ao SCL não significa vendida agora. A data da origem aparece separadamente. Os detalhes mostram a situação atual.</p>
@@ -114,7 +113,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
                   </td>
                   <td>{porId.get(r.imovelId)?.codigo ?? "—"}</td>
                   <td>{NOMES_ORIGEM[r.origem]}</td>
-                  <td>{r.reservadaEm ? r.reservadaEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Não informada"}</td>
+                  <td>{r.reservadaEm ? dataHoraNoFuso(r.reservadaEm) : "Não informada"}</td>
                   <td>{dataBr(r.checkin)}</td>
                   <td>{dataBr(r.checkout)}</td>
                   <td>{noites(r.checkin, r.checkout)}</td>

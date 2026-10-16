@@ -9,15 +9,13 @@ import { getDb } from "@/db/client";
 import type { EstadoLimpeza } from "@/db/schema";
 import { listarCategorias } from "@/despesas/categorias";
 import { listarImoveis } from "@/imoveis/repositorio";
-import { hojeISO } from "@/lib/datas";
+import { diaCurto, hojeISO } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
 import { avulsaAcao, cancelarAcao, categoriaAcao, confirmarAcao, custoAcao, realizarAcao, reabrirAcao } from "@/limpezas/acoes";
 import { categoriaDasLimpezas, listarLimpezas, listarProfissionais, NOMES_ESTADO, sincronizarLimpezas } from "@/limpezas/limpezas";
 
-const SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-const dia = (d: string) => `${SEMANA[new Date(`${d}T12:00:00Z`).getUTCDay()]} ${d.split("-").reverse().slice(0, 2).join("/")}`;
 const COR: Record<EstadoLimpeza, string> = { pedida: "var(--scl-aviso)", confirmada: "var(--scl-info)", realizada: "var(--scl-ok)", cancelada: "var(--scl-texto-2)" };
 
 export default async function Limpezas({ searchParams }: PageProps<"/painel/limpezas">) {
@@ -90,10 +88,10 @@ export default async function Limpezas({ searchParams }: PageProps<"/painel/limp
 
       {lista.length === 0 && <p>Nenhuma limpeza neste período.</p>}
       {lista.map((l) => (
-        <section key={l.id} className={styles.form} aria-label={`Limpeza ${l.imovelCodigo} ${l.data}`} style={{ gap: 10 }}>
+        <section key={l.id} className={styles.form} aria-label={`Limpeza ${l.imovelCodigo} ${diaCurto(l.data)}`} style={{ gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline" }}>
             <strong>
-              {dia(l.data)} · {l.imovelCodigo}
+              {diaCurto(l.data)} · {l.imovelCodigo}
               {l.reservaCodigo ? (
                 <>
                   {" "}

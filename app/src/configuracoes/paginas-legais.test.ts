@@ -224,6 +224,16 @@ describe("textos-base das páginas legais (M7.4)", () => {
     expect(privacidade).toContain("hospedagem do site, banco de dados, registro de erros técnicos, envio de e-mails e pagamento");
     expect(privacidade).toContain("Não usamos cookies de publicidade nem ferramentas de análise de audiência");
   });
+
+  it("a hora no texto-base da Política de cancelamento é a do Brasil, HH:MM (M7.22): 23:59 e 00:00, sem 23h59 nem 0h", () => {
+    // Só o rascunho muda: a versão publicada fica no banco como foi aceita, e o texto no site muda quando Diego publica outra.
+    const politica = Object.values(RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes).join("\n");
+    expect(politica).not.toContain("23h59");
+    expect(politica).not.toMatch(/(?<![\w:])0h(?!\w)/);
+    expect(politica).toContain("recebidos até as 23:59 do dia");
+    expect(politica).toContain("A partir das 00:00 do dia seguinte");
+    expect(politica).toContain("termina às 23:59 (horário de Brasília)");
+  });
 });
 
 describe("publicar as páginas legais (M7.4)", () => {

@@ -1,7 +1,7 @@
 import { diasDoPeriodo, type ItemCalendario, montarCalendario } from "@/calendario/grade";
 import styles from "@/components/calendario/calendario.module.css";
+import { diaDaSemana, fimDeSemana, LETRAS_DA_SEMANA } from "@/lib/datas";
 
-const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
 const br = (d: string) => d.split("-").reverse().join("/");
 
 /**
@@ -31,11 +31,10 @@ export function CalendarioPortal({
       <div className={styles.grade} style={{ gridTemplateColumns: colunas }} role="grid" aria-label="Calendário do mês">
         <div className={styles.cabecalhoImovel}>Imóvel</div>
         {dias.map((d) => {
-          const semana = new Date(`${d}T12:00:00Z`).getUTCDay();
-          const classes = [styles.dia, semana === 0 || semana === 6 ? styles.fimDeSemana : "", d === hoje ? styles.hoje : ""].join(" ");
+          const classes = [styles.dia, fimDeSemana(d) ? styles.fimDeSemana : "", d === hoje ? styles.hoje : ""].join(" ");
           return (
             <div key={d} className={classes}>
-              {SEMANA[semana]}
+              {LETRAS_DA_SEMANA[diaDaSemana(d)]}
               <strong>{Number(d.slice(8))}</strong>
             </div>
           );

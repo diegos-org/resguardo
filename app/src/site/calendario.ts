@@ -3,17 +3,21 @@
  * datas do navegador (`CampoDatas`) e a rota de noites ocupadas usam estas mesmas funções.
  *
  * Datas são dias de calendário "AAAA-MM-DD" (nunca `Date` local: nada de fuso deslocando um dia). A
- * semana começa no domingo, como nos calendários brasileiros. As noites de uma estadia vão da entrada
+ * semana começa na segunda-feira, como em todos os calendários do sistema (`PRIMEIRO_DIA_DA_SEMANA`, decisão de
+ * Diego em 16/10/2026, M7.22); antes, no M7.6, começava no domingo. As noites de uma estadia vão da entrada
  * até o dia anterior à saída: o dia de saída pode ser uma noite ocupada (a saída é de manhã e outra
  * pessoa pode entrar no mesmo dia). Estadia mínima e outras regras de venda não entram aqui — o
  * servidor confere e explica na consulta.
  */
-import { DIAS_SEMANA, diaDaSemana, diasEntre, somarDias } from "@/imoveis/regras-venda";
+import { diasEntre, somarDias } from "@/imoveis/regras-venda";
+import { DIAS_DA_SEMANA_CURTOS, DIAS_SEMANA, posicaoNaSemana } from "@/lib/datas";
 
 export const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"] as const;
-/** Cabeçalho das colunas, de domingo a sábado; o nome inteiro fica em `DIAS_SEMANA`. */
-export const DIAS_DA_SEMANA_CURTOS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"] as const;
-export { DIAS_SEMANA };
+/**
+ * Cabeçalho das colunas (`DIAS_DA_SEMANA_CURTOS`, com o nome inteiro em `DIAS_SEMANA`), de lib/datas.ts: indexado pelo
+ * número do dia (0 = domingo) e mostrado na ordem de `DIAS_NA_ORDEM`, de segunda a domingo.
+ */
+export { DIAS_DA_SEMANA_CURTOS, DIAS_SEMANA };
 
 /** Quantos meses o calendário mostra a partir do mês de hoje (inclusive). */
 export const MESES_A_FRENTE = 18;
@@ -52,11 +56,14 @@ export function mesesEntre(de: string, ate: string): string[] {
   return meses;
 }
 
-/** Semanas do mês, de domingo a sábado; `null` nos dias que são de outro mês. */
+/**
+ * Semanas do mês, de segunda a domingo (desde 16/10/2026, decisão de Diego; antes, de domingo a sábado); `null` nos dias
+ * que são de outro mês.
+ */
 export function semanasDoMes(mes: string): (string | null)[][] {
   const primeiro = inicioDoMes(mes);
   const dias = Array.from({ length: diasEntre(primeiro, somarMeses(primeiro, 1)) }, (_, i) => somarDias(primeiro, i));
-  const celulas: (string | null)[] = [...Array<null>(diaDaSemana(primeiro)).fill(null), ...dias];
+  const celulas: (string | null)[] = [...Array<null>(posicaoNaSemana(primeiro)).fill(null), ...dias];
   while (celulas.length % 7) celulas.push(null);
   return Array.from({ length: celulas.length / 7 }, (_, i) => celulas.slice(i * 7, i * 7 + 7));
 }

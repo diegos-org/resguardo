@@ -20,7 +20,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { CANAIS_PEDIDO_CANCELAMENTO, type CanalPedidoCancelamento, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, type MotivoCancelamentoEmpresa, type MotivoExcecao, QUEM_CANCELA_RESERVA } from "@/db/schema";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { instanteLocal } from "@/lib/datas";
+import { instanteLocal, lerHora, MENSAGEM_HORA } from "@/lib/datas";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
@@ -61,7 +61,6 @@ export type EstadoCancelamentoPainel = {
 
 const FUSO = "America/Sao_Paulo";
 const LIMITE_NOTA = 300;
-const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ASSINATURA = /^[0-9a-f]{16}$/;
 const NAO_ENCONTRADA: EstadoCancelamentoPainel = { mensagem: "Reserva não encontrada." };
 
@@ -105,13 +104,16 @@ function problemaDaNota(v: string, obrigatoria: string | null): string | null {
   return null;
 }
 
-/** Data (AAAA-MM-DD) e hora (HH:MM) de Brasília → instante; vazias = null; uma só ou inválida = "invalido". */
-function momentoDoForm(form: FormData, data: string, hora: string): Date | null | "invalido" {
+/** Data (AAAA-MM-DD) e hora ("15:00"; "9:00" e "15h" também, lidas por `lerHora`) de Brasília → instante; vazias = null;
+ * hora digitada fora do formato = "hora" (o aviso único da hora, `MENSAGEM_HORA`); uma só ou data inválida = "invalido". */
+function momentoDoForm(form: FormData, data: string, hora: string): Date | null | "invalido" | "hora" {
   const d = texto(form, data);
   const h = texto(form, hora);
   if (!d && !h) return null;
-  if (!dataValida(d) || !HORA.test(h)) return "invalido";
-  return instanteLocal(d, h, FUSO);
+  const lida = lerHora(h);
+  if (h && !lida) return "hora";
+  if (!dataValida(d) || !lida) return "invalido";
+  return instanteLocal(d, lida, FUSO);
 }
 
 /** O formulário do cancelamento → a entrada do domínio (listas fechadas, notas validadas). */
@@ -119,6 +121,7 @@ function entradaDoForm(form: FormData): { ok: true; reservaId: string; e: Entrad
   const reservaId = texto(form, "reservaId");
   if (!uuidValido(reservaId)) return { ok: false, mensagem: NAO_ENCONTRADA.mensagem! };
   const recebidoEm = momentoDoForm(form, "recebidoData", "recebidoHora");
+  if (recebidoEm === "hora") return { ok: false, mensagem: MENSAGEM_HORA };
   if (recebidoEm === "invalido") return { ok: false, mensagem: "Informe a data e a hora em que o pedido chegou." };
   const quemCancela = naLista(QUEM_CANCELA_RESERVA, texto(form, "quemCancela") || "hospede");
   if (!quemCancela) return { ok: false, mensagem: "Escolha quem cancela." };
@@ -199,6 +202,7 @@ export async function registrarPedidoCancelamentoAcao(_e: EstadoCancelamentoPain
   const reservaId = texto(form, "reservaId");
   if (!uuidValido(reservaId)) return { ...NAO_ENCONTRADA, valores };
   const recebidoEm = momentoDoForm(form, "recebidoData", "recebidoHora");
+  if (recebidoEm === "hora") return { mensagem: MENSAGEM_HORA, valores };
   if (!recebidoEm || recebidoEm === "invalido") return { mensagem: "Informe a data e a hora em que o pedido chegou.", valores };
   const canal = naLista(CANAIS_PEDIDO_CANCELAMENTO.filter((c): c is Exclude<CanalPedidoCancelamento, "site"> => c !== "site"), texto(form, "canal"));
   if (!canal) return { mensagem: "Escolha como o pedido chegou.", valores };
@@ -225,6 +229,7 @@ export async function descartarPedidoCancelamentoAcao(_e: EstadoCancelamentoPain
   if (problema) return { mensagem: problema, valores };
   const canal = naLista(CANAIS_PEDIDO_CANCELAMENTO, texto(form, "desistenciaCanal"));
   const em = momentoDoForm(form, "desistenciaData", "desistenciaHora");
+  if (em === "hora") return { mensagem: MENSAGEM_HORA, valores };
   if (em === "invalido") return { mensagem: "Informe a data e a hora em que o hóspede desistiu.", valores };
   const desistencia = canal && em ? { canal, em } : undefined;
   const r = await descartarPedidoDeCancelamento(getDb(), sessao.organizacaoId, reservaId, { motivo, desistencia }, { id: sessao.usuarioId, podeFinanceiro: podeFazer(sessao.papel, "financeiro:editar") }, new Date());

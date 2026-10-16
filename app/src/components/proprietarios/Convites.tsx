@@ -4,10 +4,10 @@ import { useActionState, useState } from "react";
 import type { EstadoConvite } from "@/convites/acoes";
 import styles from "../formularios.module.css";
 
+/** As datas chegam como texto pronto, no horário de Brasília: criado e aceito com o dia ("16/10/2026"), vencimento com dia e hora. */
 type LinhaConvite = { id: string; email: string; situacao: string; criadoEm: string; expiraEm: string; aceitoEm: string | null };
 
 const NOMES: Record<string, string> = { pendente: "Pendente", aceito: "Aceito", revogado: "Cancelado", vencido: "Vencido" };
-const data = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 
 type Props = {
   proprietarioId: string;
@@ -74,12 +74,12 @@ export function Convites({ proprietarioId, emailPadrao, convites, convidar, revo
               {convites.map((c) => (
                 <tr key={c.id}>
                   <td>{c.email}</td>
-                  <td>{data(c.criadoEm)}</td>
+                  <td>{c.criadoEm}</td>
                   <td>
                     <span className={styles.etiqueta}>
                       {NOMES[c.situacao] ?? c.situacao}
-                      {c.situacao === "pendente" && ` até ${data(c.expiraEm)}`}
-                      {c.aceitoEm && ` em ${data(c.aceitoEm)}`}
+                      {c.situacao === "pendente" && ` até ${c.expiraEm}`}
+                      {c.aceitoEm && ` em ${c.aceitoEm}`}
                     </span>
                   </td>
                   <td>

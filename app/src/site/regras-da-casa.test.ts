@@ -26,9 +26,12 @@ describe("horários e regras da casa num lugar só (M7.20)", () => {
     expect(imoveisDetalhes.checkoutAte.default).toBe(HORARIOS_PADRAO.saida);
   });
 
-  it("as frases dos horários são as mesmas nas duas páginas: a da casa com a hora como está, a da cotação com a hora escrita", () => {
+  it("as frases dos horários são as mesmas na casa e na cotação, com a hora sempre em HH:MM (M7.22)", () => {
     expect(frasesDosHorarios({ entrada: "15:00", saida: "11:00" })).toEqual(["Entrada a partir das 15:00", "Saída até as 11:00"]);
-    expect(frasesDosHorarios({ entrada: "14:30", saida: "10:00" }, (h) => `[${h}]`)).toEqual(["Entrada a partir das [14:30]", "Saída até as [10:00]"]);
+    expect(frasesDosHorarios({ entrada: "14:30", saida: "10:00" })).toEqual(["Entrada a partir das 14:30", "Saída até as 10:00"]);
+    expect(frasesDosHorarios({ entrada: "9:00", saida: "09:30" })).toEqual(["Entrada a partir das 09:00", "Saída até as 09:30"]);
+    // Uma escrita só: sem parâmetro para escrever a hora de outro jeito.
+    expect(frasesDosHorarios.length).toBe(1);
   });
 
   it("animais sempre aparecem (aceita ou não); fumar e festas só quando proibidos; a ordem é a da página da casa", () => {

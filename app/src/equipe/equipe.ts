@@ -7,13 +7,15 @@
  * Aviso de limpeza nova: por e-mail enquanto o WhatsApp (M10) não está ligado.
  */
 import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { lerConfigAgenda } from "@/agenda/agenda";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { imoveis, limpezas, profissionaisLimpeza, reservas, usuarios } from "@/db/schema";
+import { imoveis, imoveisDetalhes, limpezas, profissionaisLimpeza, reservas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { temConvitePendente, travarEmail } from "@/convites/convites";
 import type { Correio } from "@/email/correio";
 import { uuidValido } from "@/lib/ids";
 import { realizarPelaProfissional, type Resultado } from "@/limpezas/limpezas";
+import { horaEfetiva, lerHorariosReservas } from "@/reservas/horarios";
 import { ACESSO_INCONSISTENTE, contaDaEquipe, usuarioDaEquipe } from "./vinculo";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -34,7 +36,22 @@ export type LimpezaDaEquipe = {
   observacao: string;
   /** Alguém entra no imóvel no mesmo dia (horário-limite para deixar pronto). */
   entraNoDia: boolean;
+  /**
+   * Horários "HH:MM" da casa, os mesmos da agenda (`horaEfetiva`): o acordo vigente com o hóspede; sem ele, o da ficha do
+   * imóvel e, sem ficha, o padrão da agenda. `saidaCombinada`/`entradaCombinada`: vem de um acordo com o hóspede.
+   */
+  horaSaida: string;
+  saidaCombinada: boolean;
+  horaEntrada: string;
+  entradaCombinada: boolean;
 };
+
+/** O texto dos horários no cartão da limpeza: "Saída do hóspede até 11:00. Entra outro hóspede no mesmo dia: …". */
+export function textoDosHorarios(l: Pick<LimpezaDaEquipe, "horaSaida" | "saidaCombinada" | "entraNoDia" | "horaEntrada" | "entradaCombinada">): string {
+  const combinado = (sim: boolean) => (sim ? " (combinado com o hóspede)" : "");
+  const saida = `Saída do hóspede até ${l.horaSaida}${combinado(l.saidaCombinada)}.`;
+  return l.entraNoDia ? `${saida} Entra outro hóspede no mesmo dia: deixar pronto até ${l.horaEntrada}${combinado(l.entradaCombinada)}.` : saida;
+}
 
 /**
  * Limpezas confirmadas com esta profissional (e as que ela já fez), de alguns dias atrás até as
@@ -48,13 +65,17 @@ export async function limpezasDaProfissional(db: Db, organizacaoId: string, prof
       data: limpezas.data,
       estado: limpezas.estado,
       imovelId: limpezas.imovelId,
+      reservaId: limpezas.reservaId,
       imovelCodigo: imoveis.codigo,
       imovelNome: imoveis.nome,
       endereco: imoveis.endereco,
       observacao: limpezas.observacao,
+      checkinAPartirDe: imoveisDetalhes.checkinAPartirDe,
+      checkoutAte: imoveisDetalhes.checkoutAte,
     })
     .from(limpezas)
     .innerJoin(imoveis, eq(imoveis.id, limpezas.imovelId))
+    .leftJoin(imoveisDetalhes, and(eq(imoveisDetalhes.imovelId, limpezas.imovelId), eq(imoveisDetalhes.organizacaoId, organizacaoId)))
     .where(
       and(
         eq(limpezas.organizacaoId, organizacaoId),
@@ -67,26 +88,48 @@ export async function limpezasDaProfissional(db: Db, organizacaoId: string, prof
     )
     .orderBy(asc(limpezas.data), asc(imoveis.codigo));
   if (!linhas.length) return [];
-  // Entrada no mesmo dia e imóvel (reserva confirmada): a limpeza tem horário-limite.
-  const entradas = await db
-    .selectDistinct({ imovelId: reservas.imovelId, checkin: reservas.checkin })
-    .from(reservas)
-    .where(
-      and(
-        eq(reservas.organizacaoId, organizacaoId),
-        eq(reservas.estado, "confirmada"),
-        inArray(
-          reservas.imovelId,
-          linhas.map((l) => l.imovelId),
+  const daReserva = { id: reservas.id, imovelId: reservas.imovelId, checkin: reservas.checkin, checkout: reservas.checkout, estado: reservas.estado };
+  const reservaIds = [...new Set(linhas.flatMap((l) => (l.reservaId ? [l.reservaId] : [])))];
+  const [config, saidas, entradas] = await Promise.all([
+    lerConfigAgenda(db, organizacaoId),
+    // A reserva que sai (a que gerou a limpeza), se continua confirmada: o acordo de saída dela vale.
+    reservaIds.length
+      ? db.select(daReserva).from(reservas).where(and(eq(reservas.organizacaoId, organizacaoId), eq(reservas.estado, "confirmada"), inArray(reservas.id, reservaIds)))
+      : Promise.resolve([]),
+    // Entrada no mesmo dia e imóvel (reserva confirmada): a limpeza tem horário-limite.
+    db
+      .select(daReserva)
+      .from(reservas)
+      .where(
+        and(
+          eq(reservas.organizacaoId, organizacaoId),
+          eq(reservas.estado, "confirmada"),
+          inArray(
+            reservas.imovelId,
+            linhas.map((l) => l.imovelId),
+          ),
+          inArray(reservas.checkin, [...new Set(linhas.map((l) => l.data))]),
         ),
-        inArray(reservas.checkin, [...new Set(linhas.map((l) => l.data))]),
-      ),
-    );
-  return linhas.map(({ imovelId, ...l }) => ({
-    ...l,
-    estado: l.estado as LimpezaDaEquipe["estado"],
-    entraNoDia: entradas.some((e) => e.imovelId === imovelId && e.checkin === l.data),
-  }));
+      )
+      .orderBy(asc(reservas.checkin), asc(reservas.id)),
+  ]);
+  const horarios = await lerHorariosReservas(db, organizacaoId, [...saidas, ...entradas].map((r) => r.id));
+  return linhas.map(({ imovelId, reservaId, checkinAPartirDe, checkoutAte, ...l }) => {
+    const sai = saidas.find((r) => r.id === reservaId);
+    const entra = entradas.find((r) => r.imovelId === imovelId && r.checkin === l.data);
+    // Sem ficha, o padrão da agenda, como em `montarAgenda`.
+    const saida = horaEfetiva(sai && horarios.get(sai.id), "saida", sai, checkoutAte || config.horaSaida);
+    const entrada = horaEfetiva(entra && horarios.get(entra.id), "entrada", entra, checkinAPartirDe || config.horaEntrada);
+    return {
+      ...l,
+      estado: l.estado as LimpezaDaEquipe["estado"],
+      entraNoDia: Boolean(entra),
+      horaSaida: saida.hora,
+      saidaCombinada: saida.combinado,
+      horaEntrada: entrada.hora,
+      entradaCombinada: entrada.combinado,
+    };
+  });
 }
 
 /**

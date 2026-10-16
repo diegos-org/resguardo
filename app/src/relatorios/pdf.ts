@@ -8,6 +8,7 @@
  */
 import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, rgb, StandardFonts } from "pdf-lib";
 import { LIMITE_FOTO, tipoDaImagem } from "@/imoveis/fotos-regras";
+import { dataHoraNoFuso, dataNoFuso } from "@/lib/datas";
 import { escalaEmMil, mesCurto } from "./metricas";
 import { comPaginas, type LinhaConciliacaoTexto, type LinhaReserva, type LinhaValor, type PaginasDasSecoes, type TextosRelatorio } from "./relatorio";
 import { TEMA } from "./tema";
@@ -627,9 +628,8 @@ class Folhas {
   }
 }
 
-const dataDe = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
-const dataHora = (d: Date) =>
-  new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d);
+const dataDe = (d: Date) => dataNoFuso(d);
+const dataHora = (d: Date) => dataHoraNoFuso(d);
 
 /** Gera o PDF: as páginas do relatório e, no fim, os extratos oficiais copiados como vieram. */
 export async function gerarPdfRelatorio(t: TextosRelatorio, anexos: Anexos = {}, agora: Date = new Date()): Promise<Uint8Array> {

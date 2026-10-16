@@ -74,7 +74,7 @@ import {
 import type { Db } from "@/db/types";
 import { type Correio, ErroEnvioIncerto } from "@/email/correio";
 import { instanteLocal, liberacaoDasInstrucoes } from "@/hospede/portal";
-import { hojeISO } from "@/lib/datas";
+import { dataBr, dataHoraNoFuso, dataNoFuso, FUSO_PADRAO, hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { marcarAvisadoDaAlteracao, type MensagemDaAlteracao } from "@/pagamentos/alteracao";
@@ -182,8 +182,6 @@ export function prazoDaMensagem(tipo: TipoMensagemHospede, r: DadosPrazo): { ini
       return null;
   }
 }
-
-const dataBr = (d: string) => d.split("-").reverse().join("/");
 
 /** Até quando cada mensagem do cancelamento ainda faz sentido, depois do momento dela. */
 const PRAZO_PEDIDO_RECEBIDO_MS = 2 * 24 * 3_600_000;
@@ -312,11 +310,7 @@ async function alvosDeCancelamento(db: Db, organizacaoId: string, f: { reservaId
 }
 
 /** "10/10/2026 às 14:10" no horário de Brasília (o que a política conta). */
-const dataHoraBrasilia = (d: Date) => {
-  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(d);
-  return `${f({ day: "2-digit", month: "2-digit", year: "numeric" })} às ${f({ hour: "2-digit", minute: "2-digit" })}`;
-};
-const dataNoFuso = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+const dataHoraBrasilia = (d: Date) => dataHoraNoFuso(d, FUSO_PADRAO);
 
 /**
  * Os valores das variáveis para um cancelamento: as da reserva e as do cancelamento (o momento do pedido, a decisão e a

@@ -142,6 +142,12 @@ describe("calcular a alteração", () => {
     expect(e).toMatchObject({ checkin: "2026-11-10", checkout: "2026-11-15", hospedes: 2, quemPede: "hospede", canal: "whatsapp", valor: { origem: "cotacao" }, decisao: "politica", motivoEmpresa: null, nota: "WhatsApp da empresa, 12h30" });
     // 12:30 em Brasília = 15:30 UTC.
     expect(e.recebidoEm.toISOString()).toBe("2026-10-01T15:30:00.000Z");
+    // A hora digitada como "9:30" ou "9h30" é lida "09:30" (M7.22).
+    for (const recebidoHora of ["9:30", "9h30"]) {
+      m.previa.mockClear();
+      await calcularAlteracaoAcao({}, form({ ...doHospede, recebidoHora }));
+      expect(m.previa.mock.calls[0][3].recebidoEm.toISOString(), recebidoHora).toBe("2026-10-01T12:30:00.000Z");
+    }
     expect(r.ok).toBe(true);
     expect(r.previa?.assinatura).toBe(ASSINATURA);
     expect(r.previa?.rumo).toBe("aumento");
@@ -176,7 +182,9 @@ describe("calcular a alteração", () => {
       [{ ...doHospede, reservaId: "x" }, "Reserva não encontrada."],
       [{ ...doHospede, checkout: "2026-11-10" }, "Informe a nova entrada e a nova saída (a saída depois da entrada)."],
       [{ ...doHospede, hospedes: "0" }, "Informe quantas pessoas."],
-      [{ ...doHospede, recebidoHora: "25:00" }, "Informe a data e a hora em que o pedido chegou."],
+      [{ ...doHospede, recebidoHora: "" }, "Informe a data e a hora em que o pedido chegou."],
+      [{ ...doHospede, recebidoHora: "25:00" }, "Use o formato 15:00 (24 horas)."],
+      [{ ...doHospede, recebidoHora: "15" }, "Use o formato 15:00 (24 horas)."],
       [{ ...doHospede, canal: "site" }, "Escolha como o pedido chegou."],
       [{ ...doHospede, origemValor: "mantido" }, "Escolha o motivo do valor."],
       [{ ...doHospede, origemValor: "mantido", motivoValor: "outro" }, "Escreva a nota do motivo do valor (obrigatória, sem dados pessoais)."],

@@ -6,6 +6,7 @@
  * noite ainda a receber. Nenhuma chave Pix completa: a transferência cita a chave cadastrada no portal.
  */
 import type { OrigemReserva } from "@/db/schema";
+import { dataBr, diaMesBr } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { MOTIVO_PARTE_EM_CONFERENCIA, ROTULO_DISPUTA_PROPRIETARIO } from "@/pagamentos/contestacao-regras";
 import { divisaoDoDeve, nomeDoDescontoQueNaoSeTransfere, type Rodape } from "@/portal/rodape";
@@ -72,9 +73,11 @@ export type OrigemLinha = "canal" | "antecipado" | "fechamento" | "a_liberar";
 export type AvisoDaLinha = "a_liberar" | "voce_transfere" | "em_conferencia" | "sem_prazo_do_canal" | "disputa";
 export type Linha = { texto: string; valor: number; tipo: "normal" | "aviso" | "info"; origem: OrigemLinha; aviso?: AvisoDaLinha };
 
-export const dataBr = (d: string) => d.split("-").reverse().join("/");
-/** "29/9" (o ano está no título). */
-export const dataCurta = (d: string) => `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}`;
+/**
+ * "29/09" (o ano está no título): a escrita única do dia e do mês (M7.22), a mesma da capa e dos quadros. Antes, "29/9",
+ * sem o zero, ao lado de "05/03/2026" no mesmo PDF.
+ */
+export const dataCurta = diaMesBr;
 export const primeiroNome = (n: string) => n.trim().split(/\s+/)[0] ?? "";
 const nomeOuHospede = (n: string) => primeiroNome(n) || "hóspede";
 export const nomeDoCanal = (c: OrigemReserva, empresa: string) => (c === "site" ? `Site ${empresa}` : c === "direta" ? "Reserva direta" : NOMES_ORIGEM[c]);

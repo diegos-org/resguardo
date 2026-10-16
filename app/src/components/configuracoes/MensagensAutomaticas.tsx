@@ -38,7 +38,7 @@ export function MensagensAutomaticas({
       <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Mensagens automáticas ao hóspede (e-mail)</h2>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
         O sistema manda, pelo e-mail do hóspede cadastrado na reserva, a mensagem de cada momento usando o modelo escolhido: confirmação (logo depois de
-        confirmada), check-in (2 dias antes da entrada, 10h), check-out (1 dia antes da saída, 14h) e agradecimento (3 dias depois da saída, 10h). O sistema confere
+        confirmada), check-in (2 dias antes da entrada, 10:00), check-out (1 dia antes da saída, 14:00) e agradecimento (3 dias depois da saída, 10:00). O sistema confere
         de hora em hora, então cada mensagem sai até cerca de 1 hora depois do momento previsto. Vale do momento em que for ligado em diante: nada previsto para antes é mandado atrasado. Se faltar um dado do modelo (nome, e-mail,
         endereço…), a mensagem não sai e o aviso aparece na página Sistema.
       </p>

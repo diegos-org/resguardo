@@ -125,7 +125,8 @@ describe("calcularReserva", () => {
   it("não inventa: cancelada, sem valor, sem contrato ou marketplace pendente não geram lançamentos", () => {
     expect(calcularReserva(reserva({ estado: "cancelada" }), quinzePorCento, ["p1"]).lancamentos).toEqual([]);
     expect(calcularReserva(reserva({ valorBruto: null }), quinzePorCento, ["p1"]).avisos[0]).toContain("pendente");
-    expect(calcularReserva(reserva(), [], ["p1"]).avisos[0]).toContain("Sem contrato");
+    // A data de entrada em dd/mm/aaaa (M7.22), como no resto do painel.
+    expect(calcularReserva(reserva(), [], ["p1"]).avisos[0]).toBe("Sem contrato vigente em 10/10/2026 para este imóvel.");
     expect(calcularReserva(reserva(), [{ tipo: "marketplace", comissaoBp: null, inicio: "2025-01-01", fim: null }], ["p1"]).avisos[0]).toContain("marketplace");
   });
 

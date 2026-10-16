@@ -1,15 +1,18 @@
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { destinoPainel } from "@/acesso/painel";
-import { autorizar, podeFazer } from "@/acesso/politica";
+import { autorizar, podeFazer, type Sessao } from "@/acesso/politica";
+import { salvarConfigAgenda } from "@/agenda/agenda";
 import { carregarSessao } from "@/acesso/sessao";
 import { criarConvite } from "@/convites/convites";
-import { imoveis, limpezas, organizacoes, profissionaisLimpeza, proprietarios, usuarios } from "@/db/schema";
+import { configuracoes, imoveis, imoveisDetalhes, limpezas, organizacoes, profissionaisLimpeza, proprietarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria } from "@/email/correio";
 import { cancelarLimpeza, confirmarLimpeza, criarLimpezaAvulsa, criarProfissional, editarProfissional } from "@/limpezas/limpezas";
-import { acessosDasProfissionais, avisarAtribuicao, darAcesso, limpezasDaProfissional, marcarFeitaPelaProfissional, tirarAcesso } from "./equipe";
+import { alterarHorario } from "@/reservas/horarios";
+import { acessosDasProfissionais, avisarAtribuicao, darAcesso, limpezasDaProfissional, marcarFeitaPelaProfissional, textoDosHorarios, tirarAcesso } from "./equipe";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -108,6 +111,66 @@ describe("limpezas da profissional (M6.6)", () => {
     expect(l).toMatchObject({ estado: "realizada", profissionalId: ana, custo: null });
     const [b] = await db.select().from(limpezas).where(eq(limpezas.id, daBia));
     expect(b.estado).toBe("confirmada");
+  });
+});
+
+describe("horários na tela da limpeza: os mesmos da agenda (M7.22)", () => {
+  let sessao: Sessao;
+  beforeEach(async () => {
+    const [u] = await db.insert(usuarios).values({ organizacaoId: org, email: "operacao@example.com", nome: "Operação Fictícia", papel: "operacao" }).returning();
+    sessao = { organizacaoId: org, usuarioId: u.id, papel: "operacao", imovelIds: [] };
+  });
+  const reserva = async (imovelId: string, checkin: string, checkout: string) =>
+    (await db.insert(reservas).values({ organizacaoId: org, imovelId, codigo: randomUUID(), origem: "airbnb", checkin, checkout, hospedeNome: "Hóspede Fictício", hospedes: 2 }).returning())[0];
+  /** A limpeza da saída da reserva, confirmada com a Ana. */
+  const limpezaDaSaida = async (imovelId: string, reservaId: string, data: string) =>
+    (await db.insert(limpezas).values({ organizacaoId: org, imovelId, reservaId, data, estado: "confirmada", profissionalId: ana }).returning())[0].id;
+  /** Acordo de horário registrado e confirmado com o hóspede, como na ficha da reserva. */
+  async function acordo(reservaId: string, tipo: "entrada" | "saida", hora: string, versao = 0) {
+    expect(await alterarHorario(db, sessao, { reservaId, tipo, versao, acao: "pedir", hora, canal: "WhatsApp", referencia: "Pedido fictício." })).toEqual({ ok: true });
+    expect(await alterarHorario(db, sessao, { reservaId, tipo, versao: versao + 1, acao: "confirmar", aceiteExplicito: true, canal: "WhatsApp", referencia: "Aceite fictício." })).toEqual({ ok: true });
+  }
+  const daLista = async (id: string) => (await limpezasDaProfissional(db, org, ana, HOJE)).find((l) => l.id === id)!;
+
+  it("casa com ficha: a saída e a entrada da ficha; sem ficha: o padrão da agenda (15:00 e 11:00, ou o salvo)", async () => {
+    await db.insert(imoveisDetalhes).values({ organizacaoId: org, imovelId: casa, checkinAPartirDe: "14:30", checkoutAte: "10:00" });
+    const [{ id: semFicha }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "102", nome: "Um" }).returning();
+    const comFicha = await limpezaDaSaida(casa, (await reserva(casa, "2026-10-08", "2026-10-11")).id, "2026-10-11");
+    await reserva(casa, "2026-10-11", "2026-10-13");
+    const daOutra = await limpezaDaSaida(semFicha, (await reserva(semFicha, "2026-10-08", "2026-10-12")).id, "2026-10-12");
+    expect(await daLista(comFicha)).toMatchObject({ horaSaida: "10:00", saidaCombinada: false, entraNoDia: true, horaEntrada: "14:30", entradaCombinada: false });
+    expect(await daLista(daOutra)).toMatchObject({ horaSaida: "11:00", saidaCombinada: false, entraNoDia: false, horaEntrada: "15:00" });
+    // Configuração da agenda salva antes do M7.22 ("12h"): lida como 12:00.
+    await db.insert(configuracoes).values({ organizacaoId: org, chave: "agenda", valor: { ativa: false, destinatarios: [], formatos: {}, horaEntrada: "16h", horaSaida: "12h" } });
+    expect(await daLista(daOutra)).toMatchObject({ horaSaida: "12:00", horaEntrada: "16:00" });
+    expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], horaSaida: "9:30" }, null)).toEqual({ ok: true });
+    expect(await daLista(daOutra)).toMatchObject({ horaSaida: "09:30" });
+    // A ficha vale mais que o padrão da agenda.
+    expect(await daLista(comFicha)).toMatchObject({ horaSaida: "10:00", horaEntrada: "14:30" });
+  });
+
+  it("acordo vigente com o hóspede vale (entrada às 14:00); acordo que precisa reconfirmar cai no padrão", async () => {
+    const sai = await reserva(casa, "2026-10-08", "2026-10-11");
+    const id = await limpezaDaSaida(casa, sai.id, "2026-10-11");
+    const entra = await reserva(casa, "2026-10-11", "2026-10-13");
+    await acordo(entra.id, "entrada", "14:00");
+    await acordo(sai.id, "saida", "13h");
+    expect(await daLista(id)).toMatchObject({ horaSaida: "13:00", saidaCombinada: true, entraNoDia: true, horaEntrada: "14:00", entradaCombinada: true });
+    // A reserva que sai mudou de datas: o acordo de saída precisa de reconfirmação e vale o padrão (11:00, sem ficha).
+    await db.update(reservas).set({ checkin: "2026-10-07" }).where(eq(reservas.id, sai.id));
+    expect(await daLista(id)).toMatchObject({ horaSaida: "11:00", saidaCombinada: false, horaEntrada: "14:00", entradaCombinada: true });
+    // A reserva que entra foi cancelada: ninguém entra no dia.
+    await db.update(reservas).set({ estado: "cancelada" }).where(eq(reservas.id, entra.id));
+    expect(await daLista(id)).toMatchObject({ entraNoDia: false, horaEntrada: "15:00", entradaCombinada: false });
+  });
+
+  it("o texto do cartão: a saída e, quando alguém entra no dia, a hora para deixar pronto, com o combinado à mostra", () => {
+    const base = { horaSaida: "10:00", saidaCombinada: false, entraNoDia: false, horaEntrada: "15:00", entradaCombinada: false };
+    expect(textoDosHorarios(base)).toBe("Saída do hóspede até 10:00.");
+    expect(textoDosHorarios({ ...base, saidaCombinada: true, entraNoDia: true, horaEntrada: "14:00", entradaCombinada: true })).toBe(
+      "Saída do hóspede até 10:00 (combinado com o hóspede). Entra outro hóspede no mesmo dia: deixar pronto até 14:00 (combinado com o hóspede).",
+    );
+    expect(textoDosHorarios({ ...base, entraNoDia: true })).toBe("Saída do hóspede até 10:00. Entra outro hóspede no mesmo dia: deixar pronto até 15:00.");
   });
 });
 

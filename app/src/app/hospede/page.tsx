@@ -8,16 +8,13 @@ import { pedirCancelamentoAcao, sairHospede } from "@/hospede/acoes";
 import { type CancelamentoNoPortal, cancelamentoNoPortal, ESTADIA_COMECOU, JA_CANCELADA, NAO_DA, PEDIDO_DESLIGADO, PEDIDO_OCUPADO, perguntaDoPedidoDeCancelamento, textoDaPoliticaNoPortal } from "@/hospede/cancelamento";
 import { INSTRUCOES_HORA, type ReservaDoHospede, reservasDoHospede } from "@/hospede/portal";
 import { emailDoHospede } from "@/hospede/sessao-atual";
-import { escreverHora } from "@/lib/datas";
+import { diaDaSemanaEData, diaHoraNoFuso, escreverHora, FUSO_PADRAO } from "@/lib/datas";
 import { carregarSite, metadadosDeMinhaReserva } from "@/site/pagina";
 import { TEXTO_PARA_CANCELAR_FALE_COM_A_EQUIPE } from "@/pagamentos/contestacao-regras";
 import { linkWhatsapp } from "@/site/site";
 
 // M7.18: o ícone da aba fica com a marca do estudo, como nos outros portais.
 export const generateMetadata = () => metadadosDeMinhaReserva();
-
-const data = (d: string) =>
-  new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${d}T00:00:00Z`));
 
 function Contato({ r }: { r: ReservaDoHospede }) {
   const { whatsapp, email, empresa } = r.contato;
@@ -52,11 +49,8 @@ const ERROS_DO_PEDIDO: Record<string, string> = {
   "cancelamento-ocupado": PEDIDO_OCUPADO,
 };
 
-const BRASILIA = "America/Sao_Paulo";
-const diaHoraBrasilia = (d: Date) => {
-  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: BRASILIA, ...o }).format(d);
-  return `${f({ day: "2-digit", month: "2-digit" })} às ${f({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`;
-};
+/** "16/10 às 22:30" no horário de Brasília (o que a política conta). */
+const diaHoraBrasilia = (d: Date) => diaHoraNoFuso(d, FUSO_PADRAO);
 /**
  * "Cancelar a reserva" em Minha reserva (M8.2c): só para reservas pagas pelo site deste e-mail. O hóspede só PEDE (a data
  * e a hora ficam registradas na hora); a equipe confirma por escrito e cancela no painel. Nunca valores.
@@ -155,11 +149,11 @@ function Reserva({
         <dl className={styles.detalhes}>
           <dt>Entrada</dt>
           <dd style={{ margin: 0 }}>
-            {data(r.checkin)}, a partir das {escreverHora(r.entradaAPartirDe)}
+            {diaDaSemanaEData(r.checkin)}, a partir das {escreverHora(r.entradaAPartirDe)}
           </dd>
           <dt>Saída</dt>
           <dd style={{ margin: 0 }}>
-            {data(r.checkout)}, até {escreverHora(r.saidaAte)}
+            {diaDaSemanaEData(r.checkout)}, até {escreverHora(r.saidaAte)}
           </dd>
           <dt>Noites</dt>
           <dd style={{ margin: 0 }}>{r.noites}</dd>
@@ -189,7 +183,7 @@ function Reserva({
           </div>
         ) : (
           <p className={styles.aviso} role="note">
-            O endereço completo e as instruções de chegada aparecem aqui em {data(r.instrucoes.dia)}, às {escreverHora(INSTRUCOES_HORA)}.
+            O endereço completo e as instruções de chegada aparecem aqui em {diaDaSemanaEData(r.instrucoes.dia)}, às {escreverHora(INSTRUCOES_HORA)}.
           </p>
         )}
         {!r.encerrada && <CancelarReserva codigo={r.codigo} c={cancelamento} textos={textos} agora={agora} />}

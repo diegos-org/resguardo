@@ -64,7 +64,12 @@ describe("validarContrato", () => {
     const r3 = validarContrato({ tipo: "gestao_completa", comissao: "15", inicio: "2026-10-01" }, [
       { tipo: "gestao_completa", comissaoBp: 1500, inicio: "2026-01-01", fim: null },
     ]);
-    expect(!r3.ok && r3.erros.geral).toMatch(/Conflita/);
+    // As datas do contrato em conflito em dd/mm/aaaa, como na tabela logo acima (M7.22).
+    expect(!r3.ok && r3.erros.geral).toBe("Conflita com o contrato de 01/01/2026 (sem fim). Encerre o contrato anterior antes.");
+    const r4 = validarContrato({ tipo: "gestao_completa", comissao: "15", inicio: "2026-10-01" }, [
+      { tipo: "gestao_completa", comissaoBp: 1500, inicio: "2026-01-01", fim: "2026-12-31" },
+    ]);
+    expect(!r4.ok && r4.erros.geral).toBe("Conflita com o contrato de 01/01/2026 a 31/12/2026. Encerre o contrato anterior antes.");
   });
 });
 

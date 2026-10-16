@@ -22,7 +22,7 @@ import { lerPaginaLegal } from "@/configuracoes/paginas-legais";
 import { type Bloco, blocosDoDocumento, PAGINAS_LEGAIS, preencherCampos } from "@/configuracoes/paginas-legais-texto";
 import { aceitesDocumento, contestacoesPagamento, devolucoesPagamento, eventosContestacao, imoveis, limpezas, manutencoes, pagamentos, portariaChecklists, reservas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { hojeISO } from "@/lib/datas";
+import { dataBr, diaHoraNoFuso, diaMesBr, diaMesNoFuso, hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { imoveisComPortaria } from "@/portaria/portaria";
@@ -66,15 +66,10 @@ import type { Contestacao, Devolucao, Pagamento } from "./travas";
 
 const FUSO = "America/Sao_Paulo";
 const DIA_MS = 86_400_000;
-const fmt = (d: Date, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, ...o }).format(d);
 /** dd/mm de um instante (São Paulo). */
-const diaBr = (d: Date) => fmt(d, { day: "2-digit", month: "2-digit" });
+const diaBr = (d: Date) => diaMesNoFuso(d, FUSO);
 /** dd/mm às HH:MM (São Paulo). */
-const diaHoraBr = (d: Date) => `${diaBr(d)} às ${fmt(d, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`;
-/** dd/mm de uma data AAAA-MM-DD. */
-const dataBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-/** dd/mm/aaaa de uma data AAAA-MM-DD. */
-const dataCompleta = (d: string) => d.slice(0, 10).split("-").reverse().join("/");
+const diaHoraBr = (d: Date) => diaHoraNoFuso(d, FUSO);
 /** Dias entre duas datas AAAA-MM-DD (de → até). */
 const diasEntre = (de: string, ate: string) => Math.round((Date.parse(`${ate}T00:00:00Z`) - Date.parse(`${de}T00:00:00Z`)) / DIA_MS);
 const nDias = (n: number) => `${n} ${n === 1 ? "dia" : "dias"}`;
@@ -124,7 +119,7 @@ const perdidaSemDecisao = (l: Pick<Contestacao, "situacao" | "decisaoVersao" | "
 export function situacaoDaDisputaEmPalavras(l: Pick<Contestacao, "situacao" | "resultadoEm" | "decisaoVersao" | "definitivoEm" | "duplicataPossivel">): string {
   const nome = NOMES_SITUACAO_CONTESTACAO[l.situacao];
   if (l.situacao === "ganha" || l.situacao === "perdida") {
-    const em = l.resultadoEm ? ` em ${dataBr(l.resultadoEm)}` : "";
+    const em = l.resultadoEm ? ` em ${diaMesBr(l.resultadoEm)}` : "";
     return `${nome}${em}${perdidaSemDecisao(l) ? " (sem decisão de quem arca: a reserva continua em conferência)" : ""}`;
   }
   return `${nome}${l.duplicataPossivel && contestacaoNaoFinal(l.situacao) ? " (possível duplicata de outra disputa do pagamento)" : ""}`;
@@ -141,8 +136,8 @@ export function prazoDosDocumentos(
   if (!l.documentacaoPrazo) return { texto: AVISOS_PAGAMENTO.contestacao_prazo_desconhecido, nivel: "atencao", vencido: false };
   const prazo = hojeISO(FUSO, l.documentacaoPrazo);
   const faltam = diasEntre(hojeISO(FUSO, agora), prazo);
-  if (faltam < 0) return { texto: `O prazo dos documentos passou em ${dataBr(prazo)}: confira no painel do Mercado Pago e marque "Documentos enviados" se eles foram enviados.`, nivel: "atencao", vencido: true };
-  const quando = faltam === 0 ? `até hoje (${dataBr(prazo)})` : `até ${dataBr(prazo)} (faltam ${nDias(faltam)})`;
+  if (faltam < 0) return { texto: `O prazo dos documentos passou em ${diaMesBr(prazo)}: confira no painel do Mercado Pago e marque "Documentos enviados" se eles foram enviados.`, nivel: "atencao", vencido: true };
+  const quando = faltam === 0 ? `até hoje (${diaMesBr(prazo)})` : `até ${diaMesBr(prazo)} (faltam ${nDias(faltam)})`;
   return { texto: `Envie os documentos pelo painel do Mercado Pago ${quando}; depois marque "Documentos enviados".`, nivel: faltam <= diasAviso ? "atencao" : "info", vencido: false };
 }
 
@@ -210,7 +205,7 @@ function avisosDaLinha(l: Contestacao, p: Pagamento, devs: readonly Devolucao[],
     if (c === "contestacao_com_devolucao") {
       const d = devs.find((x) => x.situacao === "confirmada" || x.situacao === "por_fora");
       const valor = d ? (d.situacao === "por_fora" ? (d.porForaValor ?? d.valor) : (d.valorConfirmado ?? d.valor)) : p.devolvidoForaReconhecido;
-      const dia = d?.confirmadaEm ? diaBr(d.confirmadaEm) : d?.porForaData ? dataBr(d.porForaData) : "no painel do Mercado Pago";
+      const dia = d?.confirmadaEm ? diaBr(d.confirmadaEm) : d?.porForaData ? diaMesBr(d.porForaData) : "no painel do Mercado Pago";
       if (valor > 0) return textoContestacaoComDevolucao(valor, dia, l.valor ?? l.valorEmRisco);
     }
     return AVISOS_PAGAMENTO[c];
@@ -256,7 +251,7 @@ function lancamentosEmPalavras(linhas: readonly LinhaDaDisputa[], prefixo: strin
     const nome = regra ? regra.s.texto(regra.m!) : x.descricao;
     const valor = lado === "caixa" ? `${x.tipo === "recebimento" ? "entrada" : "saída"} de ${formatBRL(x.montante ?? 0)}` : comSinal(x.valor);
     const mes = `${x.competencia.slice(5, 7)}/${x.competencia.slice(0, 4)}`;
-    const quando = x.dataCaixa ? `, em ${dataBr(x.dataCaixa)}` : "";
+    const quando = x.dataCaixa ? `, em ${diaMesBr(x.dataCaixa)}` : "";
     r[lado].push(`${nome}: ${valor} (${x.estado}, ${mes}${quando})${x.estornada ? " — estornado" : ""}`);
   }
   return r;
@@ -271,7 +266,7 @@ function eventoEmPalavras(tipo: string, antes: Record<string, unknown> | null, d
   const a = antes ?? {};
   const d = depois ?? {};
   const v = (x: unknown) => (typeof x === "number" ? formatBRL(x) : "—");
-  const dia = (x: unknown) => (typeof x === "string" && /^\d{4}-\d{2}-\d{2}/.test(x) ? dataBr(x) : "—");
+  const dia = (x: unknown) => (typeof x === "string" && /^\d{4}-\d{2}-\d{2}/.test(x) ? diaMesBr(x) : "—");
   const sit = (x: unknown) => (typeof x === "string" && x in NOMES_SITUACAO_CONTESTACAO ? NOMES_SITUACAO_CONTESTACAO[x as SituacaoContestacao] : String(x ?? "—"));
   switch (tipo) {
     case "aberta":
@@ -335,7 +330,7 @@ export function textoParaOProprietario(e: {
 }): string {
   const partes = [`Disputa do pagamento da reserva ${e.reservaCodigo}: foi aberta uma disputa de ${formatBRL(e.valor)} sobre o pagamento desta reserva no Mercado Pago. Causa registrada: ${e.causa}.`];
   if (e.explicacao.trim()) partes.push(e.explicacao.trim().replace(/([^.!?])$/, "$1."));
-  const quando = e.resultadoEm ? ` em ${dataBr(e.resultadoEm)}` : "";
+  const quando = e.resultadoEm ? ` em ${diaMesBr(e.resultadoEm)}` : "";
   const valor = formatBRL(e.proprietario);
   if (e.situacao === "sem_efeito") partes.push(e.proprietario > 0 ? `A disputa foi encerrada sem efeito: nada fica descontado de você (o valor segurado, ${valor}, volta no repasse seguinte).` : "A disputa foi encerrada sem efeito: nada fica descontado de você.");
   else if (e.proprietario <= 0) partes.push(e.situacao === "ganha" ? `A SCL ganhou a disputa${quando}: nada foi descontado de você.` : "Pela decisão registrada, nada é descontado de você.");
@@ -647,10 +642,10 @@ export async function lerContestacoesDaEquipe(db: Db, sessao: Sessao, reservaId:
         l.situacao === "ganha" || l.situacao === "perdida" || l.situacao === "sem_efeito"
           ? {
               linhas: [
-                ...(l.resultadoEm ? ([["Resultado em", `${dataCompleta(l.resultadoEm)} por ${quem(l.resultadoPor, "equipe")}`]] as [string, string][]) : []),
+                ...(l.resultadoEm ? ([["Resultado em", `${dataBr(l.resultadoEm)} por ${quem(l.resultadoPor, "equipe")}`]] as [string, string][]) : []),
                 ...(l.situacao === "perdida" && l.valorPerdido !== null ? ([["Valor perdido", formatBRL(l.valorPerdido)]] as [string, string][]) : []),
                 ...(l.situacao === "perdida" && l.liquidoNaoEntrou ? ([["Nunca entrou na conta", formatBRL(l.liquidoNaoEntrou)]] as [string, string][]) : []),
-                ...(l.debitoEm ? ([["Débito do Mercado Pago", dataCompleta(l.debitoEm)]] as [string, string][]) : []),
+                ...(l.debitoEm ? ([["Débito do Mercado Pago", dataBr(l.debitoEm)]] as [string, string][]) : []),
                 ...(l.tarifa ? ([["Tarifa do Mercado Pago", formatBRL(l.tarifa)]] as [string, string][]) : []),
               ],
               nota: l.situacao === "sem_efeito" ? l.encerradaNota : l.resultadoNota,
@@ -674,13 +669,13 @@ export async function lerContestacoesDaEquipe(db: Db, sessao: Sessao, reservaId:
 async function fatosDaEstadia(db: Db, organizacaoId: string, r: { id: string; codigo: string; checkin: string; checkout: string; estado: string; imovelId: string }, agora: Date): Promise<string[]> {
   const hoje = hojeISO(FUSO, agora);
   const fatos: string[] = [];
-  fatos.push(r.checkin > hoje ? `Estadia por vir: entrada em ${dataBr(r.checkin)}.` : r.checkout <= hoje ? `Estadia já aconteceu (${dataBr(r.checkin)}–${dataBr(r.checkout)}).` : `Estadia em curso (${dataBr(r.checkin)}–${dataBr(r.checkout)}).`);
+  fatos.push(r.checkin > hoje ? `Estadia por vir: entrada em ${diaMesBr(r.checkin)}.` : r.checkout <= hoje ? `Estadia já aconteceu (${diaMesBr(r.checkin)}–${diaMesBr(r.checkout)}).` : `Estadia em curso (${diaMesBr(r.checkin)}–${diaMesBr(r.checkout)}).`);
   const ls = await db
     .select({ data: limpezas.data, estado: limpezas.estado })
     .from(limpezas)
     .where(and(eq(limpezas.organizacaoId, organizacaoId), eq(limpezas.imovelId, r.imovelId), inArray(limpezas.data, datasEntre(r.checkin, r.checkout))))
     .orderBy(asc(limpezas.data));
-  if (ls.length) fatos.push(`Limpezas nas datas: ${ls.map((x) => `${dataBr(x.data)} (${x.estado})`).join(", ")}.`);
+  if (ls.length) fatos.push(`Limpezas nas datas: ${ls.map((x) => `${diaMesBr(x.data)} (${x.estado})`).join(", ")}.`);
   const ms = await db.select({ titulo: manutencoes.titulo, estado: manutencoes.estado, criadoEm: manutencoes.criadoEm, dataRealizada: manutencoes.dataRealizada }).from(manutencoes).where(and(eq(manutencoes.organizacaoId, organizacaoId), eq(manutencoes.imovelId, r.imovelId)));
   const nasDatas = ms.filter((m) => {
     const d = m.dataRealizada ?? hojeISO(FUSO, m.criadoEm);
@@ -861,14 +856,14 @@ export async function documentosParaDefesa(db: Db, organizacaoId: string, reserv
   if ((await imoveisComPortaria(db, organizacaoId)).includes(r.r.imovelId)) {
     const [c] = await db.select().from(portariaChecklists).where(and(eq(portariaChecklists.reservaId, reservaId), eq(portariaChecklists.organizacaoId, organizacaoId)));
     portaria = c
-      ? `Documentos recebidos: ${c.documentosRecebidos} de ${r.r.hospedes ?? "?"} pessoa(s)${c.encaminhadoEm ? `; encaminhados à portaria em ${dataBr(c.encaminhadoEm)}` : ""}${c.entregaConfirmadaEm ? `; entrega confirmada em ${dataBr(c.entregaConfirmadaEm)}` : ""}.`
+      ? `Documentos recebidos: ${c.documentosRecebidos} de ${r.r.hospedes ?? "?"} pessoa(s)${c.encaminhadoEm ? `; encaminhados à portaria em ${diaMesBr(c.encaminhadoEm)}` : ""}${c.entregaConfirmadaEm ? `; entrega confirmada em ${diaMesBr(c.entregaConfirmadaEm)}` : ""}.`
       : "O imóvel exige documentos na portaria, mas a lista desta reserva não foi preenchida (Portaria).";
   }
   return {
     reserva: [
       ["Reserva", r.r.codigo],
       ["Imóvel", `${r.imovelCodigo} · ${r.imovelNome}`],
-      ["Entrada e saída", `${dataCompleta(r.r.checkin)} → ${dataCompleta(r.r.checkout)}`],
+      ["Entrada e saída", `${dataBr(r.r.checkin)} → ${dataBr(r.r.checkout)}`],
       ["Pessoas", r.r.hospedes === null ? "não informado" : String(r.r.hospedes)],
     ],
     pagamentos: disputados.map((p) => ({
@@ -886,7 +881,7 @@ export async function documentosParaDefesa(db: Db, organizacaoId: string, reserv
     politica:
       politica && versao
         ? {
-            titulo: `${PAGINAS_LEGAIS.cancelamento.titulo}, versão ${politica.versao} de ${dataCompleta(politica.data)}`,
+            titulo: `${PAGINAS_LEGAIS.cancelamento.titulo}, versão ${politica.versao} de ${dataBr(politica.data)}`,
             quando: aceite ? `Aceita pelo hóspede no site em ${diaHoraBr(aceite.aceitoEm)} (antes de pagar).` : "A versão com que o pagamento foi criado.",
             resumo: blocos(versao.secoes.resumo),
             blocos: blocos(versao.secoes.texto) ?? [],

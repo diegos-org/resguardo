@@ -4,6 +4,7 @@
  * base zero vira diferença em R$, nunca percentual; mês parcial compara nada (mostraria queda falsa) e conta as noites
  * disponíveis só até o dia. Dinheiro em centavos inteiros.
  */
+import { diaMesBr } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 
 /** "AAAA-MM". */
@@ -308,7 +309,9 @@ const brlAbs = (v: number) => formatBRL(Math.abs(v));
 export function quadrosDoMes(o: { atual: DadosDoMes; anterior: DadosDoMes | null; anoAnterior: DadosDoMes | null; parcialAte: number | null }): Quadro[] {
   const a = o.atual;
   const oc = ocupacao(a);
-  const ate = o.parcialAte !== null ? ` até ${o.parcialAte}/${Number(a.mes.slice(5, 7))}` : "";
+  // "até 05/03": a escrita única do dia e do mês (M7.22), a mesma da capa ("parcial até 05/03").
+  const ateDia = o.parcialAte !== null ? diaMesBr(`${a.mes}-${String(o.parcialAte).padStart(2, "0")}`) : null;
+  const ate = ateDia !== null ? ` até ${ateDia}` : "";
   const noites: Quadro = {
     valor: `${a.noitesOcupadas} ${a.noitesOcupadas === 1 ? "noite ocupada" : "noites ocupadas"}${ate}`,
     legenda:
@@ -330,7 +333,7 @@ export function quadrosDoMes(o: { atual: DadosDoMes; anterior: DadosDoMes | null
       ? { valor: "nenhuma reserva", legenda: `nenhuma reserva confirmada com noite no ${ate ? "período" : "mês"}`, semDado: true }
       : { valor: `${a.reservas} ${a.reservas === 1 ? "reserva" : "reservas"}${ate}`, legenda: `estadia média de ${em} ${em === "1,0" ? "noite" : "noites"} por reserva no ${ate ? "período" : "mês"} (${a.noitesOcupadas} ${a.noitesOcupadas === 1 ? "noite" : "noites"} ÷ ${a.reservas} ${a.reservas === 1 ? "reserva" : "reservas"})`, semDado: false };
   const comparar = (outro: DadosDoMes | null, rotulo: string, semDado: string): Quadro => {
-    if (o.parcialAte !== null) return { valor: "mês em andamento", legenda: `sem comparação com ${rotulo} até o mês terminar (os números valem até ${o.parcialAte}/${Number(a.mes.slice(5, 7))})`, semDado: true };
+    if (ateDia !== null) return { valor: "mês em andamento", legenda: `sem comparação com ${rotulo} até o mês terminar (os números valem até ${ateDia})`, semDado: true };
     if (!outro || outro.resultado === null || a.resultado === null) return { valor: "sem dado no sistema", legenda: semDado, semDado: true };
     const v = variacao(a.resultado, outro.resultado)!;
     const ocOutro = ocupacao(outro).percentual;
