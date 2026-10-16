@@ -227,13 +227,25 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
     leitor.reservas = async (f) => (f.ids?.length ? { itens: [], divergencias: [{ origem: "reserva", id: "?", motivo: "sem id" }], lidoEm: agora.toISOString() } : original(f));
     try {
       const res = await rodar();
-      expect(res.divergencias.join(" ")).toContain("Releitura por id: 1 registro(s) voltaram em formato inválido");
+      expect(res.divergencias.join(" ")).toContain("Releitura por id: 1 registro(s) voltaram com um id que não foi pedido ou que não deu para ler");
       expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
       expect(res.divergencias.join(" ")).not.toMatch(/não voltou na leitura do Beds24|não retornou na consulta/);
       expect(await acompanhamentoDe(r.id)).toEqual(a);
       expect(await reserva(r.id)).toEqual(r);
     } finally {
       leitor.reservas = original;
+    }
+    // Um registro legível de um id que não foi pedido: a resposta também não conclui nada sobre o 555.
+    leitor.reservas = async (f) => (f.ids?.length ? original({ ...f, ids: ["777"] }) : original(f));
+    leitor.bookings = [booking({ id: 777, infoItems: [] })];
+    try {
+      const res = await rodar();
+      expect(res.divergencias.join(" ")).toContain("Releitura por id: 1 registro(s) voltaram com um id que não foi pedido ou que não deu para ler");
+      expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
+      expect(await acompanhamentoDe(r.id)).toEqual(a);
+    } finally {
+      leitor.reservas = original;
+      leitor.bookings = [];
     }
     // Sem o registro ilegível, o mesmo 555 que não volta é conferido como apagado, como antes.
     await rodar();

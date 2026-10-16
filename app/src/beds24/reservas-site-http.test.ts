@@ -16,6 +16,7 @@ import {
   simulacaoReservasBeds24Permitida,
 } from "./http";
 import { normalizarCredencial } from "./normalizar";
+import { ESCOPOS_OBRIGATORIOS_BEDS24 } from "./reservas-site-regras";
 
 const env = (o: Record<string, string | undefined>) => o as unknown as NodeJS.ProcessEnv;
 /** As quatro condições juntas: deploy de produção, NODE_ENV de produção, a chave e o refresh token. */
@@ -131,6 +132,11 @@ describe("leitura nova do cliente HTTP (M8.3a)", () => {
     for (const corpo of [null, [], "x", {}, { validToken: false, token: { scopes: ["write:bookings"] } }, { token: {} }, { token: { scopes: "write:bookings" } }, { scopes: { a: 1 } }]) {
       expect(normalizarCredencial(corpo)).toEqual({ escopos: null, ilegiveis: [] });
     }
+    // Validade presente e torta: nunca vale como válida, nem com a lista exata do convite.
+    for (const validToken of ["false", "true", 1, 0, null, {}]) {
+      expect(normalizarCredencial({ validToken, token: { scopes: [...ESCOPOS_OBRIGATORIOS_BEDS24] } })).toEqual({ escopos: null, ilegiveis: [] });
+    }
+    expect(normalizarCredencial({ validToken: true, token: { scopes: [...ESCOPOS_OBRIGATORIOS_BEDS24] } })).toEqual({ escopos: [...ESCOPOS_OBRIGATORIOS_BEDS24], ilegiveis: [] });
     expect(normalizarCredencial({ scopes: ["read:bookings"] })).toEqual({ escopos: ["read:bookings"], ilegiveis: [] });
     expect(normalizarCredencial({ token: { scopes: [1, "", " write:bookings ", "write:bookings", "x".repeat(100)] } })).toEqual({ escopos: ["write:bookings"], ilegiveis: ["(não é texto)", "(vazio)", "x".repeat(60)] });
   });

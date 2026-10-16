@@ -98,18 +98,25 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       for (let i = 0; i < faltantes.length; i += 50) {
         const ids = faltantes.slice(i, i + 50);
         const l = await leitor.reservas({ ids, chegadaDe: "1900-01-01", incluirInfo: true });
-        for (const b of l.itens) if (ids.includes(b.idExterno)) porId.set(b.idExterno, b);
+        // Registro de um id fora do pedido, legível ou não: a resposta não é a do pedido, então não dá para concluir que
+        // um id pedido que não voltou foi apagado.
+        let semDono = 0;
+        for (const b of l.itens) {
+          if (ids.includes(b.idExterno)) porId.set(b.idExterno, b);
+          else semDono++;
+        }
         for (const d of l.divergencias) {
           if (!ids.includes(d.id) || porId.has(d.id) || ilegiveis.has(d.id)) continue;
           ilegiveis.add(d.id);
           aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
         }
-        // Registro ilegível sem um id pedido (sem id, id inválido ou fora do pedido): pode ser qualquer um destes ids, então
-        // nenhum deles conta como "não voltou" (apagado). O lote todo fica sem conclusão, com um aviso só.
-        const semDono = l.divergencias.filter(d => !ids.includes(d.id)).length;
+        // Registro ilegível sem um id pedido (sem id, id inválido ou fora do pedido): pode ser qualquer um destes ids.
+        semDono += l.divergencias.filter(d => !ids.includes(d.id)).length;
+        // Com qualquer registro sem dono, nenhum id do lote que não voltou legível conta como "não voltou" (apagado): o lote
+        // todo fica sem conclusão, com um aviso só.
         if (semDono) {
           for (const id of ids) if (!porId.has(id)) ilegiveis.add(id);
-          aviso(res, `Releitura por id: ${semDono} registro(s) voltaram em formato inválido, sem um id que dê para ligar ao pedido; os registros deste lote que não voltaram legíveis ficam como estavam. Confira os registros no Beds24.`);
+          aviso(res, `Releitura por id: ${semDono} registro(s) voltaram com um id que não foi pedido ou que não deu para ler; os registros deste lote que não voltaram legíveis ficam como estavam. Confira os registros no Beds24.`);
         }
         for (const id of ids) if (!porId.has(id) && !ilegiveis.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
       }

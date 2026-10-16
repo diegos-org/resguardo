@@ -138,11 +138,12 @@ const amostra = (v: unknown) => (typeof v === "string" ? v.replace(/[^\x20-\x7E]
 
 /**
  * GET /authentication/details → escopos da credencial (M8.3, prontidão). O formato está "a confirmar": a lista é lida em
- * `token.scopes` (ou `scopes`); `validToken: false`, corpo torto ou lista ausente = null (não deu para ler). Item fora do
- * formato conhecido vai para `ilegiveis` — nunca é descartado em silêncio, para não parecer em ordem.
+ * `token.scopes` (ou `scopes`); `validToken` presente e diferente do booleano `true` (`false`, `"false"`, `"true"`, `1`,
+ * `null`), corpo torto ou lista ausente = null (não deu para ler). Item fora do formato conhecido vai para `ilegiveis` —
+ * nunca é descartado em silêncio, para não parecer em ordem.
  */
 export function normalizarCredencial(corpo: unknown): Omit<CredencialBeds24, "lidoEm"> {
-  if (!ehObj(corpo) || corpo.validToken === false) return { escopos: null, ilegiveis: [] };
+  if (!ehObj(corpo) || ("validToken" in corpo && corpo.validToken !== true)) return { escopos: null, ilegiveis: [] };
   const lista = ehObj(corpo.token) && corpo.token.scopes !== undefined ? corpo.token.scopes : corpo.scopes;
   if (!Array.isArray(lista)) return { escopos: null, ilegiveis: [] };
   const escopos: string[] = [];
