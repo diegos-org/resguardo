@@ -11,10 +11,10 @@ export const PRAZO_DO_ENVIO_MS = 2000;
  *
  * O Sentry não recebe a mensagem original, que pode ter o nome de um proprietário ou outro dado do negócio: recebe o
  * erro de `erroParaOAviso` (`./erro-de-rotina.ts`), com o resumo sem dados pessoais de um `ErroDeRotina` ou um texto
- * fixo, mais o tipo, a pilha e a causa pela mesma regra. O detalhe continua no registro local (a página Sistema). O
- * aviso ainda passa pela limpeza de `./limpeza.ts` antes de sair e espera até `PRAZO_DO_ENVIO_MS` pelo envio. Sem o
- * Sentry ligado (sem `NEXT_PUBLIC_SENTRY_DSN`, no desenvolvimento e nos testes), não faz nada. Nunca lança: o aviso não
- * muda o que a rotina responde nem o que ela registra.
+ * fixo, mais o tipo, a pilha e a causa pela mesma regra. O detalhe continua no registro local (a página Sistema ou o
+ * registro que o resumo indica). O aviso ainda passa pela limpeza de `./limpeza.ts` antes de sair e espera até
+ * `PRAZO_DO_ENVIO_MS` pelo envio. Sem o Sentry ligado (sem `NEXT_PUBLIC_SENTRY_DSN`, no desenvolvimento e nos testes),
+ * não faz nada. Nunca lança: o aviso não muda o que a rotina responde nem o que ela registra.
  */
 export async function avisarErroDoServidor(erro: unknown, rotina: string): Promise<void> {
   try {

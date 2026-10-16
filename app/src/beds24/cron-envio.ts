@@ -1,7 +1,7 @@
 import { enviarCalendarioBeds24 } from "@/calendario/envio";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import type { Db } from "@/db/types";
-import { ErroDeRotina } from "@/observabilidade/erro-de-rotina";
+import { ErroDeRotina, umaFalha } from "@/observabilidade/erro-de-rotina";
 import { registrarExecucao } from "@/sistema/automacoes";
 import { organizacaoBeds24 } from "./configuracao";
 import { escritaBeds24Ligada, escritorDoAmbiente, impressaoCredencialBeds24, leitorParaSincronizacao } from "./http";
@@ -24,7 +24,7 @@ export function executarCronEnvioBeds24(db: Db, env: NodeJS.ProcessEnv = process
       throw erroDaRotinaBeds24(e);
     }
     // O resumo do envio vai para Sistema como sempre (pode ter o código de um imóvel); ao Sentry, só o motivo (M0.9).
-    if (!r.ok && r.situacao !== "ocupada") throw new ErroDeRotina(`Envio ${r.situacao}: ${r.mensagem}`, { envio_incompleto: 1 });
+    if (!r.ok && r.situacao !== "ocupada") throw new ErroDeRotina(`Envio ${r.situacao}: ${r.mensagem}`, umaFalha("envio_incompleto"));
     return r.mensagem;
   });
 }

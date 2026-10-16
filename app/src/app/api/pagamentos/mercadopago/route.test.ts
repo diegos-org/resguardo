@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eventosPagamento, pagamentosAvisosDia } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { MENSAGEM_OMITIDA } from "@/observabilidade/erro-de-rotina";
-import { ErroProvedor } from "@/pagamentos/provedor";
+import { MENSAGEM_OMITIDA, MOTIVOS_DE_FALHA, ONDE_FICA_O_DETALHE } from "@/observabilidade/erro-de-rotina";
+import { MENSAGENS } from "@/pagamentos/mercadopago";
+import { ErroProvedor, type TipoErroProvedor } from "@/pagamentos/provedor";
 import { type Cenario, montarCenario } from "@/pagamentos/testes";
 
 const m = vi.hoisted(() => ({ getDb: vi.fn(), gate: vi.fn(), depois: [] as (() => Promise<void>)[], captureException: vi.fn(), flush: vi.fn(async () => true) }));
@@ -30,6 +31,10 @@ const pedido = (dataId: string, o: { assinatura?: string | null; corpo?: BodyIni
   const corpo = o.corpo ?? JSON.stringify({ action: "order.processed", type: "order", live_mode: false, data: { id: "ORDOUTRO" } });
   return new Request(`https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago?data.id=${encodeURIComponent(dataId)}&type=order`, { method: "POST", headers, body: corpo, duplex: "half" } as RequestInit);
 };
+/** Nome fictício: o que não pode chegar ao Sentry. */
+const NOME = "Maria Fictícia Teste";
+/** O erro e as causas encadeadas: tudo o que o Sentry lê. */
+const cadeia = (e: unknown): Error[] => (e instanceof Error ? [e, ...cadeia(e.cause)] : []);
 const rodarDepois = async () => {
   const fila = m.depois.splice(0);
   for (const f of fila) await f();
@@ -159,14 +164,41 @@ describe("POST /api/pagamentos/mercadopago", () => {
   it("falha do provedor depois da resposta: o evento fica com erro (a rotina confere depois) e nada sobe", async () => {
     const s = await c.segurar();
     const p = await c.pix(s.cotacaoId);
-    c.provedor.falhas.consultar = new ErroProvedor("incerto", "tempo");
+    // A mensagem de um ErroProvedor pode vir do resultado da conferência: o nome fictício mostra que ela não vai.
+    c.provedor.falhas.consultar = new ErroProvedor("incerto", `tempo esgotado na consulta de ${NOME}`);
     expect((await POST(pedido(p.idProvedor))).status).toBe(200);
     await expect(rodarDepois()).resolves.toBeUndefined();
     const [ev] = await db.select().from(eventosPagamento).where(eq(eventosPagamento.dataId, p.idProvedor));
     expect(ev.resultado).toBe("erro");
-    // M0.9: e o Sentry recebe o erro, com o nome da rotina: o tipo e a pilha, sem a mensagem, o corpo e os cabeçalhos.
-    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: "ErroProvedor", message: MENSAGEM_OMITIDA }), { tags: { rotina: "aviso-mercadopago" } });
+    // M0.9: e o Sentry recebe o erro, com o nome da rotina: o tipo da falha do provedor (lista fechada), que nada fica
+    // guardado além do evento, o tipo e a pilha; sem a mensagem, o corpo e os cabeçalhos.
+    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: "ErroDeRotina", message: `1 ${MOTIVOS_DE_FALHA.incerto} (${ONDE_FICA_O_DETALHE.sem_registro})` }), { tags: { rotina: "aviso-mercadopago" } });
+    const [erro] = m.captureException.mock.calls[0] as unknown as [Error];
+    expect(erro.cause).toMatchObject({ name: "ErroProvedor", message: MENSAGEM_OMITIDA });
+    expect(JSON.stringify(cadeia(erro).map((e) => [e.name, e.message, e.stack]))).not.toContain(NOME);
     expect(m.flush).toHaveBeenCalledWith(2000);
+  });
+
+  it("o tipo da falha do provedor chega ao Sentry: chave recusada, provedor fora do alcance e limite são avisos diferentes (revisão, M0.9)", async () => {
+    const s = await c.segurar();
+    const p = await c.pix(s.cotacaoId);
+    const casos: [TipoErroProvedor, string][] = [
+      ["credencial", MENSAGENS.credencialRecusada],
+      ["indisponivel", MENSAGENS.indisponivel],
+      ["limite", MENSAGENS.limite],
+    ];
+    for (const [i, [tipo, mensagem]] of casos.entries()) {
+      c.provedor.falhas.consultar = new ErroProvedor(tipo, mensagem);
+      // Outro request-id: um evento novo para a mesma order.
+      expect((await POST(pedido(p.idProvedor, { requestId: `pedido-${i}` }))).status).toBe(200);
+      await rodarDepois();
+    }
+    expect(m.captureException.mock.calls.map(([e]) => (e as Error).message)).toEqual([
+      `1 ${MOTIVOS_DE_FALHA.credencial} (${ONDE_FICA_O_DETALHE.sem_registro})`,
+      `1 ${MOTIVOS_DE_FALHA.indisponivel} (${ONDE_FICA_O_DETALHE.sem_registro})`,
+      `1 ${MOTIVOS_DE_FALHA.limite} (${ONDE_FICA_O_DETALHE.sem_registro})`,
+    ]);
+    expect((await eventos()).map((e) => e.resultado)).toEqual(["erro", "erro", "erro"]);
   });
 
   it("o banco fora do ar ao gravar o evento: 500 (o provedor tenta de novo), sem expor nada", async () => {
@@ -184,7 +216,6 @@ describe("POST /api/pagamentos/mercadopago", () => {
 
   it("erro do banco ao gravar o evento com um valor repetido na causa (revisão do Codex): o Sentry recebe o tipo e o código, sem o valor", async () => {
     // Um erro de verdade do Postgres (PGlite): o valor do parâmetro volta na mensagem da causa.
-    const NOME = "Maria Fictícia Teste";
     const real = await db.execute(sql`select ${NOME}::uuid`).then(
       () => null,
       (e: unknown) => e,
@@ -198,7 +229,6 @@ describe("POST /api/pagamentos/mercadopago", () => {
     expect((await POST(pedido("ORDTESTE1"))).status).toBe(500);
     expect(m.captureException).toHaveBeenCalledOnce();
     const [erro] = m.captureException.mock.calls[0] as unknown as [Error];
-    const cadeia = (e: unknown): Error[] => (e instanceof Error ? [e, ...cadeia(e.cause)] : []);
     expect(cadeia(erro).map((e) => e.message)).toEqual([MENSAGEM_OMITIDA, `${MENSAGEM_OMITIDA}; código 22P02`]);
     expect(JSON.stringify(cadeia(erro).map((e) => [e.name, e.message, e.stack]))).not.toContain(NOME);
   });

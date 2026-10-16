@@ -31,7 +31,9 @@ export function mensagensDeTodas(db: Db, correio: Correio | null, agora: Date): 
       }
     }
     const resumo = partes.join("; ") || "nenhuma organização";
-    if (totalDeFalhas(falhas)) throw new ErroDeRotina(resumo, falhas);
+    // Sistema fica só com as contagens; o detalhe (códigos de reserva, mensagem do erro) fica na última execução de cada
+    // organização, e o aviso ao Sentry diz isso (M0.9).
+    if (totalDeFalhas(falhas)) throw new ErroDeRotina(resumo, falhas, { detalheEm: "mensagens" });
     return resumo;
   });
 }

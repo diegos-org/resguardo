@@ -3,7 +3,7 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
-import { ErroDeRotina, type FalhasDaRotina, type MotivoDeFalha } from "@/observabilidade/erro-de-rotina";
+import { ErroDeRotina, type MotivoDeFalha, umaFalha } from "@/observabilidade/erro-de-rotina";
 import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
@@ -15,6 +15,8 @@ export type ResultadoSync = {
   ok: boolean; situacao: "ok" | "parcial" | "erro" | "ocupada" | "desligada";
   criadas: number; atualizadas: number; iguais: number; bloqueios: number; diasCalendario: number;
   totalDivergencias: number; divergencias: string[]; mensagem: string;
+  /** Na situação "erro": o tipo da falha, para o aviso da rotina automática ao Sentry (M0.9). */
+  falha?: FalhaBeds24;
 };
 const resultado = (): ResultadoSync => ({ ok: true, situacao: "ok", criadas: 0, atualizadas: 0, iguais: 0, bloqueios: 0, diasCalendario: 0, totalDivergencias: 0, divergencias: [], mensagem: "" });
 const referencia = (s: string) => /^[A-Za-z0-9._:-]{1,64}$/.test(s) ? s : "não identificado";
@@ -25,15 +27,20 @@ export function mensagemSeguraBeds24(e: unknown): string {
   return e instanceof ErroBeds24 ? e.message : "Não foi possível confirmar o resultado. Confira o histórico de importações antes de tentar novamente.";
 }
 
+/** O tipo de uma falha do Beds24 (M0.9): o do `ErroBeds24` ou, para qualquer outro erro (do banco, por exemplo), "erro_inesperado". */
+export type FalhaBeds24 = ErroBeds24["tipo"] | "erro_inesperado";
+
+/** Cada tipo é um motivo da lista fechada do aviso ao Sentry (a anotação confere isso na compilação). */
+function falhaBeds24(e: unknown): FalhaBeds24 & MotivoDeFalha {
+  return e instanceof ErroBeds24 ? e.tipo : "erro_inesperado";
+}
+
 /**
  * Falha de uma rotina automática do Beds24 (M0.9): a mensagem segura de sempre vai para a página Sistema (ela pode ter
  * o código de um imóvel); o aviso ao Sentry leva só o motivo (o tipo do `ErroBeds24`) e a causa sem a mensagem dela.
  */
 export function erroDaRotinaBeds24(e: unknown): ErroDeRotina {
-  const motivo: MotivoDeFalha = e instanceof ErroBeds24 ? e.tipo : "erro_inesperado";
-  const falhas: FalhasDaRotina = {};
-  falhas[motivo] = 1;
-  return new ErroDeRotina(mensagemSeguraBeds24(e), falhas, { cause: e });
+  return new ErroDeRotina(mensagemSeguraBeds24(e), umaFalha(falhaBeds24(e)), { cause: e });
 }
 
 /** Uma transação/organização: a leitura completa precede as gravações; falha técnica desfaz tudo. */
@@ -116,7 +123,7 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       return res;
     });
   } catch (e) {
-    r = { ...resultado(), ok: false, situacao: "erro", mensagem: mensagemSeguraBeds24(e) };
+    r = { ...resultado(), ok: false, situacao: "erro", mensagem: mensagemSeguraBeds24(e), falha: falhaBeds24(e) };
   }
   await db.update(beds24Execucoes).set({ terminadoEm: new Date(), situacao: r.situacao, resumo: r.mensagem.slice(0, 1000), divergencias: r.divergencias }).where(eq(beds24Execucoes.id, exec.id));
   return r;

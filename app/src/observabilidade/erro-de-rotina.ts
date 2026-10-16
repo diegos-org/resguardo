@@ -5,8 +5,9 @@
  * um proprietário ou de uma empresa, o código de um imóvel, a mensagem crua de outro erro ou o valor que o Postgres
  * repete na mensagem de um erro de conversão. Por isso, delas, o Sentry nunca recebe a mensagem original:
  * - um `ErroDeRotina` leva o detalhe na mensagem (é o que `registrarExecucao` grava na página Sistema, como sempre) e,
- *   à parte, as falhas contadas por motivo, de uma lista fechada (`MOTIVOS_DE_FALHA`); o Sentry recebe só essas
- *   contagens, com os textos fixos da lista;
+ *   à parte, as falhas contadas por motivo, de uma lista fechada (`MOTIVOS_DE_FALHA`), e onde a equipe acha o detalhe,
+ *   de outra lista fechada (`ONDE_FICA_O_DETALHE`); o Sentry recebe só essas contagens e esse lugar, com os textos fixos
+ *   das listas;
  * - qualquer outro erro chega com um texto fixo no lugar da mensagem, mais o código técnico, quando há um (o do Postgres,
  *   como "22P02", ou o da rede, como "ECONNRESET");
  * - nos dois casos ficam o tipo do erro e a pilha (arquivo, função e linha), e a causa (o erro original) vai pela mesma
@@ -29,6 +30,11 @@ export const MOTIVOS_DE_FALHA = {
   http: "recusa do serviço externo",
   formato: "resposta em formato inesperado",
   envio_incompleto: "envio incompleto",
+  // Os tipos de falha do provedor de pagamento (`ErroProvedor`), no aviso do Mercado Pago.
+  indisponivel: "serviço de pagamento fora do alcance",
+  incerto: "resposta incerta do serviço de pagamento",
+  credencial: "chave de acesso recusada ou inválida",
+  limite: "limite de chamadas atingido",
   erro_inesperado: "erro inesperado",
 } as const;
 
@@ -51,26 +57,49 @@ export function somarFalhas(falhas: FalhasDaRotina, mais: FalhasDaRotina): Falha
 }
 
 /**
- * Erro de uma rotina automática: a mensagem é o detalhe, que fica no registro local (a página Sistema), e `falhas` é o
- * que pode sair para o Sentry.
+ * Onde a equipe acha o detalhe de uma falha, com o texto que fecha o resumo: também uma lista fechada. O padrão é a página
+ * Sistema, onde `registrarExecucao` grava a mensagem do `ErroDeRotina`; quando a página Sistema só tem um texto fixo ou as
+ * contagens e o detalhe fica em outro registro, o erro diz qual.
+ */
+export const ONDE_FICA_O_DETALHE = {
+  sistema: "detalhe na página Sistema",
+  integracoes: "detalhe em Configurações → Integrações, nas últimas importações do Beds24",
+  mensagens: "detalhe em Configurações → Modelos de mensagem, na última execução de cada organização",
+  sem_registro: "sem detalhe guardado: o aviso fica marcado como erro e a rotina dos pagamentos confere depois",
+} as const;
+
+export type OndeFicaODetalhe = keyof typeof ONDE_FICA_O_DETALHE;
+
+/**
+ * Erro de uma rotina automática (ou do aviso do Mercado Pago): a mensagem é o detalhe, que fica no registro local (a
+ * página Sistema), e `falhas` e `detalheEm` são o que pode sair para o Sentry.
  */
 export class ErroDeRotina extends Error {
   readonly falhas: FalhasDaRotina;
+  readonly detalheEm: OndeFicaODetalhe;
 
-  constructor(detalhe: string, falhas: FalhasDaRotina, opcoes?: ErrorOptions) {
+  constructor(detalhe: string, falhas: FalhasDaRotina, opcoes?: ErrorOptions & { detalheEm?: OndeFicaODetalhe }) {
     super(detalhe, opcoes);
     this.name = "ErroDeRotina";
     this.falhas = { ...falhas };
+    this.detalheEm = opcoes?.detalheEm && Object.hasOwn(ONDE_FICA_O_DETALHE, opcoes.detalheEm) ? opcoes.detalheEm : "sistema";
   }
 
-  /** O resumo que vai ao Sentry: só as contagens, com os textos fixos de `MOTIVOS_DE_FALHA`. */
+  /** O resumo que vai ao Sentry: só as contagens e onde está o detalhe, com os textos fixos das duas listas. */
   get resumo(): string {
     const partes = (Object.keys(MOTIVOS_DE_FALHA) as MotivoDeFalha[]).flatMap((motivo) => {
       const n = this.falhas[motivo];
       return Number.isInteger(n) && n! > 0 ? [`${n} ${MOTIVOS_DE_FALHA[motivo]}`] : [];
     });
-    return `${partes.length ? partes.join(", ") : "falha sem contagem"} (detalhe na página Sistema)`;
+    return `${partes.length ? partes.join(", ") : "falha sem contagem"} (${ONDE_FICA_O_DETALHE[this.detalheEm]})`;
   }
+}
+
+/** Uma falha só, de um motivo: o caso das rotinas do Beds24, que param no primeiro erro, e do aviso do Mercado Pago. */
+export function umaFalha(motivo: MotivoDeFalha): FalhasDaRotina {
+  const falhas: FalhasDaRotina = {};
+  falhas[motivo] = 1;
+  return falhas;
 }
 
 /** O texto que entra no lugar da mensagem de um erro que não é um `ErroDeRotina`. */

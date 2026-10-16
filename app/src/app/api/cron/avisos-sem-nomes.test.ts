@@ -5,9 +5,10 @@ import { Beds24Falso } from "@/beds24/falso";
 import { ErroBeds24 } from "@/beds24/tipos";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { appSettings, organizacoes, proprietarios, reservas } from "@/db/schema";
+import { appSettings, idsExternos, imoveis, organizacoes, proprietarios, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { ultimasSincronizacoes } from "@/beds24/sincronizacao";
 import { escolherPeriodicidade } from "@/repasses/proprietario";
 import { ultimasExecucoes } from "@/sistema/automacoes";
 import { opcoesDoSentry } from "@/observabilidade/sentry";
@@ -29,8 +30,8 @@ const m = vi.hoisted(() => ({
   mensagens: vi.fn(),
   agenda: vi.fn(),
   rotinaDoSite: vi.fn(),
-  sincronizar: vi.fn(),
   enviarCalendario: vi.fn(),
+  leitor: null as unknown as Beds24Falso,
 }));
 vi.mock("@/db/client", () => ({ getDb: () => m.db }));
 vi.mock("@/email/correio", async (orig) => ({ ...(await orig<typeof import("@/email/correio")>()), correioDoAmbiente: () => null }));
@@ -45,9 +46,8 @@ vi.mock("@/mensagens/hospede", async (orig) => ({ ...(await orig<typeof import("
 vi.mock("@/agenda/agenda", async (orig) => ({ ...(await orig<typeof import("@/agenda/agenda")>()), enviarAgenda: m.agenda }));
 vi.mock("@/pagamentos/rotina", () => ({ rotinaDoSite: m.rotinaDoSite }));
 vi.mock("@/pagamentos/oferta", () => ({ provedorDeConferencia: async () => ({ ok: false, motivo: "so_nas_previas", texto: "" }) }));
-vi.mock("@/beds24/sincronizacao", async (orig) => ({ ...(await orig<typeof import("@/beds24/sincronizacao")>()), sincronizarBeds24: m.sincronizar }));
 vi.mock("@/calendario/envio", async (orig) => ({ ...(await orig<typeof import("@/calendario/envio")>()), enviarCalendarioBeds24: m.enviarCalendario }));
-vi.mock("@/beds24/http", async (orig) => ({ ...(await orig<typeof import("@/beds24/http")>()), leitorParaSincronizacao: () => new Beds24Falso(), escritorDoAmbiente: () => new Beds24Falso() }));
+vi.mock("@/beds24/http", async (orig) => ({ ...(await orig<typeof import("@/beds24/http")>()), leitorParaSincronizacao: () => m.leitor, escritorDoAmbiente: () => new Beds24Falso() }));
 
 import { GET as agenda } from "./agenda/route";
 import { GET as beds24 } from "./beds24/route";
@@ -75,6 +75,7 @@ beforeEach(async () => {
   vi.stubEnv("CRON_SECRET", "cron-teste");
   vi.stubEnv("VERCEL_ENV", "production");
   vi.stubEnv("BEDS24_ORGANIZACAO_ID", "");
+  m.leitor = new Beds24Falso();
   ({ db: m.db, close } = await createTestDb());
   [{ id: org }] = await m.db.insert(organizacoes).values({ nome: "Organização fictícia" }).returning();
 });
@@ -134,7 +135,8 @@ describe("rotinas automáticas: o nome fica em Sistema e não vai ao Sentry (M0.
     const [ultima] = await m.db.select().from(appSettings).where(eq(appSettings.key, `mensagens-hospede:ultima:${org}`));
     expect(ultima.value).toMatchObject({ resumo: `erro: Modelo sem dado para ${NOME}`, ok: false });
     const { evento, texto } = avisoEnviado();
-    expect(valores(evento)).toEqual(["1 organização(ões) com erro inesperado (detalhe na página Sistema)"]);
+    // Em Sistema, só as contagens: o aviso aponta para a última execução da organização, onde está o detalhe.
+    expect(valores(evento)).toEqual(["1 organização(ões) com erro inesperado (detalhe em Configurações → Modelos de mensagem, na última execução de cada organização)"]);
     expect(texto).not.toContain(NOME);
   });
 
@@ -164,15 +166,56 @@ describe("rotinas automáticas: o nome fica em Sistema e não vai ao Sentry (M0.
     expect(texto).not.toContain(NOME);
   });
 
-  it("importação do Beds24: o código do imóvel na mensagem do Beds24", async () => {
+  /** A importação de verdade (`sincronizarBeds24`), com um imóvel fictício vinculado ao quarto 20 do Beds24 falso. */
+  async function prepararImportacao() {
     await m.db.transaction((tx) => gravarConfig(tx, org, "beds24", { automatica: true, desde: "2026-09-01", diasCalendario: 2 }, null));
-    m.sincronizar.mockRejectedValue(new ErroBeds24(`O quarto vinculado ao imóvel ${CODIGO} não está acessível. Confira seu mapeamento e as permissões.`, "configuracao"));
+    const [im] = await m.db.insert(imoveis).values({ organizacaoId: org, codigo: CODIGO, nome: "Imóvel fictício" }).returning();
+    await m.db.insert(idsExternos).values({ organizacaoId: org, imovelId: im.id, canal: "beds24", idExterno: "10", detalhe: "20" });
+  }
+  const INTEGRACOES = "detalhe em Configurações → Integrações, nas últimas importações do Beds24";
+
+  it("importação do Beds24: o código do imóvel fica nas últimas importações, e o Sentry recebe o motivo certo", async () => {
+    await prepararImportacao();
+    // O Beds24 falso não tem o quarto vinculado: a importação para com o código do imóvel na mensagem.
+    m.leitor.properties = [];
     expect((await beds24(pedido())).status).toBe(500);
-    expect(await resumoLocal("sync-beds24")).toContain(`imóvel ${CODIGO} não está acessível`);
+    expect(await resumoLocal("sync-beds24")).toBe("Falhou: Sincronização falhou; consulte Integrações.");
+    const [ultima] = await ultimasSincronizacoes(m.db, org);
+    expect(ultima).toMatchObject({ situacao: "erro", resumo: expect.stringContaining(`imóvel ${CODIGO} não está acessível`) });
     const { evento, texto } = avisoEnviado();
     expect(evento.tags).toMatchObject({ rotina: "sync-beds24" });
-    expect(valores(evento)).toEqual(expect.arrayContaining(["1 falha de configuração ou de vínculo (detalhe na página Sistema)"]));
+    expect(valores(evento)).toEqual([`1 falha de configuração ou de vínculo (${INTEGRACOES})`]);
     expect(texto).not.toContain(CODIGO);
+  });
+
+  it("importação do Beds24 (revisão): a queda da rede e um erro inesperado não viram falha de configuração", async () => {
+    await prepararImportacao();
+    const casos: [Error, string][] = [
+      [new ErroBeds24("A conexão com o Beds24 foi interrompida.", "rede"), "1 falha de rede"],
+      [new ErroBeds24("A conexão com o Beds24 excedeu o tempo-limite.", "tempo"), "1 tempo esgotado"],
+      [new Error(`falha interna ao ler o quarto de ${NOME}`), "1 erro inesperado"],
+    ];
+    for (const [falha, motivo] of casos) {
+      enviados.length = 0;
+      m.leitor.falhar = falha;
+      expect((await beds24(pedido())).status).toBe(500);
+      expect(await resumoLocal("sync-beds24")).toBe("Falhou: Sincronização falhou; consulte Integrações.");
+      const { evento, texto } = avisoEnviado();
+      expect(valores(evento)).toEqual([`${motivo} (${INTEGRACOES})`]);
+      expect(texto).not.toContain(NOME);
+    }
+    // O detalhe de cada uma ficou nas últimas importações (o erro inesperado, com o texto seguro de sempre).
+    expect((await ultimasSincronizacoes(m.db, org)).map((e) => e.situacao)).toEqual(["erro", "erro", "erro"]);
+  });
+
+  it("importação do Beds24: falha antes de importar (credencial ou organização) fica em Sistema, com o motivo", async () => {
+    await m.db.transaction((tx) => gravarConfig(tx, org, "beds24", { automatica: true, desde: "2026-09-01", diasCalendario: 2 }, null));
+    // Outra organização sem BEDS24_ORGANIZACAO_ID: a rotina não sabe qual atender.
+    await m.db.insert(organizacoes).values({ nome: "Outra organização fictícia" });
+    expect((await beds24(pedido())).status).toBe(500);
+    expect(await resumoLocal("sync-beds24")).toContain("configure BEDS24_ORGANIZACAO_ID");
+    const { evento } = avisoEnviado();
+    expect(valores(evento)).toEqual(expect.arrayContaining(["1 falha de configuração ou de vínculo (detalhe na página Sistema)"]));
   });
 
   it("envio ao Beds24: o código do imóvel no resultado do envio", async () => {

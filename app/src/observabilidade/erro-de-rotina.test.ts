@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createTestDb } from "@/db/testing";
-import { ErroDeRotina, erroParaOAviso, MENSAGEM_OMITIDA, somarFalhas, totalDeFalhas } from "./erro-de-rotina";
+import { ErroDeRotina, erroParaOAviso, MENSAGEM_OMITIDA, type OndeFicaODetalhe, somarFalhas, totalDeFalhas, umaFalha } from "./erro-de-rotina";
 
 /**
  * M0.9 (revisão do Codex): das rotinas e do aviso do Mercado Pago, o Sentry recebe o resumo sem dados pessoais de um
@@ -21,6 +21,17 @@ describe("ErroDeRotina", () => {
     expect(e.message).toContain(NOME);
     expect(e.resumo).toBe("1 repasse(s) antecipado(s) não gerado(s), 2 e-mail(s) não enviado(s) (detalhe na página Sistema)");
     expect(new ErroDeRotina("x", {}).resumo).toBe("falha sem contagem (detalhe na página Sistema)");
+  });
+
+  it("o resumo diz onde está o detalhe, de uma lista fechada (padrão: a página Sistema)", () => {
+    expect(new ErroDeRotina(`${NOME}: falhou`, umaFalha("rede"), { detalheEm: "integracoes" }).resumo).toBe("1 falha de rede (detalhe em Configurações → Integrações, nas últimas importações do Beds24)");
+    expect(new ErroDeRotina("x", umaFalha("erro_na_organizacao"), { detalheEm: "mensagens" }).resumo).toBe("1 organização(ões) com erro inesperado (detalhe em Configurações → Modelos de mensagem, na última execução de cada organização)");
+    expect(new ErroDeRotina("x", umaFalha("credencial"), { detalheEm: "sem_registro" }).resumo).toBe("1 chave de acesso recusada ou inválida (sem detalhe guardado: o aviso fica marcado como erro e a rotina dos pagamentos confere depois)");
+    expect(new ErroDeRotina("x", umaFalha("rede")).detalheEm).toBe("sistema");
+    // Fora da lista (só por um erro de tipo), volta ao padrão: nenhum texto livre entra no resumo.
+    const fora = new ErroDeRotina("x", umaFalha("rede"), { detalheEm: NOME as OndeFicaODetalhe });
+    expect(fora.resumo).toBe("1 falha de rede (detalhe na página Sistema)");
+    expect(umaFalha("tempo")).toEqual({ tempo: 1 });
   });
 
   it("soma as contagens das organizações; zero, negativo e fração não contam", () => {
