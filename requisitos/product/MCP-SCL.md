@@ -11,7 +11,8 @@
 > - documentação pública do protocolo MCP, da Anthropic, da OpenAI e da Vercel, consultada em 16/10/2026;
 > - documentos de cliente (CIMD) do Claude Code, do ChatGPT e do Codex, e a lista de faixas de saída da OpenAI, baixados em 16/10;
 > - os pacotes `mcp-handler` 2.3.0, `@modelcontextprotocol/server` 2.3.1 e `@modelcontextprotocol/sdk` 1.32.1, baixados do npm e lidos em 16/10;
-> - o projeto na Vercel, lido pela API em 16/10 sem mudar nada: proteção das prévias, firewall e endereços.
+> - o projeto na Vercel, lido pela API em 16/10 sem mudar nada: proteção das prévias, firewall e endereços;
+> - a segunda varredura de 16/10 conferiu de novo no código da branch (`b1367fa`, com a `main` do M7.21) o que cada ferramenta e cada aviso do Início leem, e leu a documentação de papéis do Neon, o OAuth 2.1 (draft 13) e o documento de cliente do claude.ai.
 >
 > O que as fontes não confirmaram está marcado **a confirmar** e reunido em "Pontos a confirmar". As decisões de Diego estão no fim, cada uma com a recomendação.
 >
@@ -57,12 +58,13 @@ O que protege Diego:
 - **Uso estranho também gera aviso:** de madrugada, em volume grande ou depois de dias parado.
 - **Desconectar todos:** um botão no painel revoga todas as conexões na hora (desligar a chave só suspende).
 
-**Antes de ligar com os dados de verdade, três coisas dependem de Diego, e uma quarta se for preciso:**
+**Antes de ligar com os dados de verdade, quatro coisas dependem de Diego, e uma quinta se for preciso:**
 
 - deixar o campo Site com o endereço que funciona hoje (seção 6 do guia, item 47);
 - conversar com o advogado (D4);
 - ligar a verificação em duas etapas nas contas do Claude, do ChatGPT e do e-mail, e desligar o uso das conversas para treino;
-- se desligar o conector nas sessões de trabalho do Claude e do Codex for configuração do ambiente ou da conta, fazer essa configuração (D12). Sem ela conferida, a chave da produção não destrava.
+- com a chave da produção ainda travada, tentar uma vez adicionar o SCL no Claude, para conferir que o SCL reconhece o Claude ("Passos de Diego", item 6);
+- se deixar o conector do SCL fora das sessões de trabalho do Claude e do Codex depender de uma configuração do ambiente ou da conta, fazer essa configuração (D12). Só o conector do SCL sai dessas sessões; os outros, como o do Neon, continuam. Sem isso conferido, a chave da produção não destrava.
 
 **Depois da v1:** as regras para o assistente um dia fazer mudanças estão em "Fase 2" e não autorizam nada sozinhas. O histórico das mudanças passa a ser protegido no próprio banco, para o sistema e um erro de programa não conseguirem apagá-lo nem alterá-lo (M13.12). Quem tem o acesso de dono do banco ainda consegue desligar a trava (ver o limite em "Histórico que ninguém apaga").
 
@@ -94,6 +96,19 @@ O que protege Diego:
   | 19 | O segundo papel do nível 1 lia `reservas.hospede_nome` inteiro, com o corte para primeiro nome e inicial no código | O segundo papel não tem acesso à coluna: lê o nome por uma visão com o corte feito no banco, numa função SQL que é a única regra do corte, e busca por nome por uma função que devolve só ids, com teste de que a coluna e o `select *` são recusados | Revisão do Codex de 16/10: com a coluna liberada, uma projeção errada ou um `select *` com esse papel devolveria o sobrenome, e a proteção prometida no banco não valeria |
   | 20 | (a) Função de busca por nome em `security definer` sem dizer quem pode chamá-la; (b) quem saía da lista via `sobre_meu_acesso` explicando o motivo, embora a retirada revogue a conexão | (a) `REVOKE EXECUTE ... FROM PUBLIC` nas funções de busca e de corte, `EXECUTE` só para o segundo papel, com teste de recusa para o nível 0; (b) a retirada revoga, a chamada seguinte recebe 401, e quem explica é a nova autorização; `sobre_meu_acesso` fica para o acesso desligado e a conexão suspensa | Revisão do Codex de 16/10: (a) toda função do Postgres nasce executável por `PUBLIC`, e o nível 0 poderia testar nomes e cruzar os ids; (b) com o token revogado, a chamada recebe 401 antes da conferência da lista, e a ferramenta que explicaria nunca apareceria |
   | 21 | (a) Teto de linhas lido antes de cada chamada; (b) `pedidos_contato_proprietario` e `cadastros_marketplace` sem acesso nenhum no papel do nível 0 | (a) reserva atômica, com trava da conexão e do dia, resposta cortada ao que sobra e uso gravado antes de devolver; (b) só `organizacao_id` e `situacao` dessas duas tabelas, as colunas dos contadores do Início, com teste de `ver_pendencias` no papel restrito | Revisão do Codex de 16/10: (a) uma resposta de 25 itens passava do teto, e chamadas ao mesmo tempo viam a mesma sobra; (b) os contadores do Início leem essas tabelas, e `ver_pendencias` falharia com erro de permissão |
+  | 22 | Criar o papel do M13.11 "no Neon" pedia o "pode" de Diego, e só os GRANT iam numa migração | Papéis só por SQL: o grupo sem login nasce na própria migração, de forma idempotente; o login de cada nível nasce por um comando SQL em cada branch do Neon (produção e prévias), com a senha só na Vercel; nunca pelo Console, pela API, pela CLI ou pelo conector. Conferência dos poderes do papel ao subir a conexão restrita e na homologação; com poder a mais ou sem a conexão restrita, o MCP não atende e avisa, sem voltar para a conexão do dono. Vale também para o segundo papel (M13.9) | Varredura do Claude em 16/10 (segunda): pela documentação do Neon, o papel criado no Console, na API ou na CLI entra no `neon_superuser`, que lê e grava tudo, e os GRANT por coluna deixariam de valer; um GRANT para um papel que não existe na branch derrubaria a migração do build e o banco de teste |
+  | 23 | `configuracoes` fora da lista do papel, e `sobre_meu_acesso` com `lerEmpresa` | Nenhum GRANT em `configuracoes`: as chaves e os campos que as leituras usam saem por uma visão do dono; `sobre_meu_acesso` lê o nome por `nomeDaEmpresa` (`organizacoes.nome`) | Varredura do Claude em 16/10 (segunda): a tabela guarda um JSON por chave, e um GRANT por coluna liberaria todas, inclusive a da empresa, com a chave Pix, o CNPJ e os contatos |
+  | 24 | Lista inicial do papel com reservas, imóveis, bloqueios, proprietários, repasses, itens, lançamentos e os dois contadores do Início; teste só de `ver_pendencias` com os contadores; parte da lista de colunas recusadas pendurada nesse teste | Lista por ferramenta e por aviso, tirada do código, com as tabelas que faltavam (`organizacoes`, `recebimento_por_canal`, `contratos`, `rotinas`, `categorias_despesa`, `ajustes`, `quitacoes_adiantamento`, `contestacoes_adiantamento`, `pagamentos`, `devolucoes_pagamento`, `contestacoes_pagamento`, `cancelamentos_reserva`, `alteracoes_reserva`, `eventos_pagamento`, `disjuntores_cartao` e `cotacoes`), só com as colunas necessárias; as funções do painel que leem colunas pessoais ganham projeção própria; a lista final sai de um teste que roda cada ferramenta e cada aviso com o papel restrito e falha com qualquer erro de permissão; a lista de colunas recusadas voltou inteira para o teste de recusa | Revisão do Codex de 16/10: `ver_reserva` lê `recebimento_por_canal` e o Início lê rotinas, contratos, despesas, ajustes, adiantamentos, pagamentos e disputas, que o papel recusaria. A conferência no código achou também as funções que leem nomes e contatos (`regrasEmVigor`, `listarAdiantamentos`, `itensDoRepasse`, `partesDoProprietario`, `alvosDeAlteracao`, `preverRepasses`) |
+  | 25 | A troca do código conferia sempre o `redirect_uri` | O código fica preso ao `redirect_uri` conferido na autorização; na troca, o parâmetro é opcional e, quando vem, precisa ser igual | Revisão do Codex de 16/10: pelo OAuth 2.1 (draft 13, seção 10.2), em que a MCP 2026-07-28 se baseia, o cliente que segue só o OAuth 2.1 não manda o parâmetro e não conecta a servidor que o exige |
+  | 26 | Uso único do código, troca do token de renovação e Permitir sem dizer como; o reuso derrubava "os dois tokens" | Consumo por um comando condicional só (ou `FOR UPDATE`), na mesma transação que confere a conexão ativa e grava o par; o comando que não pega linha com o hash de um token já trocado é reuso e revoga a conexão inteira, com commit próprio; o Permitir consome o pedido, reconfere a chave e a lista com as linhas travadas e prende a conexão à entrada da lista; índice único de conexão ativa por pessoa e assistente; a suspensão do religar alcança toda conexão que existe naquele instante | Varredura do Claude em 16/10 (segunda): ler e depois gravar deixava duas trocas ao mesmo tempo receberem cada uma um par, sem que nenhuma contasse como reuso; um Permitir com a tela aberta antes da retirada deixava uma conexão que voltava a valer quando a pessoa voltasse à lista |
+  | 27 | Teto por trava de transação (`pg_advisory_xact_lock`) e soma de `uso_assistentes`, testado com "duas conexões do PGlite"; o dia pela data de `hojeISO`, sem coluna | Contagem por conexão e dia num comando só (`INSERT ... ON CONFLICT ... RETURNING`), com a coluna `dia` calculada uma vez e usada na contagem, na linha de uso e nos alertas; o desenho diz o que o PGlite prova e o que não prova | Varredura do Claude em 16/10 (segunda): o PGlite tem uma conexão por banco e faz uma transação por vez, então o teste passava sem a trava; e o dia calculado em dois instantes deixava a soma passar do teto perto da meia-noite |
+  | 28 | Gatilhos dos alertas sem regra de "uma vez"; e-mail de conexão nova enviado no Permitir; token do "não fui eu" aleatório, gerado no envio e guardado como hash; resumo semanal "às segundas" | Aviso de revogação só de quem faz a transição; gatilhos avaliados dentro da transação da reserva das linhas; tabela de avisos com chave única; e-mail gravado como pendente e enviado depois do commit, com chave de idempotência e repetição pela rotina de hora em hora que já existe; token do "não fui eu" derivado do segredo do ambiente e do id da conexão, o mesmo em toda tentativa; resumo com uma marca por semana | Varredura do Claude em 16/10 (segunda): uma pesquisa de madrugada mandaria um e-mail por chamada; uma falha no envio perdia o e-mail; e a repetição com a mesma chave do correio entregaria um link que responde inválido |
+  | 29 | O custo da regra sem tolerância era só a repetição da renovação por falha de rede (linha 15) | O custo inclui as renovações em paralelo de clientes legítimos (app e CLI do Codex, duas sessões do Claude Code, chamadas em paralelo); o token de acesso anterior vale até vencer; ponto a confirmar que bloqueia a saída pelo Codex e o Claude Code com conexão própria, com uma decisão pronta para Diego se a homologação confirmar; meta medida de tempo da troca; orientação de um programa por vez | Varredura do Claude em 16/10 (segunda): sem tolerância, toda renovação em paralelo é reuso e derruba a conexão, e o aviso culparia a rede |
+  | 30 | Limite contado por pedido HTTP; ferramenta fora da lista do momento respondendo `isError` sem dizer como | Limite por mensagem `tools/call`; lote JSON-RPC recusado com 400; mensagens do protocolo fora dos 30 por minuto, num teto próprio folgado; `tools/call` interceptado antes do SDK, com `isError` e o motivo | Varredura do Claude em 16/10 (segunda): o SDK v2 aceita lotes de até 100 mensagens num pedido, e uma ferramenta fora da lista dá o erro de protocolo -32602, sem o texto em português |
+  | 31 | Documento CIMD do claude.ai "a confirmar, e bloqueante"; sem a D10, a conferência não tinha dono nem momento | `https://claude.ai/oauth/mcp-oauth-client-metadata` na lista exata, com a cópia baixada em 16/10 no adaptador falso; Diego tenta uma vez com a chave da produção travada, e o `client_id` conferido é condição do M13.7 | Varredura do Claude em 16/10 (segunda): o documento é público; sem a D10, a primeira tentativa seria na produção, depois do M13.7, e pararia na página de erro |
+  | 32 | D12: desligar os conectores do claude.ai nas sessões de agente | Só o conector do SCL sai, por um mecanismo por conector; o do Neon e os outros continuam; conferência dupla; o liga-desliga de todos os conectores não é usado | Varredura do Claude em 16/10 (segunda): a variável e a configuração do ambiente desligam todos os conectores, inclusive o do Neon, que o CLAUDE.md libera para o trabalho desde 14/10 |
+  | 33 | A resolução (p) da linha 18 dava a decisão 2 do guia como completa, mas o guia citava só o nome do hóspede | A decisão 2 e o parágrafo do MCP no guia listam o nível 1 inteiro: primeiro nome e inicial do hóspede, nome inteiro do proprietário, código da reserva na plataforma e busca por nome e por esse código; dá para escolher só uma parte | Varredura do Claude em 16/10 (segunda): com a D4, o M13.9 mandaria aos assistentes o nome dos proprietários e o código do canal sem o guia ter dito |
+  | 34 | O M13.12 anonimizava as linhas antigas do histórico por migração antes do gatilho, sem esperar o advogado | O M13.12 faz a máscara e o gatilho; a anonimização das linhas antigas é um item próprio (M13.14), que espera a D4, com snapshot do Neon antes, registrado no PR. São 16 linhas no ROADMAP com o M13.14 | Varredura do Claude em 16/10 (segunda): a migração roda no deploy e, passados os backups do Neon, não tem volta; a pergunta ao advogado sobre essas linhas chegaria depois do fato |
 
 - **Objetivo final, que não mudou:** Diego consulta o SCL pelo assistente que já paga, com o login do painel, sem risco de o assistente mudar nada e sem expor dados pessoais além do mínimo.
 
@@ -202,7 +217,7 @@ Tudo fica no app Next.js 16.3.6 de `app/`, na mesma Vercel e no mesmo Neon. Não
   - permite que Diego teste Claude, ChatGPT e Codex de ponta a ponta antes da produção.
 - **Mudar a proteção do projeto é configuração:** pede o "pode" de Diego.
 - **Efeito colateral pequeno:** o banco das prévias é um só. O campo Site apontando para a homologação faz os links das mensagens ao hóspede, nas outras prévias, também apontarem para ela. A prévia dos links nas outras prévias apenas fica sem base, pela regra de `baseConfirmada`.
-- **Sem a D10:** a conferência com os assistentes de verdade só acontece em produção, depois do M13.7.
+- **Sem a D10:** a conferência com os assistentes de verdade só acontece em produção. A do `client_id` do claude.ai vem antes do M13.7: com a chave ainda travada, Diego tenta uma vez adicionar o SCL no Claude ("Passos de Diego", item 6). A autorização confere o `client_id` antes de ver se o acesso está ligado, então a tentativa mostra se ele está na lista sem deixar nenhum dado sair. Antes da varredura de 16/10 (segunda), esta linha dizia só que a conferência acontecia em produção, depois do M13.7, sem dono nem momento para a do `client_id`.
 
 ### Firewall
 
@@ -285,7 +300,7 @@ Tudo fica no app Next.js 16.3.6 de `app/`, na mesma Vercel e no mesmo Neon. Não
 
 ### Como cada chamada é conferida
 
-1. **Corpo e `Origin`:** corpo acima de 64 KB recebe 413. `Origin` fora da regra recebe 403.
+1. **Corpo e `Origin`:** corpo acima de 64 KB recebe 413. Corpo que é uma lista (lote JSON-RPC) recebe 400 (ver "Limites"). `Origin` fora da regra recebe 403.
 2. **Token presente:** sem `Authorization: Bearer`, a resposta é 401 com o cabeçalho acima. Token na query string é sempre recusado.
 3. **Token válido**, conferido pelo `VerificadorDeAcesso`, no nosso código:
    - é procurado pelo hash;
@@ -300,11 +315,12 @@ Tudo fica no app Next.js 16.3.6 de `app/`, na mesma Vercel e no mesmo Neon. Não
 6. **Configuração:** o acesso por assistentes precisa estar ligado e a pessoa precisa estar na lista de Configurações → Assistentes. A conexão não pode estar suspensa.
    - se faltar algo, não se usa 403: o Claude mostra um 403 sem `insufficient_scope` como erro final;
    - em vez disso, `tools/list` mostra só `sobre_meu_acesso`, e qualquer ferramenta responde com `isError` e um texto em português ("o acesso por assistentes está desligado no SCL");
+   - **como o `isError` chega:** o nosso código intercepta o `tools/call` antes do SDK. No SDK v2, chamar uma ferramenta não registrada ou desativada lança `ProtocolError` ("Tool X not found" ou "disabled", `@modelcontextprotocol/server@2.3.1`, `dist/mcp-*.mjs:1776-1778`), que sai como erro JSON-RPC -32602, e não como texto. Como o servidor anuncia `listChanged: false`, o ChatGPT congela a lista e o Claude usa a que pegou no começo da conversa, então o assistente chama ferramentas que já saíram da lista. Um nome de ferramenta conhecido, mas que não vale agora, recebe `isError` com o motivo ("o acesso por assistentes está desligado no SCL", "conexão suspensa até Diego reconfirmar", "esta conexão não inclui valores; conecte de novo marcando a opção"). Um nome que não existe em papel nenhum continua com -32602. Antes da varredura de 16/10 (segunda), o desenho prometia o `isError` sem dizer como;
    - **quem é tirado da lista não chega a este passo:** a retirada revoga as conexões da pessoa na hora (ver "Revogação"), então a chamada seguinte já cai no passo 3 e recebe 401. O assistente pede para conectar de novo, e a nova autorização para na tela que explica que a pessoa não está na lista, com `error=access_denied` (passo 3 de "Autorização"). Por isso `sobre_meu_acesso` explica só o acesso desligado e a conexão suspensa, que mantêm o token válido;
-   - a conferência da lista continua aqui como segunda barreira: uma conexão ativa de alguém fora da lista (estado que a revogação não deveria deixar) também só vê `sobre_meu_acesso`.
-7. **Limites:** chamadas por conexão e teto diário de linhas (ver "Limites").
+   - a conferência da lista continua aqui como segunda barreira: uma conexão ativa de alguém fora da lista (estado que a revogação não deveria deixar) também só vê `sobre_meu_acesso`. A entrada da pessoa na lista precisa ser a mesma gravada na conexão (ver "Autorização", passo 5): se for outra, a conexão é revogada.
+7. **Limites:** chamadas de ferramenta (`tools/call`) por conexão e teto diário de linhas (ver "Limites").
 8. **Ferramenta:**
-   - a lista de ferramentas é filtrada pelo papel e pelo que a conexão inclui (valores sim ou não);
+   - a lista de ferramentas é filtrada pelo papel e pelo que a conexão inclui (valores sim ou não), e o `tools/call` de uma ferramenta fora dela responde como no passo 6;
    - cada chamada confere de novo com `autorizar` por item (`app/src/acesso/politica.ts`);
    - devolve só os campos da lista fechada.
 9. **Registro de uso**, com os argumentos estruturados já validados, nunca texto livre nem a resposta.
@@ -367,7 +383,7 @@ O token nunca é repassado a outro serviço; a especificação proíbe.
 - `resource_name`: o nome da empresa de Configurações → Empresa, lido pela organização do site com `lerEmpresa` (ver "Endereço público").
 
 **Como o assistente se identifica: só CIMD na v1**
-- O `client_id` é uma URL https com o documento do cliente. O SCL identifica o assistente pelo `client_id` **exato**, numa lista de URLs conhecidas (as três da tabela abaixo; a do claude.ai web entra por PR depois de confirmada), e não pelo domínio: outra URL de `claude.ai` ou de `chatgpt.com` é recusada. Cada URL da lista tem a sua família de retorno (ver "Endereços de retorno aceitos"). Antes da varredura de 16/10, o SCL aceitava qualquer URL desses dois domínios.
+- O `client_id` é uma URL https com o documento do cliente. O SCL identifica o assistente pelo `client_id` **exato**, numa lista de URLs conhecidas (as quatro da tabela abaixo), e não pelo domínio: outra URL de `claude.ai` ou de `chatgpt.com` é recusada. Cada URL da lista tem a sua família de retorno (ver "Endereços de retorno aceitos"). Antes da varredura de 16/10, o SCL aceitava qualquer URL desses dois domínios. Antes da varredura de 16/10 (segunda), a lista tinha três URLs, e a do claude.ai entraria por PR depois de confirmada.
 - **Documentos conhecidos, baixados em 16/10:**
 
   | Assistente | Documento | O que diz |
@@ -375,7 +391,7 @@ O token nunca é repassado a outro serviço; a especificação proíbe.
   | Claude Code | `https://claude.ai/oauth/claude-code-client-metadata` | `token_endpoint_auth_method: "none"` |
   | ChatGPT | `https://chatgpt.com/oauth/client.json` | `"token_endpoint_auth_method":"private_key_jwt"` e `"token_endpoint_auth_methods_supported":["none","private_key_jwt"]`. Para a OpenAI, o singular é uma preferência antiga; o ChatGPT escolhe um método que esteja no plural dele e na lista do servidor |
   | Codex | `https://chatgpt.com/oauth/codex/client.json` | `application_type: native` e `"none"`; `redirect_uris`: `http://127.0.0.1/callback` e `http://localhost/callback`. Sem `iss`, o documento passaria a ser `https://chatgpt.com/oauth/codex/<callback_id>/client.json` |
-  | claude.ai (web, computador, celular, Cowork) | **A confirmar, e bloqueante.** A documentação diz que a Anthropic hospeda um documento, mas não dá o endereço. Uma fonte de terceiros (Strata) diz que ele fica no domínio claude.ai | Como o SCL anuncia CIMD, o Claude não volta para DCR. Conferir na primeira conexão na homologação (D10) ou, sem ela, antes de liberar a produção |
+  | claude.ai (web, computador, celular, Cowork) | `https://claude.ai/oauth/mcp-oauth-client-metadata`, público, baixado em 16/10 na segunda varredura | `token_endpoint_auth_method: "none"`; `redirect_uris`: `https://claude.ai/api/mcp/auth_callback`; `grant_types` com `authorization_code`, `refresh_token` e `urn:ietf:params:oauth:grant-type:jwt-bearer`, que o SCL não usa e que não faz recusar o documento. Como o SCL anuncia CIMD, o Claude não volta para DCR. Que o claude.ai usa este documento com o SCL se confere na primeira conexão, com a chave da produção ainda travada ("Passos de Diego", item 6). Antes da segunda varredura de 16/10, esta linha dizia "a confirmar, e bloqueante", com o domínio tirado de uma fonte de terceiros |
 
 - **O que o SCL confere no documento e no pedido:**
   - o `client_id` está na lista exata e é igual ao campo `client_id` do documento;
@@ -386,7 +402,7 @@ O token nunca é repassado a outro serviço; a especificação proíbe.
   - **antes da varredura de 16/10:** o SCL conferia só que os endereços do documento estavam na lista dele e que o `redirect_uri` do pedido estava nessa mesma lista. Passavam pedidos cruzados, como o `client_id` do ChatGPT com um retorno local (fora da trava das faixas) e o do Claude Code com o retorno do claude.ai; e, lida por família, a regra recusava o documento real do Codex, que traz também `localhost`.
 - **A busca do documento passa por um adaptador (`metadadosDoCliente`):**
   - só https, sem seguir redirecionamento, até 5 s e 10 KB, com cache de um dia;
-  - nos testes, a versão falsa usa cópias dos três documentos reais (são públicos, sem dado pessoal).
+  - nos testes, a versão falsa usa cópias dos quatro documentos reais (são públicos, sem dado pessoal).
 - **`client_id` recusado:** a página de erro registra o `client_id` inteiro, que é público e não é dado pessoal, para ajustar a lista num PR pequeno.
 - **O nome que o cliente diz ter** (`client_name`, `clientInfo`) nunca decide permissão e nunca aparece como se fosse confirmado. A tela de consentimento identifica o assistente pelo nome que o SCL dá ao `client_id` da lista e pelo domínio do endereço de retorno.
 
@@ -438,27 +454,35 @@ O token nunca é repassado a outro serviço; a especificação proíbe.
    - **Retorno local** (Claude Code, Codex): a tela avisa que "o código volta para um programa neste computador" e pede para continuar só se a pessoa acabou de rodar o comando. A Anthropic pede mostrar o domínio do retorno e esse aviso extra.
    - **"Incluir valores e repasses":** vem marcado por padrão no Claude e desmarcado na saída (ChatGPT e Codex). O padrão de cada assistente se muda em Configurações → Assistentes (M13.6). A escolha fica gravada na conexão e é conferida no servidor.
    - Os botões Permitir e Cancelar usam uma ação de servidor, com a proteção de origem do Next. A defesa contra clique disfarçado é o `frame-ancestors 'none'`.
-5. **Ao permitir:**
-   - cria a conexão com `autenticadoEm` = `desde`;
-   - se havia conexão do mesmo assistente, revoga a anterior (motivo: "substituída");
+5. **Ao permitir**, numa transação só:
+   - consome o pedido com um comando condicional (`UPDATE` do pedido `SET usado_em = agora WHERE id = $1 AND usado_em IS NULL RETURNING`); pedido já usado recebe erro, sem código;
+   - reconfere a chave e a lista com a linha da configuração e a da pessoa na lista travadas para leitura (`FOR SHARE`). A retirada da lista, "Desconectar todos" e o desligar travam as mesmas linhas para escrita antes de revogar, então um Permitir não cria conexão no meio deles;
+   - cria a conexão com `autenticadoEm` = `desde` e com o id da entrada da pessoa na lista. Se havia conexão do mesmo assistente, revoga a anterior (motivo: "substituída"). Um índice único parcial de conexão ativa por pessoa e assistente (`(usuario_id, cliente) WHERE revogada_em IS NULL`) recusa a segunda;
    - registra na auditoria;
-   - publica o aviso de conexão nova no Início (M13.5) e manda o e-mail (M13.7);
-   - volta ao assistente com `code`, `state` e `iss`.
+   - publica o aviso de conexão nova no Início (M13.5) e grava o e-mail de conexão nova como pendente (M13.7; ver "Avisos");
+   - depois do commit, volta ao assistente com `code`, `state` e `iss`. O e-mail sai depois, sem segurar a volta, e uma falha no envio não desfaz a conexão;
+   - **a conexão fica presa à entrada da lista:** cada chamada exige que a entrada da pessoa na lista seja a mesma gravada na conexão ("Como cada chamada é conferida", passo 6). Voltar à lista cria uma entrada nova, e a conexão antiga é revogada na primeira chamada;
+   - antes da varredura de 16/10 (segunda), o texto não dizia que isso era uma transação, não consumia o pedido nem reconferia a chave e a lista. Um Permitir com a tela aberta antes da retirada deixava uma conexão que voltava a valer quando a pessoa voltasse à lista, e dois Permitir do mesmo pedido deixavam duas conexões do mesmo assistente.
 
 **Token** (`/api/oauth/token`, só `application/x-www-form-urlencoded`):
 - **Autenticação de cliente:** qualquer uma é recusada (só `none`).
 - **`authorization_code`:**
-  - código de uso único, válido por 2 minutos;
-  - confere `code_verifier` (S256), `redirect_uri`, `client_id` e `resource`;
-  - código usado uma segunda vez revoga o que ele já tinha emitido.
+  - código de uso único, válido por 2 minutos, consumido num comando só, como o token de renovação (abaixo);
+  - o código fica preso ao `client_id`, ao `redirect_uri` conferido na autorização, ao `code_challenge` e ao `resource`. Na troca, o SCL confere `code_verifier` (S256), `client_id` e `resource`;
+  - **`redirect_uri` na troca é opcional:** quando vem, precisa ser exatamente o que o código guardou; quando não vem, a troca segue. O OAuth 2.1 (draft 13, seção 10.2), em que a MCP 2026-07-28 se baseia, tirou o parâmetro da troca, porque o PKCE já impede a injeção do código, e diz que o cliente que segue só o OAuth 2.1 não o manda e não conecta a servidor que o exige. Antes da revisão do Codex de 16/10, a troca conferia sempre o `redirect_uri`;
+  - código usado uma segunda vez revoga o que ele já tinha emitido (a conexão inteira).
 - **`refresh_token`:**
   - troca a cada renovação, como manda a regra para cliente público, e devolve o token novo na mesma resposta;
   - renovação vencida, revogada ou de outra conexão recebe `invalid_grant`, que é o que o Claude espera.
+- **Consumo atômico do código e do token de renovação:** um comando condicional só, no padrão de `contarNaJanela` (`app/src/acesso/senha.ts:84-99`), por exemplo `UPDATE ... SET trocado_em = agora WHERE hash = $1 AND trocado_em IS NULL AND revogado_em IS NULL AND vence_em > agora RETURNING conexao_id`, ou `SELECT ... FOR UPDATE` dentro da transação, como fazem `aceitarConvite` (`app/src/convites/convites.ts:156`) e `verificarCodigo` (`app/src/acesso/codigo-email.ts:165`). Na mesma transação, o SCL confere a conexão ativa e grava o par novo: tudo ou nada, e uma falha ao gravar o par não deixa o token antigo consumido. Antes da varredura de 16/10 (segunda), o texto não dizia como consumir, e ler e depois gravar deixaria duas trocas ao mesmo tempo receberem cada uma um par, sem que nenhuma contasse como reuso.
 - **Reuso de um token de renovação já trocado:**
-  - **sem tolerância:** qualquer reuso, a qualquer momento, derruba a conexão inteira (os dois tokens), e sai o aviso no Início e por e-mail. O servidor nunca devolve um par já emitido nem emite um par novo para quem repete o token: o cliente é público, sem prova de quem o envia, e o servidor não consegue separar uma repetição por falha de rede de alguém que copiou o token;
-  - **custo:** se o assistente repetir a renovação por falha de rede, Diego precisa conectar de novo. O aviso diz isso ("pode ter sido uma falha de rede; se foi você, conecte de novo");
+  - o comando que não pega linha nenhuma, com o hash de um token já trocado, é reuso. O SCL revoga a conexão (`UPDATE` da conexão `... WHERE revogada_em IS NULL RETURNING`), com commit próprio, antes de responder `invalid_grant`; só quem faz essa transição publica o aviso;
+  - **sem tolerância:** qualquer reuso, a qualquer momento, derruba a conexão inteira (todos os tokens da conexão), e sai o aviso no Início e por e-mail. O servidor nunca devolve um par já emitido nem emite um par novo para quem repete o token: o cliente é público, sem prova de quem o envia, e o servidor não consegue separar uma repetição por falha de rede de alguém que copiou o token. Antes da varredura de 16/10 (segunda), o texto dizia "os dois tokens";
+  - toda conferência (o acesso no passo 3, a renovação e a revogação pela RFC 7009) exige a conexão ativa, então um par gravado ao mesmo tempo que a revogação já nasce sem valor;
+  - **custo:** Diego precisa conectar de novo quando o assistente repete a renovação por falha de rede **e** quando dois programas do mesmo cliente renovam com o mesmo token: o app e a CLI do Codex, que dividem a mesma configuração (ver "Compatibilidade"), duas sessões do Claude Code com a mesma conexão local, ou duas chamadas em paralelo logo depois de vencer o token de acesso (o Claude renova ao receber 401 e até 5 minutos antes de vencer). A varredura de 16/10 (segunda) citou relatos públicos desse comportamento no Codex e no Claude Code (openai/codex#48507; anthropics/claude-code#84440 e #85236). O aviso diz isso: "pode ter sido uma falha de rede ou dois programas renovando ao mesmo tempo; se foi você, conecte de novo". Por isso o guia orienta a usar o SCL num programa por vez, e a homologação confere esse caso ("Pontos a confirmar"). Antes da varredura de 16/10 (segunda), o custo e o aviso citavam só a falha de rede;
+  - **o token de acesso anterior** continua valendo até vencer (no máximo 1 hora) numa renovação normal; só o reuso e a revogação o derrubam, junto com a conexão. Assim, uma chamada em andamento não recebe 401 nem renova de novo com o token antigo;
   - **antes (16/10, primeira revisão):** em até 30 s, o servidor devolvia o mesmo par já emitido. Saiu na revisão do Codex de 16/10, porque entregaria a conexão a quem copiou o token e o repetiu nesses 30 s.
-- **Tempo de resposta:** poucos segundos. O Claude espera 10 s na descoberta e no token, e 30 s na renovação.
+- **Tempo de resposta:** poucos segundos. O Claude espera 10 s na descoberta e no token, e 30 s na renovação. O M13.3 fixa uma meta medida para a troca do código e para a renovação, bem abaixo dos 10 s mesmo com a função e o Neon frios, porque um cliente que repete a troca depois da espera derrubaria a conexão recém-feita.
 
 ### Tokens, expiração e revogação
 
@@ -483,14 +507,14 @@ O token nunca é repassado a outro serviço; a especificação proíbe.
   - **Automática, quando:**
     - o usuário é desativado;
     - `sessaoValidaDesde` passa da hora do login;
-    - a pessoa sai da lista de Configurações → Assistentes (motivo: "tirada da lista"). Voltar à lista não reativa nada sozinho: é preciso conectar de novo. Antes da varredura de 16/10, sair da lista só negava as chamadas, e pôr a pessoa de volta reativava na hora todas as conexões dela, inclusive uma comprometida;
+    - a pessoa sai da lista de Configurações → Assistentes (motivo: "tirada da lista"). Voltar à lista não reativa nada sozinho: é preciso conectar de novo, e a conexão presa à entrada antiga da lista é revogada na primeira chamada (ver "Autorização", passo 5). Antes da varredura de 16/10, sair da lista só negava as chamadas, e pôr a pessoa de volta reativava na hora todas as conexões dela, inclusive uma comprometida;
     - há reuso de token de renovação;
     - a chamada chega fora das faixas de saída;
     - uma conexão nova do mesmo assistente substitui a anterior.
   - **Conexões revogadas ficam listadas** em Configurações → Assistentes e na página das próprias conexões, com a data, o motivo e "Baixar o uso desta conexão", pelos 6 meses do registro de uso (D9).
 - **Desligar e religar:**
   - desligar o acesso por assistentes nega tudo, sem apagar as conexões, e impede conexões novas;
-  - **ao religar, as conexões antigas ficam suspensas** até Diego reconfirmar uma a uma, para que uma conexão comprometida não volte a funcionar sozinha;
+  - **ao religar, as conexões antigas ficam suspensas** até Diego reconfirmar uma a uma, para que uma conexão comprometida não volte a funcionar sozinha. A suspensão vale para toda conexão que existe no instante de religar e é gravada na mesma transação que liga a chave; antes da varredura de 16/10 (segunda), o texto não dizia quais eram as "antigas";
   - em caso de suspeita: "Desconectar todos", que revoga, **e** desligar, para ninguém conectar de novo enquanto a causa não estiver resolvida (ver "Plano de incidente"). Desligar sozinho não basta, porque só suspende.
 - **Onde o token nunca aparece:** log, histórico, mensagem de erro ou endereço.
 
@@ -526,12 +550,15 @@ Ferramenta ou campo sem regra é negado.
 ### Limites
 
 - **Contador dos limites por chamada** (por minuto e por hora): reaproveita `contarNaJanela` (`app/src/acesso/senha.ts:84-99`), com chaves próprias, na tabela `tentativas_login`, e a limpeza no padrão de `apagarContasVelhas` (`senha.ts:106`; usada em `pagamentos/limites.ts:84`). Ela soma 1 por chamada e não recebe quantidade (insere `erros: 1` e, no conflito, faz `erros + 1`), e a janela começa na primeira tentativa e dura `janelaMs` (comentário em `senha.ts:81`). Por isso ela não serve para o teto de linhas.
-- **Teto de linhas por dia:** a soma de `linhas` em `uso_assistentes` da conexão no dia. Não muda `contarNaJanela` nem o login. Antes da varredura de 16/10, o texto dizia que todos os limites usavam `contarNaJanela`.
-  - **reserva atômica, antes de devolver:** a ferramenta monta a resposta e, numa transação curta, pega uma trava de transação da conexão e do dia (`pg_advisory_xact_lock` com a chave `mcp-linhas:<conexão>:<dia>`), soma as linhas do dia, corta a resposta para caber no que sobra, grava a linha de uso com as linhas que de fato vão e faz o commit. Só depois a resposta sai;
+- **O que conta como chamada:** cada mensagem `tools/call`. `initialize`, `notifications/*`, `tools/list`, `server/discover` e `ping` ficam fora dos 30 por minuto e dos 500 por hora, num teto próprio folgado (inicial: 120 por minuto por conexão), que não barra uso normal: um 429 num `initialize` ou num `tools/list` derruba o conector inteiro, não uma consulta.
+  - **lote JSON-RPC:** corpo que é uma lista recebe 400, no nosso código, antes do `mcp-handler`. A revisão 2025-06-18 do protocolo tirou o lote ("Remove support for JSON-RPC batching"), e Claude e ChatGPT mandam uma mensagem por pedido (**a confirmar** no M13.5; se algum cliente precisar de lote, cada `tools/call` dele passa a contar um). O modo `legacy: 'stateless'` do SDK v2 aceita lotes de até 100 mensagens (`MAX_BATCH_SIZE = 100`, `@modelcontextprotocol/server@2.3.1`, lido na varredura de 16/10): sem essa regra, um pedido com dezenas de `tools/call` contaria um, e os 30 por minuto e os 500 por hora deixariam de valer;
+  - antes da varredura de 16/10 (segunda), o limite contava cada pedido HTTP, com as mensagens do protocolo junto.
+- **Teto de linhas por dia:** a conta das linhas por conexão e por dia de São Paulo, numa tabela de contagem própria (por exemplo, `uso_assistentes_dia`, com a chave `(conexao_id, dia)`). Não muda `contarNaJanela` nem o login. Antes da varredura de 16/10, o texto dizia que todos os limites usavam `contarNaJanela`.
+  - **reserva num comando só, antes de devolver:** a ferramenta monta a resposta e, numa transação curta, reserva as linhas com um único `INSERT ... ON CONFLICT (conexao_id, dia) DO UPDATE SET linhas = linhas + least(pedido, teto - linhas) ... RETURNING`, que devolve o que foi concedido; grava na mesma transação a linha de uso com as linhas que de fato vão e faz o commit. Só depois a resposta sai, cortada ao que foi concedido;
+  - o comando é atômico em qualquer Postgres: duas chamadas ao mesmo tempo esperam uma pela outra na linha da conexão e do dia, e nenhuma soma passa do teto, nem por uma resposta de 25 itens perto do limite. Isso não depende de o teste conseguir abrir duas sessões ao mesmo tempo (ver "Testes", o que o PGlite prova);
   - a resposta cortada diz isso (`truncado: true` e o texto "teto de linhas do dia atingido; o resto fica para amanhã"). Sem nada sobrando, a ferramenta responde com `isError` e o mesmo texto;
-  - duas chamadas ao mesmo tempo esperam uma pela outra na trava, então nenhuma soma passa do teto, nem por uma resposta de 25 itens perto do limite;
-  - antes da revisão do Codex de 16/10, a soma era só lida antes de cada chamada: uma resposta de 25 itens passava do teto, e chamadas ao mesmo tempo viam a mesma sobra e devolviam as linhas antes de gravar o uso.
-- **"Dia"**, no teto de linhas e nos alertas diários (por exemplo, "mais de 1.000 linhas no dia"): o dia corrido no fuso `America/Sao_Paulo`, de 0h a 0h, pela data de `hojeISO`.
+  - antes da revisão do Codex de 16/10, a soma era só lida antes de cada chamada: uma resposta de 25 itens passava do teto, e chamadas ao mesmo tempo viam a mesma sobra e devolviam as linhas antes de gravar o uso. Antes da varredura de 16/10 (segunda), a reserva usava uma trava de transação (`pg_advisory_xact_lock` com a chave `mcp-linhas:<conexão>:<dia>`) e a soma de `uso_assistentes`. Estava certa no Neon, mas o teste prometido não conseguia provar a trava no PGlite.
+- **"Dia"**, no teto de linhas e nos alertas diários (por exemplo, "mais de 1.000 linhas no dia"): o dia corrido no fuso `America/Sao_Paulo`, de 0h a 0h, calculado **uma vez**, dentro da transação da reserva, por `hojeISO("America/Sao_Paulo", agora)` (`app/src/lib/datas.ts:2`) com um único `agora`. O mesmo dia vai na chave da contagem, na coluna `dia` da linha de uso e nos alertas; "quando" fica só como informação. Antes da varredura de 16/10 (segunda), o dia da trava e o "quando" da linha podiam sair de dois instantes (o `defaultNow()` do banco e o relógio do app), e uma chamada perto da meia-noite contava num dia e reservava no outro.
 - **Contagem:**
   - nas rotas chamadas pelos servidores dos assistentes (MCP, token, revogação), o limite conta por **conexão** e por **usuário**, nunca por IP;
   - motivo: Claude e ChatGPT saem de faixas compartilhadas por todos os usuários deles, e um limite por IP deixaria qualquer conta desses assistentes, inclusive a de um atacante, bloquear Diego;
@@ -542,8 +569,8 @@ Ferramenta ou campo sem regra é negado.
 
 | O quê | Limite | Contado por |
 |---|---|---|
-| Chamadas ao MCP | 30 por minuto e 500 por hora | Conexão |
-| Linhas devolvidas | 2.000 por dia de São Paulo, pela soma do registro de uso. Ao atingir: `isError` "limite do dia atingido", aviso no Início e e-mail (M13.7) | Conexão |
+| Chamadas ao MCP | 30 por minuto e 500 por hora, contando cada `tools/call`; as mensagens do protocolo (`initialize`, `notifications/*`, `tools/list`, `server/discover`, `ping`) num teto próprio folgado (inicial: 120 por minuto); lote recusado com 400 | Conexão |
+| Linhas devolvidas | 2.000 por dia de São Paulo, pela contagem da conexão no dia. Ao atingir: `isError` "limite do dia atingido", aviso no Início e e-mail (M13.7), uma vez | Conexão |
 | Token inválido no MCP | Teto geral folgado (inicial: 300 por minuto), contado só depois de o token falhar; nunca barra um token válido | Origem fora das faixas dos assistentes; dentro delas, só um teto global |
 | `/api/oauth/token` e `/api/oauth/revogar` | 30 por minuto. `client_id` fora da lista é recusado antes de contar; código ou renovação inválidos contam só no teto geral folgado, pela mesma regra do MCP (nunca barra um pedido válido; dentro das faixas, só global) | Conexão (código ou renovação válidos) |
 | `/oauth/autorizar` (pedidos guardados) | 30 por hora; cada pedido vence em 10 minutos | Origem (aqui é o navegador da pessoa) |
@@ -562,7 +589,8 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
 
 **Registro de uso** (tabela nova `uso_assistentes`, M13.5):
 - **Campos:**
-  - quando;
+  - quando, só como informação;
+  - `dia` (a data de São Paulo calculada uma vez na reserva das linhas; ver "Limites");
   - usuário e conexão;
   - ferramenta;
   - resultado (ok, negado, limite, entrada inválida, erro);
@@ -579,10 +607,11 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
   - aviso fixo no Início por 7 dias, a partir do M13.5, **só para o dono da conexão**: "O Claude foi conectado à sua conta do SCL em 16/10 às 14:32. Não foi você? [Desconectar]". O botão é uma ação de servidor com `BotaoConfirmar`, que usa a sessão do painel e não leva token nenhum;
   - o admin, quando não é o dono, vê um aviso sem o botão ("Conexão nova do Claude para <pessoa> em 16/10"), com o link para Configurações → Assistentes;
   - esse aviso não entra em `carregarDashboard`, que monta os avisos da organização a cada carregamento, sem gravar mensagem nenhuma (`app/src/painel/dashboard.ts:121-150`): o Início o lê à parte, pelas conexões da pessoa da sessão;
-  - e-mail com o mesmo texto, a partir do M13.7, pelo correio do ambiente (versão falsa nos testes). Pelo guia, o envio de e-mail do sistema já está configurado (seção 6, item 5); conferir na implementação;
+  - e-mail com o mesmo texto, a partir do M13.7, pelo correio do ambiente (versão falsa nos testes). Ele é gravado como pendente na transação do Permitir e enviado depois do commit, pela regra de "Cada aviso sai uma vez", logo abaixo; a falha no envio não desfaz a conexão nem segura a volta ao assistente. Antes da varredura de 16/10 (segunda), o texto dizia só que o Permitir "manda o e-mail". Pelo guia, o envio de e-mail do sistema já está configurado (seção 6, item 5); conferir na implementação;
   - quem não tem e-mail cadastrado vê o aviso só no painel.
 - **"Não fui eu" no e-mail (M13.7):**
-  - o e-mail traz um link para `/oauth/desconectar`, com um token aleatório de uso único, gerado na hora do envio, guardado só como hash, válido por 7 dias, que só desconecta aquela conexão;
+  - o e-mail traz um link para `/oauth/desconectar`, com um token derivado do segredo do ambiente e do id da conexão (HMAC com uma chave própria desta finalidade, no padrão de `app/src/lib/token-assinado.ts`), o mesmo em todas as tentativas de envio daquela conexão. Nada dele fica no banco, o uso único fica marcado na própria conexão, e ele vale por 7 dias a partir da conexão e só desconecta aquela conexão;
+  - antes da varredura de 16/10 (segunda), o token era aleatório, gerado na hora do envio e guardado só como hash. A repetição com a mesma chave do correio, que o provedor ignora quando o primeiro envio já saiu, gravaria o hash de um token novo, e o link do e-mail que chegou responderia inválido;
   - o link abre uma página com o botão Desconectar. O clique é no botão, e não no link, porque leitores de e-mail abrem links sozinhos;
   - o Início não usa esse token. Antes da varredura de 16/10, o aviso do Início também trazia o link com o token, mas a tela precisaria dele em claro a cada carregamento, e ele só existe como hash.
 - **Uso fora do padrão (M13.7):** só avisa, nunca bloqueia, por e-mail e no Início. Os gatilhos:
@@ -591,7 +620,16 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
   - primeiro uso depois de 7 dias parado (inicial);
   - teto diário atingido;
   - chamada fora das faixas de saída.
-- **Resumo semanal por e-mail (M13.7):** as conexões ativas e quantas consultas cada uma fez, pendurado numa rotina diária existente, às segundas-feiras.
+- **Cada aviso sai uma vez (M13.5 e M13.7):**
+  - o aviso de revogação (reuso, fora das faixas, "não fui eu") sai só de quem faz a transição: `UPDATE` da conexão `... WHERE id = $1 AND revogada_em IS NULL RETURNING`. Cinco chamadas de fora das faixas ao mesmo tempo revogam e avisam uma vez;
+  - os gatilhos de uso são avaliados dentro da transação da reserva das linhas (ver "Limites"), comparando o antes e o depois: volume, na chamada em que o dia passa de 1.000 linhas (antes ≤ 1.000 < depois); teto, na chamada que chega nele; parado, pelo último uso lido nessa transação, antes de gravar o próprio; madrugada, na primeira chamada da janela naquela noite;
+  - cada aviso é uma linha numa tabela própria (por exemplo, `avisos_assistentes`), com chave única por conexão, tipo e dia de São Paulo (a madrugada, uma vez por noite), gravada com `ON CONFLICT DO NOTHING` na mesma transação. O Início lê os avisos dela, e ela guarda a situação do e-mail;
+  - o e-mail sai depois do commit, com a chave de idempotência do correio (`Mensagem.chave`, `app/src/email/correio.ts:16-17`), e é repetido pela rotina de hora em hora que já existe (`repasses-emails`, às :30, em `vercel.json`), sem rotina nova, no padrão dos e-mails dos repasses (`app/src/repasses/cron.ts`). A chave do provedor vale menos de um dia (`JANELA_PROVEDOR_MS`, 23 horas, `app/src/repasses/email.ts:34`), então a marca no banco é a trava principal;
+  - antes da varredura de 16/10 (segunda), os gatilhos não diziam quando um aviso já tinha saído: uma pesquisa de madrugada mandaria um e-mail por chamada, cada chamada depois do teto avisaria de novo, e uma rajada assim poderia gastar a cota do envio de e-mail do dia e travar o código de login e os outros e-mails.
+- **Resumo semanal por e-mail (M13.7):** as conexões ativas e quantas consultas cada uma fez, pendurado numa rotina diária existente.
+  - sai na primeira rodada da rotina, a partir de segunda-feira, que ainda não mandou o daquela semana: uma marca por organização, semana ISO e destinatário, gravada de forma atômica antes de enviar (na mesma tabela de avisos), como em `app/src/repasses/email.ts`, e a chave do correio `mcp-resumo:<organização>:<semana>:<destinatário>`. O destinatário entra na chave porque o resumo pode ir a mais de uma pessoa (o dono de cada conexão e o admin);
+  - uma rodada repetida na segunda manda um e-mail só, e a rotina que falha na segunda manda na terça;
+  - antes da varredura de 16/10 (segunda), ele saía "às segundas-feiras", sem marca: a Vercel avisa que a mesma rodada agendada pode ser chamada mais de uma vez, e uma segunda-feira com falha pulava a semana.
 
 ### Faixas de saída das conexões hospedadas (M13.7)
 
@@ -600,7 +638,7 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
 - **O que ela não pega:** `160.79.104.0/21` é a saída de todo o tráfego da Anthropic, inclusive do conector MCP da API de mensagens, em que qualquer cliente da API informa `url` e `authorization_token` (a página de IPs da Anthropic cita as chamadas de ferramenta MCP). Um token de **acesso** copiado de uma conexão do claude.ai e usado pela API chega de dentro da faixa: não revoga, não avisa e fica registrado com a origem "Anthropic". Vale até o token de acesso vencer (1 hora). Contra isso: a validade curta, o teto diário de linhas e os alertas de uso. Se a ferramenta `mcp` da API da OpenAI sai das faixas de `chatgpt-connectors.json` fica **a confirmar**; se sair, vale o mesmo para o ChatGPT. Antes da varredura de 16/10, este texto não dizia o que a trava deixa passar.
 - **A regra:**
   - nas conexões com retorno hospedado (claude.ai, chatgpt.com), chamadas e renovações só valem a partir das faixas publicadas: `160.79.104.0/21` (Anthropic) e as de `chatgpt-connectors.json` (OpenAI);
-  - fora delas, a chamada é negada, a conexão é revogada e sai o aviso;
+  - fora delas, a chamada é negada, a conexão é revogada e sai o aviso, uma vez, por quem faz a transição (ver "Cada aviso sai uma vez");
   - o SCL guarda só a categoria da origem, nunca o IP;
   - as conexões com retorno local (Claude Code, Codex) ficam sem essa trava.
 - **As faixas:** ficam no código como lista de defesa, atualizada por PR.
@@ -621,9 +659,10 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
   - "só leitura" no SCL não impede a saída por outra ferramenta.
 - **Regras (D12):**
   - **Sessões de agente** (Claude Code ou Codex trabalhando no repositório) **não usam o conector SCL.** Isso vai para o CLAUDE.md junto com o M13.7. A regra escrita não basta, porque o Claude Code recebe sozinho os conectores do claude.ai.
-  - **Desligar os conectores do claude.ai nas sessões de agente.** No Claude Code, a variável `ENABLE_CLAUDEAI_MCP_SERVERS=false` (**a confirmar**). Se for configuração do ambiente da nuvem, é passo de Diego ("Passos de Diego", item 6).
+  - **Só o conector do SCL sai das sessões de agente.** Os outros conectores da conta continuam, entre eles o do Neon, que o CLAUDE.md libera para o trabalho desde 14/10 ("sem o acesso ao banco o trabalho não anda"). O mecanismo é por conector: por exemplo, uma regra de negação das ferramentas do servidor SCL nas configurações do projeto (`.claude/settings.json`), versionada no Git e válida para todas as sessões no repositório. O nome exato do servidor e se a regra tira as ferramentas de um conector do claude.ai ficam **a confirmar** no M13.7. Se o mecanismo por conector for uma configuração da conta ou do ambiente, é passo de Diego ("Passos de Diego", item 6).
+  - **O liga-desliga de todos os conectores não é usado.** A variável `ENABLE_CLAUDEAI_MCP_SERVERS=false` e a configuração do ambiente da nuvem desligam todos os conectores do claude.ai de uma vez, inclusive o do Neon. Se não houver mecanismo por conector, a chave da produção não destrava enquanto o SCL estiver ligado no claude.ai, e o Claude leva a Diego as saídas que houver (por exemplo, usar o SCL só pela saída da OpenAI), sem decidir por ele. Antes da varredura de 16/10 (segunda), a regra era "desligar os conectores do claude.ai nas sessões de agente", o que tiraria também o Neon.
   - **Codex:** a configuração de MCP do app do Codex vale também para a CLI e a extensão (ver "Compatibilidade"), e por isso também para as sessões do Codex no repositório. A saída pelo Codex só vale com o SCL num perfil ou `CODEX_HOME` separado, que as sessões do repositório não usam, ou com o servidor desligado nelas (mecanismo **a confirmar** no M13.7). Sem isso, a saída fica sendo o ChatGPT web.
-  - **Trava de ordem:** a chave da produção só destrava no M13.7 depois de uma conferência: abrir uma sessão de agente do Claude Code e, se a saída pelo Codex for usada, uma do Codex no repositório, e confirmar que nenhuma ferramenta do SCL aparece. Sem essa conferência, o M13.7 não fecha. Antes da varredura de 16/10, a D12 dependia só do texto no CLAUDE.md, e o ROADMAP não trazia essa trava.
+  - **Trava de ordem:** a chave da produção só destrava no M13.7 depois de uma conferência: abrir uma sessão de agente do Claude Code e, se a saída pelo Codex for usada, uma do Codex no repositório, e confirmar que nenhuma ferramenta do SCL aparece ou pode ser chamada e que o conector do Neon continua presente. Sem essa conferência, o M13.7 não fecha. Antes da varredura de 16/10, a D12 dependia só do texto no CLAUDE.md, e o ROADMAP não trazia essa trava.
   - **No guia:** ligar o SCL só na conversa em que for usar, nunca na mesma conversa com Gmail, envio de e-mail ou navegação.
 - **Instruções escondidas:** a injeção pode vir de fora do SCL (um e-mail, uma página da web, outro conector) e usar o SCL como fonte dos dados. Ver "Riscos".
 
@@ -635,7 +674,7 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
   - anotações: `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true` e `openWorldHint: false`;
   - as anotações ajudam o assistente a não pedir confirmação, mas não substituem a autorização;
   - no ChatGPT Pro, só ferramentas de leitura funcionam.
-- **Nada grava.** Há teste: a contagem de linhas de todas as tabelas, exceto `uso_assistentes` e `tentativas_login`, é a mesma antes e depois de cada ferramenta.
+- **Nada grava.** Há teste: a contagem de linhas de todas as tabelas, exceto `uso_assistentes`, a contagem do dia (`uso_assistentes_dia`), a tabela de avisos (`avisos_assistentes`) e `tentativas_login`, é a mesma antes e depois de cada ferramenta. Antes da varredura de 16/10 (segunda), as exceções eram só `uso_assistentes` e `tentativas_login`.
 - **Nomes estáveis**, em português sem acento.
   - o ChatGPT guarda uma cópia das ferramentas, e uma mudança incompatível pode falhar sem aviso;
   - no workspace do ChatGPT, as ferramentas ficam congeladas até "Refresh";
@@ -653,7 +692,7 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
 - **Lista fechada de campos:**
   - as consultas do MCP selecionam as colunas explicitamente;
   - onde uma função do painel que devolve a linha inteira é reaproveitada (`listarReservas`, `listarBloqueios`, `listarRepassesDaOrganizacao`, `carregarDashboard`), a saída passa por um mapeamento de lista fechada, com teste de chaves por ferramenta e por papel. Isso vale só enquanto o MCP usa a conexão normal;
-  - **antes de ligar o papel por coluna do M13.11**, toda consulta do MCP passa a ter projeção própria, com as colunas explícitas: o Postgres recusa a consulta que pede uma coluna proibida antes de qualquer mapeamento, e as funções do painel que leem a linha inteira quebrariam `ver_calendario`, as ferramentas do Início e `ver_repasses`. As regras comuns (período, situação, conflito, indicadores) ficam em funções que recebem a projeção, para continuarem num lugar só; um teste roda cada ferramenta com o papel restrito no banco de teste (revisão do Codex de 16/10);
+  - **antes de ligar o papel por coluna do M13.11**, toda consulta do MCP passa a ter projeção própria, com as colunas explícitas: o Postgres recusa a consulta que pede uma coluna proibida antes de qualquer mapeamento, e as funções do painel que leem a linha inteira quebrariam `ver_calendario`, as ferramentas do Início e `ver_repasses`. As regras comuns (período, situação, conflito, indicadores) ficam em funções que recebem a projeção, para continuarem num lugar só; um teste roda cada ferramenta e cada aviso do Início com o papel restrito no banco de teste, e a lista de colunas do papel sai dele (revisão do Codex de 16/10; ver "Dados pessoais", item 4);
   - fatos que justificam a regra:
     - `listarReservasPaginadas` seleciona todas as colunas (`getTableColumns`, `listagem.ts:75`);
     - `obterReserva` (`repositorio.ts:570`) também;
@@ -702,7 +741,7 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
   - `carregarSessao`;
   - `podeFazer`;
   - `listarImoveis` (`app/src/imoveis/repositorio.ts:12`);
-  - `lerEmpresa` (`app/src/configuracoes/empresa.ts:41`);
+  - `nomeDaEmpresa` (`app/src/configuracoes/empresa.ts:69`), que lê só `organizacoes.nome`. Antes da varredura de 16/10 (segunda), esta ferramenta reaproveitava `lerEmpresa` (`empresa.ts:41`), que lê também a chave `empresa` de `configuracoes`, com a chave Pix, o CNPJ e os contatos da empresa;
   - `hojeISO`.
 
 **2. `listar_imoveis`** (M13.2a)
@@ -873,31 +912,63 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
    - por isso dispararia em todo `id`, em todo `link` com UUID e em todo valor a partir de 100000 centavos.
 4. **Opcional (D11):** um papel do Postgres só de leitura, com permissão por coluna, para as consultas das ferramentas do MCP (M13.11).
    - **lista de colunas permitidas, não de proibidas:** `GRANT SELECT (col1, col2, …) ON tabela`, só com as colunas que as projeções das ferramentas usam. Tabela ou coluna fora da lista é negada (deny-by-default). Antes da varredura de 16/10, o papel era descrito por seis colunas proibidas (`hospede_nome`, `hospede_email`, `hospede_telefone`, `observacoes`, `codigo_canal` e `chave_pix`), sem tabela. Pelo schema da `main`, isso deixava passar dado pessoal em `proprietarios`, `representantes`, `repasses`, `bloqueios`, `imoveis`, `imoveis_detalhes` e `usuarios`, e o "`select *` falha" só valia em parte das tabelas;
-   - **lista inicial do nível 0,** fechada no M13.11 a partir das projeções próprias (as tabelas lidas pelos geradores do Início entram pela projeção de cada aviso, pela mesma regra):
-     - `imoveis`: `id`, `organizacao_id`, `codigo`, `nome`, `cidade`, `ativo`;
-     - `reservas`: `id`, `organizacao_id`, `imovel_id`, `codigo`, `origem`, `estado`, `checkin`, `checkout`, `hospedes`, `valor_bruto`, `taxa_canal`, `valor_liquido`, `recebimento`, `reservada_em`, `cancelada_em`, `confirmada_em` e as colunas de conferência que os avisos usam;
+   - **lista inicial do nível 0,** tirada do código na segunda varredura de 16/10, por ferramenta e por aviso do Início (as tabelas lidas pelos geradores do Início entram pela projeção de cada aviso, pela mesma regra). É o ponto de partida: a lista final sai do teste descrito logo abaixo. Antes da revisão do Codex de 16/10, a lista não tinha as tabelas de `ver_reserva` e dos outros avisos do Início:
+     - `organizacoes`: `id`, `nome` (o nome da empresa em `sobre_meu_acesso`, por `nomeDaEmpresa`);
+     - `imoveis`: `id`, `organizacao_id`, `codigo`, `nome`, `cidade`, `ativo` e `fuso` (as datas dos avisos de alteração e das partes do proprietário);
+     - `reservas`: `id`, `organizacao_id`, `imovel_id`, `codigo`, `origem`, `estado`, `checkin`, `checkout`, `hospedes`, `valor_bruto`, `taxa_canal`, `valor_liquido`, `recebimento`, `reservada_em`, `cancelada_em`, `confirmada_em` e as colunas de conferência que os avisos usam (`divergencia_em`, `conferencia_resolvida_em`, `valor_retido`);
      - `bloqueios`: `id`, `organizacao_id`, `imovel_id`, `inicio`, `fim`, `proprietario_id` (para o rótulo "Uso próprio");
+     - `recebimento_por_canal`: `organizacao_id`, `imovel_id`, `origem`, `recebimento` (quem recebe do canal em `ver_reserva`, por `lerRecebimento`, `app/src/imoveis/recebimento.ts:14-21`, e nas regras em vigor do Início);
      - `proprietario_imoveis`: `proprietario_id`, `imovel_id`;
      - `proprietarios`: `id`, `organizacao_id`, `ativo`, `periodicidade_repasse`, **sem** `nome`;
+     - `contratos`: `id`, `organizacao_id`, `imovel_id`, `tipo`, `comissao_bp`, `inicio`, `fim`, **sem** `observacoes` (a periodicidade do dono em `ver_repasses`, `app/src/repasses/proprietario.ts:27-36`, e os avisos "Sem contrato vigente" e "Sem proprietário" do Início, por `regrasEmVigor`, `app/src/sistema/regras.ts:27-60`);
      - `repasses`: as colunas de valor, data, tipo, situação e estorno, e `proprietario_id`;
      - `repasse_itens`: `repasse_id`, `reserva_id`, `imovel_id`, `competencia`, `valor`, `liberado_em`;
-     - `lancamentos`: as colunas de valor, tipo, estado e competência, e os ids;
+     - `lancamentos`: as colunas de valor (`valor`, `montante`, `efeito_saldo`), tipo, estado, origem, competência, `data_caixa`, `estorno_de`, `chave_origem` e os ids (`reserva_id`, `imovel_id`, `proprietario_id`, `categoria_id`), **sem** `descricao`, `fornecedor` e `comprovante` (o financeiro de `ver_reserva`, os repasses e, no Início, os totais, a série por mês, os pendentes, as despesas a pagar e os adiantamentos);
+     - `categorias_despesa`: `id`, `organizacao_id` (as despesas a pagar);
+     - `ajustes`: `id`, `organizacao_id`, `imovel_id`, `esclarecido_em` (a contagem dos ajustes pendentes);
+     - `quitacoes_adiantamento`: `organizacao_id`, `adiantamento_id`, `valor`, `desfeita_em`; `contestacoes_adiantamento`: `organizacao_id`, `adiantamento_id`, `resolvida_em` (os adiantamentos a cobrar e os contestados);
+     - `rotinas`: `id`, `organizacao_id`, `ativa`, `proxima_data`, **sem** `titulo` e `descricao` (o aviso das rotinas atrasadas, pela regra de `situacaoDa`, `app/src/rotinas/rotinas.ts:56-61`);
+     - `pagamentos`: as colunas de situação, forma, desfecho, `motivo_sem_reserva`, `avisos`, `ao_vivo`, `etapa_cartao`, `conta_no_disjuntor`, `cancelamento_por`, `detalhe_provedor` (só códigos curtos do provedor, `app/src/db/schema.ts:1582-1583`), as datas, os valores e os ids, **sem** `pix_copia_e_cola`, `pix_imagem`, `pix_link` e `desafio_url` (os avisos do pagamento no site, `avisosDePagamento`, `app/src/pagamentos/consultas.ts:1578`, e o disjuntor do cartão);
+     - `devolucoes_pagamento`, `contestacoes_pagamento`, `cancelamentos_reserva`, `alteracoes_reserva` e `disjuntores_cartao` (`app/src/pagamentos/disjuntor.ts:74`): as colunas de situação, datas, valores, avisos e ids que os geradores de pagamento, de cancelamento (`avisosDeCancelamento`, `consultas.ts:1827`), de alteração (`avisosDeAlteracao`, `app/src/painel/dashboard.ts:344`) e de disputa (`avisosDeContestacao`, `dashboard.ts:453`) usam, sem os textos livres;
+     - `eventos_pagamento`: `organizacao_id`, `ao_vivo`, `recebido_em`; `cotacoes`: `id`, `codigo` (o aviso das alterações);
      - `pedidos_contato_proprietario` e `cadastros_marketplace`: só `organizacao_id` e `situacao`, as colunas que os contadores do Início usam (`contarPedidosNovos`, `proprietarios/pedidos-contato.ts:234`, e `contarPendentes`, `marketplace/cadastro.ts:220`, chamados em `painel/dashboard.ts:129`). Nome, e-mail, telefone, mensagem e as outras colunas ficam negadas. Antes da revisão do Codex de 16/10, as duas tabelas estavam em "sem acesso nenhum", e `ver_pendencias` falharia com erro de permissão;
-     - sem acesso nenhum: `usuarios`, `representantes`, `convites`, `codigos_login`, `tentativas_login`, `auditoria`, `imoveis_detalhes`, `mensagens_hospede` e `arquivos`;
+     - sem acesso nenhum: `usuarios`, `representantes`, `convites`, `codigos_login`, `tentativas_login`, `auditoria`, `imoveis_detalhes`, `mensagens_hospede`, `arquivos`, `rotina_execucoes` (com a `observacao` de cada execução) e `configuracoes` (ver abaixo);
+   - **funções do painel que leem colunas pessoais e, por isso, ganham projeção própria no MCP,** com a regra comum numa função que recebe a projeção (uma regra, um lugar). Com o papel ligado, cada uma delas falharia com erro de permissão:
+     - `listarRepassesDaOrganizacao` e `preverRepasses` leem `proprietarios.nome`, `email` e `chave_pix` (`app/src/repasses/repasses.ts:1241` e `478`); `itensDoRepasse` lê `reservas.hospede_nome` (`repasses.ts:796`);
+     - `regrasEmVigor` lê `proprietarios.nome` só para saber se o imóvel tem dono (`app/src/sistema/regras.ts:35`); a projeção do aviso usa só `proprietario_imoveis`;
+     - `listarAdiantamentos` lê `proprietarios.nome` (`app/src/adiantamentos/adiantamentos.ts:75`), e `avisosDeDescontos` e `avisosDeContestacaoNosRepasses` também (`app/src/repasses/descontos.ts:215`, `app/src/repasses/avisos-contestacao.ts:62`); os dois avisos já ganham a versão estruturada sem nome (ver `ver_pendencias`);
+     - `alteracoesComMensagemPendente` (`app/src/mensagens/hospede.ts:743`) chama `alvosDeAlteracao`, que lê `reservas.hospede_nome` e `hospede_email` (`hospede.ts:673-674`); a escalada da disputa usa `partesDoProprietario` (`app/src/painel/dashboard.ts:550`), que lê `reservas.hospede_nome` (`app/src/repasses/extrato.ts:399`);
+     - `listarRotinas` lê a linha inteira de `rotinas` e de `rotina_execucoes` (`app/src/rotinas/rotinas.ts:199-210`); `listarLancamentos` (`app/src/financeiro/ledger.ts:261`), `listarDespesas` (`app/src/despesas/despesas.ts:298-326`), `listarAjustes` (`app/src/ajustes/ajustes.ts:301-318`), `listarContratos` e `avisosDePagamento` leem linhas inteiras, com textos livres;
+   - **`configuracoes` sem GRANT:** a tabela guarda uma linha por chave, com o valor inteiro num JSON (`organizacao_id`, `chave`, `valor`, `atualizado_em` e `atualizado_por`, `app/src/db/schema.ts:681-691`), e toda leitura passa por `lerConfig`, que filtra só pela chave (`app/src/configuracoes/armazem.ts:19-25`). Um GRANT por coluna não separa linhas: com `SELECT (organizacao_id, chave, valor)`, o papel leria `select valor from configuracoes where chave = 'empresa'`, com a chave Pix, o CNPJ, o e-mail, o telefone, o endereço e o encarregado da empresa (`app/src/configuracoes/empresa.ts:11-22`), os modelos de mensagem e qualquer chave futura. O `select *` continuaria falhando, porque `atualizado_em` ficaria sem GRANT, mas a consulta pela coluna `valor` vazaria. Por isso:
+     - a migração cria uma visão própria (por exemplo, `mcp_configuracoes`), do dono das tabelas e sem `security_invoker`, como a do nível 1, com `REVOKE ... FROM PUBLIC` e `SELECT` só para os papéis do MCP. Ela devolve só as chaves e os campos que as leituras usam: de `regras_financeiras`, as versões com `desde`, `base`, `recebimento` e `prazoPagamento` (`app/src/configuracoes/regras-financeiras.ts:87-100`; o padrão de quem recebe do canal em `ver_reserva` e nas regras em vigor do Início); de `pagamento_site`, só `diasAvisoDocumentacao` (`app/src/painel/dashboard.ts:481`); de `repasses_regras`, as regras de periodicidade (`app/src/repasses/regras-config.ts:13-15`). Outra chave só entra com um caso do teste abaixo que precise dela;
+     - as funções que interpretam cada chave passam a receber essa fonte, e a regra de cada chave continua num lugar só;
+     - `sobre_meu_acesso` lê o nome da empresa por `nomeDaEmpresa` (`organizacoes.nome`), sem `lerEmpresa`. Os metadados anônimos continuam com `lerEmpresa` pela conexão normal (ver "Endereço público"), fora do papel;
+     - antes da varredura de 16/10 (segunda), `configuracoes` não estava em lista nenhuma: sem GRANT, as ferramentas que leem regras falhariam; com o GRANT que a regra das projeções pedia, a chave `empresa` sairia inteira;
+   - **a lista final sai de um teste, não da memória:** um teste roda, com o papel do nível 0, cada ferramenta (com e sem valores, em cada papel da lista) e cada aviso do Início, num cenário do banco de teste que dispara cada gerador, e falha com qualquer erro de permissão do Postgres (`42501`, `insufficient_privilege`). Coluna ou chave nova só entra na migração com um caso desse teste que precise dela. O teste de `ver_pendencias` com os avisos de pedidos de contato e de cadastros do marketplace é um desses casos. Antes da revisão do Codex de 16/10, só esses dois contadores tinham o teste, e `ver_reserva` (`recebimento_por_canal`) e os outros avisos do Início falhariam com o papel ligado;
    - **teste:** com o papel do nível 0, o Postgres recusa cada coluna proibida, com a tabela:
      - `reservas`: `hospede_nome`, `hospede_email`, `hospede_telefone`, `hospede_origem`, `codigo_canal`, `observacoes`, `fonte`, `id_fonte` e `beds24_id`;
      - `proprietarios`: `nome`, `documento`, `email`, `telefone`, `endereco`, `chave_pix` e `observacoes`;
      - `representantes`: `nome`, `email` e `telefone`;
      - `pedidos_contato_proprietario` e `cadastros_marketplace`: todas as colunas, menos `organizacao_id` e `situacao`;
-   - **teste:** `ver_pendencias`, com os avisos de pedidos de contato e de cadastros do marketplace, roda inteira com o papel do nível 0;
      - `repasses`: `chave_pix_paga`, `email_para`, `email_pedido`, `comprovante` e `motivo_estorno`;
      - `bloqueios.motivo`, `imoveis.endereco`, `imoveis_detalhes.complemento`, `contratos.observacoes`, `lancamentos.descricao`, `lancamentos.fornecedor` e `lancamentos.comprovante`;
      - `profissionais_limpeza`: `nome`, `telefone` e `observacoes`;
      - `usuarios`: `email` e `senha_hash`;
+     - `pagamentos`: `pix_copia_e_cola`, `pix_imagem`, `pix_link` e `desafio_url`; `rotinas`: `titulo` e `descricao`;
+     - `rotina_execucoes` e `configuracoes`: a tabela inteira, inclusive `select valor from configuracoes where chave = 'empresa'`; e a visão `mcp_configuracoes` não devolve a chave `empresa`;
+     - antes da varredura de 16/10 (segunda), o teste de `ver_pendencias` tinha entrado no meio desta lista, e as colunas de `repasses`, `bloqueios`, `imoveis`, `imoveis_detalhes`, `contratos`, `lancamentos`, `profissionais_limpeza` e `usuarios` tinham ficado penduradas nele;
    - com isso, um `select *` falha em vez de vazar, em qualquer tabela;
-   - criar o papel no Neon é mudança de configuração e pede o "pode" de Diego. As permissões (GRANT) vão numa migração versionada;
+   - **como os papéis nascem, só por SQL:** pela documentação do Neon (https://neon.com/docs/manage/roles, lida em 16/10), todo papel criado pela tela de papéis do Console, pela API ou pela CLI entra no `neon_superuser`, que tem `pg_read_all_data`, `pg_write_all_data`, `BYPASSRLS`, `CREATEROLE` e `GRANT ALL` nas tabelas do schema `public`. Com um papel desses, `select hospede_nome from reservas` funciona, os GRANT por coluna deixam de importar e o papel ainda grava. Só o papel criado por SQL, inclusive no editor de SQL do próprio Neon, fica com os privilégios básicos. Por isso:
+     - **o papel de grupo**, sem login (`mcp_nivel0`, `NOLOGIN`), nasce na própria migração, de forma idempotente (`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mcp_nivel0') THEN CREATE ROLE mcp_nivel0 NOLOGIN; END IF; END $$`), e recebe os GRANT. Assim a migração roda igual na produção, no banco das prévias e no PGlite dos testes: o dono do banco no Neon pode criar papéis, e o PGlite roda como superusuário. Um GRANT para um papel que não existe derrubaria a migração do build (`vercel-build` roda `scripts/migrar.mts` antes do `next build`, `app/package.json:16`) e o banco de teste pré-migrado (`gerarRetrato`, `app/src/db/testing.ts:98-101`);
+     - **o papel com login** de cada nível nasce por um comando SQL, no editor de SQL do Neon, em cada branch: a `main` (produção) e a `preview` (prévias). No Neon, os papéis são de cada branch, e um papel criado na `main` depois de a `preview` existir não aparece nela. O comando cria o login já como membro do grupo (`CREATE ROLE ... LOGIN PASSWORD ... IN ROLE mcp_nivel0`), e uma troca de senha depois também é por SQL (`ALTER ROLE ... PASSWORD`). A senha nunca vai para o Git, o chat ou um agente: Diego a cria, roda o comando e guarda o endereço de conexão numa variável própria da Vercel, uma por ambiente. É mudança de configuração do banco e pede o "pode" de Diego (D11);
+     - **nunca** pela tela de papéis do Console, pela API, pela CLI ou pelo conector do Neon (a ferramenta de criar papel do conector usa a API);
+     - **descartado:** `SET LOCAL ROLE mcp_nivel0` numa transação da conexão do dono. Dispensaria o login, mas a mesma conexão volta a ser dona com `RESET ROLE`, e a separação passaria a depender só do código;
+     - **nos testes (PGlite):** a migração cria o grupo, e o teste roda cada ferramenta com `SET ROLE mcp_nivel0`. O PGlite não tem `neon_superuser`, então os testes não pegam um papel criado pelo caminho errado: quem pega é a conferência abaixo;
+     - antes da varredura de 16/10 (segunda), esta linha dizia que "criar o papel no Neon é mudança de configuração e pede o 'pode' de Diego", com os GRANT numa migração: o caminho normal do Console daria ao papel os poderes do `neon_superuser`, e a migração com GRANT para um papel criado à mão derrubaria o build na branch em que ele não existisse;
+   - **conferência ao subir a conexão restrita** (na primeira consulta de cada instância da função e no teste da homologação): com o papel da conexão, tudo isto precisa dar falso: `rolsuper`, `rolbypassrls` e `rolcreaterole` do papel; ser membro de `neon_superuser` (por `pg_has_role`, só depois de conferir em `pg_roles` que ele existe, porque no PGlite ele não existe e a função daria erro), de `pg_read_all_data` ou de `pg_write_all_data`; ter `INSERT`, `UPDATE` ou `DELETE` em qualquer tabela (`has_table_privilege`); ler `reservas.hospede_nome` (`has_column_privilege('reservas', 'hospede_nome', 'SELECT')`). Se qualquer uma der verdadeiro, o MCP não atende consulta nenhuma (toda ferramenta responde com `isError` e o motivo) e Configurações, na aba Assistentes, mostra o aviso;
+   - **sem conexão restrita:** com o M13.11 ligado, se a variável da conexão restrita faltar ou a conexão falhar, o MCP também não atende e avisa. Nunca volta em silêncio para a conexão do dono;
    - sessão, tokens e registro de uso continuam pela conexão normal (`carregarSessao` lê a linha inteira de `usuarios`);
-   - esse é o papel do **nível 0**. As consultas do nível 1 (M13.9) usam um **segundo papel** só de leitura, escolhido pela conexão, com as colunas do nível 0 mais `reservas.codigo_canal` e `proprietarios.nome` (o nível 1 mostra o nome do proprietário inteiro);
+   - esse é o papel do **nível 0**. As consultas do nível 1 (M13.9) usam um **segundo papel** só de leitura, escolhido pela conexão, com as colunas do nível 0 mais `reservas.codigo_canal` e `proprietarios.nome` (o nível 1 mostra o nome do proprietário inteiro). Ele nasce pelas mesmas regras: grupo sem login criado pela migração de forma idempotente, login próprio criado por SQL em cada branch, com a sua variável na Vercel, e a mesma conferência ao subir, que também exige `has_column_privilege('reservas', 'hospede_nome', 'SELECT')` falso;
    - o segundo papel **não** recebe `reservas.hospede_nome`, que guarda o nome completo (`db/schema.ts:390`). Um GRANT por coluna não consegue dar só o primeiro nome, e o corte feito só no código não protege no banco: com a coluna liberada, uma projeção errada ou um `select *` com esse papel devolveria o sobrenome. No lugar da coluna, o papel recebe `SELECT` numa visão própria (por exemplo, `mcp_reservas_nivel1`), criada na migração, com o id da reserva e o nome já cortado no banco (primeiro nome e inicial do último). O corte fica numa função SQL, a única regra dele; o código do MCP só lê o resultado e não corta de novo. A visão pertence ao dono das tabelas e fica sem `security_invoker`, então o Postgres confere as permissões do dono e o segundo papel lê o nome cortado sem ter acesso à coluna;
    - a busca por nome do nível 1 (M13.9) também não lê a coluna com esse papel: ela usa uma função SQL de busca, criada na mesma migração com `security definer` e `search_path` fixo, que recebe a organização e o termo e devolve só os ids das reservas que casam pelo nome completo, nunca o nome. O nome mostrado vem da visão;
    - **quem pode chamar:** no Postgres, toda função nasce com `EXECUTE` para `PUBLIC`, ou seja, para qualquer papel, inclusive o do nível 0. Sem cuidado, o nível 0 poderia testar nomes na função de busca e cruzar os ids devolvidos com as reservas que ele já vê, o que quebraria a promessa da v1 de não chegar a nome nenhum. Por isso a migração faz `REVOKE EXECUTE ... FROM PUBLIC` na função de busca e na do corte e dá `EXECUTE` só ao segundo papel. A função do corte precisa desse `EXECUTE`, porque o Postgres confere as funções de uma visão com o papel de quem lê a visão. A visão já nasce sem acesso para `PUBLIC`, e o `GRANT SELECT` dela vai só para o segundo papel;
@@ -973,7 +1044,8 @@ aí no futuro".
   - o gatilho só muda por uma migração nova, revisada no PR e guardada no Git;
   - a trava mais forte é o app usar um papel do banco sem poder de mudar a `auditoria` nem desligar o gatilho. Isso
     pede separar o papel do app do papel das migrações, num item próprio fora do M13.11 (que é só o papel de leitura
-    do MCP e não resolve isso), e criar papéis no Neon pede o "pode" de Diego.
+    do MCP e não resolve isso), e criar papéis no Neon pede o "pode" de Diego, pela mesma regra do M13.11 (só por SQL;
+    ver "Dados pessoais", item 4).
 - **Backup:** o histórico fica no banco e entra no backup do Neon: histórico de 7 dias e snapshots, ampliados em
   3/10. Ele não vai para o Git nem para o backup do repositório, pela regra de dados pessoais.
 - **O que fica de fora:** o registro de uso das consultas (`uso_assistentes`, M13.5) é outra coisa. Ele guarda o
@@ -1000,12 +1072,21 @@ aí no futuro".
   frases fixas do sistema. A lista é o ponto de partida: o M13.12 faz uma varredura de todas as chamadas de
   `registrarAuditoria` e `auditar`, com teste. Antes da varredura de 16/10, o texto citava só os dois primeiros grupos,
   sem a origem do hóspede, a sincronização, o endereço e as observações do proprietário.
-- **Ordem dentro do M13.12,** para nem a rotina de guarda nem um pedido de titular precisarem tocar a `auditoria`:
-  1. **máscara na gravação** dos campos pessoais de `mudancas`, como já se faz com e-mail, telefone, documento e Pix.
-     O histórico registra que o campo mudou ("(alterado)"), sem o valor. É minimização (art. 6º, III) e não depende do
-     advogado;
-  2. **uma migração revisada** anonimiza as linhas que já existem, registrada como correção;
-  3. **só então o gatilho.**
+- **Ordem,** para nem a rotina de guarda nem um pedido de titular precisarem tocar a `auditoria`:
+  1. **máscara na gravação** dos campos pessoais de `mudancas` (M13.12), como já se faz com e-mail, telefone, documento
+     e Pix. O histórico registra que o campo mudou ("(alterado)"), sem o valor. É minimização (art. 6º, III) e não
+     depende do advogado;
+  2. **o gatilho** (M13.12);
+  3. **as linhas que já existem são anonimizadas depois da resposta do advogado (D4), no M13.14:** uma migração
+     revisada, registrada como correção, que desliga o gatilho só dentro da própria transação, anonimiza e o religa
+     (o gatilho só muda por migração revisada), com snapshot do Neon tirado antes e registrado no PR. O que o advogado
+     disser sobre o prazo de guarda e sobre manter parte do conteúdo muda o alcance dela antes de rodar.
+
+  Antes da varredura de 16/10 (segunda), a anonimização das linhas antigas era o passo 2 do M13.12, antes do gatilho.
+  A migração roda no deploy da produção (`vercel-build`, `app/package.json:16`), e, passados os backups do Neon (7
+  dias de restauração por ponto no tempo e snapshots guardados por até 35 dias; guia, seção 6, item 23b), o conteúdo
+  deixaria de existir. A pergunta ao advogado ("Passos de Diego", item 4) chegaria depois do fato. A outra saída era
+  manter a ordem e dizer que a anonimização é irreversível e vem antes do advogado; ficou a que espera a resposta.
 
   Um teste planta valores pessoais fictícios, roda cada ação que audita e confere que nenhum aparece em
   `auditoria.mudancas`.
@@ -1013,15 +1094,16 @@ aí no futuro".
   (`requisitos/product/PAGINAS-LEGAIS.md`, "Prazo de guarda", diz que isso "precisa virar uma regra (...) e uma
   rotina") e atender pedidos de eliminação ("Se não houver contrato, você pode pedir para apagar a qualquer momento";
   art. 18), com resposta completa em até 15 dias (art. 19). Uma rotina recorrente não roda como migração, e um PR por
-  pedido, com várias rodadas de revisão, não garante o prazo. Com o histórico já sem dado pessoal, nada disso precisa
-  de exceção ao gatilho. Antes da varredura de 16/10, a única exceção era anonimizar por migração revisada, e a máscara
-  era "a outra saída", a decidir com o advogado.
+  pedido, com várias rodadas de revisão, não garante o prazo. Com as linhas novas sem dado pessoal e as antigas
+  anonimizadas no M13.14, nada disso precisa de exceção ao gatilho. Entre o M13.12 e o M13.14, um pedido de eliminação
+  que alcance uma linha antiga vai ao advogado com a D4. Antes da varredura de 16/10, a única exceção era anonimizar
+  por migração revisada, e a máscara era "a outra saída", a decidir com o advogado.
 - **Se Diego ou o advogado quiserem manter o conteúdo pessoal no histórico (D4):** a exceção ao gatilho é um caminho
   estreito, nunca uma migração por caso: uma função que troca só as chaves pessoais de uma entidade por
   "(anonimizado em dd/mm)", chamada pela rotina de guarda e por uma ação do painel com `BotaoConfirmar`, que registra
   a correção. O prazo de guarda e a forma de atender os pedidos vão ao advogado com a D4.
 - **Ordem:** o M13.12 não depende do resto do M13 (só do M12.2, como os primeiros itens do M13) e já protege o
-  sistema todo. A fase 2 (M13.13) só começa com ele pronto.
+  sistema todo. A fase 2 (M13.13) só começa com ele pronto. O M13.14 espera a D4 e o M13.12.
 
 ## Compatibilidade
 
@@ -1034,10 +1116,10 @@ aí no futuro".
 
 | Assistente | Plano | Onde liga | O que muda para o SCL |
 |---|---|---|---|
-| Claude (claude.ai, app de computador, celular, Cowork) | Free (só 1 conector), Pro, Max, Team e Enterprise. No Team e no Enterprise, só o Owner adiciona. Sem chave de API | **Pro e Max:** Customize > Connectors > "+ Add" > "Add custom connector". **Team e Enterprise (Owner):** Organization settings > Connectors > Add > Custom > Web. Nomes na versão em português **a confirmar** | Retorno `https://claude.ai/api/mcp/auth_callback`. Exige 401 para começar, `resource` igual à URL digitada (colar sem barra final), só o primeiro `authorization_servers`, token em form-urlencoded e `invalid_grant`. Usa CIMD com `client_id_metadata_document_supported` e `none`; endereço do documento **a confirmar** (bloqueante). Formato de 2025 (inferido). Limites: cerca de 150 mil caracteres e 240 s por chamada. Um 403 sem `insufficient_scope` aparece como erro final |
+| Claude (claude.ai, app de computador, celular, Cowork) | Free (só 1 conector), Pro, Max, Team e Enterprise. No Team e no Enterprise, só o Owner adiciona. Sem chave de API | **Pro e Max:** Customize > Connectors > "+ Add" > "Add custom connector". **Team e Enterprise (Owner):** Organization settings > Connectors > Add > Custom > Web. Nomes na versão em português **a confirmar** | Retorno `https://claude.ai/api/mcp/auth_callback`. Exige 401 para começar, `resource` igual à URL digitada (colar sem barra final), só o primeiro `authorization_servers`, token em form-urlencoded e `invalid_grant`. Usa CIMD com `client_id_metadata_document_supported` e `none`; documento `https://claude.ai/oauth/mcp-oauth-client-metadata`, baixado em 16/10, conferido na primeira conexão com a chave da produção travada. Formato de 2025 (inferido). Limites: cerca de 150 mil caracteres e 240 s por chamada. Um 403 sem `insufficient_scope` aparece como erro final |
 | Claude Code | O mesmo login do claude.ai | Recebe sozinho os conectores do claude.ai (ver "Sessões de agente"), ou `claude mcp add --transport http scl <emissor>/api/mcp` | Endereço local com qualquer porta; documento CIMD `https://claude.ai/oauth/claude-code-client-metadata`; resposta de até 25 mil tokens. Se chama pelo proxy da Anthropic quando usa o conector do claude.ai fica **a confirmar** |
 | ChatGPT (web) | Business e Enterprise/Edu: MCP completo, ligado pelo administrador. Pro: "read/fetch", suficiente para a v1. Plus: **a confirmar** (a tabela de preços sugere que sim; a ajuda não cita). Free e Go: não | Só no site: chatgpt.com → Plugins → "+" → Add custom MCP server → URL → Configure authentication (OAuth) → aceitar o aviso → Create as a plugin. Não precisa do Developer Mode. No celular não dá para ligar; se dá para usar depois de ligado fica **a confirmar** | CIMD `https://chatgpt.com/oauth/client.json`, aceito pelo `"none"` da lista plural; retorno fixo com `iss`; `offline_access` obrigatório para não perder o acesso. `securitySchemes` e `_meta["mcp/www_authenticate"]` só servem para login por ferramenta e **não são necessários** quando o servidor inteiro exige login. `search` e `fetch` não são obrigatórios ("They are no longer required"); só o "company knowledge" (Business e Enterprise) precisa deles. No workspace, as ferramentas ficam congeladas até "Refresh". Limites de tamanho e de tempo **a confirmar** |
-| Codex (app de computador, CLI e extensão de IDE) | Incluído no Free, Go, Plus, Pro, Business, Edu e Enterprise (Free e Go com acesso limitado). O uso sai da assinatura | **App:** Settings → MCP servers → Add server. **CLI:** `codex mcp add scl --url <emissor>/api/mcp` e depois `codex mcp login scl` | CIMD `https://chatgpt.com/oauth/codex/client.json` (`native`, `none`); retorno `http://127.0.0.1:<porta>/callback`, fixo porque o SCL manda `iss`. Dá preferência aos escopos anunciados pelo servidor. O ChatGPT web não lê a configuração do Codex. **É a saída garantida dentro da OpenAI se o plano de Diego for o Plus**, com o SCL num perfil separado do usado nas sessões do repositório (ver "Sessões de agente", D12) |
+| Codex (app de computador, CLI e extensão de IDE) | Incluído no Free, Go, Plus, Pro, Business, Edu e Enterprise (Free e Go com acesso limitado). O uso sai da assinatura | **App:** Settings → MCP servers → Add server. **CLI:** `codex mcp add scl --url <emissor>/api/mcp` e depois `codex mcp login scl` | CIMD `https://chatgpt.com/oauth/codex/client.json` (`native`, `none`); retorno `http://127.0.0.1:<porta>/callback`, fixo porque o SCL manda `iss`. Dá preferência aos escopos anunciados pelo servidor. O ChatGPT web não lê a configuração do Codex. **É a saída garantida dentro da OpenAI se o plano de Diego for o Plus**, com o SCL num perfil separado do usado nas sessões do repositório (ver "Sessões de agente", D12). O app e a CLI dividem a configuração e as credenciais: com os dois abertos, as renovações em paralelo derrubam a conexão (ver "Token"), por isso o SCL é usado num só deles por vez |
 | Gemini (app de consumidor) | Só para maiores de 18 anos, nos EUA, com conta pessoal, em inglês | Settings → Connected Apps | Diego, no Brasil, provavelmente não se qualifica |
 | Gemini CLI e Gemini Enterprise | CLI: no gratuito e no Google One, a página diz que ele foi substituído pelo Antigravity CLI em 18/06/2026 (**a confirmar**). Enterprise: o administrador liga | — | O Enterprise usa OAuth com cliente e segredo manuais (cliente confidencial), que a v1 não oferece |
 | GitHub Copilot (VS Code e outros IDEs), Cursor | Copilot Business e Enterprise: a política "MCP servers in Copilot" vem desligada. Cursor: plano **a confirmar** | Configuração do IDE (`mcp.json`) | OAuth confirmado no Visual Studio e no Cursor; nos outros IDEs, **a confirmar**. Se usam CIMD ou só DCR fica **a confirmar**: sem DCR na v1, podem não conectar. Assistente com retorno ou documento novo entra nas listas por um PR pequeno |
@@ -1052,6 +1134,8 @@ aí no futuro".
 
 Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios. Antes de cada PR: `npm run lint`, `npm run typecheck` e `npm test` em `app/`. Nos itens M13.3 a M13.5, também uma revisão adversarial antes do merge.
 
+**O que o PGlite prova e o que não prova:** o banco de teste tem uma conexão só e faz uma transação por vez (`app/src/pagamentos/cancelamento.test.ts:1049`), e `createTestDb` abre um banco separado a cada chamada (`app/src/db/testing.ts:31-35`). Por isso um `Promise.all` só pega leitura e gravação feitas fora de transação, e "duas conexões do PGlite" são dois bancos. Nos casos de corrida (teto, renovação, código, Permitir), a garantia vem do comando condicional único ou do índice único, e o teste confere esse comando: a segunda troca do mesmo valor não pega linha, ou um gancho entre a leitura e a gravação mostra que não há janela. A corrida de verdade, com várias conexões, só se confere num Postgres local (`ehBancoLocal`, `app/src/db/client.ts:11`) ou na homologação. O CI não tem Postgres. Antes da varredura de 16/10 (segunda), o teste do teto prometia "duas conexões do PGlite".
+
 1. **Camadas de autorização:**
    - acesso desligado e conexão suspensa: só `sobre_meu_acesso` e `isError`;
    - pessoa tirada da lista: as conexões dela ficam revogadas na mesma operação, a chamada seguinte recebe 401 e a nova autorização é recusada com o texto da lista e `error=access_denied`;
@@ -1064,7 +1148,8 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
    - imóvel de outra organização recebe "não encontrado";
    - tirar a pessoa da lista revoga as conexões dela, com o motivo na auditoria, e pô-la de volta não reativa nenhuma (M13.5);
    - "Encerrar minhas sessões do painel" derruba o login e revoga as conexões da pessoa (M13.5);
-   - a página das próprias conexões abre para a operação da lista e mostra só as conexões dela; Configurações → Assistentes fica com o admin (M13.6).
+   - a página das próprias conexões abre para a operação da lista e mostra só as conexões dela; Configurações → Assistentes fica com o admin (M13.6);
+   - um `tools/call` de ferramenta que não está no `tools/list` atual (por exemplo, `buscar_reservas` com o acesso desligado ou com a conexão suspensa, e `ver_repasses` numa conexão sem valores) recebe `isError` com o texto em português, nos dois formatos do protocolo; um nome que não existe em papel nenhum recebe -32602.
 2. **Lista fechada:** para cada ferramenta, cada papel e "com e sem valores", as chaves da saída são exatamente as previstas.
 3. **Varredura de dados pessoais:**
    - **O que se planta** no banco de teste (dados fictícios):
@@ -1083,7 +1168,7 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
 4. **Busca:**
    - procurar pelo nome e pelo código do canal plantados devolve 0 resultados;
    - código fora do formato recebe "código inválido", sem repetir a entrada.
-5. **Nada grava:** a contagem de linhas de todas as tabelas, salvo `uso_assistentes` e `tentativas_login`, é a mesma antes e depois de cada ferramenta.
+5. **Nada grava:** a contagem de linhas de todas as tabelas, salvo `uso_assistentes`, `uso_assistentes_dia`, `avisos_assistentes` e `tentativas_login`, é a mesma antes e depois de cada ferramenta.
 6. **Repasses:**
    - imóvel sem proprietário: previsão vazia com aviso, e os repasses do imóvel saem pelos itens;
    - filtro `imovel` depois de troca de dono: traz o `a_pagar` do dono anterior daquele imóvel, com a parte do imóvel, e não traz os repasses do dono novo de outros imóveis;
@@ -1095,7 +1180,7 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
      - recurso com `scopes_supported: ["scl.consulta"]`, sem `offline_access`;
      - `issuer` sem barra final, igual ao `iss`.
    - **PKCE:** S256 aceito; `plain` e verificador errado recusados.
-   - **Código:** de uso único e com vencimento; o segundo uso revoga o que ele emitiu.
+   - **Código:** de uso único e com vencimento; o segundo uso revoga o que ele emitiu; na segunda troca do mesmo código, o comando não pega linha e cai na regra de reuso; a troca sem `redirect_uri` é aceita, e com um `redirect_uri` diferente do da autorização é recusada.
    - **Pedido:**
      - `redirect_uri` exata;
      - `resource` diferente, inclusive com barra final, recusado;
@@ -1107,11 +1192,15 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
    - **Renovação:**
      - trocada a cada uso;
      - `invalid_grant` quando não vale;
-     - qualquer reuso, mesmo logo depois da troca, derruba a conexão e gera aviso;
-     - o servidor nunca devolve de novo um par já emitido.
+     - qualquer reuso, mesmo logo depois da troca, derruba a conexão e gera um aviso só;
+     - o servidor nunca devolve de novo um par já emitido;
+     - duas renovações com o mesmo token: a segunda não pega linha, a conexão fica revogada e nenhum token dela é aceito;
+     - uma renovação com a conexão revogada no meio (gancho no teste) não deixa token que funcione;
+     - o token de acesso anterior continua valendo depois de uma renovação normal, até vencer.
    - **Revogação:** RFC 7009.
-   - **CIMD**, pelo adaptador falso com as cópias dos três documentos reais:
+   - **CIMD**, pelo adaptador falso com as cópias dos quatro documentos reais:
      - o ChatGPT é aceito pelo `"none"` do plural;
+     - o documento do claude.ai é aceito, com o retorno dele, e os `grant_types` a mais (`urn:ietf:params:oauth:grant-type:jwt-bearer`) não fazem recusar;
      - o documento real do Codex é aceito, com os dois retornos dele (`127.0.0.1` e `localhost`); os de Claude Code e ChatGPT, com os retornos deles;
      - documento só com `private_key_jwt` é recusado;
      - `client_id` fora da lista exata (inclusive outra URL de `claude.ai` ou de `chatgpt.com`), documento grande, redirecionamento e `client_id` diferente da URL são recusados;
@@ -1125,6 +1214,7 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
    - `?pedido=` com formato errado ou vencido é recusado;
    - um destino fora de `/oauth/autorizar` é recusado;
    - uma segunda conexão do mesmo assistente mostra o aviso e substitui a anterior;
+   - dois Permitir do mesmo pedido geram uma conexão e um código; um Permitir depois da retirada da lista (gancho no teste) é recusado; o índice único recusa a segunda conexão ativa do mesmo assistente; a pessoa que volta à lista não reativa a conexão antiga, porque a entrada da lista é outra;
    - o aviso de retorno local aparece para Claude Code e Codex;
    - os cabeçalhos `frame-ancestors 'none'`, `X-Frame-Options: DENY` e `Cache-Control: no-store` estão em `/oauth/*`, `/entrar` e `/api/oauth/*`.
 9. **Rota MCP em processo**, com o handler chamado por `Request`:
@@ -1133,10 +1223,11 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
    - `Origin` estranho recebe 403;
    - corpo acima de 64 KB recebe 413;
    - sessão cortada por `ativo = false` e por `sessaoValidaDesde`;
-   - 429 no limite;
+   - 429 no limite de `tools/call`; um lote JSON-RPC recebe 400; a sequência `initialize`, `notifications/initialized` e `tools/list` antes de cada `tools/call`, com 10 ferramentas por minuto, não recebe 429;
    - uma enxurrada de tokens inválidos vinda de `160.79.104.x` não impede a chamada nem a renovação com token válido;
-   - teto diário de linhas atingido, pela soma do registro de uso no dia de São Paulo, que vira à meia-noite;
-   - teto reservado de forma atômica: com 10 linhas sobrando, uma resposta de 25 itens sai cortada em 10, com `truncado`; duas chamadas ao mesmo tempo perto do teto, em duas conexões do PGlite, nunca somam mais que o teto; sem sobra, `isError`;
+   - teto diário de linhas atingido, pela contagem da conexão no dia de São Paulo, que vira à meia-noite;
+   - teto reservado num comando só: com 10 linhas sobrando, uma resposta de 25 itens sai cortada em 10, com `truncado`; sem sobra, `isError`; o teste confere que a reserva é o `INSERT ... ON CONFLICT ... RETURNING`, de onde vem a garantia contra chamadas ao mesmo tempo (ver "O que o PGlite prova");
+   - com o relógio falso, uma chamada que começa às 23:59:58 e reserva às 00:00:01 conta num dia só, e nenhum dos dois dias passa do teto;
    - `listChanged: false` e `subscriptions/listen` recusado na hora;
    - conexão suspensa depois de religar recebe `isError` até ser reconfirmada.
 10. **As duas versões do protocolo:**
@@ -1147,12 +1238,18 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
     - os argumentos estruturados ficam gravados;
     - depois de uma tentativa com um nome fictício, nenhuma linha de nenhuma tabela contém esse nome.
 13. **Avisos e faixas** (M13.7):
-    - e-mail de conexão nova pelo correio falso;
-    - o "não fui eu" do e-mail desconecta só aquela conexão, uma vez, e só pelo botão; o token é gerado no envio e guardado só como hash;
-    - alertas de madrugada, de volume e de uso depois de dias parado;
-    - resumo semanal;
+    - e-mail de conexão nova pelo correio falso; com o correio falso falhando (incerto) na primeira tentativa e aceitando na segunda, chega um e-mail só, o link dele desconecta, a falha não impede a volta ao assistente com o código e nenhum token fica em claro no banco;
+    - o "não fui eu" do e-mail desconecta só aquela conexão, uma vez, e só pelo botão; o token é o mesmo em todas as tentativas daquela conexão;
+    - alertas de madrugada, de volume e de uso depois de dias parado, cada um uma vez: 20 chamadas na madrugada geram 1 aviso; duas chamadas em paralelo depois de 7 dias, 1; as chamadas depois do teto, 1; cinco chamadas de fora das faixas, uma revogação e 1 aviso; um envio que falha é repetido pela rotina;
+    - resumo semanal: a rotina rodada duas vezes na segunda manda um e-mail; com falha na segunda e rodada na terça, um; na segunda seguinte, o da semana nova;
     - chamada fora das faixas revoga a conexão hospedada; a conexão local não é afetada.
 14. **Integrações falsas:** correio, Mercado Pago do Início pelo provedor falso e documento CIMD pelo adaptador falso.
+15. **Papel restrito (M13.11):**
+    - a migração cria o grupo sem login de forma idempotente e não falha se ele já existir;
+    - cada ferramenta e cada aviso rodam com `SET ROLE mcp_nivel0` sem erro de permissão (a lista final de colunas sai daqui);
+    - as colunas proibidas e `configuracoes` são recusadas, e a visão das configurações não devolve a chave `empresa`;
+    - a conferência dá falso com o papel da migração, e verdadeiro com um papel de teste que tenha `INSERT` numa tabela ou leia `reservas.hospede_nome`; aí o MCP não atende e avisa;
+    - sem a conexão restrita, o MCP não atende e não usa a do dono.
 
 **Conferências fora dos testes automáticos:**
 - **Depois de cada deploy** (agente, sem credencial):
@@ -1160,9 +1257,11 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
   - `/api/mcp` sem token devolve 401 com o cabeçalho certo;
   - as prévias protegidas não são alcançáveis, como esperado.
 - **Na homologação (se D10):**
-  - com dados fictícios, Diego conecta o Claude, o ChatGPT e o Codex e confere o documento CIMD do claude.ai;
+  - com dados fictícios, Diego conecta o Claude, o ChatGPT e o Codex e confere que o claude.ai usa o documento da lista;
+  - duas chamadas em paralelo depois de 1 hora, dois terminais do Claude Code com a mesma conexão e o app e a CLI do Codex abertos ao mesmo tempo, para medir as renovações em paralelo ("Pontos a confirmar");
+  - no M13.11, a conferência do papel restrito com o login criado por SQL na branch `preview`;
   - opcional, **a confirmar:** o agente roda um cliente OAuth roteirizado contra a homologação, com usuário fictício.
-- **Antes de destravar a chave da produção (M13.7, D12):** abrir uma sessão de agente do Claude Code e, se a saída pelo Codex for usada, uma do Codex no repositório, e confirmar que nenhuma ferramenta do SCL aparece.
+- **Antes de destravar a chave da produção (M13.7, D12):** abrir uma sessão de agente do Claude Code e, se a saída pelo Codex for usada, uma do Codex no repositório, e confirmar que nenhuma ferramenta do SCL aparece ou pode ser chamada e que o conector do Neon continua presente. Conferir também que a tentativa de Diego no claude.ai com a chave travada mostrou o `client_id` na lista ("Passos de Diego", item 6).
 - **Em produção:** só depois do M13.7 e da D4. O agente acompanha só por contagens agregadas do registro de uso (chamadas e linhas por ferramenta, resultado e dia, como na tela de Configurações → Assistentes), nunca lendo as linhas nem os argumentos de `uso_assistentes`. Os argumentos guardam códigos de reserva e de imóvel com as datas, que são dado pessoal pseudonimizado. Antes da varredura de 16/10, esta linha dizia que o agente acompanhava "pelo registro de uso, que não tem dado pessoal".
 
 ## Passos de Diego (só o que só ele pode fazer)
@@ -1177,12 +1276,13 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
    - estas perguntas entram no dossiê único para o advogado e o contador, combinado com Diego em 16/10 (tudo de uma vez, perto do fim da construção); o Claude monta o dossiê, e Diego não precisa abrir este arquivo;
    - contar que a equipe vai consultar dados de operação e financeiros, pseudonimizados (sem nomes), por assistentes de IA de empresas de fora do Brasil;
    - perguntar a base legal, o mecanismo de transferência internacional (art. 33; Resolução CD/ANPD nº 19/2024, citada pela revisão), a menção nas seções "Com quem compartilhamos", "Dados fora do Brasil" e "Segurança" da Política, e o registro das operações de tratamento (art. 37);
-   - perguntar o prazo de guarda dos dados pessoais que o histórico das mudanças guardou até o M13.12 (daí em diante ele grava sem eles) e se basta anonimizá-los por migração revisada;
+   - perguntar o prazo de guarda dos dados pessoais que o histórico das mudanças guardou até o M13.12 (daí em diante ele grava sem eles) e se basta anonimizá-los por migração revisada; a anonimização espera essa resposta (M13.14);
    - perguntar como atender os pedidos de cada pessoa (art. 18 e 19: acesso, correção e eliminação, com resposta completa em até 15 dias), inclusive sobre o que o histórico já guardou;
    - para nomes (M13.9) ou proprietários (M13.10), versão nova da Política antes.
 5. **Opcional (D10):** dar o "pode" para a homologação na Vercel, para experimentar antes com dados fictícios.
 6. **Antes de ligar, se o Claude pedir:**
-   - **sessões de trabalho (D12):** se desligar os conectores do claude.ai nas sessões do Claude Code na nuvem for uma configuração do ambiente ou da conta, fazer essa configuração; o Claude diz onde no M13.7. A chave da produção só destrava depois da conferência de que nenhuma ferramenta do SCL aparece numa sessão de trabalho;
+   - **sessões de trabalho (D12):** se deixar o conector do SCL fora das sessões do Claude Code na nuvem depender de uma configuração do ambiente ou da conta, fazer essa configuração; o Claude diz onde no M13.7. Só o conector do SCL sai; o do Neon e os outros continuam, e o liga-desliga de todos os conectores não é usado. A chave da produção só destrava depois da conferência de que nenhuma ferramenta do SCL aparece numa sessão de trabalho e de que o Neon continua;
+   - **Claude com a chave travada (antes do M13.7):** com o endereço MCP já na produção e a chave ainda travada (depois do M13.5), tentar uma vez adicionar o SCL no claude.ai, pelo caminho do item 7, e entrar com o login de sempre. A tela do SCL deve dizer que o acesso por assistentes está desligado: isso mostra que o `client_id` do claude.ai está na lista, e nenhum dado sai. Se aparecer a página de erro, ela registra o `client_id`, que entra na lista por um PR pequeno, e Diego tenta de novo. É condição do M13.7;
    - **Google (opcional):** se o Google só devolver a hora do login (`auth_time`) com uma opção ligada no projeto do Google Cloud, ligar essa opção; o Claude diz onde no M13.4a. Sem ela, a tela de autorização do SCL aceita só a senha ou o código.
 
    **Depois do M13.7:** ligar o acesso em **Configurações → Assistentes**. A chave nasce desligada e, na produção, só destrava no M13.7.
@@ -1190,13 +1290,14 @@ Todos com Vitest e PGlite, sem rede, sem credenciais e só com dados fictícios.
    - no Pro ou no Max: Customize > Connectors > "+ Add" > "Add custom connector";
    - colar `https://scl-reconstrucao.vercel.app/api/mcp`, sem barra no fim;
    - entrar com o login de sempre e clicar em Permitir na tela do SCL.
-8. **Como usar:** abrir uma conversa só para o SCL, sem e-mail, envio de e-mail ou navegação na mesma conversa. As sessões em que o Claude ou o Codex trabalham no repositório ficam sem o conector pela configuração do item 6; não ligar o SCL nelas à mão.
+8. **Como usar:** abrir uma conversa só para o SCL, sem e-mail, envio de e-mail ou navegação na mesma conversa. As sessões em que o Claude ou o Codex trabalham no repositório ficam sem o conector do SCL pela regra do item 6; não ligar o SCL nelas à mão. Usar cada conexão num programa por vez: no Claude Code com conexão própria, uma sessão por vez; no Codex, só o app ou só a CLI. Dois programas renovando a mesma conexão ao mesmo tempo derrubam a conexão (ver "Token").
 9. **A saída pela OpenAI:**
    - dizer qual é o plano do ChatGPT e se ele tem contrato de proteção de dados (D5);
    - no Pro ou no Business: chatgpt.com → Plugins → "+" → Add custom MCP server;
    - no Plus: tentar o mesmo caminho e, se não aparecer, usar o app do Codex (Settings → MCP servers → Add server), com o SCL num perfil separado do usado nas sessões do repositório, como o Claude explicar no M13.7 (D12). Sem esse perfil, a saída fica sendo o ChatGPT web;
    - nos dois, a conexão vale 7 dias.
 10. **Se receber um aviso de conexão que não reconhece:** clicar em Desconectar no aviso do Início ou em "não fui eu" no e-mail. Em qualquer suspeita, seguir o "Plano de incidente".
+11. **Mais tarde, no M13.11 (D11):** dar o "pode"; rodar, no editor de SQL do Neon, o comando que o Claude passar para criar o login do papel restrito, uma vez na branch `main` e outra na `preview`, com uma senha criada por Diego, que não passa pelo chat; e pôr o endereço de conexão numa variável própria da Vercel, uma por ambiente. Nunca criar esse papel pela tela de papéis do Console do Neon. Se a conferência achar poder a mais, o MCP para e avisa em Configurações, na aba Assistentes. O mesmo vale para o segundo papel, se o M13.9 vier.
 
 ## Plano de incidente
 
@@ -1231,7 +1332,9 @@ Antes da varredura de 16/10, o passo 1 dizia que "Desligar" só suspende "e por 
 | Logs ou monitoramento futuro guardando corpo do pedido ou resposta | `verboseLogs` desligado; nenhum `console.*` com o corpo; erros sem repetir a entrada; teste do `console`; regra registrada para quando entrar o Sentry |
 | Falha no servidor de autorização próprio | Perfil estreito, sem DCR; testes de conformidade; revisão adversarial; chave de desligar; plano B por adaptador (D3) |
 | Defeito na biblioteca recente no caminho da autorização (`mcp-handler` 2.3.0, de 07/10, no mesmo processo que a `DATABASE_URL`) | Conferência do token no nosso código antes da biblioteca; `withMcpAuth` com `required: true`; versão exata com 14 dias de publicada; changelog, origem e ausência de script de instalação conferidos; `package-lock.json` revisado |
-| CIMD do claude.ai web sem endereço confirmado | Conferência na homologação (D10) ou antes de liberar a produção; o `client_id` recusado fica registrado inteiro na página de erro para ajustar a lista |
+| CIMD do claude.ai web diferente do documento baixado em 16/10 | Documento na lista exata e no adaptador falso; tentativa de Diego com a chave travada antes do M13.7, que é condição dele; o `client_id` recusado fica registrado inteiro na página de erro para ajustar a lista |
+| Papel restrito criado pelo caminho errado (Console, API, CLI ou conector do Neon) ganha os poderes do `neon_superuser` | Papéis só por SQL; conferência dos poderes ao subir a conexão restrita e na homologação; com poder a mais ou sem a conexão restrita, o MCP não atende e avisa |
+| Renovações em paralelo de clientes legítimos derrubam a conexão (sem tolerância) | Token de acesso anterior válido até vencer; orientação de um programa por vez; conferência na homologação; decisão pronta para Diego se o problema se confirmar ("Pontos a confirmar") |
 | Tetos "no total" ou por IP deixam qualquer um bloquear Diego | Contagem por conexão e usuário; IP só num teto geral folgado, que conta só pedido inválido e nunca barra um válido; dentro das faixas dos assistentes, só um teto global; `client_id` fora da lista recusado antes de contar |
 | Exceção de firewall abrangendo o site todo | Exceção só para as rotas de máquina (MCP, token, revogação, metadados) |
 | Mudanças no protocolo e nos assistentes (revisão 2026-07-28 recente, planos do ChatGPT mudando) | Biblioteca que atende as duas versões; versões exatas; testes das duas versões; itens "a confirmar" revistos na implementação |
@@ -1251,18 +1354,21 @@ Antes da varredura de 16/10, o passo 1 dizia que "Desligar" só suspende "e por 
 - **Reaproveitar `app/src/lib/token-assinado.ts`:** não tem hora de emissão, não respeita `sessaoValidaDesde` e não pode ser revogado.
 - **DCR na v1:** nenhum dos quatro assistentes precisa dele com CIMD anunciado. Ele aumentaria a superfície exposta e o tamanho do M13.3 e do M13.4.
 - **Emitir um par novo, ou devolver o mesmo par, na repetição da renovação em 30 s:** entregaria a conexão a quem copiou o token e o repetiu nesse tempo, sem aviso (revisão do Codex de 16/10).
+- **`SET LOCAL ROLE` na conexão do dono, no lugar do login do papel restrito:** a mesma conexão volta a ser dona com `RESET ROLE`, e a separação passaria a depender só do código (varredura de 16/10, segunda).
+- **Desligar todos os conectores do claude.ai nas sessões de agente:** tiraria também o do Neon, que o CLAUDE.md libera para o trabalho (varredura de 16/10, segunda).
 
 ## Pontos a confirmar
 
 | Ponto | Quando ou como | Bloqueia |
 |---|---|---|
-| Endereço e conteúdo do documento CIMD do claude.ai (web) | Na primeira conexão na homologação ou antes de liberar a produção | Claude web na produção |
+| Se o claude.ai usa `https://claude.ai/oauth/mcp-oauth-client-metadata` com o SCL (o documento foi baixado em 16/10) | Tentativa de Diego com a chave da produção travada, antes do M13.7, ou na homologação (se D10) | A chave da produção (M13.7) |
 | Se o Claude Code, com o conector do claude.ai, chama pelo proxy da Anthropic | Antes de ligar as faixas de saída (M13.7) | A trava das faixas para a família Claude |
-| Se `ENABLE_CLAUDEAI_MCP_SERVERS=false` desliga os conectores do claude.ai nas sessões de agente, e onde configurar (se for no ambiente da nuvem, é passo de Diego) | M13.7 | A chave da produção (D12) |
+| Como deixar só o conector do SCL fora das sessões de agente (regra de negação no `.claude/settings.json` do projeto, com o nome exato do servidor, ou configuração da conta ou do ambiente, que é passo de Diego), sem tirar os outros conectores; `ENABLE_CLAUDEAI_MCP_SERVERS=false` não serve, porque desliga todos | M13.7 | A chave da produção (D12) |
 | Como deixar o SCL fora das sessões do Codex no repositório (perfil, `CODEX_HOME` separado ou servidor desligado nelas) | M13.7 | A saída pelo Codex (sem isso, só o ChatGPT web) |
 | Se o Google devolve `auth_time` com `max_age=600` e se isso pede uma opção no projeto do Google Cloud | M13.4a | O login pelo Google na tela de autorização (sem isso, ela aceita só senha ou código) |
 | Se a ferramenta `mcp` da API da OpenAI sai das faixas de `chatgpt-connectors.json` | M13.7 | Nada (diz só se a lacuna da API, descrita em "Faixas de saída", vale também para o ChatGPT) |
-| Se Claude e ChatGPT repetem a renovação por falha de rede (sem tolerância, cada repetição obriga a conectar de novo; medir no uso e, se for frequente, levar a Diego) | M13.7 | Nada |
+| Se Claude, ChatGPT, Claude Code e Codex fazem uma renovação de cada vez por conexão, se dividem o token entre processos (o app e a CLI do Codex dividem a configuração) e se repetem a renovação ou a troca do código por falha de rede. Sem tolerância, cada repetição e cada renovação em paralelo obrigam a conectar de novo. Se o problema se confirmar, o Claude leva a Diego uma decisão pronta: nas conexões hospedadas, aceitar uma repetição de poucos segundos vinda de dentro das faixas (a API não renova; ver "Faixas de saída"); nas locais, ficar com a orientação de um programa por vez ou aceitar o custo | Homologação (se D10), com duas chamadas em paralelo depois de 1 hora e dois processos abertos ao mesmo tempo; sem ela, antes de liberar a saída; e medir no uso (M13.7) | A saída pelo Codex e o Claude Code com conexão própria |
+| Se Claude e ChatGPT mandam lote JSON-RPC | M13.5 | Nada (o lote recebe 400; se algum cliente precisar, cada `tools/call` dele passa a contar um) |
 | Quais `Origin` os assistentes mandam | M13.5 e homologação | Nada (sem `Origin` também passa) |
 | Quando o Claude passa a falar a 2026-07-28 (hoje é inferência pela documentação) | Acompanhamento | Nada |
 | Data de publicação do `@modelcontextprotocol/server` 2.3.1; se a 2.2.0 do `mcp-handler` tem o mesmo suporte; versão exata do zod | Na instalação (M13.5) | Nada |
@@ -1282,7 +1388,7 @@ Antes da varredura de 16/10, o passo 1 dizia que "Desligar" só suspende "e por 
 | # | Decisão | Recomendação padrão | Trava o quê |
 |---|---|---|---|
 | D1 | Quem pode conectar na v1 | Só você, por nome, numa lista em Configurações → Assistentes (não "qualquer admin"). A operação existe como opção desligada e só com plano de assistente que tenha contrato de proteção de dados (seriam contas pessoais de funcionários). O proprietário fica para o M13.10 | Só a opção da operação (M13.6) e o M13.10 |
-| D2 | Quanto de dado pessoal o assistente recebe | Nível 0: sem nomes, contatos ou textos livres; só códigos, valores e links. O nível 1 (primeiro nome e inicial do hóspede, nome do proprietário, código do canal) é o M13.9 | Só o M13.9 |
+| D2 | Quanto de dado pessoal o assistente recebe | Nível 0: sem nomes, contatos ou textos livres; só códigos, valores e links. O nível 1 (primeiro nome e inicial do hóspede, nome inteiro do proprietário, código da reserva no canal e busca por nome e por esse código) é o M13.9. Dá para escolher só uma parte (o hóspede, ou o proprietário e o código do canal), e o M13.9 liga só o que você escolher | Só o M13.9 |
 | D3 | Quem é o servidor de autorização | Próprio, dentro do app, com perfil estreito, sem DCR e com plano B por adaptador. Segue a proposta de 16/10 que Diego aprovou ("mesmo login", "endereço do próprio sistema"). Alternativas: provedor externo, ou Better Auth (não recomendado) | O M13.3 começa pela recomendação; se você preferir um provedor, o M13.3 muda antes do merge |
 | D4 | LGPD e Política de privacidade | Conferir com o advogado **antes de ligar na produção, já no nível 0**, com as perguntas de "Passos de Diego", item 4, no dossiê único para o advogado e o contador (combinado em 16/10). Para o nível 1 ou para proprietários, versão nova da Política antes | Ligar na produção; M13.9; M13.10 |
 | D5 | Seus planos do Claude e do ChatGPT | Dizer quais são e se têm contrato de proteção de dados; desligar o treino antes de conectar. No ChatGPT Pro, funciona no site, só leitura, o que basta. No Plus, testar no site e, se não der, usar o Codex, com o SCL num perfil separado do usado nas sessões do repositório (D12) | Ligar na produção (com a D4); conferência com o ChatGPT; M13.8 |
@@ -1290,10 +1396,10 @@ Antes da varredura de 16/10, o passo 1 dizia que "Desligar" só suspende "e por 
 | D7 | Validade de uma conexão | 30 dias no Claude e no Claude Code; 7 dias no ChatGPT e no Codex (a saída). Ajustável de 1 a 30 dias | Nada |
 | D8 | Avisos | Aviso no Início por 7 dias, com o botão Desconectar, e e-mail a cada conexão nova, com "não fui eu"; alertas de uso fora do padrão (a janela da madrugada pode ser ajustada ou desligada, porque você às vezes trabalha de madrugada); resumo semanal por e-mail | Nada |
 | D9 | Por quanto tempo guardar o registro de uso | 6 meses, com os argumentos estruturados (sem texto livre), para dar conta de um incidente | Nada |
-| D10 | Homologação para testar antes | Sim: uma branch fixa na Vercel, liberada da proteção, com o banco das prévias e dados fictícios. É mudança de configuração e pede o seu "pode" | Só o teste com assistentes antes da produção |
-| D11 | Papel só de leitura no banco, com permissão por coluna | Sim, como item próprio depois do M13.7 (M13.11). Criar o papel no Neon pede o seu "pode" | Só o M13.11 |
-| D12 | Sessões de trabalho do Claude e do Codex no repositório | Não usam o conector SCL: registrar no CLAUDE.md, desligar os conectores nessas sessões (pela variável, se confirmada, ou pela configuração do ambiente, que é passo seu) e conferir numa sessão que nenhuma ferramenta do SCL aparece. Pelo Codex, o SCL só num perfil separado do usado no repositório. Você usa o SCL numa conversa própria, sem e-mail nem navegação junto | O fechamento do M13.7 e a chave da produção |
-| D13 | Por quanto tempo guardar o histórico das mudanças | Para sempre o que mudou, protegido no banco (M13.12). Antes do gatilho, o histórico passa a gravar sem os dados pessoais (só "(alterado)"), e os que ele já guardou são anonimizados. O prazo e a forma de atender os pedidos das pessoas vão ao advogado (D4). O registro das consultas é outra coisa e segue a D9 (6 meses) | Nada |
+| D10 | Homologação para testar antes | Sim: uma branch fixa na Vercel, liberada da proteção, com o banco das prévias e dados fictícios. É mudança de configuração e pede o seu "pode" | Só o teste com assistentes antes da produção. Sem ela, a conferência do `client_id` do claude.ai é a sua tentativa com a chave travada ("Passos de Diego", item 6), obrigatória antes do M13.7 |
+| D11 | Papel só de leitura no banco, com permissão por coluna | Sim, como item próprio depois do M13.7 (M13.11). Os papéis nascem só por SQL: a migração cria os grupos sem login, e o login de cada nível nasce por um comando SQL no editor do Neon, em cada branch (produção e prévias), com a senha só na Vercel. Nunca pela tela de papéis do Console, pela API, pela CLI ou pelo conector, que dão ao papel os poderes do `neon_superuser`. Passo seu: o "pode", o comando nas duas branches, com uma senha sua, e a variável na Vercel ("Passos de Diego", item 11) | Só o M13.11 |
+| D12 | Sessões de trabalho do Claude e do Codex no repositório | Não usam o conector SCL: registrar no CLAUDE.md, deixar só o conector do SCL fora dessas sessões por um mecanismo por conector (uma regra do projeto ou, se for da conta ou do ambiente, passo seu), sem o liga-desliga de todos os conectores, que tiraria também o do Neon, e conferir numa sessão que nenhuma ferramenta do SCL aparece e que o Neon continua. Pelo Codex, o SCL só num perfil separado do usado no repositório. Você usa o SCL numa conversa própria, sem e-mail nem navegação junto | O fechamento do M13.7 e a chave da produção |
+| D13 | Por quanto tempo guardar o histórico das mudanças | Para sempre o que mudou, protegido no banco (M13.12). Antes do gatilho, o histórico passa a gravar sem os dados pessoais (só "(alterado)"). Os que ele já guardou são anonimizados depois da resposta do advogado (D4), num item próprio (M13.14), com snapshot do banco antes. O prazo e a forma de atender os pedidos das pessoas vão ao advogado (D4). O registro das consultas é outra coisa e segue a D9 (6 meses) | Nada (o M13.14 espera a D4) |
 | D14 | Fase 2: se haverá ações, quais e para quem | Nada antes de a fase 1 estar em uso. Depois, você escolhe a primeira ação; a sugestão é uma sem dinheiro e sem sistema externo, como bloquear datas no SCL | O M13.13 |
 
 ## Divisão em itens do ROADMAP
@@ -1310,9 +1416,10 @@ Antes da varredura de 16/10, o passo 1 dizia que "Desligar" só suspende "e por 
   - M13.4b: consentimento e CIMD.
 - **Endereço MCP (M13.5):** com as ferramentas do 2a, o registro de uso, o teto diário e uma tela mínima. **Na produção, a chave fica travada.**
 - **Ferramentas e ajustes (M13.6):** as ferramentas do 2b, a opção da operação, a página das próprias conexões (`/painel/assistentes`), as validades e a exportação do uso.
-- **Segurança de uso e liberação na produção (M13.7):** e-mail, alertas, resumo semanal, faixas de saída, guia completo, regra no CLAUDE.md e a D12 com garantia: conectores ausentes nas sessões de agente, conferido numa sessão antes de destravar a chave.
-- **Bloqueados por decisões de Diego:** M13.8 (`search` e `fetch`), M13.9 (nomes), M13.10 (proprietário) e M13.11 (papel do banco).
-- **Histórico protegido (M13.12):** o gatilho no banco que impede alterar ou apagar a auditoria. Não depende do resto do M13 (só do M12.2, como os primeiros itens) e protege o sistema todo.
+- **Segurança de uso e liberação na produção (M13.7):** e-mail, alertas, resumo semanal, faixas de saída, guia completo, regra no CLAUDE.md e a D12 com garantia: só o conector do SCL ausente nas sessões de agente, com o do Neon presente, conferido numa sessão antes de destravar a chave; e o `client_id` do claude.ai conferido pela tentativa de Diego com a chave travada.
+- **Bloqueados por decisões de Diego:** M13.8 (`search` e `fetch`), M13.9 (nomes), M13.10 (proprietário), M13.11 (papel do banco) e M13.14 (histórico antigo, D4).
+- **Histórico protegido (M13.12):** a máscara na gravação e o gatilho no banco que impede alterar ou apagar a auditoria. Não depende do resto do M13 (só do M12.2, como os primeiros itens) e protege o sistema todo.
+- **Histórico antigo (M13.14):** a anonimização das linhas gravadas antes da máscara, por migração revisada, depois da resposta do advogado (D4) e com snapshot antes.
 - **Escrita (M13.13):** bloqueada. Segue as regras de "Fase 2" e depende de Diego (D14), do M13.7 e do M13.12.
 
 ## Fontes (consultadas em 16/10/2026)
@@ -1376,7 +1483,14 @@ Antes da varredura de 16/10, o passo 1 dizia que "Desligar" só suspende "e por 
 - https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-add-existing-server-to-agent
 - https://cursor.com/docs/context/mcp
 
-**Terceiros:** https://docs.strata.io/reference/orchestrator/experimental/client-id-metadata-documents (só para o domínio do documento do claude.ai)
+**Lidos na segunda varredura de 16/10:**
+- https://claude.ai/oauth/mcp-oauth-client-metadata (documento de cliente do claude.ai, baixado);
+- https://neon.com/docs/manage/roles (papéis criados no Console, na API e na CLI entram no `neon_superuser`; papéis por branch);
+- https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-13#section-10.2 (`redirect_uri` fora da troca do código);
+- https://modelcontextprotocol.io/specification/2025-06-18/changelog (fim do lote JSON-RPC);
+- https://vercel.com/docs/cron-jobs/manage-cron-jobs (a mesma rodada agendada pode ser chamada mais de uma vez).
+
+Antes da segunda varredura de 16/10, o domínio do documento do claude.ai vinha de uma fonte de terceiros (Strata).
 
 **LGPD:**
 - Lei nº 13.709/2018, arts. 5º, 6º, 12, 33 e 37;
@@ -1401,5 +1515,7 @@ Antes da varredura de 16/10, o passo 1 dizia que "Desligar" só suspende "e por 
 - GUIA-DIEGO, seção 6, item 47.
 
 Conferidos na varredura de 16/10, na `main` com o M7.20 (`7a03b1c`): `auth.ts:41,81`; `sessao.ts:17-43`; `senha.ts:81-99`; `configuracoes/abas.ts`; `painel/configuracoes/layout.tsx:10`; `politica.ts:44-57`; `equipe/acesso.ts:158`; `app/equipe/page.tsx:44`; `repasses.ts:793,1233-1246`; `schema.ts:112-136,166-212,378-480,972-1060`; `site.ts:90,108-131`; `empresa.ts:41-45`; `dashboard.ts:121-150`; as chamadas de `registrarAuditoria` e `auditar` em `reservas/repositorio.ts`, `proprietarios/repositorio.ts`, `configuracoes/usuarios.ts`, `convites/convites.ts`, `limpezas/limpezas.ts` e `portaria/portaria.ts`; `PAGINAS-LEGAIS.md`, "Prazo de guarda" e "Pedidos de acesso, correção e exclusão". Fora do código: a página de IPs da Anthropic (https://docs.claude.com/en/api/ip-addresses), o provedor Google do `@auth/core` (`providers/google.js`) e a seção de CIMD da especificação MCP 2025-11-25.
+
+Conferidos na segunda varredura de 16/10, na branch (`b1367fa`): `painel/dashboard.ts:70-325,344,397,453,481,550`; `pagamentos/consultas.ts:1578,1827`; `pagamentos/disjuntor.ts:74,187-200`; `sistema/regras.ts:27-60`; `imoveis/recebimento.ts:14-21`; `rotinas/rotinas.ts:56-61,199-210`; `despesas/despesas.ts:298-326`; `ajustes/ajustes.ts:301-318`; `adiantamentos/adiantamentos.ts:59,75`; `repasses/repasses.ts:472-481,793-797,1233-1246`; `repasses/extrato.ts:374-399`; `repasses/descontos.ts:212-215`; `repasses/avisos-contestacao.ts:62`; `repasses/proprietario.ts:27-44`; `repasses/regras-config.ts:13-15`; `mensagens/hospede.ts:664-674,743`; `configuracoes/armazem.ts:19-25`; `configuracoes/empresa.ts:11-22,41-45,69-72`; `configuracoes/regras-financeiras.ts:87-100`; `configuracoes/pagamento-site.ts:210-212`; `db/schema.ts:681-691,1582-1583`; `db/testing.ts:31-35,98-101`; `db/client.ts:11`; `pagamentos/cancelamento.test.ts:1049`; `convites/convites.ts:156`; `acesso/codigo-email.ts:165`; `email/correio.ts:16-17`; `repasses/email.ts:34`; `repasses/cron.ts`; `lib/datas.ts:2`; `lib/token-assinado.ts`; `app/package.json:16`; `vercel.json`.
 
 O envio de erros ao Sentry (M0.9) não estava na `main` em `adca993`; estava em andamento em 16/10.

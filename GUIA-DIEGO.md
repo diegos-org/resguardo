@@ -57,7 +57,9 @@ construído ainda.**
   - O assistente vê o que você veria no painel, mas sem nomes, contatos ou textos livres de hóspedes e
     proprietários. Recebe códigos, valores (se aquela conexão puder ver valores) e o link da tela do painel, que só
     abre com login. Antes eu tinha falado em mostrar o nome do hóspede abreviado; depois das revisões de
-    segurança, a primeira fase fica sem nomes, e o primeiro nome com a inicial é a decisão 2 (seção 7).
+    segurança, a primeira fase fica sem nomes. Os nomes são a decisão 2 (seção 7), e ela traz mais do que o nome do
+    hóspede: o primeiro nome e a inicial do hóspede, o nome inteiro do proprietário, o código da reserva na
+    plataforma (Airbnb, Booking) e a busca por nome e por esse código. Dá para escolher só uma parte.
   - Só você conecta, pelo nome. Cada conexão nova gera um aviso no Início, com um botão para desconectar, e um e-mail
     com o "não fui eu". Uso estranho (de madrugada, em volume grande, depois de dias parado) também avisa. O botão
     "Desconectar todos", no painel, desconecta tudo na hora; desligar a chave só suspende.
@@ -82,11 +84,12 @@ construído ainda.**
   isso ela só muda por uma mudança revisada, que fica registrada, e a trava completa vem depois, num item próprio,
   com o seu "pode" no Neon. O histórico entra no backup do banco e fica para sempre. Para isso não brigar com a
   Política de privacidade, que promete apagar dados quando o prazo acaba e quando a pessoa pede, antes da trava o
-  histórico passa a registrar só que um nome ou um contato mudou, sem guardar o valor, e os nomes e contatos que ele
-  já guardou são trocados por "(anonimizado)". O prazo e o jeito de atender os pedidos vão ao advogado. O registro
-  do que o assistente consultou é outra coisa e fica 6 meses.
+  histórico passa a registrar só que um nome ou um contato mudou, sem guardar o valor. Os nomes e contatos que ele
+  já guardou são trocados por "(anonimizado)" só depois de o advogado responder, num passo próprio (M13.14), com uma
+  cópia de segurança do banco tirada antes, porque essa troca não tem volta. O prazo e o jeito de atender os pedidos
+  vão ao advogado. O registro do que o assistente consultou é outra coisa e fica 6 meses.
 - **A ordem:** o M13 só começa depois da reserva no Beds24 (M8.3) e do cálculo do marketplace (M12.2), e não
-  atrasa a entrada no ar (M11). São 15 itens, M13.1 a M13.13, contando o 2a, o 2b, o 4a e o 4b; cada um é um PR.
+  atrasa a entrada no ar (M11). São 16 itens, M13.1 a M13.14, contando o 2a, o 2b, o 4a e o 4b; cada um é um PR.
   Os que dependem de você ficam bloqueados até a sua decisão. Na produção, o MCP só liga no M13.7, com todas as
   defesas prontas.
 - **Decisões de 16/10 que entraram no plano:**
@@ -98,8 +101,9 @@ construído ainda.**
   - reserva paga pelo site no Beds24 (M8.3) autorizada, com uma chave própria das reservas, separada da do
     calendário. Hoje nenhuma das duas existe na Vercel (conferido em 16/10), então nada é escrito no Beds24.
 - **O que você precisa fazer:** nada agora. Quando quiser, as 14 decisões do MCP, cada uma com um padrão (seção 7).
-  Antes de ligar com os dados de verdade: o campo Site (seção 6, item 47), o advogado, as contas e, se for preciso, a
-  configuração das sessões de trabalho (seção 6, item 49).
+  Antes de ligar com os dados de verdade: o campo Site (seção 6, item 47), o advogado, as contas, uma tentativa de
+  conectar o Claude com o acesso ainda desligado e, se for preciso, a configuração das sessões de trabalho (seção 6,
+  item 49).
 
 ### Consulta com o resultado à vista e avisos no link da casa — M7.21 (16/10)
 
@@ -3680,7 +3684,8 @@ ambiente).
     estudo (lista na seção 2, em "Frase de abertura de cada casa") e ajuste. Com a casa publicada no site, abra a página
     dela e confira no celular. Sem pressa: em branco, o site fica como está.
 49. **MCP do SCL (M13, desenho de 16/10), sem pressa:** nada para fazer agora; isto vale para quando o M13.7
-    estiver pronto. Antes de conectar o Claude, o ChatGPT ou o Codex com os dados de verdade:
+    estiver pronto (o passo 6, um pouco antes; o 8, bem depois). Antes de conectar o Claude, o ChatGPT ou o Codex
+    com os dados de verdade:
     1. **Campo Site:** o item 47, logo acima. O endereço do MCP sai dele.
     2. **Advogado:** mesmo sem nomes, códigos e valores das reservas vão para empresas de fora do Brasil. Estas
        perguntas entram no dossiê único para o advogado e o contador que combinamos em 16/10 (tudo de uma vez,
@@ -3691,11 +3696,27 @@ ambiente).
        computador quando sair: com o seu Google ou o seu e-mail abertos, quem sentar ali consegue entrar no SCL e
        conectar um assistente, e o SCL não tem como saber que não é você.
     4. **Sessões de trabalho (decisão D12):** as sessões em que eu e o Codex trabalhamos no código não podem ter o
-       conector do SCL. Se desligar isso for uma configuração da sua conta ou do ambiente, eu te digo onde no M13.7, e
-       o MCP só liga na produção depois de eu conferir numa sessão que o SCL não aparece. Se a saída for pelo Codex,
-       o SCL fica numa configuração separada da usada no código.
+       conector do SCL. Só ele sai: os outros conectores, como o do Neon, que você liberou em 14/10 para o trabalho,
+       continuam. Eu tiro o SCL dessas sessões por uma regra do próprio projeto; se só der por uma configuração da sua
+       conta ou do ambiente, eu te digo onde no M13.7. Não vou usar a opção que desliga todos os conectores de uma vez,
+       porque ela levaria junto o acesso ao banco. O MCP só liga na produção depois de eu conferir numa sessão que o
+       SCL não aparece e que o Neon continua lá. Se a saída for pelo Codex, o SCL fica numa configuração separada da
+       usada no código.
     5. **Google (opcional):** se o Google precisar de uma opção ligada para dizer ao SCL a hora do seu login, eu te
        digo onde no M13.4a. Sem ela, para conectar um assistente você entra com a senha ou com o código por e-mail.
+    6. **Conferir o Claude antes de ligar:** quando o endereço do MCP já estiver no ar, com o acesso ainda desligado,
+       eu te peço para tentar uma vez adicionar o SCL no Claude (eu te passo o caminho na hora). O certo é a tela do
+       SCL dizer que o acesso por assistentes está desligado: isso mostra que o SCL reconhece o Claude, e nenhum dado
+       sai. Se aparecer uma página de erro, eu ajusto e te peço de novo. Sem essa
+       tentativa, a produção não liga.
+    7. **Um programa por vez:** use cada conexão do SCL num só programa de cada vez. No Codex, ou o aplicativo ou a
+       linha de comando, não os dois abertos ao mesmo tempo; no Claude Code, uma sessão por vez. Dois programas
+       renovando a mesma conexão juntos parecem uma cópia e derrubam a conexão; aí é só conectar de novo.
+    8. **Mais tarde, a trava extra no banco (decisão 11, M13.11):** além do seu "pode", você roda no editor de SQL do
+       Neon um comando que eu te passo, uma vez no banco de verdade e outra no das prévias, com uma senha que você
+       cria e não me mostra, e guarda o endereço de conexão numa variável da Vercel. Não use o botão de criar papel
+       do Neon: o acesso criado por ali vira dono de tudo, e a trava não vale. Se o acesso tiver poder a mais, o MCP
+       para de responder e avisa no painel.
 
 ---
 
@@ -3708,8 +3729,10 @@ ambiente).
   trava o que vem antes do M13:
   1. **Quem conecta:** só você, pelo nome. A operação fica como opção desligada; o proprietário vem depois.
   2. **O que o assistente vê:** o padrão é sem nomes, contatos ou textos livres; só códigos, valores e o link da tela
-     do painel. Se você quiser o primeiro nome e a inicial do hóspede (o que eu tinha proposto e você gostou), isso
-     vem depois, no M13.9, com a Política de privacidade nova conferida pelo advogado.
+     do painel. O nível seguinte, se você quiser, traz junto: o primeiro nome e a inicial do hóspede (o que eu tinha
+     proposto e você gostou), o nome inteiro do proprietário, o código da reserva na plataforma (Airbnb, Booking) e a
+     busca por nome e por esse código. Isso vem depois, no M13.9, com a Política de privacidade nova conferida pelo
+     advogado. Dá para escolher só uma parte (por exemplo, só o nome do hóspede), e eu ligo só o que você escolher.
   3. **Login:** o do próprio SCL, o mesmo do painel, sem serviço de fora.
   4. **LGPD:** levar as perguntas ao advogado, no dossiê único, antes de ligar com os dados de verdade (seção 6,
      item 49).
@@ -3722,13 +3745,17 @@ ambiente).
   9. **Registro do que o assistente consultou:** 6 meses.
   10. **Teste antes:** uma versão de teste fixa, com dados fictícios, para você experimentar antes do sistema de
       verdade. Pede o seu "pode", porque muda uma configuração da Vercel.
-  11. **Trava extra no banco:** mais tarde, um acesso ao banco só de leitura para o MCP. Pede o seu "pode" no Neon.
-  12. **Sessões de trabalho:** as do Claude e do Codex no código não usam o conector; você usa o SCL numa conversa só
-      para ele. Se desligar o conector nessas sessões for uma configuração sua, eu te digo onde, e a produção só
-      liga depois disso (seção 6, item 49).
+  11. **Trava extra no banco:** mais tarde, um acesso ao banco só de leitura para o MCP. Pede o seu "pode" e um
+      passo seu: rodar no editor de SQL do Neon um comando que eu te passo, nas duas versões do banco, com uma senha
+      sua, e guardar o endereço na Vercel (seção 6, item 49). Nunca pelo botão de criar papel do Neon, que daria a
+      esse acesso o poder de dono.
+  12. **Sessões de trabalho:** as do Claude e do Codex no código não usam o conector do SCL; só ele sai delas, e o
+      do Neon e os outros continuam. Você usa o SCL numa conversa só para ele. Se tirar o SCL dessas sessões depender
+      de uma configuração sua, eu te digo onde, e a produção só liga depois disso (seção 6, item 49).
   13. **Histórico das mudanças:** fica para sempre, protegido no banco, mas sem nomes e contatos: antes da trava, ele
-      passa a registrar só que algo mudou, e os nomes e contatos que já guardou são anonimizados. O prazo e os
-      pedidos das pessoas vão ao advogado (decisão 4).
+      passa a registrar só que algo mudou. Os nomes e contatos que já guardou são anonimizados só depois da resposta
+      do advogado (decisão 4), num passo próprio (M13.14), com uma cópia de segurança do banco antes, porque a troca
+      não tem volta. O prazo e os pedidos das pessoas também vão ao advogado.
   14. **Fase 2:** nada antes de a fase 1 estar em uso. Depois, você escolhe a primeira ação; a sugestão é uma sem
       dinheiro e sem sistema externo, como bloquear datas no SCL.
 - **Textos do site que continuam fixos (M7.16, 15/10) — duas perguntas:** (1) os títulos e as frases listados na seção 2 (M7.16) já se editam em Configurações → Textos do site. Continuam fixos os nomes do menu ("Nossas casas", "Planeje sua estadia"), do rodapé e dos botões ("Ver todas as casas", "Continuar", "Conhecer as casas") e os textos do formulário da consulta (o título "Consultar disponibilidade" no alto do formulário, os nomes dos campos e as dicas abaixo do botão). Quer poder mudar esses também pelo painel? (2) A prévia do link de Nossas casas (no WhatsApp e nas redes) usa a frase da vitrine de casas da página inicial. Quer que ela passe a usar a frase da própria página Nossas casas, que agora você edita? Enquanto você não responde, tudo fica como está.
