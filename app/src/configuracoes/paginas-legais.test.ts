@@ -212,6 +212,14 @@ describe("textos-base das páginas legais (M7.4)", () => {
     // M7.14: os formulários de proprietários guardam o registro da autorização; a linha deles diz isso.
     const proprietarios = /- Proprietários que nos procuram pelo site: ([^\n]+)/.exec(RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto)![1];
     expect(proprietarios).toContain("o registro da autorização dada no formulário (o texto autorizado, a versão dele e a data e a hora do envio)");
+    // M0.9: o serviço que registra os erros técnicos está na lista de fornecedores e nos dados fora do Brasil, dizendo o
+    // que recebe e o que não recebe; continua sem ferramenta de análise de audiência.
+    const privacidade = RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto;
+    const sentry = /- Sentry, ([^\n]+)/.exec(privacidade)![1];
+    expect(sentry).toContain("que registra os erros técnicos do site para a gente corrigir");
+    expect(sentry).toContain("não recebe seu nome, seus contatos, seus documentos nem seus dados de pagamento, e não guarda o seu IP");
+    expect(privacidade).toContain("hospedagem do site, banco de dados, registro de erros técnicos, envio de e-mails e pagamento");
+    expect(privacidade).toContain("Não usamos cookies de publicidade nem ferramentas de análise de audiência");
   });
 });
 

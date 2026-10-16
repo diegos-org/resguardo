@@ -45,6 +45,7 @@ item muda a linha para `feito` **no próprio PR do item**.
 | M0.6 | Referência do sistema antigo: levantar as telas e capacidades do sistema antigo (arquivo que o Diego vai mandar) e cruzar com este ROADMAP, sem copiar dados reais. Entregue em 4/10: Diego mandou o "acervo isolado" (museu do sistema de julho, dados fictícios, integrações desligadas); 37 telas percorridas e cruzadas com o plano em `arquivo/sistema-antigo/README.md` (inventário, tabela de cruzamento e lista de ideias para Diego decidir: reconciliação com o CSV do Airbnb, "recusado pelo dono" no marketplace, formulário público de cadastro no condomínio, exportação para o contador, recomendador de preço com dados de mercado, cupons, importação de extrato, papel convidado; prospecção e marketing anotados em growth). Nada do sistema antigo foi copiado; fotos reais e o repositório de julho ficaram de fora | feito | Diego mandou o acervo em 4/10 |
 | M0.7 | Backup automático do repositório: robô de espelho em conta separada do GitHub (puxa a origem com token só de leitura, nunca apaga nem reescreve, tag datada a cada 3 dias, todas as versões guardadas); documentação de recuperação e passo a passo para o Diego ativar; situação do backup do Neon levantada | feito | M0.1 |
 | M0.8 | CI mais rápido: banco de teste pré-migrado reaproveitado pelos arquivos de teste (mesmos testes, sem migrar 100 vezes) e PR só de documentação não roda a suíte do app | feito | M0.3 |
+| M0.9 | **Avisos de erro (Sentry)**, autorizado por Diego em 16/10 com a condição de não mandar nome, e-mail nem dado de pagamento: quando acontece um erro no site, no painel, nos portais, nas rotinas, nos webhooks ou no navegador de quem usa, o Sentry (organização `sua-casa-leblon`, projeto `javascript-nextjs`, região dos EUA) recebe a mensagem técnica, o tipo do erro, o caminho no código, a página sem os códigos pessoais, o navegador e o aparelho. **Nunca vai:** a pessoa (nem o IP), cookies, cabeçalhos além do navegador, corpo e parâmetros das requisições, valores das consultas ao banco, variáveis locais, e-mail, CPF, CNPJ, telefone, cartão, chave Pix (todo UUID vira "[id]"), código do Pix, códigos das cotações e dos convites, tokens e segredos; sem medição de desempenho, gravação de tela, feedback nem contagem de sessões. Liga só com `NEXT_PUBLIC_SENTRY_DSN` na Vercel e na produção ou nas prévias (desenvolvimento e testes nunca enviam); regras e limpeza num lugar só (`app/src/observabilidade/`), com testes; Política de privacidade (texto-base) cita o serviço | feito | M0.8 |
 
 ### M1 — Acesso e permissões
 
@@ -209,7 +210,7 @@ Requisitos: `requisitos/operations/FINANCEIRO-PORTAIS.md`, `requisitos/product/F
 |---|---|---|---|
 | M11.1 | Carga de dados reais (imóveis, proprietários, contratos, histórico financeiro conferido) | bloqueado | Tudo acima + Diego |
 | M11.2 | Domínio (Cloudflare) e e-mail transacional | bloqueado | Diego |
-| M11.3 | Checklist de segurança, backup do Neon, go-live | bloqueado | M11.1 |
+| M11.3 | Checklist de segurança, backup do Neon, go-live (o monitoramento de erros já está pronto: M0.9, 16/10) | bloqueado | M11.1 |
 
 ## Ações de Diego (o que destrava o quê)
 
