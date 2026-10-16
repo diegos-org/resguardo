@@ -16,6 +16,8 @@ import { type AcaoBeds24, chaveSimulacaoBeds24, type MotivoForaBeds24, type Pedi
 /** Por que nada foi simulado: o motivo da régua, o ambiente ou a reserva fora da organização. */
 export type MotivoSemSimulacao = MotivoForaBeds24 | "anterior_a_ligar" | "sem_vinculo" | "fora_do_ambiente" | "nao_encontrada";
 
+export type AvisoDoImovelNaSimulacao = "espera_ligar" | "anterior_a_ligar";
+
 export type ResultadoSimulacao =
   | {
       ok: true;
@@ -23,10 +25,14 @@ export type ResultadoSimulacao =
       /** A mesma intenção (a mesma assinatura) já tinha sido simulada: a linha de antes é a resposta. */
       repetida: boolean;
       /**
-       * O imóvel está ligado na configuração (D6). Desligado, a simulação vale como se ele estivesse ligado antes da
-       * confirmação (nas prévias nenhum imóvel liga: ligar exige um ensaio), e a tela avisa que na produção nada sairia.
+       * O imóvel desligado na configuração (D6), quando importa para o pedido. Desligado, a simulação vale como se ele
+       * estivesse ligado antes da confirmação (nas prévias nenhum imóvel liga: ligar exige um ensaio), e a tela diz o que a
+       * régua faria com uma ligação feita agora:
+       * - `espera_ligar`: a criação sairia depois de ligar (o acompanhamento já existe);
+       * - `anterior_a_ligar`: ligar agora não vale para ela (confirmada antes da ligação: fica com a equipe, à mão).
+       * null = o imóvel está ligado, ou o pedido é de atualizar ou cancelar (o desligamento só para a criação).
        */
-      imovelLigado: boolean;
+      imovelDesligado: AvisoDoImovelNaSimulacao | null;
       tipo: AcaoBeds24;
       pedido: PedidoBeds24;
     }
@@ -49,6 +55,12 @@ export async function simularReservaNoBeds24(db: Db, sessao: Sessao, reservaId: 
   const imovelLigado = l.contexto.ligacao !== null;
   const d = reservaDoSiteParaBeds24(l.reserva, imovelLigado ? l.contexto : { ...l.contexto, ligacao: LIGACAO_DA_SIMULACAO });
   if (d.decisao !== "enviar") return { ok: false, motivo: d.motivo };
+  // Imóvel desligado: só a criação para. A régua com uma ligação feita agora diz se ligar faria esta reserva sair.
+  let imovelDesligado: AvisoDoImovelNaSimulacao | null = null;
+  if (!imovelLigado && d.acao === "criar") {
+    const ligandoAgora = reservaDoSiteParaBeds24(l.reserva, { ...l.contexto, ligacao: { ligadoEm: agora.toISOString() } });
+    imovelDesligado = ligandoAgora.decisao === "manual" && ligandoAgora.motivo === "anterior_a_ligar" ? "anterior_a_ligar" : "espera_ligar";
+  }
   const op = beds24ReservasOperacoes;
   const chave = chaveSimulacaoBeds24(l.reserva.id, d.assinatura);
   const pedido: PedidoBeds24 = { ...d.esperado, referencia: l.reserva.codigo };
@@ -59,11 +71,12 @@ export async function simularReservaNoBeds24(db: Db, sessao: Sessao, reservaId: 
     .onConflictDoNothing({ target: [op.organizacaoId, op.chave] })
     .returning({ id: op.id });
   const [linha] = await db.select({ id: op.id, tipo: op.tipo, pedido: op.pedido }).from(op).where(and(eq(op.organizacaoId, org), eq(op.chave, chave)));
-  return { ok: true, operacaoId: linha.id, repetida: !nova, imovelLigado, tipo: linha.tipo as AcaoBeds24, pedido: linha.pedido ?? pedido };
+  return { ok: true, operacaoId: linha.id, repetida: !nova, imovelDesligado, tipo: linha.tipo as AcaoBeds24, pedido: linha.pedido ?? pedido };
 }
 
 /** O resultado em uma chave curta para a ficha (`?beds24=`); os textos ficam no componente. */
 export function chaveDoResultadoDaSimulacao(r: ResultadoSimulacao): string {
   if (!r.ok) return `nada_${r.motivo}`;
-  return `${r.repetida ? "repetida" : "simulada"}${r.imovelLigado ? "" : "_imovel_desligado"}`;
+  const imovel = r.imovelDesligado === "espera_ligar" ? "_imovel_desligado" : r.imovelDesligado === "anterior_a_ligar" ? "_imovel_desligado_anterior" : "";
+  return `${r.repetida ? "repetida" : "simulada"}${imovel}`;
 }

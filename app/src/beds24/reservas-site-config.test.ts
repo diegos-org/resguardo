@@ -16,6 +16,7 @@ import {
   configReservasBeds24,
   desligarImovelReservasBeds24,
   ensaioValeParaCredencial,
+  ERRO_LIGAR_IMOVEL_INATIVO,
   ERRO_LIGAR_SEM_CREDENCIAL,
   ERRO_LIGAR_SEM_ENSAIO,
   ligacaoDoImovel,
@@ -92,6 +93,21 @@ describe("configuração reservas_beds24 (M8.3a, teste 5)", () => {
     expect(await ligarImovelReservasBeds24(db, admin, imOutro, CREDENCIAL, AGORA)).toMatchObject({ ok: false });
     expect(await ligarImovelReservasBeds24(db, admin, "nao-e-uuid", CREDENCIAL, AGORA)).toMatchObject({ ok: false });
     expect((await lerConfigReservasBeds24(db, org)).imoveis).toEqual([]);
+  });
+
+  it("imóvel inativo: ligar é recusado (nada gravado); o que já estava ligado e foi desativado ainda desliga, com auditoria", async () => {
+    await registrarEnsaioReservasBeds24(db, admin, await ensaioConferido(CREDENCIAL));
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, im));
+    const antes = (await auditorias()).length;
+    expect(await ligarImovelReservasBeds24(db, admin, im, CREDENCIAL, AGORA)).toEqual({ ok: false, erro: ERRO_LIGAR_IMOVEL_INATIVO });
+    expect((await lerConfigReservasBeds24(db, org)).imoveis).toEqual([]);
+    expect((await auditorias()).length).toBe(antes);
+    await db.update(imoveis).set({ ativo: true }).where(eq(imoveis.id, im));
+    expect(await ligarImovelReservasBeds24(db, admin, im, CREDENCIAL, AGORA)).toEqual({ ok: true });
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, im));
+    expect(await desligarImovelReservasBeds24(db, admin, im)).toEqual({ ok: true });
+    expect((await lerConfigReservasBeds24(db, org)).imoveis).toEqual([]);
+    expect((await auditorias()).length).toBe(antes + 2);
   });
 
   it("desligar tira o imóvel da lista; desligar o que não está ligado avisa", async () => {

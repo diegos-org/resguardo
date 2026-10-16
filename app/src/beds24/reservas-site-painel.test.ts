@@ -7,7 +7,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24ReservasOperacoes, beds24ReservasSite, idsExternos, imoveis, organizacoes, reservas, usuarios } from "@/db/schema";
+import { beds24ReservasOperacoes, beds24ReservasSite, cotacoes, idsExternos, imoveis, organizacoes, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { Beds24Falso } from "./falso";
@@ -50,7 +50,7 @@ describe("o \"desligada\" é calculado (nunca gravado)", () => {
 describe("ficha da reserva", () => {
   it("sem acompanhamento: desligada, sem histórico; simular só fora da produção ou com a chave desligada", async () => {
     const f = await fichaReservaNoBeds24(db, org, reservaId, env());
-    expect(f).toEqual({ desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true });
+    expect(f).toEqual({ desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null });
     expect((await fichaReservaNoBeds24(db, org, reservaId, env(PRONTO)))?.simular).toBe(false);
     expect((await fichaReservaNoBeds24(db, org, reservaId, env({ ...PRONTO, BEDS24_ESCRITA_RESERVAS: undefined })))?.simular).toBe(true);
   });
@@ -70,6 +70,19 @@ describe("ficha da reserva", () => {
     expect(f?.acompanhamento).toMatchObject({ situacao: "divergente", motivo: "mudada_no_beds24", quarto: "20", conferidaEm: null, lido, otaFechadaAMao: true });
     expect(f?.operacoes).toHaveLength(OPERACOES_NA_FICHA);
     expect(f?.operacoes[0]).toMatchObject({ tipo: "criar", modo: "simulacao", situacao: "simulada", pedido, iniciadoEm: new Date(Date.UTC(2026, 9, 12)) });
+  });
+
+  it("o pedido do site (D9): segurado enquanto é pedido; vencido só com a cotação expirada (nunca confirmado); cancelada depois de confirmada, nada", async () => {
+    await db.update(reservas).set({ estado: "pedido" }).where(eq(reservas.id, reservaId));
+    expect((await fichaReservaNoBeds24(db, org, reservaId, env()))?.pedido).toBe("segurado");
+    await db.update(reservas).set({ estado: "cancelada" }).where(eq(reservas.id, reservaId));
+    const cotacao = { organizacaoId: org, imovelId: im, codigo: "COT-FICT0001", checkin: "2026-12-20", checkout: "2026-12-27", hospedes: 4, noites: 7, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, reservaId };
+    const [cot] = await db.insert(cotacoes).values({ ...cotacao, estado: "cancelada" }).returning();
+    expect((await fichaReservaNoBeds24(db, org, reservaId, env()))?.pedido).toBeNull();
+    await db.update(cotacoes).set({ estado: "expirada" }).where(eq(cotacoes.id, cot.id));
+    expect((await fichaReservaNoBeds24(db, org, reservaId, env()))?.pedido).toBe("vencido");
+    await db.update(reservas).set({ estado: "confirmada" }).where(eq(reservas.id, reservaId));
+    expect((await fichaReservaNoBeds24(db, org, reservaId, env()))?.pedido).toBeNull();
   });
 
   it("reserva de outra fonte ou de outra organização: nada (o bloco não aparece)", async () => {
@@ -93,8 +106,8 @@ describe("Integrações: a seção das reservas do site", () => {
       importacaoAutomatica: false,
       semLigar: "sem_credencial",
       imoveis: [
-        { id: im, codigo: "T1", ligadoEm: null, ligadoPor: null, quartoDoVinculo: "20" },
-        { id: im2, codigo: "T2", ligadoEm: null, ligadoPor: null, quartoDoVinculo: null },
+        { id: im, codigo: "T1", ativo: true, ligadoEm: null, ligadoPor: null, quartoDoVinculo: "20" },
+        { id: im2, codigo: "T2", ativo: true, ligadoEm: null, ligadoPor: null, quartoDoVinculo: null },
       ],
       contadores: { pendente: 0, em_envio: 0, conferida: 0, divergente: 0, conflito: 0, aguardando_equipe: 0, manual: 0, encerrada: 0 },
     });
@@ -121,13 +134,23 @@ describe("Integrações: a seção das reservas do site", () => {
     expect(p.marca).toBe("provada_no_ensaio");
     expect(p.semLigar).toBeNull();
     expect(p.importacaoAutomatica).toBe(true);
-    expect(p.imoveis[0]).toEqual({ id: im, codigo: "T1", ligadoEm: "2026-10-10T12:00:00.000Z", ligadoPor: "Admin Fictício", quartoDoVinculo: "20" });
+    expect(p.imoveis[0]).toEqual({ id: im, codigo: "T1", ativo: true, ligadoEm: "2026-10-10T12:00:00.000Z", ligadoPor: "Admin Fictício", quartoDoVinculo: "20" });
     expect(p.contadores.conferida).toBe(1);
     // Trocar a credencial invalida o ensaio; uma reserva que voltou sem a marca derruba a marca legível.
     const outra = await painelReservasBeds24(db, org, env({ ...PRONTO, BEDS24_REFRESH_TOKEN: "outro-refresh-ficticio" }));
     expect(outra).toMatchObject({ ensaio: { valeParaCredencialAtual: false }, marca: "nao_conferida", semLigar: "sem_ensaio" });
     await db.update(beds24ReservasSite).set({ motivo: "marca_ilegivel", situacao: "divergente" }).where(and(eq(beds24ReservasSite.organizacaoId, org), eq(beds24ReservasSite.reservaId, reservaId)));
     expect((await painelReservasBeds24(db, org, env(PRONTO))).marca).toBe("ilegivel");
+  });
+});
+
+describe("Integrações: imóvel ligado que foi desativado no cadastro", () => {
+  it("continua na lista, marcado como inativo e com a ligação (para poder desligar); o inativo não ligado fica fora", async () => {
+    await gravarConfig(db, org, "reservas_beds24", { pausado: null, imoveis: [{ imovelId: im, ligadoEm: "2026-10-10T12:00:00.000Z", ligadoPor: admin }], ensaio: null }, admin);
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.organizacaoId, org));
+    const p = await painelReservasBeds24(db, org, env());
+    // O vínculo de um imóvel inativo não vale (nem para a importação nem para o envio).
+    expect(p.imoveis).toEqual([{ id: im, codigo: "T1", ativo: false, ligadoEm: "2026-10-10T12:00:00.000Z", ligadoPor: "Admin Fictício", quartoDoVinculo: null }]);
   });
 });
 

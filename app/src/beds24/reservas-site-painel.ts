@@ -11,7 +11,7 @@
  */
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { quartoDoVinculo } from "@/calendario/envio";
-import { beds24ReservasOperacoes, beds24ReservasSite, imoveis, reservas, usuarios } from "@/db/schema";
+import { beds24ReservasOperacoes, beds24ReservasSite, cotacoes, imoveis, reservas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
@@ -83,7 +83,15 @@ export type FichaReservaNoBeds24 = {
   operacoes: OperacaoNaFicha[];
   /** O ambiente deixa simular (fora do deploy de produção ou com a chave desligada); a permissão é de quem chama. */
   simular: boolean;
+  /**
+   * O pedido do site (hold do M8.1, D9): `segurado` = ainda é um pedido com as datas seguradas (nunca vai ao Beds24, e as
+   * datas não são fechadas à mão nas OTAs); `vencido` = venceu sem pagamento (a cotação `expirada`): nunca foi confirmada,
+   * nada foi fechado. null = a reserva passou do pedido (confirmada, ou cancelada depois de confirmada).
+   */
+  pedido: PedidoNaFicha | null;
 };
+
+export type PedidoNaFicha = "segurado" | "vencido";
 
 /** Quantas operações a ficha mostra. */
 export const OPERACOES_NA_FICHA = 10;
@@ -91,8 +99,10 @@ export const OPERACOES_NA_FICHA = 10;
 /** O bloco da ficha de uma reserva do site; null = reserva fora da organização ou de outra fonte. */
 export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: string, env: NodeJS.ProcessEnv): Promise<FichaReservaNoBeds24 | null> {
   if (!uuidValido(reservaId)) return null;
-  const [r] = await db.select({ id: reservas.id, imovelId: reservas.imovelId, beds24Id: reservas.beds24Id }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org), eq(reservas.fonte, "site")));
+  const [r] = await db.select({ id: reservas.id, imovelId: reservas.imovelId, beds24Id: reservas.beds24Id, estado: reservas.estado }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org), eq(reservas.fonte, "site")));
   if (!r) return null;
+  // "Expirada" só é gravada na cotação quando o pedido vence ainda como pedido (nunca depois de confirmado).
+  const [vencido] = r.estado === "cancelada" ? await db.select({ id: cotacoes.id }).from(cotacoes).where(and(eq(cotacoes.organizacaoId, org), eq(cotacoes.reservaId, r.id), eq(cotacoes.estado, "expirada"))).limit(1) : [];
   const config = await lerConfigReservasBeds24(db, org);
   const [a] = await db.select().from(beds24ReservasSite).where(and(eq(beds24ReservasSite.organizacaoId, org), eq(beds24ReservasSite.reservaId, r.id)));
   const op = beds24ReservasOperacoes;
@@ -110,6 +120,7 @@ export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: strin
       : null,
     operacoes,
     simular: simulacaoReservasBeds24Permitida(env),
+    pedido: r.estado === "pedido" ? "segurado" : vencido ? "vencido" : null,
   };
 }
 
@@ -121,7 +132,11 @@ export type MarcaLegivelBeds24 = "provada_no_ensaio" | "ilegivel" | "nao_conferi
 /** Por que ligar um imóvel é recusado agora (o servidor recusa do mesmo jeito: `ligarImovelReservasBeds24`). */
 export type MotivoSemLigarBeds24 = "sem_credencial" | "sem_ensaio";
 
-export type ImovelNasReservasBeds24 = { id: string; codigo: string; ligadoEm: string | null; ligadoPor: string | null; quartoDoVinculo: string | null };
+/**
+ * Um imóvel da tabela "Imóveis ligados": os ativos e também o inativo que continua ligado na configuração (para a equipe ver
+ * e poder desligar; ele só volta a ser ligado depois de reativado no cadastro).
+ */
+export type ImovelNasReservasBeds24 = { id: string; codigo: string; ativo: boolean; ligadoEm: string | null; ligadoPor: string | null; quartoDoVinculo: string | null };
 
 export type PainelReservasBeds24 = {
   chave: {
@@ -155,7 +170,9 @@ export type PainelReservasBeds24 = {
 export async function painelReservasBeds24(db: Db, org: string, env: NodeJS.ProcessEnv): Promise<PainelReservasBeds24> {
   const config = await lerConfigReservasBeds24(db, org);
   const importacao = await lerConfigBeds24(db, org);
-  const locais = await db.select({ id: imoveis.id, codigo: imoveis.codigo }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), eq(imoveis.ativo, true))).orderBy(asc(imoveis.codigo));
+  const doCadastro = await db.select({ id: imoveis.id, codigo: imoveis.codigo, ativo: imoveis.ativo }).from(imoveis).where(eq(imoveis.organizacaoId, org)).orderBy(asc(imoveis.codigo));
+  // O inativo ligado continua na lista: senão ele ficaria ligado sem aparecer, e sem como desligar pelo painel.
+  const locais = doCadastro.filter((i) => i.ativo || ligacaoDoImovel(config, i.id) !== null);
   const mapas = await listarMapeamentosBeds24(db, org);
   const ids = [...new Set([config.pausado?.por, ...config.imoveis.map((i) => i.ligadoPor)].filter((x): x is string => Boolean(x)))];
   const nomes = new Map(ids.length ? (await db.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios).where(and(eq(usuarios.organizacaoId, org), inArray(usuarios.id, ids)))).map((u) => [u.id, u.nome]) : []);
@@ -176,7 +193,7 @@ export async function painelReservasBeds24(db: Db, org: string, env: NodeJS.Proc
     semLigar: !credencial ? "sem_credencial" : !ensaioVale ? "sem_ensaio" : null,
     imoveis: locais.map((i) => {
       const l = ligacaoDoImovel(config, i.id);
-      return { id: i.id, codigo: i.codigo, ligadoEm: l?.ligadoEm ?? null, ligadoPor: l?.ligadoPor ? (nomes.get(l.ligadoPor) ?? null) : null, quartoDoVinculo: quartoDoVinculo(mapas, i.id) };
+      return { id: i.id, codigo: i.codigo, ativo: i.ativo, ligadoEm: l?.ligadoEm ?? null, ligadoPor: l?.ligadoPor ? (nomes.get(l.ligadoPor) ?? null) : null, quartoDoVinculo: quartoDoVinculo(mapas, i.id) };
     }),
     contadores,
   };

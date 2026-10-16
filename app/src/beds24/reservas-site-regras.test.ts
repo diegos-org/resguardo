@@ -66,11 +66,12 @@ describe("régua da reserva do site no Beds24 (M8.3a, desenho 2.1)", () => {
     for (const estado of ["pendente", "consulta"] as const) expect(reservaDoSiteParaBeds24(reserva({ estado }), contexto())).toEqual({ decisao: "fora", motivo: "nao_confirmada" });
   });
 
-  it("alteração segurada: a reserva ainda não mudou, então não nasce atualização; ao aplicar, a assinatura muda e vira atualizar", () => {
+  it("reserva criada pelo M8.3 sem mudança desde a última intenção não gera atualização; com datas ou pessoas mudadas, vira atualizar", () => {
     const atual = assinaturaEsperado(esperado());
-    // Segurada: o SCL continua com as datas de antes (a noite nova está só na reserva-pedido da alteração).
+    // Mesma assinatura da última intenção: nada a enviar. (Que a alteração segurada não mude a reserva principal, e que a
+    // reserva-pedido dela nunca entre, é o teste com o banco em reservas-site-simulacao.test.ts.)
     expect(reservaDoSiteParaBeds24(reserva(), contexto(criada(atual)))).toEqual({ decisao: "fora", motivo: "sem_mudanca" });
-    // Aplicada: as datas da reserva mudaram.
+    // As datas da reserva mudaram.
     const aplicada = reservaDoSiteParaBeds24(reserva({ checkout: "2026-12-28" }), contexto(criada(atual)));
     expect(aplicada).toEqual({ decisao: "enviar", acao: "atualizar", esperado: esperado({ saida: "2026-12-28" }), assinatura: assinaturaEsperado(esperado({ saida: "2026-12-28" })) });
     // Alteração só de pessoas também é intenção nova.

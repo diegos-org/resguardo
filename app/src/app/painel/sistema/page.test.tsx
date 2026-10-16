@@ -21,6 +21,8 @@ beforeEach(() => {
   m.execucoes.mockResolvedValue(new Map([["pedidos-site", { nome: "pedidos-site", iniciadoEm: new Date("2026-10-08T13:00:00Z"), ok: true, resumo: "Pagamentos: 1 conferido(s)" }]]));
   m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   m.mp.mockResolvedValue({ situacao: "so_nas_previas", motivo: null, contaDeTeste: null, segredoWebhook: true, ultimoAvisoValidoEm: null, assinaturasRecusadasHoje: 0, enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago" });
+  // A sessão pode ter a credencial real (e as chaves) do Beds24 no ambiente: cada teste parte sem elas.
+  for (const v of ["BEDS24_REFRESH_TOKEN", "BEDS24_API_KEY", "BEDS24_ESCRITA", "BEDS24_ESCRITA_RESERVAS"]) vi.stubEnv(v, undefined);
 });
 
 afterEach(() => vi.unstubAllEnvs());

@@ -1,24 +1,24 @@
 /**
  * Barreira de rede dos testes (M8.3a; seção 10, teste 3): o `setupFiles` derruba qualquer `fetch` para `*.beds24.com`
- * (a sessão pode ter a credencial real) e deixa o resto passar. Nenhum destes testes sai da máquina: as URLs do Beds24
- * são recusadas antes da rede, e o resto vai a um `fetch` falso.
+ * (a sessão pode ter a credencial real) e deixa o resto passar. Nenhum destes testes chega ao `fetch` de verdade: a recusa
+ * é testada sobre um `fetch` falso que lança (`baixo`), então nem uma barreira quebrada levaria a chamada à rede. O
+ * `afterEach` do setup (a tentativa engolida derruba o teste) é testado em `barreira-de-rede.derruba.test.ts`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchComBarreira, limparTentativasBloqueadas, RedeBloqueadaNoTeste, temBarreira, tentativasBloqueadas, urlDoBeds24 } from "./barreira-de-rede";
+import { fetchComBarreira, limparTentativasBloqueadas, RedeBloqueadaNoTeste, temBarreira, tentativasBloqueadas, urlDoBeds24, verificarTentativasBloqueadas } from "./barreira-de-rede";
 import { ClienteBeds24Http } from "./http";
+
+/** O `fetch` de baixo dos testes: nunca vai à rede (se a barreira deixasse passar, o teste veria a chamada). */
+const fetchQueLanca = () => vi.fn<typeof fetch>(async () => {
+  throw new Error("rede no teste");
+});
 
 // A barreira também derrubaria o teste no afterEach do setup: aqui as tentativas são de propósito, então a lista é
 // conferida e esvaziada no próprio teste.
-afterEach(() => limparTentativasBloqueadas());
-
-/**
- * Antes de usar o `fetch` global com uma URL do Beds24, confere (sem rede) que ele é o da barreira e que a URL é
- * reconhecida: se a barreira estivesse quebrada, o teste falharia aqui, nunca na rede.
- */
-function exigirBarreira(...entradas: unknown[]) {
-  expect(temBarreira(globalThis.fetch)).toBe(true);
-  for (const e of entradas) expect(urlDoBeds24(e)).toBe(true);
-}
+afterEach(() => {
+  limparTentativasBloqueadas();
+  vi.unstubAllGlobals();
+});
 
 describe("barreira de rede do Beds24 (M8.3a)", () => {
   it("o setup trocou o fetch global pelo da barreira", () => {
@@ -31,21 +31,24 @@ describe("barreira de rede do Beds24 (M8.3a)", () => {
     "https://wiki.beds24.com/index.php/Category:API_V2",
     "http://BEDS24.COM/api/v2/authentication/details",
     "https://beds24.com./api/v2",
-  ])("o fetch global recusa %s, sem rede, e registra a tentativa", async (url) => {
-    exigirBarreira(url, new URL(url), new Request(url));
-    await expect(fetch(url)).rejects.toBeInstanceOf(RedeBloqueadaNoTeste);
-    await expect(fetch(new URL(url))).rejects.toBeInstanceOf(RedeBloqueadaNoTeste);
-    await expect(fetch(new Request(url))).rejects.toBeInstanceOf(RedeBloqueadaNoTeste);
+  ])("a barreira recusa %s antes do fetch de baixo e registra a tentativa", async (url) => {
+    const baixo = fetchQueLanca();
+    const f = fetchComBarreira(baixo);
+    await expect(f(url)).rejects.toBeInstanceOf(RedeBloqueadaNoTeste);
+    await expect(f(new URL(url))).rejects.toBeInstanceOf(RedeBloqueadaNoTeste);
+    await expect(f(new Request(url))).rejects.toBeInstanceOf(RedeBloqueadaNoTeste);
+    expect(baixo).not.toHaveBeenCalled();
     expect(tentativasBloqueadas()).toHaveLength(3);
-    limparTentativasBloqueadas();
   });
 
-  it("o cliente do Beds24 com o fetch padrão também para na barreira (nenhuma credencial chega a sair)", async () => {
-    exigirBarreira("https://beds24.com/api/v2/properties");
+  it("o cliente do Beds24 com o fetch padrão (o global) também para na barreira (nenhuma credencial chega a sair)", async () => {
+    // O global é trocado por uma barreira sobre o fetch que lança: o cliente pega o global, sem `fetchImpl`.
+    const baixo = fetchQueLanca();
+    vi.stubGlobal("fetch", fetchComBarreira(baixo));
     const c = new ClienteBeds24Http({ token: "token-ficticio" });
     await expect(c.quartos()).rejects.toMatchObject({ tipo: "rede" });
     expect(tentativasBloqueadas()).toEqual(["beds24.com"]);
-    limparTentativasBloqueadas();
+    expect(baixo).not.toHaveBeenCalled();
   });
 
   it("embrulhado num fetch falso, o cliente nunca chega ao fetch de baixo com URL do Beds24", async () => {
@@ -54,7 +57,14 @@ describe("barreira de rede do Beds24 (M8.3a)", () => {
     await expect(c.reservas({ chegadaExata: "2026-12-20", incluirInfo: true })).rejects.toThrow();
     await expect(c.credencial()).rejects.toThrow();
     expect(baixo).not.toHaveBeenCalled();
-    limparTentativasBloqueadas();
+  });
+
+  it("a verificação do afterEach lança depois de uma tentativa engolida, com a mensagem, e esvazia a lista", async () => {
+    const f = fetchComBarreira(fetchQueLanca());
+    await f("https://beds24.com/api/v2/x").catch(() => null);
+    expect(() => verificarTentativasBloqueadas()).toThrow(/Teste tentou acessar o Beds24 pela rede \(beds24\.com\)/);
+    expect(tentativasBloqueadas()).toHaveLength(0);
+    expect(() => verificarTentativasBloqueadas()).not.toThrow();
   });
 
   it("o resto passa pelo fetch de antes, sem mudança", async () => {

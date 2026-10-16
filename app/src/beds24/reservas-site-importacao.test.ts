@@ -156,6 +156,68 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
     expect(await acompanhamentoDe(r.id)).toMatchObject({ situacao: "divergente", motivo: "apagada_no_beds24", lido: null });
   });
 
+  describe("o SCL mudou depois do esperado e o envio ainda não nasceu (chave desligada, pausa, antes da próxima volta)", () => {
+    const FECHADA = new Date("2026-09-20T12:10:00Z");
+    it("cancelada no SCL e a equipe cancelou no Beds24 (texto 6.2): só a leitura, sem divergente nem aviso; a marca das OTAs fica", async () => {
+      const r = await reservaDoSite({ beds24Id: "555", estado: "cancelada" });
+      await acompanhar(r.id);
+      leitor.bookings = [booking({ status: "cancelled" })];
+      const res = await rodar();
+      expect(res.divergencias.join(" ")).not.toContain(CODIGO);
+      expect(await reserva(r.id)).toEqual(r);
+      expect(await acompanhamentoDe(r.id)).toMatchObject({ situacao: "conferida", motivo: null, otaFechadaEm: FECHADA, conferidaEm: null, lido: { situacao: "cancelada" } });
+    });
+
+    it("saída mudada no SCL e a mesma saída no Beds24: só a leitura", async () => {
+      const r = await reservaDoSite({ beds24Id: "555", checkout: "2030-10-14" });
+      await acompanhar(r.id);
+      leitor.bookings = [booking({ departure: "2030-10-14" })];
+      const res = await rodar();
+      expect(res.divergencias.join(" ")).not.toContain(CODIGO);
+      expect(await acompanhamentoDe(r.id)).toMatchObject({ situacao: "conferida", motivo: null, otaFechadaEm: FECHADA, conferidaEm: null, lido: { saida: "2030-10-14" } });
+    });
+
+    it("o Beds24 diferente também do que o SCL quer agora (cancelado, apagado ou outra saída): o alarme continua", async () => {
+      const casos = [
+        { bookings: [booking({ status: "cancelled" })], motivo: "cancelada_no_beds24", texto: "foi cancelada no Beds24" },
+        { bookings: [], motivo: "apagada_no_beds24", texto: "não voltou na leitura do Beds24" },
+        { bookings: [booking({ departure: "2030-10-16" })], motivo: "mudada_no_beds24", texto: "está diferente no Beds24" },
+      ];
+      for (const caso of casos) {
+        await db.delete(beds24ReservasSite).where(eq(beds24ReservasSite.organizacaoId, org));
+        await db.delete(reservas).where(eq(reservas.organizacaoId, org));
+        const r = await reservaDoSite({ beds24Id: "555", checkout: "2030-10-14" });
+        await acompanhar(r.id);
+        leitor.bookings = caso.bookings;
+        const res = await rodar();
+        expect(res.divergencias.join(" ")).toContain(caso.texto);
+        expect(await acompanhamentoDe(r.id)).toMatchObject({ situacao: "divergente", motivo: caso.motivo, otaFechadaEm: null });
+      }
+    });
+  });
+
+  it("o registro ligado que volta em formato inválido não é \"apagado\": a conferência não conclui e nada muda no acompanhamento", async () => {
+    // Situação desconhecida, saída igual à entrada, valor com vírgula: a normalização recusa (nas duas leituras).
+    for (const ilegivel of [{ status: "weird" }, { departure: "2030-10-10" }, { price: "1,500.00" }]) {
+      await db.delete(beds24ReservasSite).where(eq(beds24ReservasSite.organizacaoId, org));
+      await db.delete(reservas).where(eq(reservas.organizacaoId, org));
+      const r = await reservaDoSite({ beds24Id: "555" });
+      const a = await acompanhar(r.id);
+      leitor.bookings = [booking(ilegivel)];
+      const res = await rodar();
+      expect(res.divergencias).toContain("Reserva 555: formato inválido; confira o registro no Beds24.");
+      expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
+      expect(res.divergencias.join(" ")).not.toMatch(/apagado\?|não retornou na consulta/);
+      expect(await acompanhamentoDe(r.id)).toEqual(a);
+      expect(await reserva(r.id)).toEqual(r);
+    }
+    // Legível de novo e igual ao esperado: a conferência bate (nada ficou gravado como divergente).
+    leitor.bookings = [booking()];
+    await rodar();
+    const [r] = await linhas();
+    expect(await acompanhamentoDe(r.id)).toMatchObject({ situacao: "conferida", motivo: null, conferidaEm: agora, otaFechadaEm: new Date("2026-09-20T12:10:00Z") });
+  });
+
   it("só as pessoas mudadas: divergente, mas a marca das datas fechadas fica", async () => {
     const r = await reservaDoSite({ beds24Id: "555" });
     await acompanhar(r.id);
@@ -242,6 +304,59 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
     leitor.bookings = [booking({ status: "black", lastName: `Fechado ${CODIGO}` })];
     expect(await rodar()).toMatchObject({ bloqueios: 1, criadas: 0 });
     expect(await db.select().from(bloqueios).where(eq(bloqueios.organizacaoId, org))).toHaveLength(1);
+  });
+
+  describe("o registro com o código que o SCL já conhece segue o caminho normal (c e d não o prendem)", () => {
+    const bloqueiosDaOrg = () => db.select().from(bloqueios).where(eq(bloqueios.organizacaoId, org));
+    const remocoes = async () => (await historicoDe(db, org, "imovel", im)).filter(h => h.acao === "bloqueio.remover");
+
+    it("o bloqueio com o código, cancelado no Beds24 (texto 6.2), sai do SCL com a remoção no histórico: sem acompanhamento e com acompanhamento noutro id", async () => {
+      for (const comAcompanhamento of [false, true]) {
+        await db.delete(beds24ReservasSite).where(eq(beds24ReservasSite.organizacaoId, org));
+        await db.delete(reservas).where(eq(reservas.organizacaoId, org));
+        const r = await reservaDoSite(comAcompanhamento ? { beds24Id: "777" } : {});
+        if (comAcompanhamento) await acompanhar(r.id);
+        const daReserva = comAcompanhamento ? [booking({ id: 777, ...comMarca() })] : [];
+        leitor.bookings = [booking({ status: "black", lastName: `Fechado ${CODIGO}` }), ...daReserva];
+        expect(await rodar()).toMatchObject({ bloqueios: 1, criadas: 0 });
+        expect(await bloqueiosDaOrg()).toHaveLength(1);
+        const antes = (await remocoes()).length;
+        leitor.bookings = [booking({ status: "cancelled", lastName: `Fechado ${CODIGO}` }), ...daReserva];
+        const res = await rodar();
+        expect(res).toMatchObject({ ok: true, criadas: 0 });
+        expect(res.divergencias.join(" ")).not.toMatch(/marcado com|não bate|sem reserva correspondente/);
+        expect(await bloqueiosDaOrg()).toEqual([]);
+        expect((await remocoes()).length).toBe(antes + 1);
+        expect(await linhas()).toHaveLength(1);
+        expect(await reserva(r.id)).toEqual(r);
+      }
+    });
+
+    it("a reserva de OTA já importada que ganha um código na nota e é cancelada fica cancelada no SCL (sem reserva do site, e com uma sem acompanhamento)", async () => {
+      await reservaDoSite();
+      for (const [id, codigo] of [[601, "SCL-AAAAAA"], [602, CODIGO]] as const) {
+        const ota = { id, channel: "Airbnb", apiReference: `HMFICT${id}`, arrival: "2030-11-10", departure: "2030-11-12" };
+        leitor.bookings = [booking(ota)];
+        expect(await rodar()).toMatchObject({ criadas: 1 });
+        leitor.bookings = [booking({ ...ota, status: "cancelled", notes: `ver ${codigo}` })];
+        const res = await rodar();
+        expect(res).toMatchObject({ ok: true, criadas: 0, atualizadas: 1 });
+        expect(res.divergencias.join(" ")).not.toMatch(/marcado|sem reserva correspondente/);
+        expect((await linhas()).find(l => l.beds24Id === String(id))).toMatchObject({ fonte: "beds24", estado: "cancelada" });
+      }
+    });
+
+    it("o bloqueio importado que volta como reserva com o código continua desviado: nada é criado e o bloqueio fica (avisar em vez de duplicar no financeiro)", async () => {
+      await reservaDoSite();
+      leitor.bookings = [booking({ status: "black", lastName: `Fechado ${CODIGO}` })];
+      expect(await rodar()).toMatchObject({ bloqueios: 1 });
+      leitor.bookings = [booking({ status: "confirmed", lastName: `Fechado ${CODIGO}` })];
+      const res = await rodar();
+      expect(res).toMatchObject({ criadas: 0, atualizadas: 0 });
+      expect(res.divergencias).toContain(`Registro 555: marcado com ${CODIGO}, reserva do site que o sistema não enviou ao Beds24. Nada foi importado; confira no Beds24.`);
+      expect(await linhas()).toHaveLength(1);
+      expect(await bloqueiosDaOrg()).toHaveLength(1);
+    });
   });
 
   it("o ensaio é pulado: pela marca SCL-ENSAIO ou pelo id gravado na operação do ensaio (sem a marca legível)", async () => {
@@ -331,10 +446,18 @@ describe("sincronizarReserva nunca muda reserva do site (M8.3a, teste 7)", () =>
     expect(await listarLancamentos(db, org, { reservaId: r.id })).toEqual([]);
   });
 
-  it("planilha (csv) com a mesma identidade da reserva do site não a altera", async () => {
+  it("planilha (csv) nunca encontra a reserva do site: cria a própria linha e não a toca", async () => {
+    // A busca da planilha só olha linhas `fonte = 'csv'` com o mesmo id e candidatas csv/beds24 com origem airbnb/booking:
+    // a reserva do site (`fonte = 'site'`, origem `site`) nunca é encontrada. Este caso protege essa garantia (ele passaria
+    // também antes do M8.3a); a metade csv da recusa em `sincronizarReserva` é defensiva, para o dia em que a busca mudar.
     const r = await reservaDoSite({ beds24Id: "555", codigoCanal: "HMFICT" });
-    await sincronizarReserva(db, org, "csv", r.idFonte, dados({ departure: "2030-10-20", channel: "Airbnb", apiReference: "HMFICT" }));
+    const s = await sincronizarReserva(db, org, "csv", "airbnb:HMFICT", dados({ departure: "2030-10-20", channel: "Airbnb", apiReference: "HMFICT" }));
+    expect(s).toMatchObject({ ok: true, criada: true });
     expect(await reserva(r.id)).toEqual(r);
+    expect(await listarLancamentos(db, org, { reservaId: r.id })).toEqual([]);
+    const todas = await linhas();
+    expect(todas).toHaveLength(2);
+    expect(todas.find(l => l.id !== r.id)).toMatchObject({ fonte: "csv", origem: "airbnb", idFonte: "airbnb:HMFICT" });
   });
 
   it("a confirmação do próprio site (fonte site) continua passando", async () => {

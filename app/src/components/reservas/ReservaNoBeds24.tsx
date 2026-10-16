@@ -101,18 +101,39 @@ const SEM_SIMULACAO: Record<MotivoSemSimulacao, string> = {
 
 const SIMULADA = "Simulação gravada: o pedido no histórico abaixo é o que seria enviado ao Beds24. Nada foi enviado.";
 const REPETIDA = "Nada mudou desde a última simulação: o pedido é o mesmo do histórico abaixo. Nada foi enviado.";
-const IMOVEL_DESLIGADO = " O imóvel não está ligado em Integrações: no deploy de produção, nada sairia até ele ser ligado.";
+/** Imóvel desligado e a criação sairia depois de ligar (o acompanhamento já existe). */
+const IMOVEL_DESLIGADO = " O imóvel não está ligado em Integrações: no deploy de produção, esta criação só sairia depois de ele ser ligado.";
+/** Imóvel desligado e ligar agora não vale para ela: confirmada antes da ligação (D6), fica com a equipe. */
+const IMOVEL_DESLIGADO_ANTERIOR =
+  " O imóvel não está ligado em Integrações: a simulação considerou o imóvel ligado antes da confirmação. Ligar agora só vale para as reservas confirmadas depois da ligação, então esta continua com a equipe, à mão.";
+
+/** As chaves de `chaveDoResultadoDaSimulacao` quando algo foi simulado. */
+const SIMULACAO: Record<string, string> = {
+  simulada: SIMULADA,
+  simulada_imovel_desligado: SIMULADA + IMOVEL_DESLIGADO,
+  simulada_imovel_desligado_anterior: SIMULADA + IMOVEL_DESLIGADO_ANTERIOR,
+  repetida: REPETIDA,
+  repetida_imovel_desligado: REPETIDA + IMOVEL_DESLIGADO,
+  repetida_imovel_desligado_anterior: REPETIDA + IMOVEL_DESLIGADO_ANTERIOR,
+};
 
 /** O texto do resultado do "Simular" (`?beds24=`); chave desconhecida = nada. */
 export function textoDaSimulacao(chave: string | undefined): string | null {
   if (!chave) return null;
-  if (chave === "simulada") return SIMULADA;
-  if (chave === "simulada_imovel_desligado") return SIMULADA + IMOVEL_DESLIGADO;
-  if (chave === "repetida") return REPETIDA;
-  if (chave === "repetida_imovel_desligado") return REPETIDA + IMOVEL_DESLIGADO;
+  if (Object.hasOwn(SIMULACAO, chave)) return SIMULACAO[chave];
   const motivo = chave.startsWith("nada_") ? chave.slice(5) : "";
   return Object.hasOwn(SEM_SIMULACAO, motivo) ? `Nada seria enviado ao Beds24: ${SEM_SIMULACAO[motivo as MotivoSemSimulacao]}.` : null;
 }
+
+/**
+ * O que a equipe faz à mão enquanto o sistema não escreve reservas. O pedido com as datas seguradas nunca vai ao Beds24 e
+ * as datas dele não são fechadas nas OTAs (D9); o pedido vencido sem pagamento nunca teve nada fechado.
+ */
+const AS_MAO: Record<NonNullable<FichaReservaNoBeds24["pedido"]> | "reserva", string> = {
+  reserva: "Por enquanto, o sistema não escreve reservas no Beds24: feche e abra as datas à mão, como hoje.",
+  segurado: "É um pedido com as datas seguradas: ele não vai ao Beds24, e as datas não devem ser fechadas à mão nas OTAs enquanto estiverem seguradas.",
+  vencido: "O pedido venceu sem pagamento: ele nunca foi ao Beds24 e as datas dele não precisaram ser fechadas nas OTAs. Nada a fazer.",
+};
 
 type Props = {
   reservaId: string;
@@ -160,7 +181,7 @@ export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) 
         ) : (
           <strong>ligado</strong>
         )}{" "}
-        Por enquanto, o sistema não escreve reservas no Beds24: feche e abra as datas à mão, como hoje.
+        {AS_MAO[ficha.pedido ?? "reserva"]}
       </p>
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
         {linhas.map(([k, v]) => (

@@ -73,6 +73,14 @@ describe("Beds24 em Serviços (M8.3a): as duas chaves pelas funções, independe
     expect(beds24({ BEDS24_ESCRITA_RESERVAS: "ligada" })).toContain("reservas do site no Beds24: chave ligada");
   });
 
+  it("a chave do calendário ligada sem credencial: não diz LIGADO (nada é enviado); com o token direto, o calendário envia", () => {
+    const d = beds24({ BEDS24_ESCRITA: "ligada" });
+    expect(d).toContain("Falta BEDS24_REFRESH_TOKEN");
+    expect(d).toContain("envio para o Beds24: chave ligada, mas sem credencial: nada é enviado (BEDS24_ESCRITA)");
+    expect(d).not.toContain("LIGADO");
+    expect(beds24({ BEDS24_API_KEY: "k", BEDS24_ESCRITA: "ligada" })).toContain("envio para o Beds24 LIGADO");
+  });
+
   it("a rotina das reservas do site aparece como planejada, do M8.3c", () => {
     expect(AUTOMACOES.find((a) => a.id === "reservas-beds24")).toMatchObject({ situacao: "planejada", item: "M8.3c", nome: "Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)", quando: expect.stringContaining("BEDS24_ESCRITA_RESERVAS=ligada") });
   });

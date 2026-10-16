@@ -112,11 +112,14 @@ export function ReservasSiteBeds24({ p }: { p: PainelReservasBeds24 }) {
                 <tr key={i.id}>
                   <td>{i.codigo}</td>
                   <td>{i.quartoDoVinculo ?? "sem vínculo único e válido"}</td>
-                  <td>{i.ligadoEm ? `ligado desde ${quando(i.ligadoEm)}${i.ligadoPor ? ` por ${i.ligadoPor}` : ""}` : "desligado"}</td>
+                  <td>
+                    {i.ligadoEm ? `ligado desde ${quando(i.ligadoEm)}${i.ligadoPor ? ` por ${i.ligadoPor}` : ""}` : "desligado"}
+                    {i.ativo ? "" : " · imóvel inativo (reative no cadastro antes de ligar de novo)"}
+                  </td>
                   <td>
                     {i.ligadoEm ? (
                       <AcaoReservasBeds24 acao="desligar" imovelId={i.id} rotulo="Desligar" pergunta={`Desligar o imóvel ${i.codigo}? Nenhuma reserva nova dele vai ao Beds24.`} />
-                    ) : (
+                    ) : !i.ativo ? null : (
                       <AcaoReservasBeds24
                         acao="ligar"
                         imovelId={i.id}

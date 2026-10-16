@@ -3,7 +3,7 @@
  * "ok" só quando foi testado agora (o banco); "configurado" quando a chave existe mas o
  * serviço não foi testado nesta abertura (não afirmar que funciona sem ter conferido).
  */
-import { credencialDeEscritaForaDaProducao, escritaBeds24Ligada, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta } from "@/beds24/http";
+import { credencialDeEscritaForaDaProducao, escritaBeds24Ligada, escritaBeds24Pronta, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta } from "@/beds24/http";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
 import { deployDeProducao } from "@/sistema/ambiente";
@@ -31,12 +31,16 @@ export const TEXTO_CREDENCIAL_ESCRITA_FORA_DA_PRODUCAO =
 
 /**
  * As duas chaves do Beds24, cada uma pela sua função (nunca a variável direto): o envio de calendário e preços
- * (`BEDS24_ESCRITA`, M3.7) e as reservas do site (`BEDS24_ESCRITA_RESERVAS`, M8.3), independentes nos dois sentidos.
+ * (`BEDS24_ESCRITA`, M3.7) e as reservas do site (`BEDS24_ESCRITA_RESERVAS`, M8.3), independentes nos dois sentidos. O
+ * calendário só diz LIGADO pela régua de `escritorDoAmbiente` (`escritaBeds24Pronta`: a chave e a credencial); a chave
+ * ligada sem credencial não envia nada, e a linha diz isso.
  */
 function chavesBeds24(env: NodeJS.ProcessEnv): string {
-  const calendario = escritaBeds24Ligada(env)
+  const calendario = escritaBeds24Pronta(env)
     ? "envio para o Beds24 LIGADO (só para os imóveis marcados em Configurações → Calendário e preços)"
-    : "envio para o Beds24 desligado (BEDS24_ESCRITA)";
+    : escritaBeds24Ligada(env)
+      ? "envio para o Beds24: chave ligada, mas sem credencial: nada é enviado (BEDS24_ESCRITA)"
+      : "envio para o Beds24 desligado (BEDS24_ESCRITA)";
   const reservas = escritaReservasBeds24Pronta(env)
     ? "reservas do site no Beds24: chave LIGADA e pronta neste deploy (só para os imóveis ligados em Integrações)"
     : escritaReservasBeds24Ligada(env)

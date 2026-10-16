@@ -14,7 +14,7 @@ vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn() })
 import { NOMES_MOTIVO_NO_BEDS24, NOMES_SITUACAO_NO_BEDS24, ReservaNoBeds24, textoDaSimulacao } from "./ReservaNoBeds24";
 
 const ID = "11111111-1111-4111-8111-111111111111";
-const vazia: FichaReservaNoBeds24 = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true };
+const vazia: FichaReservaNoBeds24 = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null };
 const html = (ficha: FichaReservaNoBeds24, editar = true, resultado?: string) => renderToStaticMarkup(<ReservaNoBeds24 reservaId={ID} ficha={ficha} editar={editar} resultado={resultado} />);
 
 describe("bloco No Beds24 da ficha", () => {
@@ -29,6 +29,16 @@ describe("bloco No Beds24 da ficha", () => {
     expect(h).toContain("o sistema não escreve reservas no Beds24");
     expect(h).toContain(`name="reservaId" value="${ID}"`);
     expect(h).toContain(">Simular</button>");
+  });
+
+  it("pedido com as datas seguradas (D9): nunca manda fechar as datas à mão; o pedido vencido sem pagamento não manda abrir", () => {
+    const segurado = html({ ...vazia, pedido: "segurado" });
+    expect(segurado).toContain("É um pedido com as datas seguradas: ele não vai ao Beds24, e as datas não devem ser fechadas à mão nas OTAs");
+    expect(segurado).not.toContain("feche e abra as datas à mão");
+    const vencido = html({ ...vazia, pedido: "vencido" });
+    expect(vencido).toContain("O pedido venceu sem pagamento");
+    expect(vencido).not.toContain("feche e abra as datas à mão");
+    expect(html(vazia)).toContain("feche e abra as datas à mão, como hoje");
   });
 
   it("o Simular some sem reserva:editar ou quando o ambiente não deixa (deploy de produção com a chave ligada)", () => {
@@ -55,6 +65,7 @@ describe("bloco No Beds24 da ficha", () => {
         { id: "o2", tipo: "cancelar", modo: "real", situacao: "recusada", pedido: null, beds24Id: "98765", iniciadoEm: new Date("2026-10-03T12:00:00Z"), terminadoEm: new Date("2026-10-03T12:01:00Z"), erro: "a credencial não tem permissão de escrever reservas" },
       ],
       simular: true,
+      pedido: null,
     });
     expect(h).toContain("Diferente no Beds24: cancelada no Beds24 por fora");
     expect(h).toContain("98765");
@@ -70,7 +81,14 @@ describe("bloco No Beds24 da ficha", () => {
 
   it("o resultado do Simular: simulada, repetida, com o imóvel desligado, nada (com o motivo); chave desconhecida, nada", () => {
     expect(textoDaSimulacao("simulada")).toContain("Simulação gravada");
-    expect(textoDaSimulacao("simulada_imovel_desligado")).toContain("O imóvel não está ligado em Integrações");
+    expect(textoDaSimulacao("simulada_imovel_desligado")).toContain("esta criação só sairia depois de ele ser ligado");
+    // Confirmada antes de qualquer ligação: nunca promete o envio depois de ligar (D6); fica com a equipe, à mão.
+    for (const chave of ["simulada_imovel_desligado_anterior", "repetida_imovel_desligado_anterior"]) {
+      const t = textoDaSimulacao(chave)!;
+      expect(t).toContain("a simulação considerou o imóvel ligado antes da confirmação");
+      expect(t).toContain("esta continua com a equipe, à mão");
+      expect(t).not.toMatch(/sairia depois|até ele ser ligado/);
+    }
     expect(textoDaSimulacao("repetida")).toContain("Nada mudou desde a última simulação");
     expect(textoDaSimulacao("nada_sem_pagamento")).toBe("Nada seria enviado ao Beds24: não há pagamento pelo site que confirmou a reserva (confirmada à mão: feche as datas à mão).");
     expect(textoDaSimulacao("nada_fora_do_ambiente")).toContain("simular só vale fora do deploy de produção");

@@ -82,6 +82,7 @@ export const ensaioValeParaCredencial = (c: ConfigReservasBeds24, credencialAtua
 export type ResultadoConfigReservasBeds24 = { ok: true } | { ok: false; erro: string };
 
 export const ERRO_LIGAR_SEM_CREDENCIAL = "Configure a credencial do Beds24 antes de ligar um imóvel.";
+export const ERRO_LIGAR_IMOVEL_INATIVO = "Imóvel inativo: reative no cadastro antes de ligar.";
 export const ERRO_LIGAR_SEM_ENSAIO = "Faça o ensaio com a credencial atual antes de ligar um imóvel: sem ensaio conferido, nenhuma reserva é criada no Beds24.";
 const ERRO_IMOVEL = "Imóvel não encontrado.";
 const ERRO_ENSAIO = "Ensaio não encontrado ou ainda não conferido.";
@@ -108,14 +109,16 @@ export function retomarReservasBeds24(db: Db, sessao: Sessao) {
 }
 
 /**
- * Liga o imóvel (D6): só com um ensaio conferido com a credencial atual (`env` explícito, a impressão de agora). Valem
- * as reservas confirmadas a partir de `agora` (as de antes nascem `manual`). Já ligado, a data de ligação não muda.
+ * Liga o imóvel (D6): só um imóvel ativo, e só com um ensaio conferido com a credencial atual (`env` explícito, a
+ * impressão de agora). Valem as reservas confirmadas a partir de `agora` (as de antes nascem `manual`). Já ligado, a data
+ * de ligação não muda.
  */
 export function ligarImovelReservasBeds24(db: Db, sessao: Sessao, imovelId: string, env: NodeJS.ProcessEnv, agora: Date = new Date()) {
   return mudar(db, sessao, async (c, tx) => {
     if (!uuidValido(imovelId)) return ERRO_IMOVEL;
-    const [im] = await tx.select({ id: imoveis.id }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, sessao.organizacaoId)));
+    const [im] = await tx.select({ id: imoveis.id, ativo: imoveis.ativo }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, sessao.organizacaoId)));
     if (!im) return ERRO_IMOVEL;
+    if (!im.ativo) return ERRO_LIGAR_IMOVEL_INATIVO;
     const credencial = impressaoCredencialBeds24(env);
     if (!credencial) return ERRO_LIGAR_SEM_CREDENCIAL;
     if (!ensaioValeParaCredencial(c, credencial)) return ERRO_LIGAR_SEM_ENSAIO;
@@ -124,7 +127,7 @@ export function ligarImovelReservasBeds24(db: Db, sessao: Sessao, imovelId: stri
   });
 }
 
-/** Desliga o imóvel: só a criação para; a atualização e o cancelamento do que o M8.3 já criou seguem. */
+/** Desliga o imóvel (ativo ou não): só a criação para; a atualização e o cancelamento do que o M8.3 já criou seguem. */
 export function desligarImovelReservasBeds24(db: Db, sessao: Sessao, imovelId: string) {
   return mudar(db, sessao, async (c) => (uuidValido(imovelId) && ligacaoDoImovel(c, imovelId) ? { ...c, imoveis: c.imoveis.filter((i) => i.imovelId !== imovelId) } : ERRO_IMOVEL));
 }

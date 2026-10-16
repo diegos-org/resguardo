@@ -7,7 +7,7 @@ import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
 import { paraDadosReserva } from "./converter";
-import { avisoDaConferencia, conferirNaImportacao, desvioNaImportacao, passarEnviandoVencidasAIncerta, prepararDesvioNaImportacao } from "./reservas-site";
+import { avisoDaConferencia, avisoDeRegistroIlegivel, conferirNaImportacao, desvioNaImportacao, passarEnviandoVencidasAIncerta, prepararDesvioNaImportacao, type RegistroConhecido } from "./reservas-site";
 import { ErroBeds24, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
 import { CAUSA_EM_ANDAMENTO, escritaBeds24EmAndamento, MENSAGEM_ENVIO_EM_ANDAMENTO, MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE, tentarTravaBeds24 } from "./trava";
 
@@ -64,6 +64,9 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       const porId = new Map(lote.itens.map(b => [b.idExterno, b]));
       if (porId.size !== lote.itens.length) throw new ErroBeds24("Consulta com IDs de reserva repetidos. Confira a origem antes de importar; nenhuma mudança foi aplicada.", "formato");
       for (const d of lote.divergencias) aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
+      // Ids que voltaram em formato inválido (aqui e na releitura): o registro existe, só não deu para ler. Nunca contam
+      // como "não voltou" (apagado): avisar em vez de supor.
+      const ilegiveis = new Set(lote.divergencias.map(d => d.id));
 
       // Reconsulta IDs já importados que saíram do filtro (mudança de datas, quarto
       // ou cancelamento). Ausência nunca cancela reserva nem libera um bloqueio.
@@ -77,14 +80,24 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
         const ids = faltantes.slice(i, i + 50);
         const l = await leitor.reservas({ ids, chegadaDe: "1900-01-01", incluirInfo: true });
         for (const b of l.itens) if (ids.includes(b.idExterno)) porId.set(b.idExterno, b);
-        for (const id of ids) if (!porId.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
+        for (const d of l.divergencias) {
+          if (!ids.includes(d.id) || porId.has(d.id) || ilegiveis.has(d.id)) continue;
+          ilegiveis.add(d.id);
+          aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
+        }
+        for (const id of ids) if (!porId.has(id) && !ilegiveis.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
       }
+      // O que cada id conhecido é no SCL (a reserva vale sobre o bloqueio com o mesmo id): o desvio deixa o registro conhecido
+      // com a marca seguir o caminho normal (5.2 c e d).
+      const tipoConhecido = new Map<string, RegistroConhecido>([...antigosBloqueios.map(a => [a.idFonte, "bloqueio"] as const), ...antigas.map(a => [a.beds24Id || a.idFonte, "reserva"] as const)]);
       // Reserva paga do site (M8.3, desenho 5.2): o que o desvio consulta, lido uma vez. O id dela que não voltou na releitura
-      // é conferido como apagado no Beds24 (a reserva do SCL continua como estava).
-      const desvio = await prepararDesvioNaImportacao(tx, org, porId.values(), new Set(conhecidos), agora);
+      // é conferido como apagado no Beds24 (a reserva do SCL continua como estava). O que voltou ilegível não é apagado: a
+      // conferência não conclui e nada muda no acompanhamento (situação, leitura e marcas das OTAs), só o aviso.
+      const desvio = await prepararDesvioNaImportacao(tx, org, porId.values(), tipoConhecido, agora);
       for (const id of faltantes) {
         const ligada = porId.has(id) ? undefined : desvio.ligadas.get(id);
-        const a = ligada ? avisoDaConferencia(await conferirNaImportacao(tx, org, ligada.id, null, agora), ligada.codigo, id) : null;
+        if (!ligada) continue;
+        const a = ilegiveis.has(id) ? avisoDeRegistroIlegivel(ligada.codigo, id) : avisoDaConferencia(await conferirNaImportacao(tx, org, ligada.id, null, agora), ligada.codigo, id);
         if (a) aviso(res, a);
       }
       const inicio = hojeISO("America/Sao_Paulo", agora);

@@ -154,9 +154,10 @@ export type ConferenciaNaImportacao =
  * ficam intactos, mesmo com o vínculo do imóvel trocado. Grava `lido` e `lido_em` (só uma leitura mais nova sobrescreve).
  * - Igual ao `esperado`: `conferida_em` só sem operação ativa e com a assinatura do SCL de agora igual à do esperado.
  * - Diferente: `divergente` com o motivo (mudada, cancelada ou apagada no Beds24) quando o Beds24 deveria estar igual — o
- *   acompanhamento `conferida` (ou já `divergente`) e sem operação ativa; com as datas, a situação ou o quarto mudados, a
- *   marca "datas fechadas" (`ota_fechada_em`) volta a vazio. Com um envio a fazer ou em curso, a diferença é esperada: só a
- *   leitura fica.
+ *   acompanhamento `conferida` (ou já `divergente`), sem operação ativa e o Beds24 diferente também do que o SCL quer agora;
+ *   com as datas, a situação ou o quarto mudados, a marca "datas fechadas" (`ota_fechada_em`) volta a vazio. Com um envio a
+ *   fazer ou em curso, ou com o Beds24 já como o SCL quer agora (o SCL mudou e o envio ainda não nasceu), a diferença é
+ *   esperada: só a leitura fica.
  * A situação `conferida` e as marcas das OTAs são do trabalhador (M8.3c). Quem chama tem a trava `beds24:<org>`.
  */
 export async function conferirNaImportacao(tx: Db, org: string, reservaId: string, registro: ReservaBeds24 | null, agora: Date): Promise<ConferenciaNaImportacao> {
@@ -176,13 +177,22 @@ export async function conferirNaImportacao(tx: Db, org: string, reservaId: strin
     .from(beds24ReservasOperacoes)
     .where(and(eq(beds24ReservasOperacoes.organizacaoId, org), eq(beds24ReservasOperacoes.reservaId, r.id), inArray(beds24ReservasOperacoes.situacao, [...SITUACOES_OPERACAO_ATIVAS])))
     .limit(1);
+  const quarto = a.roomId ?? a.esperado.quarto;
+  const atual = assinaturaAtualDoScl(r, quarto);
   const dif = diferencaNoBeds24(a.esperado, lido);
   if (!dif) {
-    const conferida = !ativa && a.assinaturaEsperada !== null && assinaturaAtualDoScl(r, a.roomId ?? a.esperado.quarto) === a.assinaturaEsperada;
+    const conferida = !ativa && a.assinaturaEsperada !== null && atual === a.assinaturaEsperada;
     await gravar(conferida ? { conferidaEm: agora } : {});
     return { resultado: "igual", conferida };
   }
   if (ativa || (a.situacao !== "conferida" && a.situacao !== "divergente")) {
+    await gravar({});
+    return { resultado: "lido" };
+  }
+  // O SCL mudou depois do `esperado` e a operação ainda não nasceu (chave desligada, pausa, ou antes da próxima volta): o
+  // Beds24 difere do `esperado` por definição. Se ele já está como o SCL quer agora (a equipe seguiu o texto da reserva),
+  // não há divergência: só a leitura. Diferente também do que o SCL quer agora, a mudança veio de fora e segue o alarme.
+  if (atual !== null && atual !== a.assinaturaEsperada && !diferencaNoBeds24({ quarto, chegada: r.checkin, saida: r.checkout, hospedes: r.hospedes, situacao: r.estado === "cancelada" ? "cancelada" : "confirmada" }, lido)) {
     await gravar({});
     return { resultado: "lido" };
   }
@@ -198,6 +208,14 @@ export function avisoDaConferencia(c: ConferenciaNaImportacao, codigo: string, b
   if (c.motivo === "cancelada_no_beds24") return `Reserva ${codigo} (paga pelo site) foi cancelada no Beds24 (registro ${id}), mas continua confirmada no SCL: as datas podem estar abertas nas OTAs. O SCL não seguiu a mudança.`;
   if (c.motivo === "apagada_no_beds24") return `Reserva ${codigo} (paga pelo site): o registro ${id} não voltou na leitura do Beds24 (apagado?). Confira se as datas estão abertas nas OTAs; o SCL não mudou nada.`;
   return `Reserva ${codigo} (paga pelo site) está diferente no Beds24 (registro ${id}): o SCL não seguiu a mudança; confira a reserva.`;
+}
+
+/**
+ * O registro ligado a uma reserva do site voltou em formato inválido: existe, mas não deu para ler. A conferência não conclui
+ * e nada muda (nunca vira "apagada no Beds24"; avisar em vez de supor).
+ */
+export function avisoDeRegistroIlegivel(codigo: string, beds24Id: string): string {
+  return `Reserva ${codigo} (paga pelo site): o registro ${idSeguro(beds24Id)} voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`;
 }
 
 // ---------------------------------------------------------------- desvio no laço da importação (desenho 5.2)
@@ -216,6 +234,8 @@ export async function passarEnviandoVencidasAIncerta(tx: Db, org: string): Promi
 }
 
 type ReservaLigada = { id: string; codigo: string; beds24Id: string | null };
+/** O que um id do Beds24 já é no SCL: uma reserva (`fonte = 'beds24'` ou com `beds24_id`) ou um bloqueio importado. */
+export type RegistroConhecido = "reserva" | "bloqueio";
 type CriacaoNaoResolvida = { referencia: string; quarto: string; chegada: string; saida: string };
 
 /** O que o desvio precisa saber da importação, lido uma vez antes do laço. */
@@ -231,8 +251,8 @@ export type ContextoDoDesvio = {
   porCodigo: Map<string, ReservaLigada>;
   /** Criações não resolvidas (5.2 e): o quarto e as noites de cada uma. */
   naoResolvidas: CriacaoNaoResolvida[];
-  /** Ids que o SCL já conhece (reservas e bloqueios importados): a atualização deles não cria nada e segue. */
-  conhecidos: ReadonlySet<string>;
+  /** Ids que o SCL já conhece, com o que eles são no SCL (reserva ou bloqueio importado): a atualização deles não cria nada e segue. */
+  conhecidos: ReadonlyMap<string, RegistroConhecido>;
   /** Códigos já avisados como duplicados (um aviso por código). */
   duplicadasAvisadas: Set<string>;
 };
@@ -243,7 +263,7 @@ export type ContextoDoDesvio = {
  * idade), uma operação `incerta`, um POST tentado sem o id, ou o acompanhamento `aguardando_equipe` com motivo `incerta`,
  * de reserva ainda sem `beds24_id`.
  */
-export async function prepararDesvioNaImportacao(tx: Db, org: string, registros: Iterable<ReservaBeds24>, conhecidos: ReadonlySet<string>, agora: Date): Promise<ContextoDoDesvio> {
+export async function prepararDesvioNaImportacao(tx: Db, org: string, registros: Iterable<ReservaBeds24>, conhecidos: ReadonlyMap<string, RegistroConhecido>, agora: Date): Promise<ContextoDoDesvio> {
   const marcados = new Map<string, ReservaBeds24[]>();
   for (const b of registros) if (b.referenciaScl && !b.ensaio) marcados.set(b.referenciaScl, [...(marcados.get(b.referenciaScl) ?? []), b]);
   const ligadas = new Map<string, ReservaLigada>();
@@ -293,6 +313,18 @@ const desviado = (aviso: string | null): DesvioNaImportacao => ({ desviado: true
 const segue: DesvioNaImportacao = { desviado: false };
 
 /**
+ * O registro com a marca que o SCL já conhece segue o caminho normal (c e d não valem para ele): a reserva importada
+ * (atualiza ou cancela a cópia) e o bloqueio importado que voltou como bloqueio ou cancelado (o cancelado sai do SCL, com a
+ * remoção no histórico). Ele não é o registro que o M8.3 criou: esse está em `ligadas` (b) ou ainda é desconhecido. O
+ * bloqueio importado que volta como reserva com a marca continua em c e d: virar uma reserva importada duplicaria, no
+ * financeiro, a reserva do site daquelas datas.
+ */
+function conhecidoSegue(b: ReservaBeds24, conhecidos: ReadonlyMap<string, RegistroConhecido>): boolean {
+  const t = conhecidos.get(b.idExterno);
+  return t === "reserva" || (t === "bloqueio" && (b.estado === "bloqueio" || b.estado === "cancelada"));
+}
+
+/**
  * O desvio da importação (desenho 5.2), nesta ordem, antes da conferência de vínculo e do ramo de bloqueio:
  * - a. o ensaio do SCL (pela marca `SCL-ENSAIO` ou pelo id gravado no ensaio) pula, com aviso; nunca cria;
  * - b. o registro ligado a uma reserva do site (`reservas.beds24_id` ou o id numa operação dela) vai a
@@ -301,8 +333,10 @@ const segue: DesvioNaImportacao = { desviado: false };
  * - d. a marca sem reserva correspondente, duplicada ou num registro que não bate vira aviso; nada é criado;
  * - e. sem marca legível, no mesmo quarto e com noites sobrepostas a uma criação não resolvida: pula, com aviso.
  * O SCL nunca cria um `black`: um bloqueio com o código no nome (a equipe fechando as datas à mão) segue o caminho dos
- * bloqueios em c, d e e. Em e, o registro que o SCL já conhece (reserva ou bloqueio importado) também segue: a atualização
- * dele não cria nada.
+ * bloqueios em c, d e e. O registro que o SCL já conhece (reserva ou bloqueio importado) também segue em c, d e e: a
+ * atualização dele não cria nada, e pular escondia o cancelamento (o bloqueio cancelado ficava fechando as noites no site;
+ * a cópia de uma reserva de OTA cancelada continuava confirmada). Em c e d, o bloqueio importado que volta como reserva fica
+ * de fora dessa regra (`conhecidoSegue`).
  */
 export async function desvioNaImportacao(tx: Db, org: string, b: ReservaBeds24, ctx: ContextoDoDesvio): Promise<DesvioNaImportacao> {
   const id = idSeguro(b.idExterno);
@@ -315,7 +349,7 @@ export async function desvioNaImportacao(tx: Db, org: string, b: ReservaBeds24, 
   }
 
   const ref = b.referenciaScl;
-  if (ref && b.estado !== "bloqueio") {
+  if (ref && b.estado !== "bloqueio" && !conhecidoSegue(b, ctx.conhecidos)) {
     const r = ctx.porCodigo.get(ref);
     if (!r) return desviado(`Registro ${id}: marcado pelo SCL (${ref}) sem reserva correspondente. Nada foi importado.`);
     const ad = await adotarReservaCriada(tx, org, r.id, ctx.marcados.get(ref) ?? [b]);

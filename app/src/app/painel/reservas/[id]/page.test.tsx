@@ -513,7 +513,7 @@ it("M8.2d (D26): a operação, em cada caso da alteração — aumento aplicado,
 });
 
 describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
-  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true };
+  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null };
   beforeEach(() => {
     m.reserva.mockResolvedValue({ ...reserva, fonte: "site" });
     m.noBeds24.mockResolvedValue(ficha);

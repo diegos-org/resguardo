@@ -32,7 +32,7 @@ const PAINEL: PainelReservasBeds24 = {
   marca: "nao_conferida",
   importacaoAutomatica: false,
   semLigar: "sem_ensaio",
-  imoveis: [{ id: "im1", codigo: "103", ligadoEm: null, ligadoPor: null, quartoDoVinculo: "20" }],
+  imoveis: [{ id: "im1", codigo: "103", ativo: true, ligadoEm: null, ligadoPor: null, quartoDoVinculo: "20" }],
   contadores: { pendente: 0, em_envio: 0, conferida: 0, divergente: 0, conflito: 0, aguardando_equipe: 0, manual: 0, encerrada: 0 },
 };
 
@@ -53,6 +53,8 @@ beforeEach(() => {
   });
   m.reservasBeds24.mockResolvedValue(PAINEL);
   vi.stubEnv("VERCEL_ENV", "preview");
+  // A sessão pode ter a credencial real (e as chaves) do Beds24 no ambiente: cada teste parte sem elas.
+  for (const v of ["BEDS24_REFRESH_TOKEN", "BEDS24_API_KEY", "BEDS24_ESCRITA", "BEDS24_ESCRITA_RESERVAS"]) vi.stubEnv(v, undefined);
   vi.stubEnv("MERCADOPAGO_ACCESS_TOKEN", "TEST-token-secreto-ficticio");
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -123,4 +125,13 @@ it("M8.3a: a prontidão só leitura (escopos por um botão, marca, ensaio, impor
   expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Ligar<\/button>/);
   expect(h).toContain("Conferida: o Beds24 está igual ao SCL: 2");
   expect(h).toContain("Diferente no Beds24: 1");
+});
+
+it("M8.3a: o imóvel ligado que foi desativado aparece como inativo, só com Desligar", async () => {
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, semLigar: null, imoveis: [{ id: "im1", codigo: "103", ativo: false, ligadoEm: "2026-10-10T12:00:00.000Z", ligadoPor: "Admin Fictício", quartoDoVinculo: "20" }] });
+  const h = renderToStaticMarkup(await Page());
+  expect(h).toContain("ligado desde 10/10/2026");
+  expect(h).toContain("imóvel inativo (reative no cadastro antes de ligar de novo)");
+  expect(h).toContain(">Desligar</button>");
+  expect(h).not.toContain(">Ligar</button>");
 });

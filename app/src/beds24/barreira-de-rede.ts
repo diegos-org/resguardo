@@ -40,6 +40,16 @@ export const limparTentativasBloqueadas = () => {
   registro().tentativas.length = 0;
 };
 
+/**
+ * A verificação do `afterEach` do setup: esvazia a lista e, se houve tentativa nesta rodada (mesmo com o erro engolido pelo
+ * código testado), lança. Exportada para o próprio teste da barreira conferir a mensagem e a limpeza.
+ */
+export function verificarTentativasBloqueadas(): void {
+  const tentativas = [...registro().tentativas];
+  limparTentativasBloqueadas();
+  if (tentativas.length) throw new Error(`Teste tentou acessar o Beds24 pela rede (${tentativas.join(", ")}). Use a versão falsa (beds24/falso.ts) ou um fetch simulado.`);
+}
+
 export class RedeBloqueadaNoTeste extends Error {
   constructor(url: string) {
     super(`Teste tentou acessar o Beds24 pela rede (${url}). Use a versão falsa (beds24/falso.ts) ou um fetch simulado.`);

@@ -56,7 +56,7 @@ const sessao = (papel: string) => m.sessao.mockResolvedValue({ papel, organizaca
 beforeEach(() => {
   vi.clearAllMocks();
   sessao("admin");
-  m.simular.mockResolvedValue({ ok: true, operacaoId: "op", repetida: false, imovelLigado: false, tipo: "criar", pedido: {} });
+  m.simular.mockResolvedValue({ ok: true, operacaoId: "op", repetida: false, imovelDesligado: "espera_ligar", tipo: "criar", pedido: {} });
   for (const f of [m.pausar, m.retomar, m.ligar, m.desligar]) f.mockResolvedValue({ ok: true });
   m.escopos.mockResolvedValue({ lidos: false, motivo: "fora_da_producao" });
 });

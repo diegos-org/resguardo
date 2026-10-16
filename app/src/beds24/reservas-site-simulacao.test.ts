@@ -7,10 +7,11 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24ReservasOperacoes, beds24ReservasSite, cancelamentosReserva, contratos, idsExternos, reservas } from "@/db/schema";
+import { beds24ReservasOperacoes, beds24ReservasSite, cancelamentosReserva, contratos, idsExternos, pagamentos, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { type Cenario, entradaPadrao, cancelar, env, minutos, montarCenario, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
+import { confirmarReserva } from "@/reservas/repositorio";
+import { alteracaoGravada, alterar, type Cenario, entradaPadrao, cancelar, env, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, semDadosDoHospede, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
 import { assinaturaEsperado, chaveSimulacaoBeds24 } from "./reservas-site-regras";
 import { chaveDoResultadoDaSimulacao, simularReservaNoBeds24 } from "./reservas-site-simulacao";
 
@@ -43,7 +44,9 @@ describe("Simular (M8.3a, teste 11)", () => {
     const x = await pagarEConfirmar(c);
     const r = await simularSemRede(admin, x.reservaId);
     const pedido = { quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4, situacao: "confirmada", referencia: x.reservaCodigo };
-    expect(r).toEqual({ ok: true, operacaoId: expect.any(String), repetida: false, imovelLigado: false, tipo: "criar", pedido });
+    // Imóvel desligado e confirmada antes de qualquer ligação de agora: ligar não faria ela sair (D6), e o resultado diz isso.
+    expect(r).toEqual({ ok: true, operacaoId: expect.any(String), repetida: false, imovelDesligado: "anterior_a_ligar", tipo: "criar", pedido });
+    expect(chaveDoResultadoDaSimulacao(r)).toBe("simulada_imovel_desligado_anterior");
     const [op] = await operacoes(x.reservaId);
     const assinatura = assinaturaEsperado({ quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4, situacao: "confirmada" });
     expect(op).toMatchObject({ tipo: "criar", modo: "simulacao", situacao: "simulada", chave: chaveSimulacaoBeds24(x.reservaId, assinatura), acompanhamentoId: null, autorId: admin.usuarioId, beds24Id: null, enviadoEm: null, credencial: "", pedido });
@@ -64,14 +67,14 @@ describe("Simular (M8.3a, teste 11)", () => {
     await db.update(reservas).set({ hospedes: 3 }).where(eq(reservas.id, x.reservaId));
     expect(await simularSemRede(admin, x.reservaId)).toMatchObject({ ok: true, repetida: false, pedido: { hospedes: 3 } });
     expect(await operacoes(x.reservaId)).toHaveLength(2);
-    expect(chaveDoResultadoDaSimulacao(b)).toBe("repetida_imovel_desligado");
+    expect(chaveDoResultadoDaSimulacao(b)).toBe("repetida_imovel_desligado_anterior");
   });
 
   it("imóvel ligado (D6) antes da confirmação: simula com a ligação real; confirmada antes da ligação, nada (a equipe cuida à mão)", async () => {
     const x = await pagarEConfirmar(c);
     await gravarConfig(db, c.org, "reservas_beds24", { pausado: null, imoveis: [{ imovelId: c.imovel, ligadoEm: "2026-09-01T00:00:00.000Z", ligadoPor: null }], ensaio: null }, null);
     const r = await simularSemRede(admin, x.reservaId);
-    expect(r).toMatchObject({ ok: true, imovelLigado: true, tipo: "criar" });
+    expect(r).toMatchObject({ ok: true, imovelDesligado: null, tipo: "criar" });
     expect(chaveDoResultadoDaSimulacao(r)).toBe("simulada");
     await gravarConfig(db, c.org, "reservas_beds24", { pausado: null, imoveis: [{ imovelId: c.imovel, ligadoEm: "2026-10-05T00:00:00.000Z", ligadoPor: null }], ensaio: null }, null);
     await db.delete(beds24ReservasOperacoes).where(eq(beds24ReservasOperacoes.organizacaoId, c.org));
@@ -79,6 +82,14 @@ describe("Simular (M8.3a, teste 11)", () => {
     expect(depois).toEqual({ ok: false, motivo: "anterior_a_ligar" });
     expect(chaveDoResultadoDaSimulacao(depois)).toBe("nada_anterior_a_ligar");
     expect(await operacoes(x.reservaId)).toEqual([]);
+  });
+
+  it("imóvel desligado com o acompanhamento que já existe (sem id no Beds24): ligar agora faria a criação sair", async () => {
+    const x = await pagarEConfirmar(c);
+    await db.insert(beds24ReservasSite).values({ organizacaoId: c.org, reservaId: x.reservaId, imovelId: c.imovel, referencia: x.reservaCodigo, situacao: "pendente", motivo: "sem_vinculo", versao: 1 });
+    const r = await simularSemRede(admin, x.reservaId);
+    expect(r).toMatchObject({ ok: true, tipo: "criar", imovelDesligado: "espera_ligar" });
+    expect(chaveDoResultadoDaSimulacao(r)).toBe("simulada_imovel_desligado");
   });
 
   it("cancelada pela política com reserva criada pelo sistema: o pedido de cancelamento, sem gravar a marca das OTAs nem mexer no acompanhamento", async () => {
@@ -93,11 +104,32 @@ describe("Simular (M8.3a, teste 11)", () => {
     const canc = await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(59));
     expect(canc.resultado.ok).toBe(true);
     const r = await simularSemRede(admin, x.reservaId, env(), minutos(70));
-    expect(r).toMatchObject({ ok: true, tipo: "cancelar", pedido: { quarto: "20", situacao: "cancelada", referencia: x.reservaCodigo } });
+    // O imóvel está desligado, mas o desligamento só para a criação: nenhum aviso de imóvel no cancelamento.
+    expect(r).toMatchObject({ ok: true, tipo: "cancelar", imovelDesligado: null, pedido: { quarto: "20", situacao: "cancelada", referencia: x.reservaCodigo } });
+    expect(chaveDoResultadoDaSimulacao(r)).toBe("simulada");
     const [cancelamento] = await db.select().from(cancelamentosReserva).where(eq(cancelamentosReserva.reservaId, x.reservaId));
     expect(cancelamento).toMatchObject({ situacao: "cancelada", otaLiberadaEm: null, otaLiberadaPor: null });
     const [depois] = await acompanhamentos();
     expect(depois).toEqual(a);
+  });
+
+  it("alteração segurada nunca entra (seção 10, teste 4): a principal fica sem mudança e a reserva-pedido é outra fonte; aplicada, vira atualizar", async () => {
+    const x = await pagarEConfirmar(c, { liberar: true });
+    await db.update(reservas).set({ beds24Id: "98765" }).where(eq(reservas.id, x.reservaId));
+    const esperado = { quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4, situacao: "confirmada" as const };
+    await db.insert(beds24ReservasSite).values({ organizacaoId: c.org, reservaId: x.reservaId, imovelId: c.imovel, propertyId: "10", roomId: "20", referencia: x.reservaCodigo, situacao: "conferida", versao: 1, esperado, assinaturaEsperada: assinaturaEsperado(esperado) });
+    const { resultado } = await alterar(c, x.reservaId, { checkout: "2026-10-16" }, minutos(20));
+    expect(resultado).toMatchObject({ ok: true, situacao: "segurada" });
+    if (!resultado.ok || !("alteracaoId" in resultado)) throw new Error("alteração não segurada");
+    expect(await simularSemRede(admin, x.reservaId, env(), minutos(21))).toEqual({ ok: false, motivo: "sem_mudanca" });
+    const [portador] = await db.select().from(reservas).where(and(eq(reservas.organizacaoId, c.org), eq(reservas.fonte, "alteracao")));
+    expect(portador).toMatchObject({ estado: "pedido" });
+    expect(await simularSemRede(admin, portador.id, env(), minutos(21))).toEqual({ ok: false, motivo: "outra_fonte" });
+    expect(await db.select().from(beds24ReservasOperacoes).where(eq(beds24ReservasOperacoes.organizacaoId, c.org))).toEqual([]);
+    // O hóspede paga a diferença: a alteração é aplicada na reserva, e só então a régua manda atualizar.
+    await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25) });
+    expect(await alteracaoGravada(c, resultado.alteracaoId)).toMatchObject({ situacao: "aplicada" });
+    expect(await simularSemRede(admin, x.reservaId, env(), minutos(30))).toMatchObject({ ok: true, tipo: "atualizar", imovelDesligado: null, pedido: { saida: "2026-10-16", situacao: "confirmada" } });
   });
 
   it("o que a régua não manda vira só o motivo, sem operação: pedido (hold), sem vínculo único, marketplace, outra fonte", async () => {
@@ -113,6 +145,22 @@ describe("Simular (M8.3a, teste 11)", () => {
     expect(await simularSemRede(admin, x.reservaId)).toEqual({ ok: false, motivo: "outra_fonte" });
     expect(await simularSemRede(admin, crypto.randomUUID())).toEqual({ ok: false, motivo: "nao_encontrada" });
     expect(await db.select().from(beds24ReservasOperacoes).where(eq(beds24ReservasOperacoes.organizacaoId, c.org))).toEqual([]);
+  });
+
+  it("sem pagamento pelo site que confirmou (D3 e outros desfechos): nada, sem operação (a regra lida do banco, desfecho 'reserva')", async () => {
+    // D3: o pedido do site confirmado à mão pela equipe, sem pagamento.
+    const h = await c.segurar({}, minutos(1));
+    expect((await confirmarReserva(db, c.org, h.reservaId, admin.usuarioId, minutos(2))).ok).toBe(true);
+    expect((await c.reserva(h.reservaId)).estado).toBe("confirmada");
+    expect(await simularSemRede(admin, h.reservaId)).toEqual({ ok: false, motivo: "sem_pagamento" });
+    expect(await operacoes(h.reservaId)).toEqual([]);
+    // Uma reserva do site cujo único pagamento tem outro desfecho (a diferença de uma alteração, uma devolução, por fora).
+    const x = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05", email: "outro.visitante@example.com" });
+    for (const desfecho of ["alteracao", "por_fora", "devolucao"] as const) {
+      await db.update(pagamentos).set({ desfecho }).where(eq(pagamentos.reservaId, x.reservaId));
+      expect(await simularSemRede(admin, x.reservaId)).toEqual({ ok: false, motivo: "sem_pagamento" });
+    }
+    expect(await operacoes(x.reservaId)).toEqual([]);
   });
 
   it("só fora do deploy de produção ou com a chave das reservas desligada", async () => {
