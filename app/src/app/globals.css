@@ -157,6 +157,16 @@ main[tabindex="-1"]:focus {
   outline: none;
 }
 
+/* O resultado da consulta (M7.21, `ID_RESULTADO` em FormConsulta.tsx): o envio abre a página nele e o foco vai para ali
+   (tabIndex -1). Também é um contêiner, não um controle: sem contorno; e para um pouco abaixo da borda da tela. */
+#resultado {
+  scroll-margin-top: 24px;
+}
+
+#resultado[tabindex="-1"]:focus {
+  outline: none;
+}
+
 /* Faixa "Prévia de teste" (M7.12): fina, no topo de toda página, só fora do deploy de produção (FaixaPrevia.tsx). Visual
    do `.preview` do estudo aprovado (prototipos/acervo-visual-2026-10/site-publico): areia, texto escuro, 11px (10px no
    celular). Tinta sobre areia: 10,66:1. Nada focável dentro. */

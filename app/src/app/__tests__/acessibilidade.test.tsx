@@ -416,6 +416,97 @@ describe("Pular para o conteúdo (M7.11)", () => {
   });
 });
 
+describe("resultado à vista depois do envio da consulta (M7.21)", () => {
+  /** A âncora do envio (`ID_RESULTADO`, em FormConsulta.tsx): fica no endereço, que o visitante pode copiar e mandar. */
+  const ID_RESULTADO = "resultado";
+  /** O destino da âncora na página. */
+  const alvos = (raiz: HTMLElement) => [...raiz.querySelectorAll<HTMLElement>(`#${ID_RESULTADO}`)];
+  const consultar = async (sp: Record<string, string>) => renderToStaticMarkup(await Consulta(props({}, sp) as never));
+  /** O nome que o leitor de tela anuncia ao focar o alvo: o título ligado por aria-labelledby, senão o aria-label. */
+  const nome = (raiz: HTMLElement, alvo: HTMLElement) => (alvo.getAttribute("aria-labelledby") ? raiz.querySelector(`#${alvo.getAttribute("aria-labelledby")}`)?.textContent : alvo.getAttribute("aria-label"));
+
+  it("todo formulário da consulta (capa, página da casa, consulta e busca) envia por GET para a âncora do resultado", async () => {
+    const comFormulario: string[] = [];
+    for (const [tela, html] of Object.entries(await telas())) {
+      const forms = dom(html).querySelectorAll('form[aria-label="Consultar disponibilidade"]');
+      if (forms.length) comFormulario.push(tela);
+      for (const form of forms) {
+        expect(form.getAttribute("action"), tela).toBe(`/consulta#${ID_RESULTADO}`);
+        expect(form.getAttribute("method"), tela).toBe("get");
+      }
+    }
+    expect(comFormulario).toEqual(["página inicial", "página do imóvel", "consulta", "Sua busca"]);
+  });
+
+  it("com resultado, a página abre nele: um alvo só, focável fora da ordem do Tab, com nome para o leitor de tela", async () => {
+    // Consulta de uma casa: o quadro "Resumo da viagem", com a disponibilidade e o valor dentro.
+    const consulta = dom(await consultar(pedido));
+    const [resumo, ...outros] = alvos(consulta);
+    expect(outros).toEqual([]);
+    expect(resumo.tagName).toBe("ASIDE");
+    expect(resumo.className).toBe(styles.resumoViagem);
+    expect(resumo.getAttribute("tabindex")).toBe("-1");
+    expect(nome(consulta, resumo)).toBe("Resumo da viagem");
+    expect(resumo.querySelector('[aria-label="Disponibilidade e valor"]')?.textContent).toContain("Disponível");
+    // Busca em todas as casas: a lista "N casas na sua busca", com os cartões dentro.
+    const busca1 = dom(await consultar(busca));
+    const [lista, ...maisListas] = alvos(busca1);
+    expect(maisListas).toEqual([]);
+    expect(lista.tagName).toBe("SECTION");
+    expect(lista.getAttribute("tabindex")).toBe("-1");
+    expect(nome(busca1, lista)).toBe("1 casa na sua busca");
+    expect(lista.querySelector('a[href^="/imoveis/403?"]')).not.toBeNull();
+    // Nenhuma casa recebe o grupo: o aviso com o contato é o resultado.
+    const grande = dom(await consultar({ ...busca, hospedes: "9" }));
+    const [aviso, ...maisAvisos] = alvos(grande);
+    expect(maisAvisos).toEqual([]);
+    expect(aviso.getAttribute("tabindex")).toBe("-1");
+    expect(nome(grande, aviso)).toBe("Nenhuma casa para o grupo");
+    expect(aviso.textContent).toContain(TEXTOS_SITE_INICIAIS.buscaSemCasa);
+    // O alvo não entra na ordem do Tab: o primeiro focável continua sendo o "Pular para o conteúdo".
+    for (const raiz of [consulta, busca1, grande]) expect(primeiroFocavel(raiz)?.textContent).toBe(ROTULO_PULAR);
+  });
+
+  it("com erro de preenchimento (ou sem datas), nenhum alvo: a âncora não acha nada e a página fica no topo, onde os erros aparecem", async () => {
+    const casos: [string, Record<string, string>, string | null][] = [
+      ["consulta sem datas", {}, null],
+      ["consulta com a entrada antes de hoje", { ...pedido, entrada: "2020-01-10" }, "A entrada não pode ser antes de hoje."],
+      ["consulta com o grupo maior que a casa", { ...pedido, hospedes: "9" }, "Este apartamento recebe até 4 pessoas."],
+      ["busca com a saída igual à entrada", { ...busca, saida: busca.entrada }, "A saída precisa ser depois da entrada."],
+      ["busca sem o número de pessoas", { ...busca, hospedes: "" }, "Informe quantas pessoas."],
+    ];
+    for (const [caso, sp, erro] of casos) {
+      const raiz = dom(await consultar(sp));
+      expect(alvos(raiz), caso).toEqual([]);
+      if (erro) expect([...raiz.querySelectorAll(`form .${styles.erro}`)].map((e) => e.textContent), caso).toContain(erro);
+    }
+    // Busca sem o número de pessoas: o campo combina com o aviso ("Escolha", obrigatório), sem um palpite de 2 pessoas.
+    const semPessoas = dom(await consultar({ ...busca, hospedes: "" })).querySelector<HTMLSelectElement>('form select[name="hospedes"]')!;
+    expect(semPessoas.value).toBe("");
+    expect(semPessoas.required).toBe(true);
+    expect(semPessoas.options[0].textContent).toBe("Escolha");
+    expect(semPessoas.getAttribute("aria-describedby")).toBe("erro-hospedes");
+    // Grupo maior que a casa: o número pedido continua marcado, ao lado do aviso "recebe até N pessoas".
+    expect(dom(await consultar({ ...pedido, hospedes: "9" })).querySelector<HTMLSelectElement>('form select[name="hospedes"]')!.value).toBe("9");
+    // Nada foi consultado com dados errados (e o quadro do resumo fica com "a confirmar").
+    expect(m.disponibilidade).not.toHaveBeenCalled();
+    // A página da casa não é destino do envio: nem com a disponibilidade à vista há alvo nela.
+    const casa = dom(renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }, pedido) as never)));
+    expect(casa.querySelector('[aria-label="Disponibilidade e valor"]')).not.toBeNull();
+    expect(alvos(casa)).toEqual([]);
+  });
+
+  it("o alvo focado não ganha contorno (é um contêiner, como o miolo) e para com folga da borda; o contorno dos controles continua", () => {
+    expect(valor(regra(GLOBAL, `#${ID_RESULTADO}[tabindex="-1"]:focus`), "outline")).toBe("none");
+    expect(valor(regra(GLOBAL, 'main[tabindex="-1"]:focus'), "outline")).toBe("none");
+    expect(parseFloat(valor(regra(GLOBAL, `#${ID_RESULTADO}`), "scroll-margin-top") ?? "0")).toBeGreaterThan(0);
+    // O contorno de sempre, nos controles (inclusive os de tabindex próprio, como os dias do calendário), não mudou.
+    expect(valor(FOCO, "outline")).toBe("3px solid var(--scl-foco-cor)");
+    // Sem rolagem animada na página: o navegador pula direto para o resultado, também com "reduzir movimento".
+    expect(regras(GLOBAL).filter((r) => valor(r.corpo, "scroll-behavior"))).toEqual([]);
+  });
+});
+
 describe("áreas claras dentro das faixas verdes do site, nas telas (M7.11)", () => {
   it("toda área clara com coisa focável dentro de um contêiner verde está na lista das que devolvem o laranja", async () => {
     const SITE = "components/site/site.module.css";
