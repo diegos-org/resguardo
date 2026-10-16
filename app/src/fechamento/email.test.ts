@@ -216,6 +216,17 @@ describe("e-mail do fechamento (M5.4)", () => {
     expect(p).toMatchObject({ situacao: "enviado", enviadoEm: depois.toISOString() });
   });
 
+  it("nome do proprietário entra como está no assunto e no texto, mesmo com $& ou {mes} no nome (M5.10)", async () => {
+    await db.update(proprietarios).set({ nome: "Ana $& Lima $' {mes}" }).where(eq(proprietarios.id, dona));
+    await salvarConfigFechamentoEmail(db, org, { ativo: true, assunto: "Fechamento de {mes}: {nome}", texto: "Segue o relatório de {mes} para {nome}." }, null);
+    await fechar();
+    const correio = new CorreioMemoria();
+    expect(await enviarFechamentos(db, org, correio, DIA1)).toMatchObject({ enviados: 1, falhas: [] });
+    const m = correio.enviadas[0];
+    expect(m.assunto).toBe("Fechamento de outubro de 2026: Ana $& Lima $' {mes}");
+    expect(m.texto).toContain("Segue o relatório de outubro de 2026 para Ana $& Lima $' {mes}.");
+  });
+
   it("texto do painel: só {nome} e {mes}; vazio volta ao padrão", async () => {
     expect(await salvarConfigFechamentoEmail(db, org, { ativo: true, assunto: "Fechamento {mes}", texto: "Pix {chave}" }, null)).toEqual({
       ok: false,

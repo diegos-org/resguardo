@@ -109,8 +109,14 @@ export async function publicarComoFunciona(db: Db, organizacaoId: string, secoes
 
 export { paragrafos, versaoBaseDoFormulario };
 
-/** `{empresa}` no texto vira o nome da empresa. */
-export const preencherEmpresa = (texto: string, empresa: string): string => texto.replaceAll("{empresa}", empresa.trim() || "empresa");
+/**
+ * `{empresa}` no texto vira o nome da empresa. O nome entra por uma função, como na autorização dos proprietários
+ * (M7.15): no texto de substituição, `$&`, `$'` e afins no nome seriam trocados por pedaços do texto.
+ */
+export const preencherEmpresa = (texto: string, empresa: string): string => {
+  const nome = empresa.trim() || "empresa";
+  return texto.replaceAll("{empresa}", () => nome);
+};
 
 /**
  * Seções com texto, na ordem oficial, já com o nome da empresa — o gravado na versão (o que foi lido e aceito);
