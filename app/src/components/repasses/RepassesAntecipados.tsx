@@ -29,7 +29,7 @@ export function RepassesAntecipados({ repasses, donos, mes, hoje, diaDeFechament
     <section className={styles.form} aria-label="Repasses antecipados">
       <h2 style={{ fontSize: "1.125rem", margin: 0 }}>Repasses antecipados (quinzenal, semanal, assim que disponível)</h2>
       <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", margin: 0, maxWidth: 820 }}>
-        Cada parte de reserva fica <strong>disponível</strong> depois do check-in e com o dinheiro registrado na empresa (recebimento na página da reserva). A rotina das 8h gera o
+        Cada parte de reserva fica <strong>disponível</strong> depois do check-in e com o dinheiro registrado na empresa (recebimento na página da reserva). A rotina das 08:00 gera o
         repasse de quem está no dia da periodicidade dele; aqui você gera um avulso. No dia do fechamento só existe o fechamento. Nada é pago duas vezes: cada parte entra num repasse só.
       </p>
       {comDisponivel.length > 0 ? (

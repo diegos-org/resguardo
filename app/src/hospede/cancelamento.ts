@@ -18,7 +18,7 @@ import { normalizarEmail } from "@/acesso/entrada";
 import { emailValido } from "@/acesso/codigo-email";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerConfigPagamentoSite } from "@/configuracoes/pagamento-site";
-import { decidirPelaPolitica, entradaQueConta, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
+import { decidirPelaPolitica, entradaQueConta, HORA_LIMITE_DO_DIA, horaDeEntrada, pagaSemPrazoIntegral, TEXTO_VALOR_PELA_EQUIPE } from "@/configuracoes/politica-cancelamento";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import { cancelamentosReserva, contestacoesPagamento, cotacoes, devolucoesPagamento, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -37,9 +37,9 @@ export type CancelamentoNoPortal = {
   podePedir: boolean;
   /** Pedido já recebido (e ainda sem decisão): quando chegou. */
   pedidoEm: Date | null;
-  /** Último dia do reembolso integral (até 23h59), pela versão aceita; null sem política. */
+  /** Último dia do reembolso integral (até 23:59, `HORA_LIMITE_DO_DIA`), pela versão aceita; null sem política. */
   integralAte: string | null;
-  /** Último dia do arrependimento (até 23h59); null sem política. */
+  /** Último dia do arrependimento (até 23:59, `HORA_LIMITE_DO_DIA`); null sem política. */
   arrependimentoAte: string | null;
   /** O arrependimento vale só até a entrada (pela versão aceita). */
   arrependimentoAteEntrada: boolean;
@@ -268,7 +268,7 @@ export function textoDaPoliticaNoPortal(c: Pick<CancelamentoNoPortal, "semPoliti
   if (pagaSemPrazoIntegral(c) && c.arrependimentoAte)
     return `Pela Política de cancelamento que você aceitou, esta reserva foi paga quando o prazo de devolução integral já tinha passado: há devolução integral só no arrependimento, até ${diaIso(c.arrependimentoAte)}${ateEntrada}. Pedido feito agora: ${agora}.`;
   const arrependimento = c.arrependimentoAte && c.arrependimentoAte > c.integralAte ? `, salvo o arrependimento até ${diaIso(c.arrependimentoAte)}${ateEntrada}` : "";
-  return `Pela Política de cancelamento que você aceitou: pedidos até ${diaIso(c.integralAte)} (23h59) têm devolução integral; depois disso, não há devolução${arrependimento}. Pedido feito agora: ${agora}.`;
+  return `Pela Política de cancelamento que você aceitou: pedidos até ${diaIso(c.integralAte)} (${HORA_LIMITE_DO_DIA}) têm devolução integral; depois disso, não há devolução${arrependimento}. Pedido feito agora: ${agora}.`;
 }
 
 /** A pergunta do botão "Pedir o cancelamento" (Minha reserva). Sem política aceita, não cita política nenhuma. */

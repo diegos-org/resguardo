@@ -17,9 +17,9 @@ export * from "./modelos-texto";
 /** Modelos sugeridos na primeira vez (Diego edita, arquiva ou exclui). */
 export const MODELOS_INICIAIS = [
   { nome: "Confirmação da reserva", quando: "Logo após a confirmação", texto: "Olá, {hospede}! Sua reserva {codigo} no {imovel} está confirmada: entrada em {checkin} e saída em {checkout} ({noites} noites). Qualquer dúvida, é só responder esta mensagem. {empresa}" },
-  { nome: "Instruções de check-in", quando: "2 dias antes da entrada, 10h", texto: "Olá, {hospede}! Sua chegada ao {imovel} é em {checkin}. O endereço é {endereco}. Em breve enviamos as instruções de acesso." },
-  { nome: "Lembrete de check-out", quando: "1 dia antes da saída, 14h", texto: "Olá, {hospede}! Lembrete: sua saída do {imovel} é amanhã, {checkout}. Obrigado pela estadia!" },
-  { nome: "Agradecimento", quando: "3 dias depois da saída, 10h", texto: "Olá, {hospede}! Obrigado por ficar no {imovel}. Esperamos receber você de novo. {empresa}" },
+  { nome: "Instruções de check-in", quando: "2 dias antes da entrada, 10:00", texto: "Olá, {hospede}! Sua chegada ao {imovel} é em {checkin}. O endereço é {endereco}. Em breve enviamos as instruções de acesso." },
+  { nome: "Lembrete de check-out", quando: "1 dia antes da saída, 14:00", texto: "Olá, {hospede}! Lembrete: sua saída do {imovel} é amanhã, {checkout}. Obrigado pela estadia!" },
+  { nome: "Agradecimento", quando: "3 dias depois da saída, 10:00", texto: "Olá, {hospede}! Obrigado por ficar no {imovel}. Esperamos receber você de novo. {empresa}" },
 ];
 
 export type Modelo = typeof modelosMensagem.$inferSelect;

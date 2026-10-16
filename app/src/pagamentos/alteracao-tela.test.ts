@@ -89,7 +89,7 @@ describe("a prévia da alteração na tela (M8.2d, §9.2)", () => {
   it("redução integral: a devolução pela política, como sai, a política com os prazos e 'Aplicar' ou 'Só segurar'", () => {
     const t = previaAlteracaoParaTela(comPergunta(reducao), AGORA);
     expect(t.diferenca).toBe("Diferença: devolução de R$ 300,00 pela política (pedido dentro do prazo de reembolso integral).");
-    expect(t.politica).toBe("Política aceita: versão 1 — reembolso integral para pedidos até 14/11 (23h59), contando da entrada de 28/11; arrependimento até 08/10.");
+    expect(t.politica).toBe("Política aceita: versão 1 — reembolso integral para pedidos até 14/11 (23:59), contando da entrada de 28/11; arrependimento até 08/10.");
     expect(t.comoSai).toEqual(["Pix de 01/10: R$ 300,00 — pelo Mercado Pago agora."]);
     expect(t.botao).toBe("Aplicar a alteração");
     expect(t.rota).toBe("pedida");

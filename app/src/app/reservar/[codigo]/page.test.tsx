@@ -221,7 +221,7 @@ describe("páginas legais na página da cotação (M7.4)", () => {
     expect(m.aceite).toHaveBeenCalledWith({}, "org", { id: cotacao.id, checkin: "2026-10-12", fuso: "America/Sao_Paulo", reservaId: cotacao.reservaId }, expect.any(Date));
     expect(h).toContain("Antes de pagar");
     expect(h).toContain("RESUMO DA POLITICA");
-    expect(h).toContain("até <strong>23h59 de 28/09/2026</strong>");
+    expect(h).toContain("até <strong>23:59 de 28/09/2026</strong>");
     expect(h).toContain('<input type="checkbox" required="" name="aceite" value="sim"/>');
     expect(h).toContain('href="/privacidade?versao=2"');
     // Datas seguradas: sem o formulário de segurar, nem se lê a versão da privacidade para ele.
@@ -517,7 +517,7 @@ describe("uma faixa só na página da cotação (M7.12)", () => {
 });
 
 describe("horários e regras da casa na página da cotação (M7.20)", () => {
-  const HORARIOS = "Entrada a partir das 14h · Saída até as 10h";
+  const HORARIOS = "Entrada a partir das 14:00 · Saída até as 10:00";
   const COM_DATAS = "/imoveis/403?checkin=2026-10-12&amp;checkout=2026-10-15&amp;guests=4";
   const temRegras = (h: string) => h.includes(HORARIOS) && h.includes(">Regras da casa</h3>") && h.includes("<li>Não aceita animais</li><li>Proibido fumar</li>") && h.includes("Silêncio depois das 22h.");
   const semRegras = (h: string) => !h.includes("Entrada a partir das") && !h.includes("Regras da casa") && !h.includes("Silêncio depois das 22h.");

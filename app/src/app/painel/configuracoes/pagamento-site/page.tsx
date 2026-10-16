@@ -25,6 +25,7 @@ import {
 import { CODIGOS_CAUSA_CONTESTACAO } from "@/pagamentos/contestacao-regras";
 import { getDb } from "@/db/client";
 import { listarCategorias } from "@/despesas/categorias";
+import { horaNoFuso } from "@/lib/datas";
 import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
 import { conferirAgoraAcao, religarCartaoAcao, salvarConfigPagamentoSiteAcao } from "@/pagamentos/acoes-painel";
 import { CARTOES_POR_HORA_NA_ORGANIZACAO, MAXIMO_CARTAO_POR_COTACAO } from "@/pagamentos/andamento";
@@ -43,7 +44,6 @@ import { motivosPorImovel, podeCobrar, TEXTO_SEM_COBRANCA } from "@/pagamentos/o
 import { MODOS_TRES_DS, PARCELAS_MAXIMAS } from "@/pagamentos/provedor";
 
 const FUSO = "America/Sao_Paulo";
-const hora = (d: Date) => d.toLocaleTimeString("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit" });
 const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: FUSO, dateStyle: "short", timeStyle: "short" });
 const nota = { fontSize: "0.8125rem", color: "var(--scl-texto-2)", margin: 0 } as const;
 
@@ -58,7 +58,7 @@ const ROTULOS_DA_CAUSA: Record<CampoDaCausa, string> = {
 /** O estado do cartão em palavras: ligado, desligado no painel ou desligado pelo disjuntor (até quando e por quê). */
 function estadoDoCartao(ligado: boolean, d: DisjuntorAberto | null): string {
   if (d) {
-    if (d.ate) return `Desligado pelo disjuntor até ${hora(d.ate)} — ${d.recusas} recusas em 30 minutos. O Pix continua.`;
+    if (d.ate) return `Desligado pelo disjuntor até ${horaNoFuso(d.ate, FUSO)} — ${d.recusas} recusas em 30 minutos. O Pix continua.`;
     return `Desligado até alguém religar — ${d.recusas} recusas em ${d.janela === "24h" ? "24 horas" : "30 minutos, pela terceira vez no dia"}. O Pix continua.`;
   }
   return ligado ? "Ligado" : "Desligado (marque “Oferecer cartão de crédito” acima)";

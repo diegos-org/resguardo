@@ -9,6 +9,7 @@ import { exigir, type Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { auditoria, configuracoes, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { HORA_VALIDA } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 
 export const CANAIS_HORARIO = ["Airbnb", "WhatsApp", "Booking.com", "Inbox SCL", "Outro"] as const;
@@ -32,7 +33,7 @@ const vazio = (confirmacoes = 0): HorariosReserva => ({ versao: 0, entrada: {}, 
 /** O que vai para o armazém: a contagem de confirmações é da reserva, não do registro. */
 const persistir = ({ versao, entrada, saida }: HorariosReserva) => ({ versao, entrada, saida });
 const chave = (id: string) => `horarios_reserva:${id}`;
-const horaValida = (h: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(h);
+const horaValida = (h: string) => HORA_VALIDA.test(h);
 const vigente = (h: RegistroHorario, r: Reserva, confirmacoes: number) =>
   h.imovelId === r.imovelId && h.checkin === r.checkin && h.checkout === r.checkout && h.confirmacaoReserva === confirmacoes;
 

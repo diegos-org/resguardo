@@ -1,5 +1,8 @@
+/** O fuso do sistema quando nada diz outro (o horário de Brasília): o padrão de `hojeISO` e de `horaNoFuso`. */
+export const FUSO_PADRAO = "America/Sao_Paulo";
+
 /** Data de hoje ("AAAA-MM-DD") no fuso informado (padrão: São Paulo). */
-export function hojeISO(fuso = "America/Sao_Paulo", agora: Date = new Date()): string {
+export function hojeISO(fuso = FUSO_PADRAO, agora: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: fuso, year: "numeric", month: "2-digit", day: "2-digit" }).format(agora);
 }
 
@@ -29,8 +32,33 @@ export function instanteLocal(dataISO: string, hora: string, fuso: string): Date
   return new Date(relogio - deslocamento(t, fuso));
 }
 
+/** Hora guardada: "HH:MM" com dois dígitos, de 00:00 a 23:59 (a única cópia da expressão). */
+export const HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** O `pattern` do campo de hora (o navegador já ancora no começo e no fim): aceita "15:00" e "9:00". */
+export const PADRAO_DO_CAMPO_HORA = "([01]?\\d|2[0-3]):[0-5]\\d";
+
 /**
- * Hora ("HH:MM") como o hóspede lê: hora cheia vira "15h" (sem o zero da frente: "9h"); o resto fica como está ("15:30").
- * Uma escrita só para Minha reserva e a página da cotação (M7.20).
+ * Lê uma hora digitada ou guardada e devolve "HH:MM" com dois dígitos: "15:00", "9:00", "15h", "15h30" e "9h05" valem.
+ * Fora disso ("25:00", "15:7", "15", vazio, texto), null: quem chama avisa, sem adivinhar a hora.
  */
-export const escreverHora = (h: string) => h.replace(/^0?(\d+):00$/, "$1h");
+export function lerHora(t: string): string | null {
+  const m = /^(\d{1,2})(?::(\d{2})|h(\d{2})?)$/.exec(t.trim().toLowerCase());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2] ?? m[3] ?? "0");
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+/**
+ * Hora para pessoas, sempre "HH:MM" ("15:00", "09:00", "15:30"): a escrita única da página da casa, da cotação e de
+ * Minha reserva. Decisão de Diego em 16/10/2026 (M7.22): 15:00 em tudo. Antes, no M7.20, a cotação e Minha reserva
+ * escreviam a hora cheia como "15h" e a página da casa, como "15:00". O que não é hora sai como está.
+ */
+export const escreverHora = (h: string) => lerHora(h) ?? h;
+
+/** A hora de um instante no fuso ("15:05", "00:05"), em 24 horas: nunca AM/PM nem "24:05". */
+export function horaNoFuso(d: Date, fuso = FUSO_PADRAO): string {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+}

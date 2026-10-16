@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type ReactNode, useActionState, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
+import { horaNoFuso } from "@/lib/datas";
 import type { AceiteNaPagina } from "@/site/aceites";
 import type { EstadoCartao, EstadoContinuar, EstadoPix } from "@/site/acoes-pagamento";
 import { MENSAGEM_CARTAO_RECUSADO, MENSAGEM_VERIFICACAO_NAO_CONCLUIDA, NOTA_JUROS_CARTAO } from "@/site/mensagens-cartao";
@@ -34,7 +35,6 @@ export type TextosPagamento = { convite: string; aguardando: string; semDatas: s
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formato = (fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o });
 const quando = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
-const hora = (iso: string, fuso: string) => formato(fuso, { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const dia = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short" }).format(new Date(iso));
 
 /** O que a rota de acompanhamento devolve (só os campos que a página lê). */
@@ -303,7 +303,7 @@ function PixAguardando({ pix, textos, fuso, total, rotuloValor }: { pix: NonNull
       </div>
       {pix.expiraEm && (
         <p className={styles.texto}>
-          Este Pix vale até <strong>{hora(pix.expiraEm, fuso)}</strong>
+          Este Pix vale até <strong>{horaNoFuso(new Date(pix.expiraEm), fuso)}</strong>
           <Contagem ate={pix.expiraEm} />.
         </p>
       )}

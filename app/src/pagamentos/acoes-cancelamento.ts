@@ -20,7 +20,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { CANAIS_PEDIDO_CANCELAMENTO, type CanalPedidoCancelamento, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, type MotivoCancelamentoEmpresa, type MotivoExcecao, QUEM_CANCELA_RESERVA } from "@/db/schema";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { instanteLocal } from "@/lib/datas";
+import { HORA_VALIDA, instanteLocal } from "@/lib/datas";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
@@ -61,7 +61,6 @@ export type EstadoCancelamentoPainel = {
 
 const FUSO = "America/Sao_Paulo";
 const LIMITE_NOTA = 300;
-const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ASSINATURA = /^[0-9a-f]{16}$/;
 const NAO_ENCONTRADA: EstadoCancelamentoPainel = { mensagem: "Reserva não encontrada." };
 
@@ -110,7 +109,7 @@ function momentoDoForm(form: FormData, data: string, hora: string): Date | null 
   const d = texto(form, data);
   const h = texto(form, hora);
   if (!d && !h) return null;
-  if (!dataValida(d) || !HORA.test(h)) return "invalido";
+  if (!dataValida(d) || !HORA_VALIDA.test(h)) return "invalido";
   return instanteLocal(d, h, FUSO);
 }
 

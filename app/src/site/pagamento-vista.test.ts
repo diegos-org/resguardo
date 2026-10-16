@@ -274,8 +274,8 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     expect(texto("cancelada_devolucao_pedida", { quemCancela: "empresa", base: "empresa", motivoEmpresa: "outro" }).linhas[0]).toBe("Nós cancelamos a sua reserva SCL-ABC123.");
     expect(texto("cancelada_devolucao_pedida", { base: "excecao" }).decisao).toMatch(/^Por decisão da nossa equipe, devolvemos o valor integral pago/);
     const semDevolucao = { direito: "nenhum" as const, base: "fora_do_prazo" as const, valor: 0 };
-    expect(texto("cancelada_sem_devolucao", semDevolucao).decisao).toBe("Prazo de reembolso integral: pedidos até 28/10, às 23h59. [sem devolução: prazo]");
-    expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-01", arrependimentoAte: "2026-10-08" }).decisao).toBe("Prazo de reembolso integral: pedidos até 01/10, às 23h59. Arrependimento: até 08/10. [sem devolução: prazo]");
+    expect(texto("cancelada_sem_devolucao", semDevolucao).decisao).toBe("Prazo de reembolso integral: pedidos até 28/10, às 23:59. [sem devolução: prazo]");
+    expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-01", arrependimentoAte: "2026-10-08" }).decisao).toBe("Prazo de reembolso integral: pedidos até 01/10, às 23:59. Arrependimento: até 08/10. [sem devolução: prazo]");
     // Paga já depois do prazo do reembolso integral (aprovada em 10/10, prazo até 06/10): nenhum prazo que nunca valeu.
     expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-06", arrependimentoAte: "2026-10-17" }).decisao).toBe(
       "Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até 17/10. [sem devolução: prazo]",
@@ -287,7 +287,7 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     );
     expect(texto("cancelada_sem_devolucao", { ...comEntrada, arrependimentoAteEntrada: false }).decisao).toContain("Arrependimento: até 17/10.");
     expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-01", arrependimentoAte: "2026-10-08", arrependimentoAteEntrada: true, entradaEm: "2026-10-05T18:00:00.000Z" }).decisao).toBe(
-      "Prazo de reembolso integral: pedidos até 01/10, às 23h59. Arrependimento: até a entrada, em 05/10. [sem devolução: prazo]",
+      "Prazo de reembolso integral: pedidos até 01/10, às 23:59. Arrependimento: até a entrada, em 05/10. [sem devolução: prazo]",
     );
     const naoVeio = texto("cancelada_sem_devolucao", { ...semDevolucao, quemCancela: "nao_comparecimento", base: "nao_comparecimento" });
     expect(naoVeio.linhas[0]).toBe("A reserva SCL-ABC123 foi cancelada por não comparecimento.");

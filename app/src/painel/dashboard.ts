@@ -33,7 +33,7 @@ import { prazoDosDocumentos } from "@/pagamentos/contestacao-tela";
 import { avisosDeContestacaoNosRepasses } from "@/repasses/avisos-contestacao";
 import { avisosDeDescontos } from "@/repasses/descontos";
 import { partesDoProprietario } from "@/repasses/extrato";
-import { hojeISO } from "@/lib/datas";
+import { hojeISO, horaNoFuso } from "@/lib/datas";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
 import { rotinasPendentes } from "@/rotinas/rotinas";
@@ -328,7 +328,7 @@ export async function carregarDashboard(
 
 const horaSP = (d: Date, agora: Date) => {
   const f = (x: Date, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(x);
-  const hora = f(d, { hour: "2-digit", minute: "2-digit" });
+  const hora = horaNoFuso(d);
   return f(d, { day: "2-digit", month: "2-digit" }) === f(agora, { day: "2-digit", month: "2-digit" }) ? hora : `${f(d, { day: "2-digit", month: "2-digit" })} às ${hora}`;
 };
 /** Os códigos das reservas do aviso (até 5; o resto em número): quem lê sabe qual abrir. */

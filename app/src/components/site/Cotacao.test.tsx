@@ -180,8 +180,8 @@ const regras = { entrada: "15:00", saida: "11:30", convivencia: ["Aceita animais
 
 it("horários e regras da casa (M7.20): linha 'Entrada a partir das … · Saída até as …' e as regras sob 'Regras da casa', antes do pagamento; sem regras, nada", () => {
   const { container } = render(<Cotacao vista={base} whatsapp={null} email="" regras={regras} pagamento={{ titulo: "Datas seguradas", conteudo: <p>QUADRO DO PAGAMENTO</p> }} />);
-  // As frases da página da casa ("Saída até as"), com a hora como em Minha reserva: hora cheia "15h"; o resto como está.
-  expect(screen.getByText("Entrada a partir das 15h · Saída até as 11:30")).toBeTruthy();
+  // As frases da página da casa ("Saída até as"), com a hora como na casa e em Minha reserva: sempre HH:MM (M7.22).
+  expect(screen.getByText("Entrada a partir das 15:00 · Saída até as 11:30")).toBeTruthy();
   const titulo = screen.getByRole("heading", { name: "Regras da casa", level: 3 });
   const parte = titulo.closest("section")!;
   expect([...parte.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Aceita animais", "Proibido fumar"]);

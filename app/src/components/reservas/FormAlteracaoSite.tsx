@@ -301,7 +301,7 @@ export function FormAlteracaoSite({
         </div>
       )}
       <label>
-        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14h10&rdquo;)
+        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14:10&rdquo;)
         <input name="nota" maxLength={300} />
       </label>
       {escolheSemPolitica && (

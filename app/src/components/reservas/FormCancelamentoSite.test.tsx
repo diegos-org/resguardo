@@ -17,7 +17,7 @@ const previa = (over: Partial<PreviaParaTela> = {}): PreviaParaTela => ({
   escolha: null,
   momento: "A SCL cancela agora (01/10 às 12:00).",
   leitura: "Leitura do Mercado Pago de 01/10 às 11:58: aprovado.",
-  politica: "Política aceita: versão 1 de 20/09 — reembolso integral para pedidos até 26/10 (23h59).",
+  politica: "Política aceita: versão 1 de 20/09 — reembolso integral para pedidos até 26/10 (23:59).",
   resultado: "Pela política: devolução integral de R$ 1.824,00 — a SCL cancela.",
   componentes: ["Parte do proprietário: R$ 1.535,04 (sai do financeiro).", "O proprietário deixa de receber: R$ 1.535,04."],
   comoSai: "Como a devolução sai: pelo Mercado Pago agora.",

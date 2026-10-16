@@ -177,13 +177,13 @@ export function FormCancelamentoSite({
             {momentoCorrigido && (
               <label>
                 Por que corrigir o horário (obrigatório, sem dados pessoais)
-                <input name="motivoMomento" required maxLength={300} placeholder="ex.: a mensagem do hóspede chegou às 14h10, não às 15h" />
+                <input name="motivoMomento" required maxLength={300} placeholder="ex.: a mensagem do hóspede chegou às 14:10, não às 15:00" />
               </label>
             )}
           </>
         ))}
       <label>
-        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14h10&rdquo;)
+        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14:10&rdquo;)
         <input name="nota" maxLength={300} />
       </label>
       {foraPedidos.map((f) => (
@@ -330,7 +330,7 @@ export function FormRegistrarPedido({ reservaId, acao, agora, canais }: { reserv
         </label>
       </div>
       <label>
-        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14h10&rdquo;)
+        Onde está o pedido (opcional, sem dados pessoais — ex.: &ldquo;WhatsApp da empresa, 14:10&rdquo;)
         <input name="nota" maxLength={300} />
       </label>
       <div className={styles.acoes}>

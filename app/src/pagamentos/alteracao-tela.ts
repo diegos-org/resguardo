@@ -3,7 +3,9 @@
  * do navegador só mostra texto, nunca calcula nem decide — e os textos de cada resultado. Puro (sem banco). A prévia leva
  * valores: só vai a quem calcula (reserva:editar + financeiro:editar, conferido na ação).
  */
+import { HORA_LIMITE_DO_DIA } from "@/configuracoes/politica-cancelamento";
 import type { CalculoCancelamento } from "@/db/schema";
+import { horaNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import type { MensagemPronta } from "@/mensagens/hospede";
 import { noites } from "@/reservas/regras";
@@ -56,9 +58,8 @@ export type PreviaAlteracaoParaTela = {
 const FUSO = "America/Sao_Paulo";
 const fmt = (d: Date, o: Intl.DateTimeFormatOptions, fuso = FUSO) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
 const diaBr = (d: Date, fuso = FUSO) => fmt(d, { day: "2-digit", month: "2-digit" }, fuso);
-const horaBr = (d: Date, fuso = FUSO) => fmt(d, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, fuso);
 /** Um prazo: "HH:MM" quando acaba no dia de `agora`, senão "dd/mm às HH:MM" (o prazo das datas vai até 48 horas). */
-const prazoBr = (d: Date, agora: Date | undefined, fuso = FUSO) => (!agora || diaBr(d, fuso) === diaBr(agora, fuso) ? horaBr(d, fuso) : `${diaBr(d, fuso)} às ${horaBr(d, fuso)}`);
+const prazoBr = (d: Date, agora: Date | undefined, fuso = FUSO) => (!agora || diaBr(d, fuso) === diaBr(agora, fuso) ? horaNoFuso(d, fuso) : `${diaBr(d, fuso)} às ${horaNoFuso(d, fuso)}`);
 /** "dd/mm" de uma data AAAA-MM-DD. */
 const dataBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const nNoites = (n: number) => `${n} ${n === 1 ? "noite" : "noites"}`;
@@ -138,7 +139,7 @@ export function previaAlteracaoParaTela(p: PreviaAlteracao, agora: Date, propost
     ? p.rumo === "reducao" && p.decisao
       ? [
           `Política aceita: versão ${p.politica.versao}`,
-          p.decisao.integralAte ? ` — reembolso integral para pedidos até ${dataBr(p.decisao.integralAte)} (23h59), contando da entrada de ${dataBr(p.entradaDaPolitica)}` : "",
+          p.decisao.integralAte ? ` — reembolso integral para pedidos até ${dataBr(p.decisao.integralAte)} (${HORA_LIMITE_DO_DIA}), contando da entrada de ${dataBr(p.entradaDaPolitica)}` : "",
           p.decisao.arrependimentoAte ? `; arrependimento até ${dataBr(p.decisao.arrependimentoAte)}` : "",
           ".",
         ].join("")

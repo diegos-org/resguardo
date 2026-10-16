@@ -320,7 +320,7 @@ describe("aceite das páginas legais antes do Pix (M7.4)", () => {
     const { container } = comAceite(pendente);
     expect(screen.getByRole("group", { name: "Antes de pagar" })).toBeTruthy();
     expect(screen.getByText("Cancelamento até 14 dias antes da data de entrada: devolvemos o valor integral.")).toBeTruthy();
-    expect(container.textContent).toContain("Para esta reserva, o reembolso integral vale para pedidos de cancelamento até 23h59 de 28/09/2026 (horário de Brasília).");
+    expect(container.textContent).toContain("Para esta reserva, o reembolso integral vale para pedidos de cancelamento até 23:59 de 28/09/2026 (horário de Brasília).");
     const caixa = screen.getByRole("checkbox") as HTMLInputElement;
     expect(caixa.required).toBe(true);
     expect(caixa.name).toBe("aceite");
@@ -371,7 +371,7 @@ describe("aceite das páginas legais antes do Pix (M7.4)", () => {
   it("reserva confirmada: as versões aceitas no pagamento que confirmou e o prazo do reembolso; sem aceite (pagamento anterior às páginas), nada", () => {
     const { container } = comAceite(aceito, { estado: "confirmada", holdAte: null, reservaCodigo: "SCL-TESTE1" });
     expect(container.textContent).toContain("Você aceitou os Termos de uso (versão 2) (abre em nova janela), a Política de cancelamento (versão 3) (abre em nova janela)");
-    expect(container.textContent).toContain("Para esta reserva, o reembolso integral vale para pedidos de cancelamento até 23h59 de 28/09/2026 (horário de Brasília).");
+    expect(container.textContent).toContain("Para esta reserva, o reembolso integral vale para pedidos de cancelamento até 23:59 de 28/09/2026 (horário de Brasília).");
     expect(link("Política de cancelamento (versão 3)").getAttribute("href")).toBe("/cancelamento?versao=3");
     cleanup();
     const sem = comAceite(pendente, { estado: "confirmada", holdAte: null, reservaCodigo: "SCL-TESTE1" });
@@ -650,7 +650,7 @@ describe("reserva cancelada pela política e pedido de cancelamento (M8.2c)", ()
     expect(r.container.textContent).toContain("EM CONFERENCIA EDITAVEL");
     cleanup();
     r = ver({ estado: "cancelada_sem_devolucao", cancelamento: { ...cancelamento, direito: "nenhum", base: "fora_do_prazo", valor: 0 } });
-    expect(r.container.textContent).toContain("Prazo de reembolso integral: pedidos até 26/10, às 23h59. SEM DEVOLUCAO PRAZO EDITAVEL");
+    expect(r.container.textContent).toContain("Prazo de reembolso integral: pedidos até 26/10, às 23:59. SEM DEVOLUCAO PRAZO EDITAVEL");
     expect(r.container.textContent).not.toContain("R$");
     cleanup();
     r = ver({ estado: "cancelada_sem_devolucao", cancelamento: { ...cancelamento, quemCancela: "nao_comparecimento", direito: "nenhum", base: "nao_comparecimento", valor: 0 } });

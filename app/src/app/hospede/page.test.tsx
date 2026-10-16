@@ -71,7 +71,7 @@ describe("Minha reserva: pedir o cancelamento (M8.2c)", () => {
     expect(m.cancelamento).toHaveBeenCalledWith({}, "org", "visitante@example.com", "SCL-TESTE1", expect.any(Date));
     expect(h).toContain("Cancelar a reserva");
     expect(h).toContain(TEXTOS_SITE_INICIAIS.cancelamentoMinhaReservaIntro);
-    expect(h).toContain("Pela Política de cancelamento que você aceitou: pedidos até 26/10 (23h59) têm devolução integral; depois disso, não há devolução. Pedido feito agora: devolução integral.");
+    expect(h).toContain("Pela Política de cancelamento que você aceitou: pedidos até 26/10 (23:59) têm devolução integral; depois disso, não há devolução. Pedido feito agora: devolução integral.");
     expect(h).toContain("Pedir o cancelamento");
     expect(h).toContain('name="reserva" value="SCL-TESTE1"');
     expect(h).not.toContain("R$");
@@ -193,15 +193,16 @@ describe("Minha reserva: o pagamento em conferência (M8.2e)", () => {
   });
 });
 
-describe("Minha reserva: os horários como antes (M7.20)", () => {
-  it("a hora escrita pela mesma função da página da cotação: '15h', '11h', '10h'; meia hora fica como está", async () => {
+describe("Minha reserva: os horários em HH:MM (M7.22)", () => {
+  it("a hora escrita pela mesma função da casa e da cotação: '15:00', '11:00', '10:00'; meia hora fica como está", async () => {
     let h = await html();
-    expect(h).toContain("a partir das 15h");
-    expect(h).toContain("até 11h");
-    expect(h).toContain("às 10h.");
+    expect(h).toContain("a partir das 15:00");
+    expect(h).toContain("até 11:00");
+    expect(h).toContain("às 10:00.");
+    expect(h).not.toMatch(/\b(15|11|10)h\b/);
     m.reservas.mockResolvedValue([{ ...reserva, entradaAPartirDe: "14:30", saidaAte: "09:00" }]);
     h = await html();
     expect(h).toContain("a partir das 14:30");
-    expect(h).toContain("até 9h");
+    expect(h).toContain("até 09:00");
   });
 });

@@ -116,7 +116,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
 
       <details className={styles.form} aria-label="E-mail do fechamento">
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-          E-mail do fechamento aos proprietários · {configEmail.ativo ? `ligado (todo dia às 9h, a partir do dia ${proximoFechamento(regrasRepasses, hoje).dia})` : "desligado"}
+          E-mail do fechamento aos proprietários · {configEmail.ativo ? `ligado (todo dia às 09:00, a partir do dia ${proximoFechamento(regrasRepasses, hoje).dia})` : "desligado"}
         </summary>
         <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", margin: 0 }}>
           Cada proprietário recebe o relatório do mês em PDF, uma vez, depois de o mês dele ser fechado (repasse gerado, ou nada a repassar e sem

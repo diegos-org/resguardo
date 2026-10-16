@@ -71,7 +71,7 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
       <legend style={legenda}>Envio ao Beds24</legend>
       <p style={nota}>Só os imóveis marcados recebem calendário e preços do SCL — comece pelo imóvel de teste (103). Imóvel com preços definidos no Beds24 (fonte escolhida no cadastro do imóvel) recebe só calendário, mínimos e bloqueios: o SCL não escreve preço nele. Mesmo marcados, nada é enviado enquanto a variável BEDS24_ESCRITA não estiver &quot;ligada&quot; na Vercel. Simular e enviar ficam em Calendário → Conferir calendário e preços.</p>
       {listaImoveis("envioImoveis", regras.envio.imoveis)}
-      <label className={styles.check}><input type="checkbox" name="envioAutomatico" defaultChecked={marcado("envioAutomatico", regras.envio.automatico)} /> Enviar automaticamente todo dia às 7h (depois da importação do Beds24)</label>
+      <label className={styles.check}><input type="checkbox" name="envioAutomatico" defaultChecked={marcado("envioAutomatico", regras.envio.automatico)} /> Enviar automaticamente todo dia às 07:00 (depois da importação do Beds24)</label>
       <p style={nota}>Deixe desligado até o teste manual no imóvel escolhido estar conferido. O envio automático respeita a mesma lista de imóveis e o mesmo sinal da Vercel.</p>
     </fieldset>
     <fieldset style={grupo}>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { instanteLocal as instanteDoPortal, somarDias as somarDoPortal } from "@/hospede/portal";
-import { escreverHora, hojeISO, instanteLocal, somarDias } from "./datas";
+import { escreverHora, FUSO_PADRAO, HORA_VALIDA, horaNoFuso, hojeISO, instanteLocal, lerHora, PADRAO_DO_CAMPO_HORA, somarDias } from "./datas";
 
 describe("datas no fuso do imóvel", () => {
   it("somarDias anda pelo calendário (mês, ano e ano bissexto)", () => {
@@ -27,13 +27,63 @@ describe("datas no fuso do imóvel", () => {
     expect(somarDoPortal).toBe(somarDias);
   });
 
-  it("escreverHora (Minha reserva e a página da cotação, M7.20): hora cheia vira '15h', sem o zero da frente; o resto fica como está", () => {
-    expect(escreverHora("15:00")).toBe("15h");
-    expect(escreverHora("11:00")).toBe("11h");
-    expect(escreverHora("09:00")).toBe("9h");
-    expect(escreverHora("10:00")).toBe("10h");
-    expect(escreverHora("00:00")).toBe("0h");
+  it("escreverHora (casa, cotação e Minha reserva; Diego, 16/10/2026): sempre HH:MM com dois dígitos, nunca '15h'", () => {
+    expect(escreverHora("15:00")).toBe("15:00");
+    expect(escreverHora("11:00")).toBe("11:00");
+    expect(escreverHora("09:00")).toBe("09:00");
+    expect(escreverHora("9:00")).toBe("09:00");
+    expect(escreverHora("10:00")).toBe("10:00");
+    expect(escreverHora("00:00")).toBe("00:00");
     expect(escreverHora("15:30")).toBe("15:30");
     expect(escreverHora("09:30")).toBe("09:30");
+    // O formato antigo (M7.20) também sai no novo.
+    expect(escreverHora("15h")).toBe("15:00");
+    expect(escreverHora("15h30")).toBe("15:30");
+    // O que não é hora sai como está, sem palpite.
+    expect(escreverHora("a combinar")).toBe("a combinar");
+  });
+
+  it("lerHora: aceita '15:00', '9:00', '15h', '15h30' e '9h05' e devolve HH:MM; o resto é null, sem adivinhar", () => {
+    const validas: [string, string][] = [
+      ["15:00", "15:00"],
+      ["9:00", "09:00"],
+      ["09:05", "09:05"],
+      ["00:00", "00:00"],
+      ["23:59", "23:59"],
+      ["15h", "15:00"],
+      ["15H", "15:00"],
+      ["15h30", "15:30"],
+      ["9h05", "09:05"],
+      ["0h", "00:00"],
+      [" 15:00 ", "15:00"],
+    ];
+    for (const [t, h] of validas) expect(lerHora(t), t).toBe(h);
+    for (const t of ["25:00", "24:00", "15:60", "15:7", "15h7", "15", "1500", "", "  ", "texto", "15:00h", "15 h", "3 da tarde", "-1:00", "115:00"]) expect(lerHora(t), t).toBeNull();
+  });
+
+  it("HORA_VALIDA é o formato guardado (dois dígitos); o pattern do campo aceita o que lerHora lê com dois-pontos", () => {
+    for (const h of ["00:00", "09:05", "15:00", "23:59"]) expect(HORA_VALIDA.test(h), h).toBe(true);
+    for (const h of ["9:00", "24:00", "15:60", "15h", "15:00 "]) expect(HORA_VALIDA.test(h), h).toBe(false);
+    // O navegador ancora o pattern no começo e no fim.
+    const campo = new RegExp(`^(?:${PADRAO_DO_CAMPO_HORA})$`);
+    for (const h of ["9:00", "09:00", "15:30", "23:59", "0:00"]) {
+      expect(campo.test(h), h).toBe(true);
+      expect(HORA_VALIDA.test(lerHora(h)!), h).toBe(true);
+    }
+    for (const h of ["24:00", "15:60", "15h", "15", "1:5"]) expect(campo.test(h), h).toBe(false);
+  });
+
+  it("horaNoFuso: HH:MM em 24 horas no fuso (padrão: São Paulo), meia-noite como 00:05, nunca AM/PM", () => {
+    expect(FUSO_PADRAO).toBe("America/Sao_Paulo");
+    expect(horaNoFuso(new Date("2026-10-17T01:30:00Z"))).toBe("22:30");
+    expect(horaNoFuso(new Date("2026-10-17T01:30:00Z"), "America/Sao_Paulo")).toBe("22:30");
+    expect(horaNoFuso(new Date("2026-10-17T03:05:00Z"))).toBe("00:05");
+    expect(horaNoFuso(new Date("2026-07-10T23:05:00Z"), "Europe/Lisbon")).toBe("00:05");
+    expect(horaNoFuso(new Date("2026-07-10T14:00:00Z"), "Europe/Lisbon")).toBe("15:00");
+    for (let h = 0; h < 24; h++) {
+      const saida = horaNoFuso(new Date(Date.UTC(2026, 9, 16, h, 7)));
+      expect(saida, saida).toMatch(HORA_VALIDA);
+      expect(saida).not.toMatch(/AM|PM/i);
+    }
   });
 });

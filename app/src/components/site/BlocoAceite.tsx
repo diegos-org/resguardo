@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { HORA_LIMITE_DO_DIA } from "@/configuracoes/politica-cancelamento";
 import { CAMPOS_VERSAO, DOCUMENTOS_LEGAIS, type DocumentoLegal as Documento, PAGINAS_LEGAIS, type VersoesLegais } from "@/configuracoes/paginas-legais-texto";
 import type { AceiteNaPagina } from "@/site/aceites";
 import { LinkNovaJanela } from "./Acessibilidade";
@@ -16,12 +17,12 @@ function LinkLegal({ doc, versoes, children }: { doc: Documento; versoes: Versoe
   );
 }
 
-/** O prazo do reembolso integral desta reserva pela política (data do calendário no fuso do imóvel, até 23h59). */
+/** O prazo do reembolso integral desta reserva pela política (data do calendário no fuso do imóvel, até 23:59, `HORA_LIMITE_DO_DIA`). */
 export function PrazoDoReembolso({ prazo, fuso }: { prazo: AceiteNaPagina["prazo"]; fuso: string }) {
   if (prazo.tipo === "integral_ate") {
     return (
       <p className={styles.texto}>
-        Para esta reserva, o reembolso integral vale para pedidos de cancelamento até <strong>23h59 de {br(prazo.data)}</strong> ({horario(fuso)}).
+        Para esta reserva, o reembolso integral vale para pedidos de cancelamento até <strong>{`${HORA_LIMITE_DO_DIA} de ${br(prazo.data)}`}</strong> ({horario(fuso)}).
       </p>
     );
   }

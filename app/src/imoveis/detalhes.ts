@@ -6,6 +6,7 @@ import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, imoveisDetalhes, imoveisPeriodos } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { HORA_VALIDA } from "@/lib/datas";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
@@ -100,7 +101,7 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
   };
   const hora = (campo: "checkinAPartirDe" | "checkoutAte", padrao: string) => {
     const v = txt(e[campo]) || padrao;
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) erros[campo] = "Use HH:MM (ex.: 15:00).";
+    if (!HORA_VALIDA.test(v)) erros[campo] = "Use HH:MM (ex.: 15:00).";
     return v;
   };
   const dias = (campo: "diasChegada" | "diasSaida") => {

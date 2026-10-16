@@ -103,7 +103,7 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
     },
     {
       nome: "Agendador (Vercel Cron)",
-      paraQue: "Roda as automações no horário (agenda diária às 20h)",
+      paraQue: "Roda as automações no horário (agenda diária às 20:00)",
       situacao: tem("CRON_SECRET") ? "configurado" : "nao_configurado",
       detalhe: tem("CRON_SECRET") ? "Configurado" : "Falta CRON_SECRET (sem ele, o agendador é recusado)",
     },

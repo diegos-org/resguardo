@@ -3,8 +3,9 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { textoDaFaltaNoCancelamento, VARIAVEIS_DO_CANCELAMENTO } from "@/configuracoes/modelos-texto";
+import { HORA_LIMITE_DO_DIA } from "@/configuracoes/politica-cancelamento";
 import { CANAIS_PEDIDO_CANCELAMENTO, type EstadoReserva, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, type MotivoCancelamentoEmpresa } from "@/db/schema";
-import { hojeISO } from "@/lib/datas";
+import { hojeISO, horaNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import type { MensagemPronta } from "@/mensagens/hospede";
 import {
@@ -22,7 +23,6 @@ import { FormCancelamentoSite, FormDescartarPedido, FormRegistrarPedido, type Op
 import { devolucoesDoCancelamento, linhaDaDevolucao } from "./PagamentoNoSite";
 
 const FUSO = "America/Sao_Paulo";
-const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
 const diaIso = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
 const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } as const;
 const botaoDiscreto = { font: "inherit", fontSize: "0.8125rem", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--scl-borda)", background: "var(--scl-papel)", cursor: "pointer" } as const;
@@ -88,7 +88,7 @@ function quemCancelou(c: CancelamentoDoPainel): string {
 function politica(c: CancelamentoDoPainel): string {
   if (c.politicaVersao === null) return "sem política aceita (pagamento anterior às páginas legais do site): decisão da equipe";
   const partes = [`versão ${c.politicaVersao}`];
-  if (c.integralAte) partes.push(`reembolso integral para pedidos até ${diaIso(c.integralAte)} (23h59)`);
+  if (c.integralAte) partes.push(`reembolso integral para pedidos até ${diaIso(c.integralAte)} (${HORA_LIMITE_DO_DIA})`);
   if (c.arrependimentoAte) partes.push(`arrependimento até ${diaIso(c.arrependimentoAte)}${c.arrependimentoAteEntrada ? ", ou até a entrada" : ""}`);
   return partes.join(" — ");
 }
@@ -197,7 +197,7 @@ function Descartados({ c }: { c: CancelamentoDoPainel }) {
 export function CancelamentoSite({ reserva, pagamento, pagamentos, cancelamento: c, momentos, editarReserva, editarFinanceiro, verValores, agora }: PropsCancelamentoSite) {
   const confirmada = reserva.estado === "confirmada";
   if (!c && !confirmada) return null;
-  const agoraSP = { data: hojeISO(FUSO, agora), hora: horaSP(agora) };
+  const agoraSP = { data: hojeISO(FUSO, agora), hora: horaNoFuso(agora, FUSO) };
   const naoComparecimentoApos = momentos ? diaHoraBr(momentos.naoComparecimentoApos, momentos.fuso) : "a tolerância de Configurações → Pagamento no site";
   const semPolitica = pagamento.aceite === null || pagamento.aceite?.diasReembolsoIntegral === null;
   const somenteFinanceiro = !editarFinanceiro && <p style={nota}>Esta reserva foi paga pelo site: o cancelamento com devolução é feito por quem cuida do financeiro.</p>;
@@ -276,7 +276,7 @@ export function CancelamentoSite({ reserva, pagamento, pagamentos, cancelamento:
         {formulario({
           site,
           data: hojeISO(FUSO, c.pedidoRecebidoEm),
-          hora: horaSP(c.pedidoRecebidoEm),
+          hora: horaNoFuso(c.pedidoRecebidoEm, FUSO),
           canal: site ? null : c.canal,
           descricao: site ? diaHoraBr(c.pedidoRecebidoEm) : `Registrado por ${c.pedidoPor ?? "a equipe"}: mudar a data ou a hora pede o motivo (fica registrado).`,
         })}
