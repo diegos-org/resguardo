@@ -289,6 +289,13 @@ describe("menu do painel no celular (M0.10)", () => {
     if (!achada) throw new Error(`regra ${seletor} não encontrada`);
     return achada.corpo;
   };
+  /** Os quatro lados (em cima, direita, embaixo, esquerda) de um padding de 1 a 4 valores, em px. */
+  const lados = (texto: string) => {
+    const v = texto.split(/\s+/).map(parseFloat);
+    return [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
+  };
+  // A letra do html fica no padrão do navegador (16px): globals.css não muda o tamanho dela.
+  const REM = 16;
 
   it("no computador, nada muda: o botão Menu não aparece e a lista lateral segue em coluna, sempre à vista", () => {
     expect(valor(em(computador, ".gaveta"), "display")).toBe("none");
@@ -306,13 +313,34 @@ describe("menu do painel no celular (M0.10)", () => {
     // Nenhuma regra do menu rola (nem esconde o que passa da borda), no celular ou no computador.
     for (const r of regras(PAINEL).filter((x) => /\.menu\b/.test(x.seletor))) expect(r.corpo, r.seletor).not.toMatch(/overflow|scroll-/);
     // Os itens quebram em linhas (grade), em vez de seguir numa faixa só.
-    expect(valor(menu, "grid-template-columns")).toMatch(/^repeat\(auto-fill, minmax\(/);
     expect(valor(em(celular, ".menu a"), "white-space")).toBeUndefined();
+    // Duas colunas num celular de 360px (DESIGN.md, registro 9), e nada passa da largura. Com `overflow-x: hidden` em html
+    // e body (globals.css), uma coluna larga demais não faria a página rolar: cortaria o fim dos itens, sem aviso.
+    expect(regras(GLOBAL).filter((r) => r.seletor.split(", ").includes("html") && valor(r.corpo, "font-size"))).toEqual([]);
+    const colunas = /^repeat\(auto-fill, minmax\(min\(([\d.]+)rem, 100%\), 1fr\)\)$/.exec(valor(menu, "grid-template-columns") ?? "");
+    expect(colunas, "grid-template-columns").not.toBeNull();
+    const coluna = parseFloat(colunas![1]) * REM;
+    const vao = parseFloat(valor(menu, "gap")!);
+    const [, direita, , esquerda] = lados(valor(em(celular, ".lateral"), "padding")!);
+    const util = 360 - direita - esquerda;
+    expect(2 * coluna + vao).toBeLessThanOrEqual(util);
+    expect(3 * coluna + 2 * vao).toBeGreaterThan(util);
+    // Com a letra grande (o "aA" do Safari, a fonte grande do Android), a coluna cresce com o rem; o `min` com 100%, na
+    // expressão acima, a segura na largura da lista: uma coluna só, sem passar da tela.
   });
 
-  it("alvos de toque de 44px: o botão e cada seção da lista", () => {
+  it("alvos de toque de 44px: o botão, cada seção da lista, o link da marca e o Sair", () => {
     expect(parseFloat(valor(em(celular, ".botaoMenu"), "min-height")!)).toBeGreaterThanOrEqual(44);
     expect(parseFloat(valor(em(celular, ".menu a"), "min-height")!)).toBeGreaterThanOrEqual(44);
+    // A marca: a altura da linha (a letra do celular vezes a altura de linha de sempre) mais a folga de cima e de baixo.
+    const marca = em(celular, ".marca");
+    const [cima, , baixo] = lados(valor(marca, "padding")!);
+    const linha = parseFloat(valor(marca, "font-size")!) * REM * parseFloat(valor(em(computador, ".marca"), "line-height")!);
+    expect(linha + cima + baixo).toBeGreaterThanOrEqual(44);
+    // O Sair (o único botão do cabeçalho; um toque errado encerra a sessão). A regra do celular vem depois da de base, que
+    // tem a mesma especificidade e, depois, desfaria o ajuste.
+    expect(parseFloat(valor(em(celular, ".sair"), "min-height")!)).toBeGreaterThanOrEqual(44);
+    expect(regras(PAINEL).filter((r) => r.seletor === ".sair").at(-1)!.corpo).toBe(em(celular, ".sair"));
   });
 
   it("o contorno do foco (M7.11) aparece no botão e fica inteiro sobre o verde do menu", () => {
@@ -333,8 +361,12 @@ describe("menu do painel no celular (M0.10)", () => {
       const quebra = celular.filter((r) => r.seletor.split(", ").includes(seletor)).map((r) => valor(r.corpo, "flex-wrap"));
       expect(quebra, seletor).toContain("wrap");
     }
-    // O selo não se espreme em duas linhas dentro da pílula.
-    expect(valor(em(celular, ".selo"), "white-space")).toBe("nowrap");
+    // O selo pode quebrar dentro da pílula quando a letra está grande: com `nowrap`, passaria da borda da tela, e o
+    // `overflow-x: hidden` de html e body cortaria o fim sem rolagem. Com a letra normal, a quebra acima já basta para ele
+    // caber numa linha só.
+    const selos = regras(PAINEL).filter((r) => r.seletor.split(", ").includes(".selo"));
+    expect(selos.length).toBeGreaterThan(0);
+    for (const r of selos) expect(valor(r.corpo, "white-space"), r.seletor).toBeUndefined();
     // No computador, como antes: uma linha só.
     expect(valor(em(computador, ".cabecalho"), "flex-wrap")).toBeUndefined();
     expect(valor(em(computador, ".cabecalhoAcoes"), "flex-wrap")).toBeUndefined();

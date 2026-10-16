@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SECOES, encontrarSecao, secoesPara } from "@/lib/navegacao";
 import { FiltroGlobal } from "./FiltroGlobal";
@@ -98,6 +100,28 @@ describe("Menu no celular (M0.10)", () => {
     atual.addEventListener("click", (e) => e.preventDefault());
     fireEvent.click(atual);
     expect(gaveta.open).toBe(false);
+  });
+
+  it("tocar em \"Menu\" antes de o JavaScript carregar: a lista segue aberta e a hidratação não acusa diferença", async () => {
+    // O HTML que o servidor manda, com o <details> fechado.
+    const raiz = document.createElement("div");
+    raiz.innerHTML = renderToString(<Menu papel="admin" />);
+    document.body.appendChild(raiz);
+    // O toque no <summary> antes da hidratação: o navegador põe o atributo open, que o React não esperava.
+    raiz.querySelector("details")!.setAttribute("open", "");
+    const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+    const recuperaveis: unknown[] = [];
+    try {
+      const montado = await act(async () => hydrateRoot(raiz, <Menu papel="admin" />, { onRecoverableError: (e) => recuperaveis.push(e) }));
+      // Sem "A tree hydrated but some attributes of the server rendered HTML didn't match" (só no desenvolvimento).
+      expect(erro.mock.calls.map((c) => String(c[0]))).toEqual([]);
+      expect(recuperaveis).toEqual([]);
+      expect(raiz.querySelector("details")!.open).toBe(true);
+      act(() => montado.unmount());
+    } finally {
+      erro.mockRestore();
+      raiz.remove();
+    }
   });
 });
 

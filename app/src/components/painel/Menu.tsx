@@ -33,8 +33,11 @@ export function Menu({ papel }: { papel: Papel }) {
         Celular (M0.10): o botão "Menu" abre a lista inteira logo abaixo, sem JavaScript (a lista vem logo depois do
         <details> e o CSS a esconde enquanto ele está fechado). Fecha sozinho ao trocar de página: a chave remonta o
         <details> fechado. No computador, o botão não aparece e a lista fica sempre à vista, como antes.
+        Quem toca em "Menu" antes de o JavaScript carregar (celular lento) já abre a lista: o navegador põe o atributo
+        `open`, que o React não esperava, e no desenvolvimento acusaria a diferença na hidratação. O
+        suppressHydrationWarning vale só para os atributos deste <details> e não muda nada no navegador.
       */}
-      <details key={atual} ref={gaveta} className={styles.gaveta}>
+      <details key={atual} ref={gaveta} className={styles.gaveta} suppressHydrationWarning>
         <summary className={styles.botaoMenu} aria-controls={idLista}>
           <span className={styles.iconeMenu} aria-hidden="true" />
           <span className={styles.rotuloMenu}>
