@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
+import { escreverHora } from "@/lib/datas";
 import { type CotacaoVista, motivoDaMudanca, textoDaCotacao } from "@/site/cotacoes";
+import { linkDaCasa } from "@/site/link-da-casa";
+import { frasesDosHorarios, type RegrasDaCasa as Regras } from "@/site/regras-da-casa";
 import { linkWhatsapp } from "@/site/site";
 import { LinkNovaJanela } from "./Acessibilidade";
+import { RegrasDaCasa } from "./RegrasDaCasa";
 import styles from "./site.module.css";
 
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -53,6 +57,9 @@ export const RODAPE_COTACAO = {
  * dele vêm primeiro e substituem o que o estado da cotação diria — um pagamento vence "expirada" e "cancelada".
  * `pagamentoNoSite`: o site oferece o Pix para esta cotação (muda o texto "nenhum pagamento é feito no site");
  * `comCartao` (M8.2b): o cartão de crédito também está ligado ("por Pix ou cartão").
+ * `regras` (M7.20): os horários e as regras de convivência da casa, quando a página os mostra (a página decide pela situação,
+ * `regrasNaCotacao`); null = não aparecem. `casaNoSite`: o nome da casa vira link para a página dela e, na cotação aberta e
+ * válida, aparece "Mudar as datas".
  */
 export function Cotacao({
   vista,
@@ -63,6 +70,8 @@ export function Cotacao({
   pagamentoNoSite = false,
   comCartao = false,
   reservaAtual = null,
+  regras = null,
+  casaNoSite = false,
 }: {
   vista: CotacaoVista;
   whatsapp: string | null;
@@ -76,6 +85,8 @@ export function Cotacao({
    * que o resumo é o da cotação original (a alteração aplicada sai do quadro dela depois de um tempo).
    */
   reservaAtual?: { codigo: string; checkin: string; checkout: string; hospedes: number | null; valor: number | null } | null;
+  regras?: Regras | null;
+  casaNoSite?: boolean;
 }) {
   const c = vista.cotacao;
   const novaConsulta = `/consulta?${new URLSearchParams({ imovel: c.imovelCodigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) })}`;
@@ -83,16 +94,32 @@ export function Cotacao({
   const temContato = !!(whatsapp || email);
   const titulo = pagamento ? pagamento.titulo : vista.estado === "aberta" && vista.mudou ? TITULO_COTACAO.desatualizada : TITULO_COTACAO[vista.estado];
   const estado = pagamento ? null : vista.estado;
+  const datas = { entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) };
+  // M7.20: o link da casa leva as datas e as pessoas enquanto elas não são desta cotação (aberta, vencida, cancelada, que
+  // mudou). Seguradas, em pagamento ou já reservadas, a página da casa diria "Indisponível nessas datas" das noites do
+  // próprio hóspede: aí o link vai para a casa sem as datas.
+  const casa = casaNoSite ? linkDaCasa(c.imovelCodigo, !pagamento && estado !== "segurada" && estado !== "convertida" ? datas : {}) : null;
+  const linkComDatas = casaNoSite ? linkDaCasa(c.imovelCodigo, datas) : null;
+  // Só na cotação aberta e válida (ainda não segurada): com as datas seguradas, consultar de novo esbarraria no pedido em
+  // andamento com o mesmo e-mail (a troca de datas depois do pagamento é a alteração da reserva, M8.2d).
+  const mudarDatas = estado === "aberta" && !vista.mudou && linkComDatas ? `${linkComDatas}#planejar` : null;
   return (
     <section className={styles.bloco} aria-label="Cotação">
       <h2>{titulo}</h2>
       <p className={styles.miudo}>
-        Cotação <strong>{c.codigo}</strong> · {c.imovelNome} ({c.imovelCodigo})
+        Cotação <strong>{c.codigo}</strong> · {casa ? <a href={casa}>{c.imovelNome}</a> : c.imovelNome} ({c.imovelCodigo})
       </p>
       <p className={styles.texto}>
         {dataBr(c.checkin)} a {dataBr(c.checkout)} · {c.noites} {c.noites === 1 ? "noite" : "noites"} · {c.hospedes} {c.hospedes === 1 ? "pessoa" : "pessoas"}
         {c.situacao === "a_confirmar" ? " · disponibilidade a confirmar pela equipe" : ""}
       </p>
+      {mudarDatas && (
+        <p style={{ margin: 0 }}>
+          <a href={mudarDatas} className={styles.linkTexto}>
+            Mudar as datas
+          </a>
+        </p>
+      )}
       {reservaAtual && (
         <p className={styles.texto} role="note">
           A sua reserva <strong>{reservaAtual.codigo}</strong> foi alterada depois desta cotação: agora é de {dataBr(reservaAtual.checkin)} a {dataBr(reservaAtual.checkout)} · {noitesEntre(reservaAtual.checkin, reservaAtual.checkout)}{" "}
@@ -100,6 +127,13 @@ export function Cotacao({
           {reservaAtual.hospedes !== null ? ` · ${reservaAtual.hospedes} ${reservaAtual.hospedes === 1 ? "pessoa" : "pessoas"}` : ""}
           {reservaAtual.valor !== null ? ` · valor da reserva ${brl(reservaAtual.valor)}` : ""}. O resumo abaixo é o da cotação original.
         </p>
+      )}
+      {/* M7.20: horários e regras da casa antes do pagamento (os Termos citam "as regras da casa informadas"). */}
+      {regras && (
+        <>
+          <p className={styles.texto}>{frasesDosHorarios(regras, escreverHora).join(" · ")}</p>
+          <RegrasDaCasa itens={regras.convivencia} texto={regras.texto} nivel={3} />
+        </>
       )}
       {pagamento?.conteudo}
       <dl className={styles.resumo}>
