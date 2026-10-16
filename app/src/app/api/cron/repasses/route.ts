@@ -7,6 +7,7 @@
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
 import { repassesDeTodas } from "@/repasses/cron";
+import { avisarErroDoServidor } from "@/observabilidade/aviso-do-servidor";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ export async function GET(req: Request) {
   try {
     const resumo = await repassesDeTodas(getDb(), correioDoAmbiente(), new Date());
     return Response.json({ ok: true, resumo });
-  } catch {
+  } catch (erro) {
+    await avisarErroDoServidor(erro, "repasses-periodicos");
     // O detalhe fica registrado na página "Sistema".
     return Response.json({ ok: false }, { status: 500 });
   }

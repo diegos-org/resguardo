@@ -24,8 +24,9 @@ publicada", na faixa das casas), que devolve `--scl-foco-cor` ao laranja no pró
 herdado daria 1,05:1 no papel); no dia do calendário de datas, o contorno de 2px fica inteiro por dentro
 (deslocado -2px) e com a opacidade cheia, sobre o fundo do próprio dia (no dia escolhido, creme sobre o
 musgo, 5,18:1), porque os dias ficam colados e, meio por fora, ele caía sobre o vizinho ou o papel; nas
-rolagens com coisa focável (carrossel das casas, miniaturas da galeria, menu do painel no celular), folga
-de 8px e `scroll-padding` para o contorno não ser cortado; o que flutua sobre fundos claros e verdes (botão do WhatsApp, "Pular para o
+rolagens com coisa focável (carrossel das casas, miniaturas da galeria e, até 16/10, menu do painel no celular, que
+desde o M0.10 abre a lista inteira sem rolar, desvio 9), folga de 8px e `scroll-padding` para o contorno não ser
+cortado; o que flutua sobre fundos claros e verdes (botão do WhatsApp, "Pular para o
 conteúdo") ganha um halo creme (`--scl-foco-halo`) sob o contorno laranja; objetivo: o foco do teclado
 visível em qualquer fundo do site, dos portais e do painel; (7) **14/10/2026 (M7.11), miniatura
 escolhida da galeria** — antes: contorno de 2px em `--scl-dourado` (1,93:1 sobre o creme, 2,04:1 sobre o
@@ -43,7 +44,21 @@ porque no celular estreito o texto pode ter duas linhas; na produção, sem a fa
 revisão em 15/10, conferido por teste do CSS e da ordem das páginas, com a moldura logo depois da faixa, e ainda não em
 navegador); motivo: o texto do estudo deixou de ser verdade (o
 pagamento de teste está ligado nas prévias) e as cores dele não eram tokens; objetivo: quem testa não confundir a prévia
-com o site de verdade, dizendo só o que o código garante.
+com o site de verdade, dizendo só o que o código garante; (9) **16/10/2026 (M0.10), menu do painel no
+celular**: antes, até 760px o menu lateral virava uma faixa horizontal no topo que rolava para o lado (com a folga de
+8px e o `scroll-padding` do desvio 6), sem nada indicando a rolagem, e as últimas seções, como Configurações, ficavam
+fora da tela; agora, um botão "Menu" (o `<summary>` de um `<details>`, que abre e fecha sem JavaScript) mostra o nome
+da seção atual ("Menu · Reservas") e abre a lista inteira logo abaixo, em grade (duas colunas em 360px; a coluna,
+`min(9.5rem, 100%)`, nunca passa da largura da lista, e com a letra aumentada vira uma só), com a seção atual marcada
+pela barra dourada à esquerda, como no computador, e alvos de toque de 44px (o botão, os itens, o Sair do cabeçalho e
+o link da marca); a lista fecha sozinha ao trocar de página; quem toca no botão antes de o JavaScript carregar abre a
+lista pelo navegador, e o `<details>` aceita esse `open` na hidratação (`suppressHydrationWarning`); o `<summary>`
+entrou na regra única do contorno de foco em `globals.css`, então todo "abrir e fechar" do sistema passa a ter o
+contorno de 3px deslocado 5px (antes, o padrão do navegador), e o do botão "Menu" é o creme do menu verde; no
+cabeçalho do painel, no celular, o selo e o Sair descem para a linha de baixo em vez de espremer o texto, e com a
+letra aumentada o selo quebra dentro da pílula (sem `nowrap`, que o fazia passar da borda da tela; ajuste da revisão
+interna, 16/10); no computador, nada muda; motivo: Diego não achou o menu do painel no celular (16/10) e não chegou a
+Configurações; objetivo: todas as seções à vista com um toque, também no celular.
 Aprovado por Diego em 4/10/2026: adotar o visual do estudo do "Sage" (site público,
 `prototipos/acervo-visual-2026-10` e `prototipos/scl-publico`) como design geral do projeto —
 site, portal do hóspede, portal do proprietário e painel —, com os ajustes abaixo. O painel usa a
