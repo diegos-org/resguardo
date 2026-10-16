@@ -1,6 +1,10 @@
 # Reserva paga do site no Beds24 (M8.3): desenho
 
-**Situação:** este é só o desenho, revisado em 16/10/2026 depois de três críticas: dano real, concorrência e operação. Nada foi implementado. Base: `origin/main` no commit `adca993` (16/10/2026).
+**Situação:** desenho revisado em 16/10/2026 depois de três críticas: dano real, concorrência e operação. Base: `origin/main` no commit `adca993` (16/10/2026).
+- **M8.3a (base sem escrita): entregue em 16/10/2026 na branch `claude/m8-3a-base-reservas-beds24`, em revisão e ainda não integrado na `main`.** Nada escreve no Beds24. As mudanças de método da implementação estão registradas onde cada regra mora (5.2, 8 e 10).
+- **M8.3b, M8.3c e M8.3d:** a fazer (seção 13).
+- **D3 decidida por Diego em 16/10/2026**, igual ao padrão: só a reserva paga pelo site vai ao Beds24 (seção 11).
+- **Antes:** esta linha dizia "este é só o desenho" e "Nada foi implementado", e as seções 1 e 13 previam o M8.3a a partir da `main` depois do merge do PR das decisões de 16/10. **Agora:** como esse PR (#146, M13.1) ainda está aberto, o M8.3a foi empilhado sobre ele e entra depois dele, na ordem dos PRs empilhados (`CLAUDE.md`, "Merge", item 4).
 
 **Fontes:**
 - o código da `main` (caminhos relativos a `app/src/`, salvo indicação);
@@ -49,7 +53,7 @@ Este desenho não repete esse registro, para não criar duas versões das mesmas
 ### Fica de fora do M8.3
 - **Hold do M8.1 e reserva-pedido da alteração (M8.2d).** Nunca vão ao Beds24. Continua o risco de venda dupla durante o hold, registrado em `requisitos/product/COTACAO-E-HOLD-SITE.md` l.81-82: Pix pelo menos 30 min, cartão em análise até 60 min, alteração até 48 h.
 - **Reservas de outras fontes** (Beds24, planilha, manual).
-- **Pedido do site confirmado à mão sem pagamento** (D3). Não entra no envio. Ganha só o aviso e a marca manual (seção 6).
+- **Pedido do site confirmado à mão sem pagamento** (D3, decidida por Diego em 16/10: seção 11). Não entra no envio. Ganha só o aviso e a marca manual (seção 6).
 - **Marketplace.** A autorização de 16/10 vale para ele, mas a régua o exclui de forma explícita até o M12.2 (seção 2.1). A conta e a credencial do Beds24 do proprietário são assunto do M12.2.
 - **Valor, fatura, pagamento e dados pessoais do hóspede** (seção 7).
 - **Webhooks do Beds24 e o DELETE de reserva.**
@@ -131,7 +135,7 @@ Regras:
 
 > **Efeito prático hoje (fatos de 16/10):**
 > - em produção há 0 reservas do site confirmadas e 0 pagamentos;
-> - o pagamento só roda nas prévias. Mesmo mergeado e com a chave ligada, o M8.3 não tem o que enviar em produção até o pagamento real ser liberado. A exceção seria a D3;
+> - o pagamento só roda nas prévias. Mesmo mergeado e com a chave ligada, o M8.3 não tem o que enviar em produção até o pagamento real ser liberado. A exceção seria a D3, se Diego dissesse sim; ele decidiu em 16/10 que não (seção 11), então não há exceção;
 > - a importação automática do Beds24 está **desligada** em produção. Nas 7 execuções diárias de 10/10 a 16/10, todas responderam "Sincronização automática desligada no painel" (contagem em `execucoes_automacao` no Neon de produção). Por isso o M8.3 faz a própria conferência (4.5) e não conta com a importação.
 
 ---
@@ -665,6 +669,13 @@ Em `app/painel/configuracoes/integracoes/page.tsx` (`configuracao:editar`):
     O registro fica em `beds24_reservas_operacoes`, `tipo = ensaio`;
   - os contadores por situação, com link para a lista filtrada.
 
+**Registro da implementação (M8.3a, 16/10/2026).** A conferência de completude do M8.3a achou dois pontos desta lista que ficaram de fora. Os dois passam ao M8.3c (seção 13). O objetivo final não muda: Integrações mostra a recusa da credencial e leva às reservas que pedem atenção.
+
+| | Antes (o texto acima) | Agora (o M8.3a) | Motivo e onde entra |
+|---|---|---|---|
+| Último 403 ou 401 de reservas | A linha da credencial mostrava também o último 403 ou 401 de reservas. | A linha diz só se há refresh token, só o token direto (`BEDS24_API_KEY`, que só lê) ou nenhuma credencial. | No M8.3a não há escrita, então não há 403 nem 401 de reservas para mostrar. O M8.3c grava a recusa (3.8, motivo `sem_permissao`) e a mostra aqui. |
+| Contadores por situação | Cada contador levava à lista de reservas filtrada. | "Reservas acompanhadas" mostra só os números por situação, sem link. | O filtro `beds24=atencao` da lista de reservas ainda não existe. O M8.3c cria o filtro junto com o aviso de atenção (6.5), que usa o mesmo link, e liga os contadores a ele. |
+
 ### Sistema
 - **Serviços** (`sistema/servicos.ts:86-95`) mostra as duas chaves usando as funções, e não `env.BEDS24_ESCRITA` direto (l.92). Mostra também o aviso "credencial de escrita presente fora da produção".
 - **Automações** (`sistema/automacoes.ts:18-35`) ganha uma linha nova: `{ id: "reservas-beds24", nome: "Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)", quando: "A cada 10 minutos, fora das janelas da importação e do envio diários, só no deploy de produção; escreve só com BEDS24_ESCRITA_RESERVAS=ligada e a configuração pronta; também na ficha", situacao: "ativa", item: "M8.3" }`.
@@ -673,7 +684,7 @@ Em `app/painel/configuracoes/integracoes/page.tsx` (`configuracao:editar`):
 - **Rotinas diárias:** a importação e o envio que terminam "ocupada" passam a ser registrados como "não rodou: <causa>" (`beds24/cron.ts:16`, `beds24/cron-envio.ts:21`), e não como sucesso.
 
 ### Lista de reservas e lados de fora do painel
-- **Lista de reservas:** filtro `beds24=atencao`.
+- **Lista de reservas:** filtro `beds24=atencao`. Entra no M8.3c (registro na parte de Integrações, acima).
 - **Hóspede e proprietário:** nada muda. Nenhum texto do site, de Minha reserva, dos e-mails ou do portal cita o Beds24. Os testes atuais garantem isso (`app/hospede/page.test.tsx:166, 185`; `app/reservar/[codigo]/page.test.tsx:374, 441, 468`). O componente novo só é importado no painel.
 
 ---
@@ -738,6 +749,18 @@ Em `app/painel/configuracoes/integracoes/page.tsx` (`configuracao:editar`):
    - `enviando` na janela dá "ocupada" com a mensagem certa.
 7. `sincronizarReserva` com fonte `beds24` ou `csv` nunca altera uma reserva `fonte = 'site'`.
 8. Mudar a fonte de preços ao mesmo tempo que a importação não dá impasse (PGlite com duas conexões).
+
+   **Registro da implementação (M8.3a, 16/10/2026).**
+   - **Antes:** o método era o PGlite com duas conexões.
+   - **Agora:** o teste (`imoveis/travas-beds24.test.ts`) usa uma conexão só e prova a causa do impasse: a trava `beds24:<org>` pedida com o imóvel já travado pela mesma transação. A cada pedido dessa trava, ele confere se o imóvel já estava travado (tem de não estar). Os casos:
+     - `salvarDetalhes`;
+     - `salvarDetalhesComLeitura`, a do portal, que nem pede a trava quando a fonte não muda;
+     - a fonte mudada por outra gravação entre a leitura sem trava e a gravação: recomeça já com a trava do Beds24;
+     - a troca da fonte ao mesmo tempo que a importação: as duas terminam.
+
+     O primeiro caso falharia no código anterior, que travava o imóvel (`FOR UPDATE`) e só depois esperava a trava do Beds24 (3.6, "Exceção de hoje").
+   - **Motivo:** o PGlite dos testes tem uma conexão só e serializa as transações (quem chega espera a outra terminar inteira). O impasse de duas conexões não acontece nele, e um teste com duas conexões passaria também no código errado. Conferir a ordem das travas prova a causa.
+   - **Objetivo final, o mesmo:** a troca da fonte de preços nunca dá impasse com a importação, com o envio de calendário nem com as fases do M8.3.
 9. `referenciaScl` sai do info item, do nome e de `notes`; o ensaio é reconhecido.
 10. `procurarReservaDoSite`:
     - filtros: chegada explícita, todas as situações, `includeInfoItems`;
@@ -820,7 +843,7 @@ Em `app/painel/configuracoes/integracoes/page.tsx` (`configuracao:editar`):
 |---|---|---|
 | D1 | Que dados do hóspede vão ao Beds24 | **Nenhum dado pessoal.** A marca vai no info item; o nome ou a nota "Site SCL-XXXXXX, não altere aqui" depende do suporte (3.5). |
 | D2 | Mandar o valor | **Não.** O financeiro é só do SCL. |
-| D3 | O pedido do site confirmado à mão **sem** pagamento entra no envio? Hoje é o único caso real em produção, e `GUIA-DIEGO.md:1738-1741` prometia que sim. | **Não entra no envio:** o ROADMAP e a autorização de 16/10 falam de reserva "paga". O guia é corrigido no PR, e o aviso "feche as datas" e a marca manual passam a valer para esse caso. Se Diego disser sim, a régua inclui a confirmação pela equipe (`reservas/repositorio.ts:417-486`), e o cancelamento pelo painel, que não grava `cancelamentos_reserva`, precisa de um gancho próprio. |
+| D3 | O pedido do site confirmado à mão **sem** pagamento entra no envio? Hoje é o único caso real em produção, e `GUIA-DIEGO.md:1738-1741` prometia que sim. | **Decidida por Diego em 16/10/2026, igual ao padrão: não entra no envio.** Só vai ao Beds24 a reserva paga pelo site. Registro abaixo da tabela. A proposta, que era o padrão até ele decidir: **não entra no envio:** o ROADMAP e a autorização de 16/10 falam de reserva "paga". O guia é corrigido no PR, e o aviso "feche as datas" e a marca manual passam a valer para esse caso. Se Diego disser sim, a régua inclui a confirmação pela equipe (`reservas/repositorio.ts:417-486`), e o cancelamento pelo painel, que não grava `cancelamentos_reserva`, precisa de um gancho próprio. |
 | D4 | Não comparecimento: reabrir as noites que sobram | **Cancela no Beds24**, como os outros cancelamentos |
 | D5 | Transição (bloqueio feito à mão) | **Nada sozinho.** "Assumir" só no M8.3d, depois do suporte; até lá, "Deixar à mão". |
 | D6 | Imóveis ligados no painel | **Nenhum** até Diego escolher, e só depois de um ensaio. Imóvel desligado para só a criação; a pausa geral para tudo. |
@@ -829,6 +852,17 @@ Em `app/painel/configuracoes/integracoes/page.tsx` (`configuracao:editar`):
 | D9 | Fechar as OTAs durante o hold | **Não**, como no ROADMAP. O risco continua registrado. |
 | D10 | Token novo com escrita de reservas | A chave fica sem efeito até o token novo, com os escopos exatos da seção 7, só em Production, e o passo a passo da troca |
 | D11 | Revisar as Auto Actions da conta antes de ligar | Lista para conferir: e-mails internos, de proprietário e de limpeza com origem "All" ou "Direct" (o modelo em Auto_Actions:2176-2190); regras que incluem ou apagam info codes (:325); excluir o info code `SCL` dessas regras (:126). A falta do info item numa reserva nossa conta como `divergente`. |
+
+### Registro da D3 (16/10/2026)
+| | |
+|---|---|
+| **Antes** | A D3 estava em aberto, com o padrão "não entra no envio" (a proposta na linha da tabela). O guia, na parte da cotação (M8.1), dizia que o Airbnb e o Booking só fechariam as datas quando a reserva confirmada fosse enviada (M8.3), o que incluía o pedido confirmado à mão. |
+| **Agora** | Diego decidiu igual ao padrão: o pedido do site que a equipe confirma à mão, **sem** pagamento, **não** vai ao Beds24. Só vai a reserva **paga** pelo site. Esse pedido fica com o aviso "feche as datas" e a marca manual (6.4), que chegam no M8.3b (teste 17). A régua do M8.3a já o deixa de fora: a condição 2 de 2.1 pede um pagamento com `desfecho = 'reserva'`, e "Simular" na ficha responde `sem_pagamento` ("confirmada à mão: feche as datas à mão"). |
+| **Palavras de Diego** | Transcrição de voz, em que "Bats24" é o Beds24: "eu acho que tem que ir pro [Beds24] só depois de pago, resolvido pelo site". E, sobre a proposta: "A sua proposta, pelo visto, é igual a minha". |
+| **Motivo** | No Airbnb, o hóspede tem 24 horas para pagar. Fechar as datas em todos os canais para um hóspede que depois não paga dá muito trabalho (a "trabalheira", nas palavras de Diego) e faz a empresa deixar de receber reservas naquelas datas. |
+| **Objetivo final** | O Beds24 e as OTAs só fecham sozinhos as datas de uma reserva com o pagamento feito pelo site. O pedido sem pagamento a equipe decide à mão, com o aviso. |
+| **Efeito nas outras decisões** | Reforça a D9: as OTAs continuam abertas durante o hold, pelo mesmo motivo. O texto do guia da parte da cotação é corrigido no M8.3b, junto com os outros textos (seção 13). |
+| **Onde mais está registrada** | No `ROADMAP.md`, na linha do M8.3 e em "Decisões registradas" (16/10); no `GUIA-DIEGO.md`, na seção da entrega do M8.3a e nas respostas da seção 7. É uma decisão nova, então não repete o registro da autorização de 16/10 (seção 1). |
 
 ---
 
@@ -876,13 +910,13 @@ Os PRs comparáveis foram grandes:
 | #126 (M8.2d) | 148 | 29,1 mil | 12 |
 | #127 (M8.2e) | 120 | 32 mil | 25 |
 
-O M8.2 foi dividido "para a revisão caber" (`ROADMAP.md:171`). O M8.3 é dividido do mesmo jeito, e a proteção da importação entra antes de qualquer escrita. Todos partem da `main` depois do merge do PR das decisões de 16/10.
+O M8.2 foi dividido "para a revisão caber" (`ROADMAP.md:171`). O M8.3 é dividido do mesmo jeito, e a proteção da importação entra antes de qualquer escrita. Todos partem da `main` depois do merge do PR das decisões de 16/10. O M8.3a é a exceção: foi empilhado sobre esse PR (#146), ainda aberto, e entra depois dele (registro no topo deste documento).
 
 | PR | Conteúdo | Efeito em produção | Depende de |
 |---|---|---|---|
-| **M8.3a: base sem escrita** | Migração 0072 (as duas tabelas); régua pura com a exclusão do marketplace; `escritaReservasBeds24Ligada/Pronta` (com `NODE_ENV`); configuração `reservasBeds24` (pausa, D6 e o registro do ensaio, sem o ensaio em si); prontidão só leitura (escopos); proteções da importação (desvio, recusa em `sincronizarReserva`, `escritaBeds24EmAndamento` com as mensagens certas); correção da ordem das travas em `imoveis/detalhes.ts`; `referenciaScl`; versão falsa ampliada; `procurarReservaDoSite` (leitura); "Simular" sem rede; bloco da ficha só leitura; Sistema e Integrações; "ocupada" registrada como "não rodou"; `setupFiles` que barra a rede; testes 1 a 13 | Nenhuma escrita. A importação passa a proteger reservas do site. | PR das decisões de 16/10 |
+| **M8.3a: base sem escrita** (entregue em 16/10, em revisão) | Migração 0072 (as duas tabelas); régua pura com a exclusão do marketplace; `escritaReservasBeds24Ligada/Pronta` (com `NODE_ENV`); configuração `reservasBeds24` (pausa, D6 e o registro do ensaio, sem o ensaio em si); prontidão só leitura (escopos); proteções da importação (desvio, recusa em `sincronizarReserva`, `escritaBeds24EmAndamento` com as mensagens certas); correção da ordem das travas em `imoveis/detalhes.ts`; `referenciaScl`; versão falsa ampliada; `procurarReservaDoSite` (leitura); "Simular" sem rede; bloco da ficha só leitura; Sistema e Integrações; "ocupada" registrada como "não rodou"; `setupFiles` que barra a rede; testes 1 a 13 | Nenhuma escrita. A importação passa a proteger reservas do site. | PR das decisões de 16/10 |
 | **M8.3b: tarefas das OTAs num lugar só** | `tarefasDasOtas`; o aviso da paga para quem edita reservas; marca manual (D8); aviso do caso D3; textos por reserva; "mude para Cancelado (não apague)"; guia corrigido (l.722, 824, 1002-1005, 1738-1741, 3462); testes 14 a 18 | Vale já: a operação vê os avisos, a marca manual e os textos certos | M8.3a |
-| **M8.3c: escrita real** | `gravarReservas` (HTTP e falso); rota e horários; janelas; três fases; idempotência e incerteza; conflito; criar, atualizar e cancelar; marcas automáticas; conferência contínua; aviso de atenção e e-mail; botões; ensaio; testes 19 a 40 | Só escreve com a chave, o token, o ensaio e um imóvel ligado | M8.3a, M8.3b |
+| **M8.3c: escrita real** | `gravarReservas` (HTTP e falso); rota e horários; janelas; três fases; idempotência e incerteza; conflito; criar, atualizar e cancelar; marcas automáticas; conferência contínua; aviso de atenção e e-mail; botões; ensaio; em Integrações, o último 403 ou 401 de reservas e o link dos contadores para a lista filtrada, com o filtro `beds24=atencao` na lista de reservas (os dois ficaram fora do M8.3a, registro na seção 8); testes 19 a 40 | Só escreve com a chave, o token, o ensaio e um imóvel ligado | M8.3a, M8.3b |
 | **M8.3d: depois do suporte do Beds24** | "Assumir no Beds24" e a reativação; testes 41 e 42 | Igual ao M8.3c | M8.3c e a resposta do suporte |
 
 Cada PR atualiza a sua linha no `ROADMAP.md` e o `GUIA-DIEGO.md` (seção "Onde estamos", o que Diego precisa fazer, data). O M8.3c traz o passo a passo de ligar: token novo só em Production, Redeploy, prontidão, ensaio, ligar o primeiro imóvel, conferir.
@@ -915,7 +949,8 @@ Cada PR atualiza a sua linha no `ROADMAP.md` e o `GUIA-DIEGO.md` (seção "Onde 
 - `sistema/automacoes.ts`: a linha `reservas-beds24` passa a `"ativa"` (registro na seção 8).
 - `app/api/cron/beds24-reservas/route.ts`, `app/vercel.json`.
 - `painel/dashboard.ts` (`avisosDeReservasNoBeds24`), `email/aviso-equipe.ts` (uso).
-- A ficha e Integrações (botões e ensaio).
+- A ficha e Integrações (botões, ensaio, o último 403 ou 401 de reservas e o link dos contadores).
+- `app/painel/reservas/page.tsx` (filtro `beds24=atencao`).
 - `ROADMAP.md`, `GUIA-DIEGO.md`.
 
 **M8.3d**
