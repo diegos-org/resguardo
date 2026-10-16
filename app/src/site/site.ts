@@ -20,6 +20,7 @@ import { uuidValido } from "@/lib/ids";
 import type { IconeEnviado } from "./icone";
 import { enderecoImagemSite, iconeDaMarcaEnviada, lerImagensSite } from "./imagens-site";
 import { MARCA_PADRAO } from "./marca";
+import { HORARIOS_PADRAO } from "./regras-da-casa";
 
 export type ImovelPublico = {
   codigo: string;
@@ -184,8 +185,9 @@ function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
     aceitaAnimais: l.aceitaAnimais ?? false,
     permiteFumar: l.permiteFumar ?? false,
     permiteFestas: l.permiteFestas ?? false,
-    checkinAPartirDe: l.checkinAPartirDe ?? "15:00",
-    checkoutAte: l.checkoutAte ?? "11:00",
+    // Sem ficha, os mesmos horários da página da cotação (M7.20).
+    checkinAPartirDe: l.checkinAPartirDe ?? HORARIOS_PADRAO.entrada,
+    checkoutAte: l.checkoutAte ?? HORARIOS_PADRAO.saida,
     estadiaMinima: l.estadiaMinima,
     fotos,
   };
@@ -203,6 +205,8 @@ async function comFotos(db: Db, organizacaoId: string, linhas: Linha[], opcoes: 
 
 /** Quais imóveis aparecem no site: os públicos e ativos da organização do site (a lista, a página e a conferência leem daqui). */
 const noSite = (organizacaoId: string) => and(eq(imoveis.organizacaoId, organizacaoId), eq(imoveis.publico, true), eq(imoveis.ativo, true));
+/** Código de casa que pode vir no endereço (a página da casa, a cotação e o link antigo); fora disso, nem chega ao banco. */
+const codigoNoEndereco = (codigo: string) => /^[\w-]{1,40}$/.test(codigo);
 
 /**
  * Imóveis que aparecem no site: públicos e ativos, pelo código. Com `cache` do React (M7.13), os metadados e a página da
@@ -225,6 +229,16 @@ export const temCasaNoSite = cache(async function temCasaNoSite(db: Db, organiza
 });
 
 /**
+ * Se a casa deste código está no site (M7.20), sem montar o imóvel nem buscar fotos: a página da cotação só precisa disso
+ * para decidir os links para a página da casa (é recarregada enquanto o Pix aguarda). Com `cache`, como as outras.
+ */
+export const estaNoSite = cache(async function estaNoSite(db: Db, organizacaoId: string, codigo: string): Promise<boolean> {
+  if (!codigoNoEndereco(codigo)) return false;
+  const [l] = await db.select({ id: imoveis.id }).from(imoveis).where(and(noSite(organizacaoId), eq(imoveis.codigo, codigo))).limit(1);
+  return !!l;
+});
+
+/**
  * Um imóvel do site pelo código (o endereço da página); null se não é público ou não existe. Com `cache` (M7.13): os
  * metadados da página da casa (a prévia do link) e a própria página leem o banco uma vez só na mesma requisição, desde
  * que as duas chamem com os mesmos argumentos. Com `"galeria"` (só a página da casa, M7.19), as fotos vêm com as
@@ -232,7 +246,7 @@ export const temCasaNoSite = cache(async function temCasaNoSite(db: Db, organiza
  * dos links antigos e a consulta só precisam do código e do nome, e não leem o começo dos arquivos).
  */
 export const imovelDoSite = cache(async function imovelDoSite(db: Db, organizacaoId: string, codigo: string, para?: "galeria"): Promise<ImovelPublico | null> {
-  if (!/^[\w-]{1,40}$/.test(codigo)) return null;
+  if (!codigoNoEndereco(codigo)) return null;
   const [l] = await db
     .select(colunasPublicas)
     .from(imoveis)
@@ -361,7 +375,7 @@ export function destinoDoLinkAntigo(
 ): { status: 308 | 307; destino: string } | { status: 400; erro: string } {
   if (!imovel) {
     const consulta = new URLSearchParams();
-    if (/^[\w-]{1,40}$/.test(codigo)) consulta.set("imovel", codigo);
+    if (codigoNoEndereco(codigo)) consulta.set("imovel", codigo);
     for (const [antigo, novo] of [["checkin", "entrada"], ["checkout", "saida"], ["guests", "hospedes"]] as const) {
       const v = sp.getAll(antigo);
       if (v.length === 1 && v[0]) consulta.set(novo, v[0].slice(0, 40));

@@ -21,6 +21,7 @@ import {
   MAXIMO_COTACOES_ABERTAS_POR_IMOVEL,
   MAXIMO_HOLDS_POR_IMOVEL,
   motivoDaMudanca,
+  regrasDaCasaDaCotacao,
   segurarDatas,
   textoDaCotacao,
   validarContato,
@@ -290,6 +291,30 @@ describe("cotação do site (M8.1)", () => {
     expect([ra.ok, rb.ok].filter(Boolean)).toHaveLength(1);
     expect((await minhasReservas()).filter((r) => r.estado === "pedido")).toHaveLength(1);
     expect([ra, rb].find((r) => !r.ok)).toMatchObject({ erro: "Essas datas acabaram de ficar indisponíveis." });
+  });
+});
+
+describe("horários e regras da casa da cotação (M7.20)", () => {
+  it("vêm da ficha do imóvel da cotação, mesmo com a casa fora do site; sem ficha, os horários padrão; outra organização ou código inválido, nada", async () => {
+    await db
+      .update(imoveisDetalhes)
+      .set({ checkinAPartirDe: "14:00", checkoutAte: "10:00", aceitaAnimais: true, permiteFumar: false, permiteFestas: true, regrasCasa: "Silêncio depois das 22h." })
+      .where(eq(imoveisDetalhes.imovelId, im));
+    const c = await cotar();
+    const esperado = { entrada: "14:00", saida: "10:00", convivencia: ["Aceita animais", "Proibido fumar"], texto: "Silêncio depois das 22h." };
+    expect(await regrasDaCasaDaCotacao(db, org, c.codigo)).toEqual(esperado);
+    // A casa saiu do site (nem pública, nem ativa): a cotação (e a reserva feita) ainda mostra os horários e as regras.
+    await db.update(imoveis).set({ publico: false, ativo: false }).where(eq(imoveis.id, im));
+    expect(await regrasDaCasaDaCotacao(db, org, c.codigo)).toEqual(esperado);
+    // A cotação de uma organização não é lida pela outra; código fora do formato nem chega ao banco.
+    const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "Outra Exemplo" }).returning();
+    expect(await regrasDaCasaDaCotacao(db, outra, c.codigo)).toBeNull();
+    expect(await regrasDaCasaDaCotacao(db, org, "COT-0000")).toBeNull();
+    expect(await regrasDaCasaDaCotacao(db, org, "COT-NAXEXSTE")).toBeNull();
+    // Casa sem ficha preenchida: entrada às 15:00 e saída às 11:00 (os mesmos da página da casa) e as proibições da ficha vazia.
+    const [{ id: semFicha }] = await db.insert(imoveis).values({ organizacaoId: org, codigo: "501", nome: "Casa Sem Ficha", publico: true, capacidade: 2 }).returning();
+    await db.insert(cotacoes).values({ organizacaoId: org, imovelId: semFicha, codigo: "COT-SEMDETAL", estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: agora, atualizadaEm: agora });
+    expect(await regrasDaCasaDaCotacao(db, org, "COT-SEMDETAL")).toEqual({ entrada: "15:00", saida: "11:00", convivencia: ["Não aceita animais", "Proibido fumar", "Sem festas ou eventos"], texto: "" });
   });
 });
 

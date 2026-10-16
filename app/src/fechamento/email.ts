@@ -73,7 +73,14 @@ export async function salvarConfigFechamentoEmail(
   return { ok: true };
 }
 
-const preencher = (modelo: string, nome: string, mes: string) => modelo.replaceAll("{nome}", nome).replaceAll("{mes}", nomeMes(mes).toLowerCase());
+/**
+ * `{nome}` e `{mes}` do modelo do painel, numa passada só e por função: o nome do proprietário entra como está (sem que
+ * `$&`, `$'` e afins nele virem pedaços do modelo, nem um `{mes}` escrito no nome vire o mês).
+ */
+const preencher = (modelo: string, nome: string, mes: string) => {
+  const valores = { nome, mes: nomeMes(mes).toLowerCase() };
+  return modelo.replace(/\{(nome|mes)\}/g, (_, campo: keyof typeof valores) => valores[campo]);
+};
 
 /** O que vai no e-mail além do texto: o valor do mês, tirado do fechamento (nunca calculado de novo aqui). */
 function linhaDoValor(p: PrevisaoRepasse): string {

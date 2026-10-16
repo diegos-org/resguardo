@@ -10,6 +10,7 @@ import { FormConsulta } from "@/components/site/FormConsulta";
 import { GaleriaImovel } from "@/components/site/GaleriaImovel";
 import { metadadosDaNaoEncontrada } from "@/components/site/NaoEncontrada";
 import { IconeComodidade, temIcone } from "@/components/site/IconeComodidade";
+import { RegrasDaCasa } from "@/components/site/RegrasDaCasa";
 import { FotoProvisoria, Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import styles from "@/components/site/site.module.css";
 import { tituloDaSecao } from "@/configuracoes/textos-site";
@@ -22,6 +23,7 @@ import { consultarDisponibilidade, disponibilidadeInvalida } from "@/site/dispon
 import { fraseDoImovel } from "@/site/frase-do-imovel";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
+import { frasesDosHorarios, regrasDaCasa } from "@/site/regras-da-casa";
 import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta, pedidoEnviado } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
@@ -73,13 +75,12 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   const comPix = segurar
     ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: consulta.entrada, checkout: consulta.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
     : false;
+  // Horários e regras de convivência de um lugar só (M7.20), os mesmos da página da cotação; a estadia mínima entra aqui.
+  const casa = regrasDaCasa(imovel);
   const regras = [
-    `Entrada a partir das ${imovel.checkinAPartirDe}`,
-    `Saída até as ${imovel.checkoutAte}`,
+    ...frasesDosHorarios(casa),
     imovel.estadiaMinima ? `Em geral, mínimo de ${imovel.estadiaMinima} ${imovel.estadiaMinima === 1 ? "noite" : "noites"} (datas especiais podem ter outro mínimo)` : null,
-    imovel.aceitaAnimais ? "Aceita animais" : "Não aceita animais",
-    imovel.permiteFumar ? null : "Proibido fumar",
-    imovel.permiteFestas ? null : "Sem festas ou eventos",
+    ...casa.convivencia,
   ].filter((x): x is string => !!x);
   const resumo = resumoImovel(imovel);
   return (
@@ -151,21 +152,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
               </ul>
             </section>
           )}
-          <section aria-labelledby="titulo-regras">
-            <h2 id="titulo-regras" className={styles.tituloFicha}>
-              Regras da casa
-            </h2>
-            <ul className={styles.fichas}>
-              {regras.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-            {imovel.regrasCasa && (
-              <p className={styles.texto} style={{ marginTop: 12 }}>
-                {imovel.regrasCasa}
-              </p>
-            )}
-          </section>
+          <RegrasDaCasa itens={regras} texto={casa.texto} />
         </div>
         {/* Cartão da consulta (M7.16): olho, título e frase de Configurações → Textos do site (olho e frase vazios não
             aparecem; título vazio volta ao texto inicial). */}
