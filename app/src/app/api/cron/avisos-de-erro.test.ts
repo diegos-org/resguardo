@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * M0.9: as rotinas automáticas respondem 500 sem deixar o erro escapar (o detalhe fica em Sistema), então o
- * `onRequestError` do Next não as vê; cada rota avisa o Sentry ela mesma, com o nome da rotina. O pacote do Sentry é
- * falso aqui: nada sai.
+ * `onRequestError` do Next não as vê; cada rota avisa o Sentry ela mesma, com o nome da rotina e sem a mensagem
+ * original (revisão do Codex: ela pode ter o nome de um proprietário). O pacote do Sentry é falso aqui: nada sai.
  */
 const m = vi.hoisted(() => ({
   captureException: vi.fn(),
@@ -33,6 +33,7 @@ vi.mock("@/pagamentos/oferta", () => ({ provedorDeConferencia: async () => ({ ok
 // Como a de verdade: roda a função e deixa o erro subir.
 vi.mock("@/sistema/automacoes", () => ({ registrarExecucao: async (_db: unknown, _nome: string, fn: () => Promise<string>) => fn() }));
 
+import { ErroDeRotina, MENSAGEM_OMITIDA } from "@/observabilidade/erro-de-rotina";
 import { GET as agenda } from "./agenda/route";
 import { GET as beds24 } from "./beds24/route";
 import { GET as beds24Envio } from "./beds24-envio/route";
@@ -43,6 +44,14 @@ import { GET as repasses } from "./repasses/route";
 import { GET as repassesEmails } from "./repasses-emails/route";
 
 const pedido = () => new Request("https://example.com/api/cron/x", { headers: { authorization: "Bearer cron-teste" } });
+const NOME = "Maria Fictícia Teste";
+/** O erro que foi ao Sentry e as causas dele: o tipo, a mensagem e a pilha (tudo o que o Sentry lê). */
+const cadeia = (e: unknown): Error[] => (e instanceof Error ? [e, ...cadeia(e.cause)] : []);
+const avisado = () => {
+  expect(m.captureException).toHaveBeenCalledOnce();
+  return m.captureException.mock.calls[0] as unknown as [Error, unknown];
+};
+const textoDoAviso = (e: Error) => JSON.stringify(cadeia(e).map((x) => [x.name, x.message, x.stack]));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -61,25 +70,39 @@ describe("rotinas automáticas: o erro vai para o Sentry com o nome da rotina (M
     ["repasses", repasses, m.rotinas.repasses, "repasses-periodicos"],
     ["repasses-emails", repassesEmails, m.rotinas.repassesEmails, "repasses-emails"],
   ] as const)("%s", async (_rota, GET, rotina, nome) => {
-    const erro = new Error("2 falha(s) de envio");
-    rotina.mockRejectedValue(erro);
+    // Um erro qualquer (fora do ErroDeRotina) com um nome na mensagem: vai o texto fixo, com o tipo e a pilha.
+    rotina.mockRejectedValue(new Error(`erro numa organização: relatório de ${NOME}`));
     const r = await GET(pedido());
     expect(r.status).toBe(500);
     expect(await r.json()).toEqual({ ok: false });
-    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(erro, { tags: { rotina: nome } });
+    const [erro, contexto] = avisado();
+    expect(contexto).toEqual({ tags: { rotina: nome } });
+    expect(erro.message).toBe(MENSAGEM_OMITIDA);
+    expect(erro.stack).toMatch(/\n\s+at /);
+    expect(textoDoAviso(erro)).not.toContain(NOME);
     // Espera o envio antes de a função terminar.
     expect(m.flush).toHaveBeenCalledWith(2000);
   });
 
-  it("pedidos do site: o texto fixo vai para Sistema, e o erro original segue como causa só para o Sentry", async () => {
-    const original = new Error("SEGREDO do provedor");
+  it("o resumo de um ErroDeRotina vai no lugar do detalhe (que fica para Sistema)", async () => {
+    m.rotinas.repasses.mockRejectedValue(new ErroDeRotina(`0 repasse(s) antecipado(s) gerado(s), ${NOME}: Proprietário não encontrado.`, { antecipado_nao_gerado: 1 }));
+    expect((await repasses(pedido())).status).toBe(500);
+    const [erro] = avisado();
+    expect(erro.name).toBe("ErroDeRotina");
+    expect(erro.message).toBe("1 repasse(s) antecipado(s) não gerado(s) (detalhe na página Sistema)");
+    expect(textoDoAviso(erro)).not.toContain(NOME);
+  });
+
+  it("pedidos do site: o texto fixo vai para Sistema, e o erro original segue como causa para o Sentry, sem a mensagem", async () => {
+    const original = Object.assign(new Error(`SEGREDO do provedor para ${NOME}`), { code: "22P02" });
     m.rotinas.rotinaDoSite.mockRejectedValue(original);
     const r = await cotacoes(pedido());
     expect(r.status).toBe(500);
-    expect(m.captureException).toHaveBeenCalledOnce();
-    const [erro, contexto] = m.captureException.mock.calls[0] as [Error, unknown];
-    expect(erro.message).toBe("a rotina parou no meio; roda de novo em 10 minutos");
-    expect(erro.cause).toBe(original);
+    const [erro, contexto] = avisado();
+    expect(erro.message).toBe("1 rotina interrompida no meio (detalhe na página Sistema)");
+    expect((erro.cause as Error).message).toBe(`${MENSAGEM_OMITIDA}; código 22P02`);
+    expect(textoDoAviso(erro)).not.toContain(NOME);
+    expect(textoDoAviso(erro)).not.toContain("SEGREDO");
     expect(contexto).toEqual({ tags: { rotina: "pedidos-site" } });
   });
 

@@ -8,8 +8,9 @@
  * das requisições, os parâmetros de busca dos endereços e os rastros do console. O que é trocado por marcador, em
  * qualquer texto: e-mail, CPF, CNPJ, telefone, cartão, endereço IP, UUID (pode ser chave Pix aleatória; os ids do
  * sistema também são UUID e viram "[id]" do mesmo jeito: não dá para distinguir um do outro), código da cotação, código
- * do Pix copia e cola, segredos ("Bearer …", "access_token=…", tokens), credenciais dentro de endereços e os valores das
- * consultas ao banco. Nos endereços, o código da cotação em /reservar/<código>, o token do convite em
+ * do Pix copia e cola, segredos ("Bearer …", "access_token=…", tokens), credenciais dentro de endereços, os valores das
+ * consultas ao banco e o valor que o Postgres repete na mensagem de um erro de conversão (um texto que chegou a uma
+ * coluna de id, data, número ou lista de opções: 'invalid input syntax for type uuid: "…"'). Nos endereços, o código da cotação em /reservar/<código>, o token do convite em
  * /convite/<token> e qualquer pedaço longo com cara de token.
  *
  * Números soltos, sem pontuação, só viram marcador quando têm a forma de um dado pessoal (ver `marcarNumeroSolto`). Um
@@ -90,6 +91,12 @@ const RE_CHAVE_MERCADO_PAGO = /\b(?:APP_USR|TEST)-[A-Za-z0-9-]{20,}/g;
 // Postgres, no detalhe ("Key (email)=(…)").
 const RE_PARAMETROS_DA_CONSULTA = /\bparams:[\s\S]*$/;
 const RE_VALOR_DA_CHAVE = /\(([^()]*)\)=\((?!\[valor\]\))[^()]*\)/g;
+// O valor que o Postgres repete na mensagem de um erro de conversão, que chega ao Sentry na causa do erro do Drizzle: no
+// fim da mensagem ('invalid input syntax for type uuid: "…"', 'invalid input value for enum situacao: "…"', 'malformed
+// array literal: "…"', 'date/time field value out of range: "…"': daí até o fim do texto sai, porque o valor pode ter
+// aspas e quebras de linha) ou no meio ('value "…" is out of range for type integer', 'time zone "…" not recognized').
+const RE_VALOR_NO_FIM_DO_ERRO_DO_POSTGRES = /(invalid input (?:syntax|value) for [^:\n]{1,100}|malformed [a-z]{1,20} literal|date\/time field value out of range): "[\s\S]*$/;
+const RE_VALOR_NO_MEIO_DO_ERRO_DO_POSTGRES = /\b(value|time zone) "[\s\S]*?" (is out of range for type|not recognized)/g;
 
 // Endereços dentro de um texto: com esquema (https://, postgresql://, webpack-internal://) ou um caminho solto que
 // começa por "/" (como "GET /reservar/COT-…").
@@ -166,6 +173,8 @@ function limparDados(texto: string): string {
     .replace(RE_CHAVE_MERCADO_PAGO, MARCADORES.segredo)
     .replace(RE_PARAMETROS_DA_CONSULTA, "params: [omitidos]")
     .replace(RE_VALOR_DA_CHAVE, (_, chave: string) => `(${chave})=(${MARCADORES.valor})`)
+    .replace(RE_VALOR_NO_FIM_DO_ERRO_DO_POSTGRES, (_, inicio: string) => `${inicio}: "${MARCADORES.valor}"`)
+    .replace(RE_VALOR_NO_MEIO_DO_ERRO_DO_POSTGRES, (_, antes: string, depois: string) => `${antes} "${MARCADORES.valor}" ${depois}`)
     .replace(RE_PIX_COPIA_E_COLA, MARCADORES.pix)
     .replace(RE_EMAIL, MARCADORES.email)
     .replace(RE_UUID, MARCADORES.id)

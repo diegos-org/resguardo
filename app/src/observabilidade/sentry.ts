@@ -21,6 +21,8 @@
  *   parte do pacote na publicação; sem cabeçalhos do Sentry nas chamadas a outros serviços (`tracePropagationTargets:
  *   []`), sem gravação de tela (Replay), sem formulário de feedback, sem contagem de sessões, sem o idioma e o fuso do
  *   aparelho e sem relatórios de envio: o Sentry só recebe algo quando acontece um erro;
+ * - das rotinas automáticas e do aviso do Mercado Pago, só o resumo sem dados pessoais, nunca a mensagem original
+ *   (`./erro-de-rotina.ts`, usado por `./aviso-do-servidor.ts`);
  * - e, antes de sair, cada aviso e cada rastro passam pela limpeza (`./limpeza.ts`).
  */
 import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";

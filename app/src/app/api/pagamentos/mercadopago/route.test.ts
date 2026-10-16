@@ -1,9 +1,10 @@
 import { createHmac } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eventosPagamento, pagamentosAvisosDia } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { MENSAGEM_OMITIDA } from "@/observabilidade/erro-de-rotina";
 import { ErroProvedor } from "@/pagamentos/provedor";
 import { type Cenario, montarCenario } from "@/pagamentos/testes";
 
@@ -163,8 +164,8 @@ describe("POST /api/pagamentos/mercadopago", () => {
     await expect(rodarDepois()).resolves.toBeUndefined();
     const [ev] = await db.select().from(eventosPagamento).where(eq(eventosPagamento.dataId, p.idProvedor));
     expect(ev.resultado).toBe("erro");
-    // M0.9: e o Sentry recebe o erro, com o nome da rotina (só o erro: nem corpo nem cabeçalhos do aviso).
-    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(c.provedor.falhas.consultar, { tags: { rotina: "aviso-mercadopago" } });
+    // M0.9: e o Sentry recebe o erro, com o nome da rotina: o tipo e a pilha, sem a mensagem, o corpo e os cabeçalhos.
+    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: "ErroProvedor", message: MENSAGEM_OMITIDA }), { tags: { rotina: "aviso-mercadopago" } });
     expect(m.flush).toHaveBeenCalledWith(2000);
   });
 
@@ -177,6 +178,28 @@ describe("POST /api/pagamentos/mercadopago", () => {
     const r = await POST(pedido("ORDTESTE1"));
     expect(r.status).toBe(500);
     expect(await r.text()).toBe("");
-    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(expect.any(Error), { tags: { rotina: "aviso-mercadopago" } });
+    expect(m.captureException).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: MENSAGEM_OMITIDA }), { tags: { rotina: "aviso-mercadopago" } });
+    expect(JSON.stringify(m.captureException.mock.calls)).not.toContain("SEGREDO");
+  });
+
+  it("erro do banco ao gravar o evento com um valor repetido na causa (revisão do Codex): o Sentry recebe o tipo e o código, sem o valor", async () => {
+    // Um erro de verdade do Postgres (PGlite): o valor do parâmetro volta na mensagem da causa.
+    const NOME = "Maria Fictícia Teste";
+    const real = await db.execute(sql`select ${NOME}::uuid`).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(String((real as Error).cause)).toContain(NOME);
+    m.getDb.mockReturnValue({
+      transaction: async () => {
+        throw real;
+      },
+    });
+    expect((await POST(pedido("ORDTESTE1"))).status).toBe(500);
+    expect(m.captureException).toHaveBeenCalledOnce();
+    const [erro] = m.captureException.mock.calls[0] as unknown as [Error];
+    const cadeia = (e: unknown): Error[] => (e instanceof Error ? [e, ...cadeia(e.cause)] : []);
+    expect(cadeia(erro).map((e) => e.message)).toEqual([MENSAGEM_OMITIDA, `${MENSAGEM_OMITIDA}; código 22P02`]);
+    expect(JSON.stringify(cadeia(erro).map((e) => [e.name, e.message, e.stack]))).not.toContain(NOME);
   });
 });

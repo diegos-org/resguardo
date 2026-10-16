@@ -82,6 +82,30 @@ describe("textos (M0.9): cada tipo de dado pessoal vira um marcador", () => {
     expect(limparTexto("Key (email)=(Maria Silva <maria@exemplo.com>) already exists.")).toBe("Key (email)=([valor]) already exists.");
   });
 
+  it("o valor que o Postgres repete num erro de conversão sai (a causa do erro do Drizzle; revisão do Codex no M0.9)", () => {
+    const nome = "Maria Fictícia Teste";
+    const casos: [string, string][] = [
+      [`invalid input syntax for type uuid: "${nome}"`, 'invalid input syntax for type uuid: "[valor]"'],
+      [`invalid input syntax for type date: "${nome}"`, 'invalid input syntax for type date: "[valor]"'],
+      [`invalid input syntax for type timestamp with time zone: "${nome}"`, 'invalid input syntax for type timestamp with time zone: "[valor]"'],
+      [`invalid input value for enum situacao_reserva: "${nome}"`, 'invalid input value for enum situacao_reserva: "[valor]"'],
+      [`malformed array literal: "${nome}"`, 'malformed array literal: "[valor]"'],
+      [`date/time field value out of range: "${nome}"`, 'date/time field value out of range: "[valor]"'],
+      // O valor pode ter aspas e quebra de linha: daí até o fim sai.
+      [`invalid input syntax for type integer: "${nome} "da Silva"\nSouza"`, 'invalid input syntax for type integer: "[valor]"'],
+      [`value "${nome}" is out of range for type integer`, 'value "[valor]" is out of range for type integer'],
+      [`time zone "${nome}" not recognized`, 'time zone "[valor]" not recognized'],
+    ];
+    for (const [antes, depois] of casos) {
+      expect(limparTexto(antes), antes).toBe(depois);
+      expect(limparTexto(depois), depois).toBe(depois);
+    }
+    // As outras mensagens do Postgres, com nomes de tabela, coluna e regra (do código, não da pessoa), ficam.
+    for (const tecnica of ['duplicate key value violates unique constraint "usuarios_email_key"', 'null value in column "nome" of relation "proprietarios" violates not-null constraint', "value too long for type character varying(20)"]) {
+      expect(limparTexto(tecnica)).toBe(tecnica);
+    }
+  });
+
   it("o código do Pix copia e cola sai inteiro", () => {
     const pix = "00020101021226850014br.gov.bcb.pix2563qr.exemplo.com/pix/v2/cobv/abc5204000053039865802BR5913SUA CASA TESTE6014RIO DE JANEIRO62070503***6304A1B2";
     expect(limparTexto(`copia e cola: ${pix}`)).toBe("copia e cola: [código Pix]");

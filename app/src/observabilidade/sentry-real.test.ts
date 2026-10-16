@@ -1,6 +1,9 @@
 import * as Sentry from "@sentry/nextjs";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { createTestDb } from "@/db/testing";
 import { avisarErroDoServidor } from "./aviso-do-servidor";
+import { ErroDeRotina, MENSAGEM_OMITIDA } from "./erro-de-rotina";
 import { opcoesDoSentry } from "./sentry";
 
 /**
@@ -87,14 +90,71 @@ it("o código do erro do Next (digest) chega como está, para achar o aviso pelo
   expect(unicoEnvio().find((i) => i.exception).tags).toMatchObject({ digest: "3353831296" });
 });
 
-it("erro de uma rotina: vai com o nome da rotina e com a causa (o erro original), limpos", async () => {
-  const causa = new Error("Falha ao gravar para maria.silva@exemplo.com");
-  await avisarErroDoServidor(new Error("a rotina parou no meio; roda de novo em 10 minutos", { cause: causa }), "pedidos-site");
+/** O aviso sem o código-fonte em volta de cada linha da pilha (o deste teste tem os valores fictícios). */
+const semCodigoFonte = (evento: { exception: { values: { stacktrace?: { frames?: Record<string, unknown>[] } }[] } }) => {
+  for (const e of evento.exception.values) for (const q of e.stacktrace?.frames ?? []) for (const k of ["pre_context", "context_line", "post_context"]) delete q[k];
+  return JSON.stringify(evento);
+};
+const NOME = "Maria Fictícia Teste";
+
+/** Um erro de verdade do banco (PGlite + Drizzle): o valor do parâmetro volta na mensagem da causa. */
+async function erroDoBancoCom(valor: string): Promise<Error> {
+  const { db, close } = await createTestDb();
+  try {
+    return await db.execute(sql`select ${valor}::uuid`).then(
+      () => {
+        throw new Error("a consulta deveria falhar");
+      },
+      (e: Error) => e,
+    );
+  } finally {
+    await close();
+  }
+}
+
+it("erro de uma rotina: vai com o nome da rotina, o resumo e a causa sem a mensagem dela (revisão do Codex)", async () => {
+  const causa = Object.assign(new Error("Falha ao gravar para maria.silva@exemplo.com"), { code: "ECONNRESET" });
+  await avisarErroDoServidor(new ErroDeRotina("a rotina parou no meio; roda de novo em 10 minutos", { rotina_interrompida: 1 }, { cause: causa }), "pedidos-site");
   const evento = unicoEnvio().find((i) => i.exception);
   expect(evento.tags).toMatchObject({ rotina: "pedidos-site" });
+  const valores = evento.exception.values.map((e: { type: string; value: string }) => [e.type, e.value]);
+  expect(valores).toEqual(
+    expect.arrayContaining([
+      ["ErroDeRotina", "1 rotina interrompida no meio (detalhe na página Sistema)"],
+      ["Error", `${MENSAGEM_OMITIDA}; código ECONNRESET`],
+    ]),
+  );
+  // As duas partes com a pilha do código, para achar onde aconteceu.
+  for (const e of evento.exception.values) expect(e.stacktrace.frames.length).toBeGreaterThan(0);
+  expect(semCodigoFonte(evento)).not.toContain("maria.silva");
+});
+
+it("rotina com o nome de um proprietário no detalhe: o Sentry recebe só as contagens (revisão do Codex)", async () => {
+  await avisarErroDoServidor(new ErroDeRotina(`1 repasse(s) antecipado(s) gerado(s), ${NOME}: Reservas deste proprietário estão sendo recalculadas agora: tente de novo em instantes.`, { antecipado_nao_gerado: 1 }), "repasses-periodicos");
+  const evento = unicoEnvio().find((i) => i.exception);
+  expect(evento.exception.values.map((e: { value: string }) => e.value)).toEqual(["1 repasse(s) antecipado(s) não gerado(s) (detalhe na página Sistema)"]);
+  expect(semCodigoFonte(evento)).not.toContain(NOME);
+});
+
+it("erro do banco numa rotina ou no aviso do Mercado Pago: o tipo e o código do Postgres, sem o valor que ele repete", async () => {
+  await avisarErroDoServidor(await erroDoBancoCom(NOME), "aviso-mercadopago");
+  const evento = unicoEnvio().find((i) => i.exception);
+  expect(evento.exception.values.map((e: { type: string; value: string }) => [e.type, e.value])).toEqual(
+    expect.arrayContaining([
+      ["DrizzleQueryError", MENSAGEM_OMITIDA],
+      [expect.any(String), `${MENSAGEM_OMITIDA}; código 22P02`],
+    ]),
+  );
+  expect(semCodigoFonte(evento)).not.toContain(NOME);
+});
+
+it("erro do banco numa página ou ação (onRequestError): a causa chega com o valor trocado por [valor]", async () => {
+  Sentry.captureRequestError(await erroDoBancoCom(NOME), { path: "/painel/reservas", method: "POST", headers: {} }, { routerKind: "App Router", routePath: "/painel/reservas", routeType: "action" });
+  await Sentry.flush(2000);
+  const evento = unicoEnvio().find((i) => i.exception);
   const valores = evento.exception.values.map((e: { value: string }) => e.value);
-  expect(valores).toEqual(expect.arrayContaining(["a rotina parou no meio; roda de novo em 10 minutos", "Falha ao gravar para [e-mail]"]));
-  expect(JSON.stringify(evento)).not.toContain("maria.silva@exemplo.com");
+  expect(valores).toEqual(expect.arrayContaining(['invalid input syntax for type uuid: "[valor]"', expect.stringMatching(/^Failed query: select \$1::uuid\nparams: \[omitidos\]$/)]));
+  expect(semCodigoFonte(evento)).not.toContain(NOME);
 });
 
 it("sem medição de desempenho: o pacote não liga as integrações que instrumentam o banco", () => {

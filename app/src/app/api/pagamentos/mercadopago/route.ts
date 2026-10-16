@@ -11,8 +11,8 @@
  *   deploy de produção, onde o teste não roda) o evento fica "ignorado"; falha fica "erro" e a rotina confere depois.
  *
  * Nada aqui vai para o registro do servidor: nem corpo, nem cabeçalhos, nem segredo. As falhas ao gravar o evento e ao
- * processar a order vão para o Sentry (M0.9, `avisarErroDoServidor`): só o erro, limpo antes de sair, sem o corpo nem
- * os cabeçalhos do aviso.
+ * processar a order vão para o Sentry (M0.9, `avisarErroDoServidor`): só o tipo do erro, o código técnico e a pilha, sem
+ * a mensagem (que pode repetir um valor gravado), sem o corpo nem os cabeçalhos do aviso.
  */
 import { after } from "next/server";
 import { getDb } from "@/db/client";

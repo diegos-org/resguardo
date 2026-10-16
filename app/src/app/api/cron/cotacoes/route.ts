@@ -11,6 +11,7 @@ import { provedorDeConferencia } from "@/pagamentos/oferta";
 import { rotinaDoSite } from "@/pagamentos/rotina";
 import { registrarExecucao } from "@/sistema/automacoes";
 import { avisarErroDoServidor } from "@/observabilidade/aviso-do-servidor";
+import { ErroDeRotina } from "@/observabilidade/erro-de-rotina";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -39,8 +40,8 @@ async function executar(db: Db): Promise<Resultado> {
       r = await rotinaDoSite(db, gate.ok ? gate.provedor : null, new Date());
     } catch (erro) {
       // A página Sistema mostra o resumo: só um texto fixo, nunca a mensagem crua do erro. O erro original segue como
-      // causa só para o aviso ao Sentry (limpo antes de sair, M0.9).
-      throw new Error("a rotina parou no meio; roda de novo em 10 minutos", { cause: erro });
+      // causa só para o aviso ao Sentry, sem a mensagem dele (o tipo, o código técnico e a pilha; M0.9).
+      throw new ErroDeRotina("a rotina parou no meio; roda de novo em 10 minutos", { rotina_interrompida: 1 }, { cause: erro });
     }
     saida.r = r;
     return resumoDaRotina(r);

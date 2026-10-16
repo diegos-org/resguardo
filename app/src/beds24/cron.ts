@@ -2,7 +2,7 @@ import type { Db } from "@/db/types";
 import { registrarExecucao } from "@/sistema/automacoes";
 import { organizacaoBeds24, lerConfigBeds24 } from "./configuracao";
 import { leitorParaSincronizacao } from "./http";
-import { mensagemSeguraBeds24, sincronizarBeds24 } from "./sincronizacao";
+import { erroDaRotinaBeds24, sincronizarBeds24 } from "./sincronizacao";
 import { ErroBeds24 } from "./tipos";
 
 export function executarCronBeds24(db: Db, env: NodeJS.ProcessEnv = process.env) {
@@ -16,8 +16,8 @@ export function executarCronBeds24(db: Db, env: NodeJS.ProcessEnv = process.env)
       if (!r.ok && r.situacao !== "ocupada") throw new ErroBeds24("Sincronização falhou; consulte Integrações.", "configuracao");
       return r.mensagem;
     } catch (e) {
-      // registrarExecucao grava error.message: entregar somente texto sanitizado.
-      throw new Error(mensagemSeguraBeds24(e));
+      // registrarExecucao grava error.message: entregar somente texto sanitizado (e, ao Sentry, só o motivo; M0.9).
+      throw erroDaRotinaBeds24(e);
     }
   });
 }

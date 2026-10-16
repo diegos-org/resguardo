@@ -3,6 +3,7 @@ import { registrarAuditoria } from "@/auditoria/auditoria";
 import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
+import { ErroDeRotina, type FalhasDaRotina, type MotivoDeFalha } from "@/observabilidade/erro-de-rotina";
 import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
@@ -22,6 +23,17 @@ const aviso = (r: ResultadoSync, s: string) => { r.totalDivergencias++; if (r.di
 
 export function mensagemSeguraBeds24(e: unknown): string {
   return e instanceof ErroBeds24 ? e.message : "Não foi possível confirmar o resultado. Confira o histórico de importações antes de tentar novamente.";
+}
+
+/**
+ * Falha de uma rotina automática do Beds24 (M0.9): a mensagem segura de sempre vai para a página Sistema (ela pode ter
+ * o código de um imóvel); o aviso ao Sentry leva só o motivo (o tipo do `ErroBeds24`) e a causa sem a mensagem dela.
+ */
+export function erroDaRotinaBeds24(e: unknown): ErroDeRotina {
+  const motivo: MotivoDeFalha = e instanceof ErroBeds24 ? e.tipo : "erro_inesperado";
+  const falhas: FalhasDaRotina = {};
+  falhas[motivo] = 1;
+  return new ErroDeRotina(mensagemSeguraBeds24(e), falhas, { cause: e });
 }
 
 /** Uma transação/organização: a leitura completa precede as gravações; falha técnica desfaz tudo. */

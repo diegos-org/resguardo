@@ -52,10 +52,13 @@ serviço que avisa a equipe quando algo dá errado no sistema, para corrigir ant
 - **Quando avisa:** quando acontece um erro no site, no painel, nos portais do proprietário e do hóspede, nas rotinas
   automáticas (inclusive as que trocam dados com o sistema de reservas), no aviso de pagamento que chega do Mercado Pago,
   ou no navegador de quem está usando. O aviso de uma rotina vem com o nome dela, o mesmo da página Sistema (por
-  exemplo, "agenda-diaria"). Sem erro, nada é enviado: ele não mede visitas, não grava a tela e não conta quantas
-  pessoas entraram.
-- **O que o Sentry recebe:** a mensagem técnica do erro (por exemplo, "não deu para ler o valor"), o ponto do código onde
-  ele aconteceu, a página em que aconteceu (sem os códigos pessoais do endereço: o código da cotação vira "[código]" e o
+  exemplo, "agenda-diaria"), e só com o resumo do que deu errado: quantas falhas e de que tipo (por exemplo, "1
+  repasse(s) antecipado(s) não gerado(s)"), sem nomes e sem a mensagem original. O detalhe, com o nome do proprietário
+  quando for o caso, continua na página Sistema, como antes. O aviso de pagamento do Mercado Pago leva só o tipo do erro
+  e o ponto do código. Sem erro, nada é enviado: ele não mede visitas, não grava a tela e não conta quantas pessoas
+  entraram.
+- **O que o Sentry recebe:** a mensagem técnica do erro (por exemplo, "não deu para ler o valor"; nas rotinas e no aviso
+  do Mercado Pago, só o resumo descrito acima), o ponto do código onde ele aconteceu, a página em que aconteceu (sem os códigos pessoais do endereço: o código da cotação vira "[código]" e o
   do convite vira "[convite]"), o caminho até o erro (as páginas abertas, os botões tocados e as chamadas feitas logo
   antes, sem o que foi digitado e com os endereços limpos do mesmo jeito), o navegador e o aparelho (por exemplo, Safari
   num iPhone), a hora, a versão do sistema e o código do erro que a tela mostra (para achar o aviso). O idioma e o fuso
@@ -72,7 +75,12 @@ serviço que avisa a equipe quando algo dá errado no sistema, para corrigir ant
   o resto; sem a pessoa e sem o IP; dos cabeçalhos, só o do navegador.
 - **Nomes:** um nome não tem um formato que dê para reconhecer sozinho (como um e-mail ou um CPF têm). Por isso a
   proteção é não deixar o nome entrar: os dados da pessoa, os formulários e o que vai para o banco são cortados antes, e as
-  mensagens de erro do sistema não levam nomes.
+  mensagens de erro das telas não levam nomes. Nas rotinas automáticas, o texto do que deu errado pode ter um nome (por
+  exemplo, o do proprietário cujo repasse antecipado não saiu) ou o código de um imóvel: por isso o Sentry recebe só o
+  resumo com as contagens, e o texto completo fica na página Sistema. Quando o erro vem do banco de dados, o valor que
+  ele repete na mensagem (por exemplo, um nome que chegou no lugar de uma data) também é trocado por "[valor]". Esta
+  proteção das rotinas entrou em 16/10, na revisão do Codex: antes dela, o nome do proprietário podia ir no aviso da
+  rotina de repasses.
 - **Onde fica:** na conta `sua-casa-leblon` do Sentry, nos Estados Unidos (projeto `javascript-nextjs`). Os erros das
   prévias ficam separados dos do site de verdade.
 - **Quando começa:** o endereço de envio do Sentry já está na Vercel desde 16/10, na produção e nas prévias, posto por
