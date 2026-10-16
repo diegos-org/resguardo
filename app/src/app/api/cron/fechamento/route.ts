@@ -6,6 +6,7 @@
 import { getDb } from "@/db/client";
 import { correioDoAmbiente } from "@/email/correio";
 import { fechamentoDeTodas } from "@/fechamento/cron";
+import { avisarErroDoServidor } from "@/observabilidade/aviso-do-servidor";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export async function GET(req: Request) {
   try {
     const resumo = await fechamentoDeTodas(getDb(), correioDoAmbiente(), new Date());
     return Response.json({ ok: true, resumo });
-  } catch {
+  } catch (erro) {
+    await avisarErroDoServidor(erro, "fechamento-email");
     // O detalhe fica registrado na página "Sistema".
     return Response.json({ ok: false }, { status: 500 });
   }
