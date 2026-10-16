@@ -62,7 +62,7 @@ describe("ficha da reserva", () => {
     await db.insert(beds24ReservasSite).values({ organizacaoId: org, reservaId, imovelId: im, propertyId: "10", roomId: "20", referencia: codigo, situacao: "divergente", motivo: "mudada_no_beds24", lido, lidoEm: new Date("2026-10-16T09:00:00Z"), otaFechadaEm: new Date("2026-10-02T12:00:00Z"), otaFechadaPor: admin });
     const pedido = { quarto: "20", chegada: "2026-12-20", saida: "2026-12-27", hospedes: 4, situacao: "confirmada" as const, referencia: codigo };
     for (let i = 0; i < 12; i++) {
-      await db.insert(beds24ReservasOperacoes).values({ organizacaoId: org, reservaId, tipo: "criar", chave: chaveSimulacaoBeds24(reservaId, `a${i}`), modo: "simulacao", situacao: "simulada", pedido, iniciadoEm: new Date(Date.UTC(2026, 9, 1 + i)) });
+      await db.insert(beds24ReservasOperacoes).values({ organizacaoId: org, reservaId, tipo: "criar", chave: chaveSimulacaoBeds24(reservaId, "criar", `a${i}`), modo: "simulacao", situacao: "simulada", pedido, iniciadoEm: new Date(Date.UTC(2026, 9, 1 + i)) });
     }
     const f = await fichaReservaNoBeds24(db, org, reservaId, env());
     expect(f?.desligada).toEqual(["ambiente", "chave", "credencial", "pausa"]);

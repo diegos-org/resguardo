@@ -49,7 +49,7 @@ describe("Simular (M8.3a, teste 11)", () => {
     expect(chaveDoResultadoDaSimulacao(r)).toBe("simulada_imovel_desligado_anterior");
     const [op] = await operacoes(x.reservaId);
     const assinatura = assinaturaEsperado({ quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4, situacao: "confirmada" });
-    expect(op).toMatchObject({ tipo: "criar", modo: "simulacao", situacao: "simulada", chave: chaveSimulacaoBeds24(x.reservaId, assinatura), acompanhamentoId: null, autorId: admin.usuarioId, beds24Id: null, enviadoEm: null, credencial: "", pedido });
+    expect(op).toMatchObject({ tipo: "criar", modo: "simulacao", situacao: "simulada", chave: chaveSimulacaoBeds24(x.reservaId, "criar", assinatura), acompanhamentoId: null, autorId: admin.usuarioId, beds24Id: null, enviadoEm: null, credencial: "", pedido });
     // Nenhum acompanhamento (onde fica a marca "datas fechadas"), nenhum id do Beds24 na reserva.
     expect(await acompanhamentos()).toEqual([]);
     expect((await c.reserva(x.reservaId)).beds24Id).toBeNull();
@@ -68,6 +68,28 @@ describe("Simular (M8.3a, teste 11)", () => {
     expect(await simularSemRede(admin, x.reservaId)).toMatchObject({ ok: true, repetida: false, pedido: { hospedes: 3 } });
     expect(await operacoes(x.reservaId)).toHaveLength(2);
     expect(chaveDoResultadoDaSimulacao(b)).toBe("repetida_imovel_desligado_anterior");
+  });
+
+  it("o mesmo estado simulado como criação e depois como atualização são duas intenções: a chave leva o tipo", async () => {
+    const x = await pagarEConfirmar(c);
+    const a = await simularSemRede(admin, x.reservaId);
+    expect(a).toMatchObject({ ok: true, repetida: false, tipo: "criar" });
+    // Criada no Beds24 em outro estado (3 pessoas) e a reserva voltou ao de antes (4): o mesmo estado e a mesma
+    // assinatura, agora para atualizar. Não reaproveita a linha da criação.
+    const esperado = { quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4, situacao: "confirmada" as const };
+    const criadoCom = { ...esperado, hospedes: 3 };
+    await db.update(reservas).set({ beds24Id: "98765" }).where(eq(reservas.id, x.reservaId));
+    await db.insert(beds24ReservasSite).values({ organizacaoId: c.org, reservaId: x.reservaId, imovelId: c.imovel, propertyId: "10", roomId: "20", referencia: x.reservaCodigo, situacao: "conferida", versao: 1, esperado: criadoCom, assinaturaEsperada: assinaturaEsperado(criadoCom) });
+    const b = await simularSemRede(admin, x.reservaId, env(), minutos(20));
+    expect(b).toMatchObject({ ok: true, repetida: false, tipo: "atualizar", pedido: { quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4 } });
+    expect(a.ok && b.ok && b.operacaoId !== a.operacaoId).toBe(true);
+    const ops = await operacoes(x.reservaId);
+    expect(ops.map((o) => [o.tipo, o.chave]).sort()).toEqual([
+      ["atualizar", chaveSimulacaoBeds24(x.reservaId, "atualizar", assinaturaEsperado(esperado))],
+      ["criar", chaveSimulacaoBeds24(x.reservaId, "criar", assinaturaEsperado(esperado))],
+    ]);
+    // De novo como atualização: aí sim é a mesma intenção.
+    expect(await simularSemRede(admin, x.reservaId, env(), minutos(30))).toMatchObject({ ok: true, repetida: true, tipo: "atualizar" });
   });
 
   it("imóvel ligado (D6) antes da confirmação: simula com a ligação real; confirmada antes da ligação, nada (a equipe cuida à mão)", async () => {

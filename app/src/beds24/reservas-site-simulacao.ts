@@ -43,7 +43,7 @@ const LIGACAO_DA_SIMULACAO = { ligadoEm: new Date(0).toISOString() };
 
 /**
  * Aplica a régua (`reservaDoSiteParaBeds24`) ao estado de agora e grava a operação simulada com a chave
- * `simulacao:<reservaId>:<assinatura>`: inserir com `on conflict do nothing` e reler, então simular de novo a mesma
+ * `simulacao:<reservaId>:<tipo>:<assinatura>`: inserir com `on conflict do nothing` e reler, então simular de novo a mesma
  * intenção não duplica. Exige `reserva:editar` (deny-by-default, como a ação). `env` vem de quem chama.
  */
 export async function simularReservaNoBeds24(db: Db, sessao: Sessao, reservaId: string, env: NodeJS.ProcessEnv, agora: Date = new Date()): Promise<ResultadoSimulacao> {
@@ -62,7 +62,7 @@ export async function simularReservaNoBeds24(db: Db, sessao: Sessao, reservaId: 
     imovelDesligado = ligandoAgora.decisao === "manual" && ligandoAgora.motivo === "anterior_a_ligar" ? "anterior_a_ligar" : "espera_ligar";
   }
   const op = beds24ReservasOperacoes;
-  const chave = chaveSimulacaoBeds24(l.reserva.id, d.assinatura);
+  const chave = chaveSimulacaoBeds24(l.reserva.id, d.acao, d.assinatura);
   const pedido: PedidoBeds24 = { ...d.esperado, referencia: l.reserva.codigo };
   const [nova] = await db
     .insert(op)

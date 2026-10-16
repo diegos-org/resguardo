@@ -162,11 +162,12 @@ describe("assinatura e chaves (desenho 3.3)", () => {
     expect(new Set([a, ...variacoes]).size).toBe(6);
   });
 
-  it("chaves: <tipo>:<reserva>:<versão>, ensaio:<uuid> e simulacao:<reserva>:<assinatura>", () => {
+  it("chaves: <tipo>:<reserva>:<versão>, ensaio:<uuid> e simulacao:<reserva>:<tipo>:<assinatura>", () => {
     expect(chaveOperacaoBeds24("criar", "r1", 1)).toBe("criar:r1:1");
     expect(chaveOperacaoBeds24("cancelar", "r1", 2)).toBe("cancelar:r1:2");
     expect(chaveEnsaioBeds24("u1")).toBe("ensaio:u1");
-    expect(chaveSimulacaoBeds24("r1", "abc")).toBe("simulacao:r1:abc");
+    expect(chaveSimulacaoBeds24("r1", "criar", "abc")).toBe("simulacao:r1:criar:abc");
+    expect(chaveSimulacaoBeds24("r1", "atualizar", "abc")).not.toBe(chaveSimulacaoBeds24("r1", "criar", "abc"));
     expect(SITUACOES_OPERACAO_ATIVAS).toEqual(["pendente", "enviando", "incerta"]);
   });
 

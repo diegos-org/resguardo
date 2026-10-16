@@ -93,8 +93,11 @@ export function assinaturaEsperado(e: EsperadoBeds24): string {
 export const chaveOperacaoBeds24 = (tipo: Exclude<TipoOperacaoBeds24, "ensaio">, reservaId: string, versao: number) => `${tipo}:${reservaId}:${versao}`;
 /** O ensaio não tem reserva: um uuid por ensaio. */
 export const chaveEnsaioBeds24 = (id: string) => `ensaio:${id}`;
-/** A simulação repete a mesma linha enquanto a intenção (a assinatura) for a mesma. */
-export const chaveSimulacaoBeds24 = (reservaId: string, assinatura: string) => `simulacao:${reservaId}:${assinatura}`;
+/**
+ * A simulação repete a mesma linha enquanto a intenção for a mesma: o tipo e a assinatura. O mesmo estado simulado antes
+ * como criação e depois como atualização são duas intenções (a linha guarda o tipo).
+ */
+export const chaveSimulacaoBeds24 = (reservaId: string, tipo: AcaoBeds24, assinatura: string) => `simulacao:${reservaId}:${tipo}:${assinatura}`;
 
 // ---------------------------------------------------------------- a régua (desenho 2.1)
 

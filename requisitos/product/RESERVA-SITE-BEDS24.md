@@ -223,7 +223,7 @@ As duas tabelas entram na varredura `semDadosPessoais` (`pagamentos/testes.ts:19
 ### 3.3 Idempotência
 - **Chaves:** `<tipo>:<reservaId>:<versao>`, com a `versao` do acompanhamento. Ela sobe na fase 1, sob a trava `beds24:<org>`, quando nasce uma intenção nova. As exceções:
   - ensaio: `ensaio:<uuid>`;
-  - simulação: `simulacao:<reservaId>:<assinatura>`;
+  - simulação: `simulacao:<reservaId>:<tipo>:<assinatura>`. O tipo entra porque o mesmo estado pode ser simulado como criação e, depois de criada, como atualização: sem ele, a segunda simulação reaproveitaria a linha da primeira e diria "criar" (revisão do Codex, 16/10);
   - `assinatura` = sha256 truncado de `room_id|chegada|saida|hospedes|situacao`.
 - **Operação ainda sem POST** (`enviado_em` nulo):
   - mesmo tipo: é atualizada no lugar (`pedido`, `esperado`, `alteracoes`), com a mesma chave;
