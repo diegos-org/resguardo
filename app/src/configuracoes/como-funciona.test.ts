@@ -94,11 +94,15 @@ describe("documento 'Como funciona' para o proprietário (M5.6)", () => {
   it("texto para mostrar: {empresa} vira o nome, parágrafos por linha em branco, seção vazia não aparece", () => {
     expect(preencherEmpresa("A {empresa} cuida; {empresa}.", " SCL ")).toBe("A SCL cuida; SCL.");
     expect(preencherEmpresa("{empresa}", "")).toBe("empresa");
+    // O nome entra como está: `$&`, `$'`, `$\`` e `$$` no nome não viram pedaços do texto (M5.10).
+    expect(preencherEmpresa("Fale com a {empresa}.", "Casa $& Lar $' $` $$")).toBe("Fale com a Casa $& Lar $' $` $$.");
     expect(paragrafos("a\n\n  b  \n\n\n")).toEqual(["a", "b"]);
     const v = { numero: 1, data: "2026-10-04", autorId: null, empresa: "", secoes: { ...normalizarSecoes(null), duvidas: "Fale com a {empresa}.", oQueFazemos: "Um.\n\nDois." } };
     expect(secoesParaMostrar(v, "SCL")).toEqual([
       { chave: "oQueFazemos", titulo: "O que a empresa faz por você", paragrafos: ["Um.", "Dois."] },
       { chave: "duvidas", titulo: "Dúvidas", paragrafos: ["Fale com a SCL."] },
     ]);
+    // Também com o nome gravado na versão.
+    expect(secoesParaMostrar({ ...v, empresa: "Lar $& Cia" }, "SCL").at(-1)).toEqual({ chave: "duvidas", titulo: "Dúvidas", paragrafos: ["Fale com a Lar $& Cia."] });
   });
 });
