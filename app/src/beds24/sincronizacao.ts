@@ -104,6 +104,13 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
           ilegiveis.add(d.id);
           aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
         }
+        // Registro ilegível sem um id pedido (sem id, id inválido ou fora do pedido): pode ser qualquer um destes ids, então
+        // nenhum deles conta como "não voltou" (apagado). O lote todo fica sem conclusão, com um aviso só.
+        const semDono = l.divergencias.filter(d => !ids.includes(d.id)).length;
+        if (semDono) {
+          for (const id of ids) if (!porId.has(id)) ilegiveis.add(id);
+          aviso(res, `Releitura por id: ${semDono} registro(s) voltaram em formato inválido, sem um id que dê para ligar ao pedido; os registros deste lote que não voltaram legíveis ficam como estavam. Confira os registros no Beds24.`);
+        }
         for (const id of ids) if (!porId.has(id) && !ilegiveis.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
       }
       // O que cada id conhecido é no SCL (a reserva vale sobre o bloqueio com o mesmo id): o desvio deixa o registro conhecido

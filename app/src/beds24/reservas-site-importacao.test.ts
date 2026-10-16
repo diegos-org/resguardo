@@ -218,6 +218,28 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
     expect(await acompanhamentoDe(r.id)).toMatchObject({ situacao: "conferida", motivo: null, conferidaEm: agora, otaFechadaEm: new Date("2026-09-20T12:10:00Z") });
   });
 
+  it("registro ilegível sem id na releitura por id: o lote fica sem conclusão, e o ligado não vira \"apagado\"", async () => {
+    const r = await reservaDoSite({ beds24Id: "555" });
+    const a = await acompanhar(r.id);
+    // A leitura do período não traz o 555; a releitura por id devolve um registro sem id legível.
+    leitor.bookings = [];
+    const original = leitor.reservas.bind(leitor);
+    leitor.reservas = async (f) => (f.ids?.length ? { itens: [], divergencias: [{ origem: "reserva", id: "?", motivo: "sem id" }], lidoEm: agora.toISOString() } : original(f));
+    try {
+      const res = await rodar();
+      expect(res.divergencias.join(" ")).toContain("Releitura por id: 1 registro(s) voltaram em formato inválido");
+      expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
+      expect(res.divergencias.join(" ")).not.toMatch(/não voltou na leitura do Beds24|não retornou na consulta/);
+      expect(await acompanhamentoDe(r.id)).toEqual(a);
+      expect(await reserva(r.id)).toEqual(r);
+    } finally {
+      leitor.reservas = original;
+    }
+    // Sem o registro ilegível, o mesmo 555 que não volta é conferido como apagado, como antes.
+    await rodar();
+    expect(await acompanhamentoDe(r.id)).toMatchObject({ situacao: "divergente", motivo: "apagada_no_beds24", otaFechadaEm: null });
+  });
+
   it("só as pessoas mudadas: divergente, mas a marca das datas fechadas fica", async () => {
     const r = await reservaDoSite({ beds24Id: "555" });
     await acompanhar(r.id);
