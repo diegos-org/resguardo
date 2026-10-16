@@ -88,6 +88,7 @@ O que protege Diego:
   | 14 | Na conversa de 16/10, o Claude disse a Diego que as consultas trariam "o nome do hóspede abreviado" (Diego: "Gostei") | Sem nomes na v1 (nível 0); primeiro nome e inicial só no M13.9, com a D2 e a D4 | As duas revisões leram o nome, mesmo abreviado, como dado pessoal que vai para empresas de fora do Brasil; sem nomes, o advogado avalia um caso menor. O GUIA conta a mudança a Diego |
   | 15 | Repetição da renovação em até 30 s devolvia o mesmo par já emitido (linha 7) | Sem tolerância: qualquer reuso derruba a conexão e avisa | Revisão do Codex de 16/10: com cliente público e sem prova de quem envia, os 30 s entregariam a conexão a quem copiou o token. O custo é Diego reconectar se o assistente repetir por falha de rede |
   | 16 | Um papel só de leitura sem nomes nem código do canal (M13.11) | Um papel por nível: o do nível 0 sem essas colunas e um segundo para o nível 1 (M13.9), escolhido pela conexão | Revisão do Codex de 16/10: com um papel só, o M13.11 quebraria as consultas do nível 1 ou teria de ser ampliado |
+  | 17 | Funções do painel com a linha inteira, depois mapeadas; quem recebe do canal sempre em `ver_reserva`; o uso baixado "sem dado pessoal" | Projeção própria em toda consulta antes do papel por coluna; quem recebe só com `financeiro:ler` e valores; o uso baixado é dado pessoal pseudonimizado e fica com Diego | Revisão do Codex de 16/10 |
 
 - **Objetivo final, que não mudou:** Diego consulta o SCL pelo assistente que já paga, com o login do painel, sem risco de o assistente mudar nada e sem expor dados pessoais além do mínimo.
 
@@ -538,7 +539,7 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
 - **Argumentos estruturados, já validados:** período, ano e mês, códigos de imóvel, situação, código de reserva no formato do SCL, página e "valores incluídos". Com isso dá para avaliar o que foi exposto num incidente.
 - **Nunca guarda:** texto livre, uma entrada recusada na validação (por exemplo, um nome digitado no lugar do código) nem a resposta.
 - **Guarda por 6 meses (D9).** Hoje não existe rotina de limpeza: as rotinas são `beds24`, `beds24-envio`, `agenda`, `cotacoes`, `fechamento`, `repasses`, `repasses-emails` e `mensagens` (`vercel.json`). A limpeza segue o padrão oportunista de `pagamentos/limites.ts:84` ou fica pendurada numa rotina diária existente, sem rotina nova.
-- **Onde aparece:** em Configurações → Assistentes, como "último uso", contagem por ferramenta e "Baixar o uso desta conexão" (M13.6), sem dado pessoal.
+- **Onde aparece:** em Configurações → Assistentes, como "último uso", contagem por ferramenta e "Baixar o uso desta conexão" (M13.6). A tela mostra só datas e contagens. O arquivo baixado leva os argumentos estruturados (códigos de reserva e de imóvel, períodos), que com as datas são **dado pessoal pseudonimizado**: fica com Diego e nunca vai para chat, e-mail, agente ou Git (revisão do Codex de 16/10; antes, este item dizia "sem dado pessoal").
 
 **Avisos:**
 - **Conexão nova:**
@@ -611,7 +612,8 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
   - cada item traz um `link` para a tela do painel. O link só abre com login, e lá estão os dados que o assistente não recebe.
 - **Lista fechada de campos:**
   - as consultas do MCP selecionam as colunas explicitamente;
-  - onde uma função do painel que devolve a linha inteira é reaproveitada (`listarReservas`, `listarBloqueios`, `listarRepassesDaOrganizacao`, `carregarDashboard`), a saída passa por um mapeamento de lista fechada, com teste de chaves por ferramenta e por papel;
+  - onde uma função do painel que devolve a linha inteira é reaproveitada (`listarReservas`, `listarBloqueios`, `listarRepassesDaOrganizacao`, `carregarDashboard`), a saída passa por um mapeamento de lista fechada, com teste de chaves por ferramenta e por papel. Isso vale só enquanto o MCP usa a conexão normal;
+  - **antes de ligar o papel por coluna do M13.11**, toda consulta do MCP passa a ter projeção própria, com as colunas explícitas: o Postgres recusa a consulta que pede uma coluna proibida antes de qualquer mapeamento, e as funções do painel que leem a linha inteira quebrariam `ver_calendario`, as ferramentas do Início e `ver_repasses`. As regras comuns (período, situação, conflito, indicadores) ficam em funções que recebem a projeção, para continuarem num lugar só; um teste roda cada ferramenta com o papel restrito no banco de teste (revisão do Codex de 16/10);
   - fatos que justificam a regra:
     - `listarReservasPaginadas` seleciona todas as colunas (`getTableColumns`, `listagem.ts:75`);
     - `obterReserva` (`repositorio.ts:570`) também;
@@ -695,7 +697,8 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
 **4. `ver_reserva`** (M13.2a)
 - **Entrada:** `codigo` (mesmo formato) ou o `id` (UUID) que veio de outra ferramenta.
 - **Saída:**
-  - os campos da lista, mais `reservadaEm` (data) e quem recebe do canal;
+  - os campos da lista, mais `reservadaEm` (data);
+  - quem recebe do canal só com a permissão `financeiro:ler` **e** a opção "incluir valores e repasses" da conexão, como a ficha da reserva no painel, que só mostra esse campo com `verValores` (`app/src/app/painel/reservas/[id]/page.tsx`) (revisão do Codex de 16/10);
   - com valores:
     - bruto, taxa do canal e líquido;
     - comissão e parte do proprietário;
@@ -1081,7 +1084,7 @@ Vale para conta de assistente invadida, conexão que Diego não reconhece ou avi
 1. **Na hora:** Configurações → Assistentes → "Desconectar todos". Isso revoga. "Desligar" só suspende, e por isso não é o passo de suspeita.
 2. Na conta do assistente: trocar a senha, sair de todas as sessões e conferir a verificação em duas etapas.
 3. **No mesmo dia:** avisar o advogado. Uma conta de assistente invadida com histórico de dados do SCL pode ser incidente de segurança. A Resolução CD/ANPD nº 15/2024, citada pela revisão, pede comunicação em 3 dias úteis quando há risco relevante; **a confirmar com o advogado**.
-4. Baixar o uso daquela conexão em Configurações → Assistentes: datas, ferramentas e argumentos estruturados, sem dado pessoal. O agente ajuda a ler, sem tirar dado real do banco.
+4. Baixar o uso daquela conexão em Configurações → Assistentes: datas, ferramentas e argumentos estruturados. O arquivo é dado pessoal pseudonimizado (códigos de reserva e de imóvel com as datas): fica com Diego e não vai para chat, e-mail, agente nem Git. Para ter ajuda de um agente, Diego passa só as contagens por ferramenta e por dia que a tela mostra, sem os códigos.
 5. O advogado avalia se é preciso comunicar a ANPD e os titulares.
 
 ## Riscos
