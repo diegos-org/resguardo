@@ -87,6 +87,7 @@ O que protege Diego:
   | 13 | Escrita fora do M13, só como proposta em `requisitos/labs/` | As regras da fase 2 e o histórico protegido entram no desenho e no ROADMAP (M13.12 e M13.13) | Diego aprovou em 16/10 as duas fases e o histórico persistente ("para ninguém poder apagar") e pediu que fossem para o ROADMAP ("Se quiser colocar tudo isso no roadmap, por favor"). A primeira versão do desenho deixou isso de fora |
   | 14 | Na conversa de 16/10, o Claude disse a Diego que as consultas trariam "o nome do hóspede abreviado" (Diego: "Gostei") | Sem nomes na v1 (nível 0); primeiro nome e inicial só no M13.9, com a D2 e a D4 | As duas revisões leram o nome, mesmo abreviado, como dado pessoal que vai para empresas de fora do Brasil; sem nomes, o advogado avalia um caso menor. O GUIA conta a mudança a Diego |
   | 15 | Repetição da renovação em até 30 s devolvia o mesmo par já emitido (linha 7) | Sem tolerância: qualquer reuso derruba a conexão e avisa | Revisão do Codex de 16/10: com cliente público e sem prova de quem envia, os 30 s entregariam a conexão a quem copiou o token. O custo é Diego reconectar se o assistente repetir por falha de rede |
+  | 16 | Um papel só de leitura sem nomes nem código do canal (M13.11) | Um papel por nível: o do nível 0 sem essas colunas e um segundo para o nível 1 (M13.9), escolhido pela conexão | Revisão do Codex de 16/10: com um papel só, o M13.11 quebraria as consultas do nível 1 ou teria de ser ampliado |
 
 - **Objetivo final, que não mudou:** Diego consulta o SCL pelo assistente que já paga, com o login do painel, sem risco de o assistente mudar nada e sem expor dados pessoais além do mínimo.
 
@@ -829,7 +830,8 @@ Acima do limite: 429 com `Retry-After`. No MCP, quando o limite é o teto diári
    - ele não teria acesso a `hospede_nome`, `hospede_email`, `hospede_telefone`, `observacoes`, `codigo_canal` e `chave_pix`;
    - com isso, um `select *` falha em vez de vazar;
    - criar o papel no Neon é mudança de configuração e pede o "pode" de Diego. As permissões (GRANT) vão numa migração versionada;
-   - tokens e registro de uso continuam pela conexão normal.
+   - tokens e registro de uso continuam pela conexão normal;
+   - esse é o papel do **nível 0**. As consultas do nível 1 (M13.9) usam um **segundo papel** só de leitura, com as colunas a mais do nível 1 (primeiro nome do hóspede, nome do proprietário e código do canal), escolhido pela conexão. O papel do nível 0 nunca é ampliado, e quem chegar por último entre o M13.9 e o M13.11 cria o segundo papel na própria migração (revisão do Codex de 16/10).
 
 **Do lado do assistente, o SCL não controla** a memória, o histórico das conversas nem o uso para treino. Isso vai para o GUIA-DIEGO (ver "Passos de Diego").
 
