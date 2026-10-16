@@ -9,6 +9,7 @@ import type { Db } from "@/db/types";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
+import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 import { COMODIDADES, TIPOS_CAMA } from "./cadastro-opcoes";
 import { esperarEnvioBeds24 } from "@/beds24/trava";
 import { type FontePrecos, fontePrecosValida } from "./fonte-precos";
@@ -29,8 +30,9 @@ export const DETALHES_VAZIOS: Detalhes = {
   aceitaAnimais: false,
   permiteFumar: false,
   permiteFestas: false,
-  checkinAPartirDe: "15:00",
-  checkoutAte: "11:00",
+  // Os horários padrão do sistema (M7.20: um lugar só, `HORARIOS_PADRAO`).
+  checkinAPartirDe: HORARIOS_PADRAO.entrada,
+  checkoutAte: HORARIOS_PADRAO.saida,
   taxaLimpeza: null,
   hospedeExtraValor: null,
   hospedeExtraAPartirDe: null,
@@ -146,8 +148,8 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
     aceitaAnimais: marcado(e.aceitaAnimais),
     permiteFumar: marcado(e.permiteFumar),
     permiteFestas: marcado(e.permiteFestas),
-    checkinAPartirDe: hora("checkinAPartirDe", "15:00"),
-    checkoutAte: hora("checkoutAte", "11:00"),
+    checkinAPartirDe: hora("checkinAPartirDe", HORARIOS_PADRAO.entrada),
+    checkoutAte: hora("checkoutAte", HORARIOS_PADRAO.saida),
     taxaLimpeza: dinheiro("taxaLimpeza"),
     hospedeExtraValor: dinheiro("hospedeExtraValor"),
     hospedeExtraAPartirDe: inteiro("hospedeExtraAPartirDe", 1, 50),

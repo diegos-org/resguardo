@@ -20,11 +20,11 @@ const m = vi.hoisted(() => ({
   cartaoNoSite: vi.fn(),
   pagarComCartao: vi.fn(),
   regrasDaCasa: vi.fn(),
-  imovelDoSite: vi.fn(),
+  estaNoSite: vi.fn(),
 }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
 vi.mock("@/site/cotacoes", async (orig) => ({ ...(await orig<typeof import("@/site/cotacoes")>()), verCotacao: m.verCotacao, regrasDaCasaDaCotacao: m.regrasDaCasa }));
-vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), imovelDoSite: m.imovelDoSite }));
+vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), estaNoSite: m.estaNoSite }));
 vi.mock("@/calendario/regras-config", () => ({ lerRegrasCalendario: async () => ({ site: { minutosHold: 30 } }) }));
 vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, vistaDoPagamento: m.vistaPagamento, pixPossivel: m.pixPossivel, cartaoNoSite: m.cartaoNoSite }));
 vi.mock("@/site/checkout", () => ({ autorizadoNaCotacao: m.autorizado }));
@@ -75,7 +75,7 @@ beforeEach(() => {
   m.cartaoNoSite.mockResolvedValue(false);
   m.pagarComCartao.mockResolvedValue({});
   m.regrasDaCasa.mockResolvedValue(REGRAS_DA_CASA);
-  m.imovelDoSite.mockResolvedValue({ codigo: "403", nome: "Studio Exemplo" });
+  m.estaNoSite.mockResolvedValue(true);
 });
 afterEach(() => vi.unstubAllEnvs());
 const html = async (codigo = "COT-ABCDEFGH") => renderToStaticMarkup(await Page({ params: Promise.resolve({ codigo }) } as PageProps<"/reservar/[codigo]">));
@@ -517,15 +517,15 @@ describe("uma faixa só na página da cotação (M7.12)", () => {
 });
 
 describe("horários e regras da casa na página da cotação (M7.20)", () => {
-  const HORARIOS = "Entrada a partir das 14h · Saída até 10h";
+  const HORARIOS = "Entrada a partir das 14h · Saída até as 10h";
   const COM_DATAS = "/imoveis/403?checkin=2026-10-12&amp;checkout=2026-10-15&amp;guests=4";
   const temRegras = (h: string) => h.includes(HORARIOS) && h.includes(">Regras da casa</h3>") && h.includes("<li>Não aceita animais</li><li>Proibido fumar</li>") && h.includes("Silêncio depois das 22h.");
   const semRegras = (h: string) => !h.includes("Entrada a partir das") && !h.includes("Regras da casa") && !h.includes("Silêncio depois das 22h.");
 
-  it("lê as regras pela cotação e a casa no site pelo código dela", async () => {
+  it("lê as regras pela cotação e a casa no site pelo código dela (a leitura curta, sem montar a casa nem as fotos)", async () => {
     await html();
     expect(m.regrasDaCasa).toHaveBeenCalledWith({}, "org", "COT-ABCDEFGH");
-    expect(m.imovelDoSite).toHaveBeenCalledWith({}, "org", "403");
+    expect(m.estaNoSite).toHaveBeenCalledWith({}, "org", "403");
   });
 
   it("aberta e válida: horários, regras, o nome da casa com as datas e 'Mudar as datas' (antes do formulário de segurar)", async () => {
@@ -570,7 +570,7 @@ describe("horários e regras da casa na página da cotação (M7.20)", () => {
     h = await html();
     expect(temRegras(h)).toBe(true);
     // A casa saiu do site: as regras continuam (vêm da ficha), o nome fica sem link.
-    m.imovelDoSite.mockResolvedValue(null);
+    m.estaNoSite.mockResolvedValue(false);
     h = await html();
     expect(temRegras(h)).toBe(true);
     expect(h).not.toContain("/imoveis/403");
@@ -586,6 +586,11 @@ describe("horários e regras da casa na página da cotação (M7.20)", () => {
       expect(h).not.toContain("Mudar as datas");
       expect(h).toContain(`<a href="${COM_DATAS}">Studio Exemplo</a>`);
     }
+  });
+
+  it("reserva confirmada pela equipe (sem pagamento no site) e cancelada depois: sem horários nem regras", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("convertida", { reserva: { codigo: "SCL-TESTE1", estado: "cancelada" } }));
+    expect(semRegras(await html())).toBe(true);
   });
 
   it("pagamento sem as datas, devolvido ou reserva cancelada pela política: sem horários nem regras", async () => {

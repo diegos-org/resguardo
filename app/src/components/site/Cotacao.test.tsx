@@ -178,10 +178,10 @@ it("com um pagamento (M8.2a): o título e o quadro dele vêm antes do resumo e s
 
 const regras = { entrada: "15:00", saida: "11:30", convivencia: ["Aceita animais", "Proibido fumar"], texto: "Silêncio depois das 22h." };
 
-it("horários e regras da casa (M7.20): linha 'Entrada a partir das … · Saída até …' e as regras sob 'Regras da casa', antes do pagamento; sem regras, nada", () => {
+it("horários e regras da casa (M7.20): linha 'Entrada a partir das … · Saída até as …' e as regras sob 'Regras da casa', antes do pagamento; sem regras, nada", () => {
   const { container } = render(<Cotacao vista={base} whatsapp={null} email="" regras={regras} pagamento={{ titulo: "Datas seguradas", conteudo: <p>QUADRO DO PAGAMENTO</p> }} />);
-  // A hora como em Minha reserva: hora cheia "15h"; o resto como está.
-  expect(screen.getByText("Entrada a partir das 15h · Saída até 11:30")).toBeTruthy();
+  // As frases da página da casa ("Saída até as"), com a hora como em Minha reserva: hora cheia "15h"; o resto como está.
+  expect(screen.getByText("Entrada a partir das 15h · Saída até as 11:30")).toBeTruthy();
   const titulo = screen.getByRole("heading", { name: "Regras da casa", level: 3 });
   const parte = titulo.closest("section")!;
   expect([...parte.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Aceita animais", "Proibido fumar"]);

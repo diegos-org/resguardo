@@ -23,7 +23,7 @@ import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { fraseDoImovel } from "@/site/frase-do-imovel";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { regrasDaCasa } from "@/site/regras-da-casa";
+import { frasesDosHorarios, regrasDaCasa } from "@/site/regras-da-casa";
 import { canalDeContato, hojeMaisCedo, imovelDoSite, imoveisDoSite, lerPedidoConsulta, montarConsulta } from "@/site/site";
 
 export async function generateMetadata({ params }: PageProps<"/imoveis/[codigo]">): Promise<Metadata> {
@@ -71,8 +71,7 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   // Horários e regras de convivência de um lugar só (M7.20), os mesmos da página da cotação; a estadia mínima entra aqui.
   const casa = regrasDaCasa(imovel);
   const regras = [
-    `Entrada a partir das ${casa.entrada}`,
-    `Saída até as ${casa.saida}`,
+    ...frasesDosHorarios(casa),
     imovel.estadiaMinima ? `Em geral, mínimo de ${imovel.estadiaMinima} ${imovel.estadiaMinima === 1 ? "noite" : "noites"} (datas especiais podem ter outro mínimo)` : null,
     ...casa.convivencia,
   ].filter((x): x is string => !!x);

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { escreverHora } from "@/lib/datas";
 import { type CotacaoVista, motivoDaMudanca, textoDaCotacao } from "@/site/cotacoes";
 import { linkDaCasa } from "@/site/link-da-casa";
-import type { RegrasDaCasa as Regras } from "@/site/regras-da-casa";
+import { frasesDosHorarios, type RegrasDaCasa as Regras } from "@/site/regras-da-casa";
 import { linkWhatsapp } from "@/site/site";
 import { LinkNovaJanela } from "./Acessibilidade";
 import { RegrasDaCasa } from "./RegrasDaCasa";
@@ -131,9 +131,7 @@ export function Cotacao({
       {/* M7.20: horários e regras da casa antes do pagamento (os Termos citam "as regras da casa informadas"). */}
       {regras && (
         <>
-          <p className={styles.texto}>
-            Entrada a partir das {escreverHora(regras.entrada)} · Saída até {escreverHora(regras.saida)}
-          </p>
+          <p className={styles.texto}>{frasesDosHorarios(regras, escreverHora).join(" · ")}</p>
           <RegrasDaCasa itens={regras.convivencia} texto={regras.texto} nivel={3} />
         </>
       )}

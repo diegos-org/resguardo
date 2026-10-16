@@ -26,7 +26,7 @@ import {
 } from "@/site/pagamento-vista";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
 import { regrasNaCotacao } from "@/site/regras-da-casa";
-import { imovelDoSite } from "@/site/site";
+import { estaNoSite } from "@/site/site";
 import { ambienteDeTeste } from "@/sistema/ambiente";
 
 export const generateMetadata = () => metadadosDoSite("Cotação");
@@ -106,7 +106,7 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
   if (!vista) notFound();
   const c = vista.cotacao;
   // M7.20: a casa no site só decide os links (o nome da casa e "Mudar as datas"); as regras vêm da ficha, sem olhar o site.
-  const [casaDoSite, autorizado] = await Promise.all([imovelDoSite(db, organizacaoId, c.imovelCodigo), autorizadoNaCotacao(c.id, agora)]);
+  const [casaNoSite, autorizado] = await Promise.all([estaNoSite(db, organizacaoId, c.imovelCodigo), autorizadoNaCotacao(c.id, agora)]);
   const vistaPagamento = await vistaDoPagamento(db, organizacaoId, c.id, agora, { comAutorizacao: autorizado, gate: async () => gate });
   const pagamento = vistaPagamento && vistaPagamento.estado !== "sem_pagamento" ? vistaPagamento : null;
   // Sem pagamento em curso: o texto "nenhum pagamento é feito no site" depende de o Pix ser oferecido para esta
@@ -182,7 +182,7 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
           comCartao={cartaoNoPagamento}
           reservaAtual={pagamento?.reservaAtual && reservaCodigo ? { codigo: reservaCodigo, ...pagamento.reservaAtual } : null}
           regras={regrasNaCotacao(vista, pagamento?.estado ?? null) ? regrasDaCasa : null}
-          casaNoSite={!!casaDoSite}
+          casaNoSite={casaNoSite}
           formulario={
             mostraFormulario ? (
               <FormSegurar codigo={codigo} minutos={regras.site.minutosHold} acao={segurarDatasAcao} comPagamento={pagamentoNoSite} comCartao={cartaoNoPagamento} privacidade={privacidade} />
