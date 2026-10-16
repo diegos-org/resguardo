@@ -14,6 +14,10 @@ it("pedido é mostrado como pendente e exige referência e aceite para confirmar
   expect(h).toContain('type="checkbox" required="" name="aceite"');
   expect(h).toContain("Canal do aceite");
   expect(h).toContain("Registrar acordo confirmado");
+  // O horário pedido se digita como 15:00 (M7.22): campo de texto, nunca o nativo, que mostra AM/PM em inglês.
+  expect(h).not.toContain('type="time"');
+  const campo = h.match(/<input [^>]*name="hora"[^>]*\/>/)?.[0] ?? "";
+  for (const a of ['type="text"', 'placeholder="15:00"', 'required=""']) expect(campo, a).toContain(a);
 });
 it("sem edição não oferece formulários de mutação", () => {
   const h = renderToStaticMarkup(<Horarios id="reserva" horarios={horarios} editar={false} vigentes={{ entrada: false, saida: false }} />);

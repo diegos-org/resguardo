@@ -11,8 +11,8 @@ import { getDb } from "@/db/client";
 import { MinhaSenha } from "@/components/equipe/MinhaSenha";
 import { agendaDaProfissional, situacaoDaSenha } from "@/equipe/acesso";
 import { marcarFeitaAcao, trocarMinhaSenhaAcao } from "@/equipe/acoes";
-import { limpezasDaProfissional } from "@/equipe/equipe";
-import { FRASE_FINAL, lerConfigAgenda } from "@/agenda/agenda";
+import { limpezasDaProfissional, textoDosHorarios } from "@/equipe/equipe";
+import { FRASE_FINAL } from "@/agenda/agenda";
 import { hojeISO } from "@/lib/datas";
 import { metadadosDeAcesso } from "@/site/site";
 
@@ -45,9 +45,8 @@ export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
   const params = await searchParams;
   const hoje = hojeISO();
   const db = getDb();
-  const [lista, config, empresa, agenda, senha] = await Promise.all([
+  const [lista, empresa, agenda, senha] = await Promise.all([
     limpezasDaProfissional(db, sessao.organizacaoId, sessao.profissionalId, hoje),
-    lerConfigAgenda(db, sessao.organizacaoId),
     empresaDaTela(sessao.organizacaoId),
     agendaDaProfissional(db, sessao.organizacaoId, sessao.profissionalId, hojeISO("America/Sao_Paulo")),
     situacaoDaSenha(db, sessao.usuarioId),
@@ -95,7 +94,7 @@ export default async function Equipe({ searchParams }: PageProps<"/equipe">) {
             </div>
             {l.endereco && <div className={styles.rotulo}>{l.endereco}</div>}
             <div style={{ fontSize: "0.9375rem" }}>
-              Saída do hóspede até {config.horaSaida}.{l.entraNoDia ? ` Entra outro hóspede no mesmo dia: deixar pronto até ${config.horaEntrada}.` : ""}
+              {textoDosHorarios(l)}
             </div>
             {l.observacao && <div className={styles.rotulo}>Obs.: {l.observacao}</div>}
             {podeMarcar && (

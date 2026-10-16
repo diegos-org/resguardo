@@ -20,7 +20,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { CANAIS_PEDIDO_CANCELAMENTO, type CanalPedidoCancelamento, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, type MotivoCancelamentoEmpresa, type MotivoExcecao, QUEM_CANCELA_RESERVA } from "@/db/schema";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { HORA_VALIDA, instanteLocal } from "@/lib/datas";
+import { instanteLocal, lerHora } from "@/lib/datas";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
@@ -104,13 +104,15 @@ function problemaDaNota(v: string, obrigatoria: string | null): string | null {
   return null;
 }
 
-/** Data (AAAA-MM-DD) e hora (HH:MM) de Brasília → instante; vazias = null; uma só ou inválida = "invalido". */
+/** Data (AAAA-MM-DD) e hora ("15:00"; "9:00" e "15h" também, lidas por `lerHora`) de Brasília → instante; vazias = null;
+ * uma só ou inválida = "invalido". */
 function momentoDoForm(form: FormData, data: string, hora: string): Date | null | "invalido" {
   const d = texto(form, data);
   const h = texto(form, hora);
   if (!d && !h) return null;
-  if (!dataValida(d) || !HORA_VALIDA.test(h)) return "invalido";
-  return instanteLocal(d, h, FUSO);
+  const lida = lerHora(h);
+  if (!dataValida(d) || !lida) return "invalido";
+  return instanteLocal(d, lida, FUSO);
 }
 
 /** O formulário do cancelamento → a entrada do domínio (listas fechadas, notas validadas). */

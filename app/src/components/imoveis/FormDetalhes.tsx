@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { CampoHora } from "@/components/CampoHora";
 import type { Detalhes } from "@/imoveis/detalhes";
 import type { EstadoDetalhes } from "@/imoveis/acoes";
 import { COMODIDADES, TIPOS_CAMA } from "@/imoveis/cadastro-opcoes";
@@ -114,12 +115,12 @@ export function FormDetalhes({ imovelId, inicial, salvar }: Props) {
           <div className={styles.linha}>
             <label>
               Entrada a partir de
-              <input name="checkinAPartirDe" type="time" defaultValue={campo("checkinAPartirDe", inicial.checkinAPartirDe)} {...invalido("checkinAPartirDe")} />
+              <CampoHora name="checkinAPartirDe" defaultValue={campo("checkinAPartirDe", inicial.checkinAPartirDe)} {...invalido("checkinAPartirDe")} />
               {erro("checkinAPartirDe")}
             </label>
             <label>
               Saída até
-              <input name="checkoutAte" type="time" defaultValue={campo("checkoutAte", inicial.checkoutAte)} {...invalido("checkoutAte")} />
+              <CampoHora name="checkoutAte" defaultValue={campo("checkoutAte", inicial.checkoutAte)} {...invalido("checkoutAte")} />
               {erro("checkoutAte")}
             </label>
           </div>

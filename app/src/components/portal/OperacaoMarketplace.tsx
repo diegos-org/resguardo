@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { CampoHora } from "@/components/CampoHora";
 import { Periodos } from "@/components/imoveis/Periodos";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
 import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
@@ -195,12 +196,12 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       <div className={f.linha}>
         <label>
           Entrada a partir das
-          <input name="checkinAPartirDe" type="time" defaultValue={campo("checkinAPartirDe", r.checkinAPartirDe)} {...invalido("checkinAPartirDe")} />
+          <CampoHora name="checkinAPartirDe" defaultValue={campo("checkinAPartirDe", r.checkinAPartirDe)} {...invalido("checkinAPartirDe")} />
           {erro("checkinAPartirDe")}
         </label>
         <label>
           Saída até as
-          <input name="checkoutAte" type="time" defaultValue={campo("checkoutAte", r.checkoutAte)} {...invalido("checkoutAte")} />
+          <CampoHora name="checkoutAte" defaultValue={campo("checkoutAte", r.checkoutAte)} {...invalido("checkoutAte")} />
           {erro("checkoutAte")}
         </label>
       </div>

@@ -9,7 +9,7 @@ import { exigir, type Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { auditoria, configuracoes, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { HORA_VALIDA } from "@/lib/datas";
+import { escreverHora, HORA_VALIDA, lerHora } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 
 export const CANAIS_HORARIO = ["Airbnb", "WhatsApp", "Booking.com", "Inbox SCL", "Outro"] as const;
@@ -88,10 +88,23 @@ export function acordoVigente(h: HorariosReserva | undefined, tipo: TipoHorario,
   return Boolean(h && acordo && r.estado === "confirmada" && vigente(acordo, r, h.confirmacoes));
 }
 
+/**
+ * O horário que vale na entrada ou na saída de uma reserva: o acordo vigente com o hóspede; sem ele, `padrao` (o da ficha
+ * da casa ou, sem ficha, o padrão da agenda). Uma regra só para a agenda e para a tela da limpeza. A hora sai "HH:MM"
+ * (M7.22); `precisaReconfirmar`: havia acordo, mas as datas, o imóvel ou a confirmação da reserva mudaram (vale o padrão).
+ * Sem `r` (limpeza avulsa, ou a reserva já não está confirmada e nem foi lida), vale o padrão.
+ */
+export function horaEfetiva(h: HorariosReserva | undefined, tipo: TipoHorario, r: Reserva | undefined, padrao: string): { hora: string; combinado: boolean; precisaReconfirmar: boolean } {
+  const acordo = r ? h?.[tipo].acordo : undefined;
+  if (acordo && r && acordoVigente(h, tipo, r)) return { hora: escreverHora(acordo.hora), combinado: true, precisaReconfirmar: false };
+  return { hora: escreverHora(padrao), combinado: false, precisaReconfirmar: Boolean(acordo) };
+}
+
+/** O horário da agenda em texto: "13:30 (confirmado com hóspede)" ou "15:00 (padrão)". */
 export function horarioEfetivo(h: HorariosReserva | undefined, tipo: TipoHorario, r: Reserva, padrao: string): string {
-  const acordo = h?.[tipo].acordo;
-  if (acordo && acordoVigente(h, tipo, r)) return `${acordo.hora} (confirmado com hóspede)`;
-  return `${padrao} (padrão${acordo ? "; acordo anterior precisa reconfirmação" : ""})`;
+  const e = horaEfetiva(h, tipo, r, padrao);
+  if (e.combinado) return `${e.hora} (confirmado com hóspede)`;
+  return `${e.hora} (padrão${e.precisaReconfirmar ? "; acordo anterior precisa reconfirmação" : ""})`;
 }
 
 export type AlteracaoHorario = {
@@ -115,9 +128,11 @@ export async function alterarHorario(db: Db, sessao: Sessao, d: AlteracaoHorario
     const em = new Date().toISOString();
     const referencia = d.referencia?.trim() ?? "";
     if (d.acao === "pedir") {
-      if (!horaValida(d.hora ?? "") || !CANAIS_HORARIO.includes(d.canal as typeof CANAIS_HORARIO[number]) || !referencia || referencia.length > 500)
+      // "9:00" e "15h" gravam "09:00" e "15:00" (M7.22).
+      const hora = lerHora(d.hora ?? "");
+      if (!hora || !CANAIS_HORARIO.includes(d.canal as typeof CANAIS_HORARIO[number]) || !referencia || referencia.length > 500)
         return { ok: false, erro: "Informe horário, canal e referência da conversa (até 500 caracteres)." };
-      atual.pedido = { id: randomUUID(), hora: d.hora!, canal: d.canal!, referencia, registradoEm: em, registradoPor: sessao.usuarioId,
+      atual.pedido = { id: randomUUID(), hora, canal: d.canal!, referencia, registradoEm: em, registradoPor: sessao.usuarioId,
         imovelId: r.imovelId, checkin: r.checkin, checkout: r.checkout, confirmacaoReserva: h.confirmacoes };
     } else if (d.acao === "confirmar") {
       if (!atual.pedido || !vigente(atual.pedido, r, h.confirmacoes)) return { ok: false, erro: "Registre o pedido para as datas e imóvel atuais." };

@@ -46,6 +46,11 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     const form = screen.getByRole("form", { name: "Preços e regras de venda do 403" });
     expect((within(form).getByLabelText(/Preço da noite/) as HTMLInputElement).value).toBe("300,00");
     expect((within(form).getByLabelText(/Estadia mínima/) as HTMLInputElement).value).toBe("2");
+    // Horários no formato 15:00 em qualquer aparelho (M7.22): campo de texto, nunca o nativo, que mostra AM/PM em inglês.
+    for (const [rotulo, valor] of [["Entrada a partir das", "15:00"], ["Saída até as", "11:00"]]) {
+      const campo = within(form).getByLabelText(rotulo) as HTMLInputElement;
+      expect([campo.type, campo.value, campo.placeholder, campo.required], rotulo).toEqual(["text", valor, "15:00", false]);
+    }
     // Dois grupos de dias (entrada e saída): só a segunda da entrada está marcada.
     const segundas = within(form).getAllByLabelText("segunda") as HTMLInputElement[];
     expect(segundas.map((c) => c.checked)).toEqual([true, false]);

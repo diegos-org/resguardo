@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
-import { appSettings, auditoria, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
+import { appSettings, auditoria, configuracoes, execucoesAutomacao, imoveis, imoveisDetalhes, organizacoes, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria, ErroEnvioIncerto, type Mensagem } from "@/email/correio";
@@ -96,7 +96,7 @@ describe("montagem da agenda", () => {
         "Limpezas dos próximos dias:",
         "",
         "🧹 Sex 02/10: nenhuma limpeza",
-        "🧹 Sáb 03/10: 403 (a confirmar; pronto até 15h (padrão), entra Bruno, nº de hóspedes não informado)",
+        "🧹 Sáb 03/10: 403 (a confirmar; pronto até 15:00 (padrão), entra Bruno, nº de hóspedes não informado)",
         "🧹 Dom 04/10: nenhuma limpeza",
         "🧹 Seg 05/10: 403 (a confirmar)",
         "🧹 Ter 06/10: nenhuma limpeza",
@@ -105,7 +105,7 @@ describe("montagem da agenda", () => {
       ].join("\n"),
     );
     // Búzios: uma linha por reserva, com entrada, saída e hóspedes.
-    expect(texto).toContain("Próximas reservas:\n\n• Ana — entrada ter 06/10 às 15h (padrão) · saída sex 09/10 às 11h (padrão) · 2 hóspedes");
+    expect(texto).toContain("Próximas reservas:\n\n• Ana — entrada ter 06/10 às 15:00 (padrão) · saída sex 09/10 às 11:00 (padrão) · 2 hóspedes");
     expect(texto).toContain("Nos outros dias até sáb 31/10 não há entradas nem saídas.");
     expect(texto.trimEnd().endsWith("Essa é a agenda atual e ainda pode mudar com novas reservas ou cancelamentos.")).toBe(true);
     // Só o primeiro nome; sem código de reserva.
@@ -121,13 +121,16 @@ describe("montagem da agenda", () => {
     await nova(buzios, "2026-10-01", "2026-10-03", "2026-09-01T12:00:00Z", { hospedes: null, hospedeNome: "Caio" });
     await nova(buzios, "2026-10-03", "2026-10-05", "2026-09-01T12:00:00Z", { hospedeNome: "Duda" });
     await nova(rio, "2026-10-02", "2026-10-04", "2026-09-01T12:00:00Z", { hospedeNome: "Eva" });
-    await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], horaEntrada: "14h", horaSaida: "10h30" }, null);
+    // Na tela, "14:00" e "9:30" (sem o zero): a agenda grava "14:00" e "09:30" e escreve igual (M7.22).
+    expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], formatos: { "Rio de Janeiro": "reservas" }, horaEntrada: "14:00", horaSaida: "9:30" }, null)).toEqual({ ok: true });
+    const config = await lerConfigAgenda(db, org);
+    expect(config).toMatchObject({ horaEntrada: "14:00", horaSaida: "09:30" });
     const a = await montarAgenda(db, org, "2026-10-01", null);
-    const texto = textoDaAgenda(a, [], { formatos: { "Rio de Janeiro": "reservas" }, horaEntrada: "14h", horaSaida: "10h30" });
-    expect(texto).toContain("• Caio — entrada qui 01/10 às 14h (padrão) · saída sáb 03/10 às 10h30 (padrão) · nº de hóspedes não informado\n  (troca no mesmo dia 03: conferir limpeza entre saída e entrada)");
+    const texto = textoDaAgenda(a, [], config);
+    expect(texto).toContain("• Caio — entrada qui 01/10 às 14:00 (padrão) · saída sáb 03/10 às 09:30 (padrão) · nº de hóspedes não informado\n  (troca no mesmo dia 03: conferir limpeza entre saída e entrada)");
     expect(texto).toContain("• Duda — entrada sáb 03/10");
     // Rio preserva limpezas por dia, mesmo com configuração antiga de formato.
-    expect(texto).toContain("Entrada/chaves 403: Eva, 2 hóspedes · entrada sex 02/10 às 14h (padrão)");
+    expect(texto).toContain("Entrada/chaves 403: Eva, 2 hóspedes · entrada sex 02/10 às 14:00 (padrão)");
     expect(texto).toContain("🧹");
     // Búzios inclui estadias em andamento na janela de 30 dias.
     await nova(buzios, "2026-09-20", "2026-10-20", "2026-09-01T12:00:00Z", { hospedeNome: "Longa" });
@@ -143,14 +146,44 @@ describe("montagem da agenda", () => {
     const rj = a.secoes.find((s) => s.cidade === "Rio de Janeiro")!;
     expect(rj.novas.map((n) => n.checkin)).toEqual(["2026-12-20"]);
     expect(a.secoes.find((s) => s.cidade === "Armação dos Búzios")!.novas).toEqual([]);
-    expect(textoDaAgenda(a)).toContain("Reservas novas desde a última agenda:\n• 403: entrada dom 20/12 às 15h (padrão) · saída dom 27/12 às 11h (padrão) — Ana, 2 hóspedes");
+    expect(textoDaAgenda(a)).toContain("Reservas novas desde a última agenda:\n• 403: entrada dom 20/12 às 15:00 (padrão) · saída dom 27/12 às 11:00 (padrão) — Ana, 2 hóspedes");
+  });
+});
+
+describe("horários da agenda no formato 15:00 (M7.22)", () => {
+  it("configuração salva antes com \"15h30\" e \"11h\": lida como 15:30 e 11:00 e regravada assim no próximo salvar", async () => {
+    await db.insert(configuracoes).values({ organizacaoId: org, chave: "agenda", valor: { ativa: false, destinatarios: [], formatos: {}, horaEntrada: "15h30", horaSaida: "11h" } });
+    expect(await lerConfigAgenda(db, org)).toMatchObject({ horaEntrada: "15:30", horaSaida: "11:00" });
+    await nova(buzios, "2026-10-03", "2026-10-05", "2026-09-01T12:00:00Z");
+    const a = await montarAgenda(db, org, "2026-10-01", null);
+    expect(textoDaAgenda(a, [], await lerConfigAgenda(db, org))).toContain("• Ana — entrada sáb 03/10 às 15:30 (padrão) · saída seg 05/10 às 11:00 (padrão)");
+    // Salvar a tela sem mexer nos horários grava o formato novo; nada é apagado.
+    expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [] }, null)).toEqual({ ok: true });
+    const [l] = await db.select({ valor: configuracoes.valor }).from(configuracoes).where(and(eq(configuracoes.organizacaoId, org), eq(configuracoes.chave, "agenda")));
+    expect(l.valor).toMatchObject({ horaEntrada: "15:30", horaSaida: "11:00" });
+  });
+
+  it("casa com ficha, casa sem ficha e configuração antiga saem no mesmo formato no mesmo texto", async () => {
+    await db.insert(configuracoes).values({ organizacaoId: org, chave: "agenda", valor: { ativa: false, destinatarios: [], formatos: {}, horaEntrada: "15h", horaSaida: "11h" } });
+    const [{ id: um }] = await db.select({ id: imoveis.id }).from(imoveis).where(eq(imoveis.codigo, "102"));
+    // 403 tem ficha (entrada às 16:00, saída às 10:00); 102 não tem: vale o padrão da agenda.
+    await db.insert(imoveisDetalhes).values({ organizacaoId: org, imovelId: rio, checkinAPartirDe: "16:00", checkoutAte: "10:00" });
+    await nova(rio, "2026-10-02", "2026-10-04", "2026-09-01T12:00:00Z", { hospedeNome: "Eva" });
+    await nova(um, "2026-10-02", "2026-10-04", "2026-09-01T12:00:00Z", { hospedeNome: "Gil" });
+    const a = await montarAgenda(db, org, "2026-10-01", null);
+    const texto = textoDaAgenda(a, ["Rio de Janeiro"], await lerConfigAgenda(db, org));
+    expect(texto).toContain("Entrada/chaves 403: Eva, 2 hóspedes · entrada sex 02/10 às 16:00 (padrão) · saída dom 04/10 às 10:00 (padrão)");
+    expect(texto).toContain("Entrada/chaves 102: Gil, 2 hóspedes · entrada sex 02/10 às 15:00 (padrão) · saída dom 04/10 às 11:00 (padrão)");
+    expect(texto).not.toMatch(/\b\d{1,2}h\d{0,2}\b/);
   });
 });
 
 describe("configuração e envio", () => {
   it("valida e-mails e cidades; ligar exige destinatário", async () => {
-    expect(await lerConfigAgenda(db, org)).toEqual({ ativa: false, destinatarios: [], formatos: {}, horaEntrada: "15h", horaSaida: "11h" });
-    expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], horaEntrada: "3 da tarde" }, null)).toMatchObject({ ok: false, erro: expect.stringContaining("15h") });
+    // Sem configuração, o horário da casa sem ficha (HORARIOS_PADRAO), no formato 15:00.
+    expect(await lerConfigAgenda(db, org)).toEqual({ ativa: false, destinatarios: [], formatos: {}, horaEntrada: "15:00", horaSaida: "11:00" });
+    for (const horaEntrada of ["3 da tarde", "25:00", "15"])
+      expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [], horaEntrada }, null), horaEntrada).toEqual({ ok: false, erro: "Horário no formato 15:00." });
     expect(await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [] }, null)).toMatchObject({ ok: false });
     expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [{ email: "nao-e-email", cidades: [] }] }, null)).toMatchObject({ ok: false });
     expect(await salvarConfigAgenda(db, org, { ativa: false, destinatarios: [{ email: "a@example.com", cidades: ["Niterói"] }] }, null)).toMatchObject({ ok: false });
@@ -164,7 +197,7 @@ describe("configuração e envio", () => {
     // Formato e horários: gravados; salvar sem eles mantém o que estava.
     expect(await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "equipe@example.com", cidades: [] }], formatos: { "Rio de Janeiro": "reservas" }, horaEntrada: "14H" }, null)).toEqual({ ok: true });
     expect(await salvarConfigAgenda(db, org, { ativa: true, destinatarios: [{ email: "equipe@example.com", cidades: [] }] }, null)).toEqual({ ok: true });
-    expect(await lerConfigAgenda(db, org)).toMatchObject({ formatos: { "Rio de Janeiro": "reservas" }, horaEntrada: "14h", horaSaida: "11h" });
+    expect(await lerConfigAgenda(db, org)).toMatchObject({ formatos: { "Rio de Janeiro": "reservas" }, horaEntrada: "14:00", horaSaida: "11:00" });
   });
 
   it("cidade já escolhida continua valendo mesmo sem imóvel ativo (não vira 'todas')", async () => {
@@ -1090,7 +1123,7 @@ describe("configuração e envio", () => {
     const paraRio = correio.enviadas.find((m) => m.para === "rio@example.com")!;
     expect(paraRio.assunto).toBe("Agenda SCL — Rio de Janeiro: 5 dias");
     expect(paraRio.texto).not.toContain("Búzios");
-    expect(correio.enviadas.find((m) => m.para === "buzios@example.com")!.texto).toContain("• Ana — entrada sáb 03/10 às 15h (padrão)");
+    expect(correio.enviadas.find((m) => m.para === "buzios@example.com")!.texto).toContain("• Ana — entrada sáb 03/10 às 15:00 (padrão)");
     // Dia seguinte: envia de novo.
     expect(await enviarAgenda(db, org, correio, new Date("2026-10-02T23:00:00Z"))).toMatchObject({ enviados: 2 });
   });

@@ -29,7 +29,7 @@ import {
   QUEM_PEDE_ALTERACAO,
 } from "@/db/schema";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { HORA_VALIDA, instanteLocal } from "@/lib/datas";
+import { instanteLocal, lerHora } from "@/lib/datas";
 import { reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { propostaDaPrevia } from "@/mensagens/hospede";
@@ -134,8 +134,8 @@ function entradaDoForm(form: FormData, agora: Date): { ok: true; reservaId: stri
   let canal: CanalPedidoAlteracao | null = null;
   if (quemPede === "hospede") {
     const d = texto(form, "recebidoData");
-    const h = texto(form, "recebidoHora");
-    if (!dataValida(d) || !HORA_VALIDA.test(h)) return { ok: false, mensagem: "Informe a data e a hora em que o pedido chegou." };
+    const h = lerHora(texto(form, "recebidoHora"));
+    if (!dataValida(d) || !h) return { ok: false, mensagem: "Informe a data e a hora em que o pedido chegou." };
     recebidoEm = instanteLocal(d, h, FUSO);
     canal = naLista(CANAIS_PEDIDO_ALTERACAO, texto(form, "canal"));
     if (!canal) return { ok: false, mensagem: "Escolha como o pedido chegou." };

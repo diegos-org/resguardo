@@ -1,6 +1,7 @@
 import { CANAIS_HORARIO, type HorariosReserva } from "@/reservas/horarios";
 import { alterarHorarioAcao } from "@/reservas/horarios-acoes";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { CampoHora } from "@/components/CampoHora";
 import styles from "@/components/formularios.module.css";
 
 export function Horarios({ id, horarios, editar, vigentes }: { id: string; horarios?: HorariosReserva; editar: boolean; vigentes: { entrada: boolean; saida: boolean } }) {
@@ -32,7 +33,7 @@ export function Horarios({ id, horarios, editar, vigentes }: { id: string; horar
           </>}
         </>}
         {editar && <form action={alterarHorarioAcao} className={styles.form}>{campos}<input type="hidden" name="acao" value="pedir" />
-          <label>Horário solicitado<input name="hora" type="time" required /></label>
+          <label>Horário solicitado<CampoHora name="hora" required /></label>
           <label>Canal da conversa<select name="canal">{CANAIS_HORARIO.map((c) => <option key={c}>{c}</option>)}</select></label>
           <label>Referência do pedido (sem telefone ou documentos)<textarea name="referencia" required maxLength={500} /></label>
           <button type="submit">Registrar pedido pendente</button>

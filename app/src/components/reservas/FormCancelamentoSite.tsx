@@ -2,6 +2,7 @@
 
 import { startTransition, useActionState, useRef, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { CampoHora } from "@/components/CampoHora";
 import styles from "@/components/formularios.module.css";
 import type { EstadoCancelamentoPainel } from "@/pagamentos/acoes-cancelamento";
 import { CAMPO_ROTULO_FORA, CAMPO_VALOR_FORA } from "@/pagamentos/campos-cancelamento";
@@ -157,7 +158,7 @@ export function FormCancelamentoSite({
               </label>
               <label style={{ flex: "0 1 140px" }}>
                 Hora (Brasília)
-                <input type="time" name="recebidoHora" value={hora} onChange={(e) => setHora(e.target.value)} required />
+                <CampoHora name="recebidoHora" value={hora} onChange={(e) => setHora(e.target.value)} required />
               </label>
               <label style={{ flex: "0 1 200px" }}>
                 Como chegou
@@ -313,7 +314,7 @@ export function FormRegistrarPedido({ reservaId, acao, agora, canais }: { reserv
         </label>
         <label style={{ flex: "0 1 140px" }}>
           Hora (Brasília)
-          <input type="time" name="recebidoHora" defaultValue={agora.hora} required />
+          <CampoHora name="recebidoHora" defaultValue={agora.hora} required />
         </label>
         <label style={{ flex: "0 1 200px" }}>
           Como chegou
@@ -396,7 +397,7 @@ export function FormDescartarPedido({
           </label>
           <label style={{ flex: "0 1 140px" }}>
             Hora (Brasília)
-            <input type="time" name="desistenciaHora" defaultValue={agora.hora} required />
+            <CampoHora name="desistenciaHora" defaultValue={agora.hora} required />
           </label>
         </>
       )}

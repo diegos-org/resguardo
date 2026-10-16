@@ -4,6 +4,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { enviarAgoraAcao, salvarAgendaAcao } from "@/agenda/acoes";
 import { cidadesDosImoveis, DIAS_AGENDA, DIAS_BUZIOS, diasDaCidade, FORMATOS, FRASE_FINAL, formatoDa, lerConfigAgenda, NOMES_FORMATO, previaDaAgenda, textoDaSecao } from "@/agenda/agenda";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { CampoHora } from "@/components/CampoHora";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 
@@ -114,11 +115,11 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
             <div className={styles.linha}>
               <label>
                 Horário padrão de entrada (quando o imóvel não tem cadastro)
-                <input name="horaEntrada" defaultValue={config.horaEntrada} maxLength={5} required placeholder="15h" />
+                <CampoHora name="horaEntrada" defaultValue={config.horaEntrada} required />
               </label>
               <label>
                 Horário padrão de saída (quando o imóvel não tem cadastro)
-                <input name="horaSaida" defaultValue={config.horaSaida} maxLength={5} required placeholder="11h" />
+                <CampoHora name="horaSaida" defaultValue={config.horaSaida} required />
               </label>
             </div>
             <div className={styles.acoes}>

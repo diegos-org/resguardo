@@ -177,6 +177,7 @@ describe("calcular o cancelamento", () => {
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, reservaId: "x' or 1=1" }))).toMatchObject({ mensagem: "Reserva não encontrada." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, recebidoHora: "" }))).toMatchObject({ mensagem: "Informe a data e a hora em que o pedido chegou." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, recebidoHora: "25:00" }))).toMatchObject({ mensagem: "Informe a data e a hora em que o pedido chegou." });
+    for (const recebidoHora of ["15", "15:7", "3 da tarde"]) expect(await calcularCancelamentoAcao({}, form({ ...doHospede, recebidoHora })), recebidoHora).toMatchObject({ mensagem: "Informe a data e a hora em que o pedido chegou." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, quemCancela: "vizinho" }))).toMatchObject({ mensagem: "Escolha quem cancela." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, decisao: "metade" }))).toMatchObject({ mensagem: "Escolha a decisão." });
     expect(await calcularCancelamentoAcao({}, form({ ...doHospede, nota: "CPF 123.456.789-09" }))).toMatchObject({ mensagem: ERRO_DADOS_PESSOAIS, valores: { nota: "CPF 123.456.789-09" } });
@@ -247,6 +248,14 @@ describe("pedido, descarte, OTAs e mensagem enviada", () => {
       descartarPedidoCancelamentoAcao({}, form({ reservaId: ID, motivo: "disse que vem", desistenciaCanal: "whatsapp", desistenciaData: "2026-10-02", desistenciaHora: "09:00" })),
     ).rejects.toThrow(`REDIRECT /painel/reservas/${ID}?cancelamento=pedido_descartado`);
     expect(m.descartar).toHaveBeenCalledWith({ banco: true }, "org", ID, { motivo: "disse que vem", desistencia: { canal: "whatsapp", em: new Date("2026-10-02T12:00:00Z") } }, { id: "u", podeFinanceiro: true }, expect.any(Date));
+    // "9:00" e "9h" (sem o zero, ou como se escrevia antes) são lidos "09:00" (M7.22).
+    for (const desistenciaHora of ["9:00", "9h"]) {
+      m.descartar.mockClear();
+      await expect(
+        descartarPedidoCancelamentoAcao({}, form({ reservaId: ID, motivo: "disse que vem", desistenciaCanal: "whatsapp", desistenciaData: "2026-10-02", desistenciaHora })),
+      ).rejects.toThrow(`REDIRECT /painel/reservas/${ID}?cancelamento=pedido_descartado`);
+      expect(m.descartar.mock.calls[0][3], desistenciaHora).toEqual({ motivo: "disse que vem", desistencia: { canal: "whatsapp", em: new Date("2026-10-02T12:00:00Z") } });
+    }
   });
 
   it("OTAs e mensagem enviada: com a empresa e o autor da sessão; recusa volta para a ficha como aviso", async () => {

@@ -5,7 +5,7 @@ import type { Sessao } from "@/acesso/politica";
 import { auditoria, bloqueios, configuracoes, imoveis, imoveisDetalhes, limpezas, organizacoes, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
-import { alterarHorario, horarioEfetivo, lerHorariosReservas } from "@/reservas/horarios";
+import { alterarHorario, horaEfetiva, horarioEfetivo, lerHorariosReservas } from "@/reservas/horarios";
 import type { DadosReserva } from "@/reservas/regras";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { CorreioMemoria } from "@/email/correio";
@@ -172,7 +172,26 @@ it("JSON sem prova de confirmação nunca é tratado como acordo", async () => {
   const r = await reserva();
   await db.insert(configuracoes).values({ organizacaoId: org, chave: `horarios_reserva:${r.id}`, valor: { versao: 1, entrada: { acordo: { hora: "08:00" } }, saida: {} } });
   const h = (await lerHorariosReservas(db, org, [r.id])).get(r.id);
-  expect(horarioEfetivo(h, "entrada", r, "15h")).toBe("15h (padrão)");
+  // Um padrão no formato antigo sai como 15:00 (M7.22).
+  expect(horarioEfetivo(h, "entrada", r, "15h")).toBe("15:00 (padrão)");
+});
+
+it("hora pedida como \"9:30\" ou \"14h\" grava \"09:30\" e \"14:00\"; horaEfetiva é a mesma regra do texto da agenda", async () => {
+  const r = await reserva();
+  expect(await alterarHorario(db, sessao, { reservaId: r.id, tipo: "entrada", versao: 0, acao: "pedir", hora: "9:30", canal: "Airbnb", referencia: "Pedido fictício." })).toEqual({ ok: true });
+  expect(await alterarHorario(db, sessao, { reservaId: r.id, tipo: "saida", versao: 1, acao: "pedir", hora: "14h", canal: "Airbnb", referencia: "Pedido fictício." })).toEqual({ ok: true });
+  let h = (await lerHorariosReservas(db, org, [r.id])).get(r.id);
+  expect([h?.entrada.pedido?.hora, h?.saida.pedido?.hora]).toEqual(["09:30", "14:00"]);
+  expect(await confirmar(r.id, "entrada", 2)).toEqual({ ok: true });
+  h = (await lerHorariosReservas(db, org, [r.id])).get(r.id);
+  expect(horaEfetiva(h, "entrada", r, "15:00")).toEqual({ hora: "09:30", combinado: true, precisaReconfirmar: false });
+  expect(horarioEfetivo(h, "entrada", r, "15:00")).toBe("09:30 (confirmado com hóspede)");
+  // Pedido ainda não confirmado não muda nada; sem reserva (limpeza avulsa), vale o padrão.
+  expect(horaEfetiva(h, "saida", r, "11:00")).toEqual({ hora: "11:00", combinado: false, precisaReconfirmar: false });
+  expect(horaEfetiva(undefined, "saida", undefined, "11h")).toEqual({ hora: "11:00", combinado: false, precisaReconfirmar: false });
+  // Datas mudaram: o acordo precisa de reconfirmação e vale o padrão.
+  const [mudada] = await db.update(reservas).set({ checkin: "2026-10-03" }).where(eq(reservas.id, r.id)).returning();
+  expect(horaEfetiva(h, "entrada", mudada, "15:00")).toEqual({ hora: "15:00", combinado: false, precisaReconfirmar: true });
 });
 
 it("cancelamento e reconfirmação pelo Beds24 não ressuscitam um horário aceito anteriormente", async () => {

@@ -46,17 +46,13 @@ function textoEntreAspas(linha: string, i: number): string | null {
 }
 
 /**
- * Exceções com motivo. A agenda da equipe ainda guarda e mostra o próprio horário padrão como "15h" (configuração salva no
- * banco); a parte 2 do M7.22 passa a agenda para o horário da casa (`HORARIOS_PADRAO`) e lê o formato antigo. Quando o
- * trecho sair do arquivo, a exceção também sai (o último teste avisa).
+ * Exceções com motivo; quando o trecho sair do arquivo, a exceção também sai (o último teste avisa). As da agenda saíram
+ * na parte 2 do M7.22: a agenda lê o "15h" guardado com `lerHora` e grava "15:00", e o padrão dela é `HORARIOS_PADRAO`.
  */
-const EXCECOES: { arquivo: string; trecho: string; motivo: string }[] = [
-  { arquivo: "agenda/agenda.ts", trecho: 'HORA_ENTRADA_PADRAO = "15h"', motivo: "padrão próprio da agenda, guardado no banco (parte 2 do M7.22)" },
-  { arquivo: "agenda/agenda.ts", trecho: 'HORA_SAIDA_PADRAO = "11h"', motivo: "padrão próprio da agenda, guardado no banco (parte 2 do M7.22)" },
-  { arquivo: "agenda/agenda.ts", trecho: "Horário no formato 15h ou 15h30.", motivo: "validação do formato guardado da agenda (parte 2 do M7.22)" },
-  { arquivo: "app/painel/agenda/page.tsx", trecho: 'placeholder="15h"', motivo: "campo do padrão próprio da agenda (parte 2 do M7.22)" },
-  { arquivo: "app/painel/agenda/page.tsx", trecho: 'placeholder="11h"', motivo: "campo do padrão próprio da agenda (parte 2 do M7.22)" },
-];
+const EXCECOES: { arquivo: string; trecho: string; motivo: string }[] = [];
+
+/** O campo nativo de hora (`type="time"`): mostra "03:00 PM" com o navegador ou o celular em inglês ou em 12 horas. */
+const CAMPO_TIME = /\btype\s*=\s*\{?\s*["'`]time["'`]/;
 
 function horasAntigas(codigo: string): { n: number; linha: string; hora: string }[] {
   return semComentarios(codigo)
@@ -84,6 +80,17 @@ describe("a hora no padrão do Brasil (M7.22)", () => {
       horasAntigas(readFileSync(join(SRC, rel), "utf8"))
         .filter(({ linha }) => !EXCECOES.some((e) => e.arquivo === rel && linha.includes(e.trecho)))
         .map(({ n, linha, hora }) => `${rel}:${n}: "${hora}" em ${linha.trim()}`),
+    );
+    expect(achados).toEqual([]);
+  });
+
+  it('nenhum campo type="time": a hora se digita no CampoHora, "15:00" em qualquer aparelho', () => {
+    for (const t of ['<input type="time" />', "<input type={'time'} />", '<input name="hora" type = "time" required />']) expect(CAMPO_TIME.test(t), t).toBe(true);
+    for (const t of ['<input type="text" />', '<input type="timestamp" />', "// <input type=\"time\" />"]) expect(CAMPO_TIME.test(semComentarios(t)), t).toBe(false);
+    const achados = fontes().flatMap((rel) =>
+      semComentarios(readFileSync(join(SRC, rel), "utf8"))
+        .split("\n")
+        .flatMap((linha, i) => (CAMPO_TIME.test(linha) ? [`${rel}:${i + 1}: ${linha.trim()}`] : [])),
     );
     expect(achados).toEqual([]);
   });
