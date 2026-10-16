@@ -13,6 +13,7 @@ import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
 import { cotacoes, type EstadoCotacao, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { dataBr, diaHoraNoFuso } from "@/lib/datas";
 import { expirarAlteracoesVencidas } from "@/pagamentos/alteracao-prazo";
 import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, PRAZO_CARTAO_SEM_RESPOSTA_DIAS } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
@@ -251,13 +252,12 @@ export type ResultadoHold =
   | { ok: true; cotacao: Cotacao; reservaCodigo: string; holdAte: Date }
   | { ok: false; erro: string; erros?: ErrosContato; motivos?: string[]; estado?: EstadoCotacao };
 
-const dataBr = (d: string) => d.split("-").reverse().join("/");
 /** Mesmo texto para reserva ou pagamento em andamento com o e-mail: não revela nada do pedido de outra pessoa. */
 export const ERRO_EMAIL_EM_ANDAMENTO = "Já existe uma reserva ou um pagamento em andamento com este e-mail. Use o link daquela cotação ou fale com a equipe pelo WhatsApp.";
 /** A observação do pedido diz até quando as datas estão seguradas (e se um pagamento estendeu); aceita o texto antigo. */
 const OBSERVACAO_PRAZO = /Datas seguradas até [^;.]+(?: \(estendido pelo (?:Pix|pagamento)\))?;/;
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
+const horaBr = (d: Date, fuso: string) => diaHoraNoFuso(d, fuso);
 
 /**
  * Segura as datas de uma cotação aberta: numa só transação, trava o imóvel, vence os holds atrasados dele,

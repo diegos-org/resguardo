@@ -152,7 +152,7 @@ describe("cotação do site (M8.1)", () => {
     expect(await minhasReservas()).toHaveLength(1);
     const v = await verCotacao(db, org, c1.codigo, agora);
     expect(v).toMatchObject({ estado: "segurada", atual: null, reserva: { codigo: h.reservaCodigo, estado: "pedido" } });
-    expect(textoDaCotacao(v!)).toContain("seguradas para mim até 01/10, 12:30"); // 30 min depois de 12:00 em São Paulo
+    expect(textoDaCotacao(v!)).toContain("seguradas para mim até 01/10 às 12:30"); // 30 min depois de 12:00 em São Paulo
     // Contato inválido e cotação inexistente.
     expect(await segurarDatas(db, org, c1.codigo, { nome: "A", email: "x", telefone: "1" }, agora)).toMatchObject({ ok: false, erros: { nome: expect.any(String), email: expect.any(String), telefone: expect.any(String) } });
     expect(await segurarDatas(db, org, "COT-ABCDEFGH", contato(), agora)).toMatchObject({ ok: false, erro: "Cotação não encontrada." });
@@ -371,10 +371,10 @@ describe("o mesmo e-mail com um cartão sem resposta (M8.2b)", () => {
   it("a observação do pedido diz que o pagamento estendeu o prazo; o texto antigo (estendido pelo Pix) também é trocado", async () => {
     const c = await montarCenario(db);
     const s = await c.segurar();
-    await db.update(reservas).set({ observacoes: "Pedido pelo site — cotação X. Datas seguradas até 01/10, 12:30 (estendido pelo Pix); depois disso o pedido vence sozinho." }).where(eq(reservas.id, s.reservaId));
+    await db.update(reservas).set({ observacoes: "Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:30 (estendido pelo Pix); depois disso o pedido vence sozinho." }).where(eq(reservas.id, s.reservaId));
     await db.transaction((tx) => estenderHold(tx, c.org, s.cotacaoId, minutos(40), AGORA, null));
-    expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10, 12:40 (estendido pelo pagamento); depois disso o pedido vence sozinho.");
+    expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:40 (estendido pelo pagamento); depois disso o pedido vence sozinho.");
     await db.transaction((tx) => voltarHold(tx, c.org, s.cotacaoId, minutos(30), minutos(40), AGORA, null));
-    expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10, 12:30; depois disso o pedido vence sozinho.");
+    expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:30; depois disso o pedido vence sozinho.");
   });
 });

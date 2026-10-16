@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type ReactNode, useActionState, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
-import { horaNoFuso } from "@/lib/datas";
+import { dataNoFuso, diaHoraNoFuso, horaNoFuso, rotuloDoFuso } from "@/lib/datas";
 import type { AceiteNaPagina } from "@/site/aceites";
 import type { EstadoCartao, EstadoContinuar, EstadoPix } from "@/site/acoes-pagamento";
 import { MENSAGEM_CARTAO_RECUSADO, MENSAGEM_VERIFICACAO_NAO_CONCLUIDA, NOTA_JUROS_CARTAO } from "@/site/mensagens-cartao";
@@ -33,9 +33,7 @@ type AcaoCartao = (form: FormData) => Promise<EstadoCartao>;
 export type TextosPagamento = { convite: string; aguardando: string; semDatas: string; cartaoAnalise: string; cancelamento?: TextosDoCancelamento; emConferencia?: string };
 
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const formato = (fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o });
-const quando = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
-const dia = (iso: string, fuso: string) => formato(fuso, { dateStyle: "short" }).format(new Date(iso));
+const dia = (iso: string, fuso: string) => dataNoFuso(new Date(iso), fuso);
 
 /** O que a rota de acompanhamento devolve (só os campos que a página lê). */
 type RespostaDaRota = {
@@ -460,7 +458,7 @@ export function PagamentoPix({
   const cancelamento = textos.cancelamento ? textoDoCancelamento(v, textos.cancelamento, fuso) : { linhas: [], decisao: "", comoVolta: null };
   const prazo = v.holdAte ? (
     <p className={styles.texto}>
-      {AsDatas} estão seguradas para você até <strong>{quando(v.holdAte, fuso)}</strong>.
+      {AsDatas} estão seguradas para você até <strong>{diaHoraNoFuso(new Date(v.holdAte), fuso)}</strong> ({rotuloDoFuso(fuso)}).
     </p>
   ) : null;
   const outraOpcao = contato ? (

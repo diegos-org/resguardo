@@ -309,7 +309,7 @@ describe("cartão de crédito na página da cotação (M8.2b)", () => {
     const h = await html();
     expect(h).toContain("<h2>Pagamento em análise</h2>");
     expect(h).toContain("Texto do Diego para a análise.");
-    expect(h).toContain("As datas estão seguradas até 01/10, 13:30.");
+    expect(h).toContain("As datas estão seguradas até 01/10 às 13:30.");
     expect(decodeURIComponent(h)).toContain("Paguei com cartão e a página diz que o pagamento está em análise.");
     expect(h).not.toContain("Prefere combinar com a equipe?");
     expect(m.aceite).not.toHaveBeenCalled();

@@ -5,7 +5,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
 import { getDb } from "@/db/client";
-import { hojeISO } from "@/lib/datas";
+import { dataHoraNoFuso, diaMesBr, hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { conferirAgoraAcao } from "@/pagamentos/acoes-painel";
 import { canceladaEmPalavras, type LinhaPagamento, listarPagamentos } from "@/pagamentos/consultas";
@@ -13,8 +13,7 @@ import { NOMES_DESFECHO, NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes
 import { dataValida } from "@/reservas/regras";
 
 const FUSO = "America/Sao_Paulo";
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: FUSO, dateStyle: "short", timeStyle: "short" });
-const dataBr = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
+const quando = (d: Date) => dataHoraNoFuso(d, FUSO);
 const FORMA = { pix: "Pix", cartao: "Cartão" } as const;
 const umValor = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
 
@@ -30,7 +29,7 @@ function desfechoEmPalavras(p: Pick<LinhaPagamento, "desfecho" | "devolucao" | "
   // M8.2e: a reserva confirmada com o pagamento em disputa (a disputa se acompanha no quadro da reserva).
   if (p.desfecho === "reserva" && p.emDisputa) return "Reserva (pagamento em disputa)";
   // M8.2d: a diferença paga de uma alteração aplicada (de qual alteração: o dia em que foi preparada).
-  if (p.desfecho === "alteracao") return p.alteracaoEm ? `Diferença da alteração de ${dataBr(hojeISO(FUSO, p.alteracaoEm))}` : NOMES_DESFECHO.alteracao;
+  if (p.desfecho === "alteracao") return p.alteracaoEm ? `Diferença da alteração de ${diaMesBr(hojeISO(FUSO, p.alteracaoEm))}` : NOMES_DESFECHO.alteracao;
   if (p.desfecho) return NOMES_DESFECHO[p.desfecho];
   if (p.devolucao?.situacao === "pedida") return "Devolução pedida ao Mercado Pago";
   if (p.devolucao?.situacao === "recusada") return "Devolução parada: o Mercado Pago recusou ou não respondeu três vezes. Confira no painel do Mercado Pago antes de tentar de novo ou de registrar a devolução feita por fora";
@@ -87,7 +86,7 @@ export default async function PagamentosDoSite({ searchParams }: PageProps<"/pai
       {editar && <FormAcaoPagamento acao={conferirAgoraAcao} rotulo="Conferir agora" nome="Conferir agora todos os pendentes" discreto />}
       {linhas.length === 0 ? (
         <p style={{ color: "var(--scl-texto-2)" }}>
-          {disputa ? "Nenhum pagamento do site com disputa pedindo a equipe." : atencao ? "Nenhum pagamento do site pedindo atenção." : `Nenhum pagamento do site entre ${dataBr(de)} e ${dataBr(ate)}.`}
+          {disputa ? "Nenhum pagamento do site com disputa pedindo a equipe." : atencao ? "Nenhum pagamento do site pedindo atenção." : `Nenhum pagamento do site entre ${diaMesBr(de)} e ${diaMesBr(ate)}.`}
         </p>
       ) : (
         <div className={styles.rolagem}>
@@ -111,7 +110,7 @@ export default async function PagamentosDoSite({ searchParams }: PageProps<"/pai
                   <td>
                     <Link href={`/painel/reservas/${p.reservaId}`}>{p.reservaCodigo}</Link>
                     <div style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>
-                      {dataBr(p.checkin)} → {dataBr(p.checkout)}
+                      {diaMesBr(p.checkin)} → {diaMesBr(p.checkout)}
                     </div>
                   </td>
                   <td>{p.imovelCodigo}</td>

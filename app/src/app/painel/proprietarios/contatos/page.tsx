@@ -5,6 +5,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import { AutorizacaoRegistrada } from "@/components/proprietarios/AutorizacaoRegistrada";
 import { getDb } from "@/db/client";
+import { dataHoraNoFuso } from "@/lib/datas";
 import { arquivarPedidoAcao, marcarRespondidoAcao } from "@/proprietarios/acoes-contatos";
 import { soDigitos } from "@/proprietarios/documento";
 import {
@@ -19,8 +20,7 @@ import {
 } from "@/proprietarios/pedidos-contato";
 import { numeroWhatsapp } from "@/site/site";
 
-const quando = (d: Date) =>
-  new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d);
+const quando = (d: Date) => dataHoraNoFuso(d);
 /** Endereço digitado pela pessoa: cada parte codificada, para "?" ou "&" no e-mail não virarem cópia ou assunto. */
 const mailto = (email: string) => `mailto:${email.split("@").map(encodeURIComponent).join("@")}`;
 /** WhatsApp com o 55 quando a pessoa deixou só DDD + número. */

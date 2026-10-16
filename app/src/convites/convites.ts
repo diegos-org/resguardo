@@ -12,6 +12,7 @@ import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { convites, proprietarios, proprietarioUsuarios, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { dataHoraNoFuso } from "@/lib/datas";
 import { registrarAceiteDoConvite } from "@/portal/aceites";
 import { normalizarEmail } from "@/acesso/entrada";
 import { uuidValido } from "@/lib/ids";
@@ -78,7 +79,7 @@ export async function criarConvite(
       acao: "convite.criar",
       entidade: "proprietario",
       entidadeId: proprietarioId,
-      mudancas: { convite: [null, `para ${email}, vale até ${convite.expiraEm.toISOString().slice(0, 10)}`] },
+      mudancas: { convite: [null, `para ${email}, vale até ${dataHoraNoFuso(convite.expiraEm)}`] },
     });
     return { ok: true as const, convite, token };
   });

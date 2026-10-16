@@ -108,13 +108,13 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     const envio = (over: Partial<SituacaoEnvio> = {}): SituacaoEnvio => ({ naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: feito, ...over });
     expect(textoDoEnvio(envio({ naLista: false }), "SCL")).toContain("até a SCL incluir este imóvel no envio de calendário");
     expect(textoDoEnvio(envio({ automatico: false }), "SCL")).toContain("O envio aos canais é feito pela SCL");
-    expect(textoDoEnvio(envio(), "SCL")).toMatch(/roda todo dia.*Último envio: 01\/10\/2026, 07:00 \(concluído\)/);
+    expect(textoDoEnvio(envio(), "SCL")).toMatch(/roda todo dia.*Último envio: 01\/10\/2026 às 07:00 \(concluído\)/);
     // Sem nenhum envio real que tenha incluído o imóvel, ou com o imóvel deixado de fora no último (quarto inacessível, moeda), nada é prometido.
     expect(textoDoEnvio(envio({ ultimo: null }), "SCL")).toContain("até o primeiro envio aos canais confirmar este imóvel");
     expect(textoDoEnvio(envio({ ultimo: null }), "SCL")).not.toContain("roda todo dia");
     // O motivo técnico da falha (com nomes internos) fica no painel e nem chega ao portal; o proprietário vê que falhou e quando.
     const comFalha = textoDoEnvio(envio({ ultimo: { ...feito, falhou: true } }), "SCL");
-    expect(comFalha).toContain("a última (01/10/2026, 07:00) não conseguiu, e a SCL vê o motivo no painel");
+    expect(comFalha).toContain("a última (01/10/2026 às 07:00) não conseguiu, e a SCL vê o motivo no painel");
     expect(comFalha).not.toContain("credencial");
     expect(textoSalvo(envio({ ultimo: { ...feito, falhou: true } }), "SCL")).not.toContain("próximo envio");
     // Vínculo trocado depois do último envio: o veredito antigo não vale para o quarto novo.

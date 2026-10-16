@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ID_CONTEUDO, PularParaConteudo } from "@/components/site/Acessibilidade";
 // Da moldura sem banco: assim a página de erro do portal (componente de cliente, M7.8) também usa esta moldura.
 import { marcaComDestaque } from "@/components/site/MolduraBase";
+import { hojeISO } from "@/lib/datas";
 import { MARCA_PADRAO } from "@/site/marca";
 import styles from "./portal.module.css";
 
@@ -54,7 +55,7 @@ export function MolduraPortal({
       <footer className={styles.rodape}>
         {nome && (
           <span>
-            © {new Date().getFullYear()} {nome}
+            © {Number(hojeISO().slice(0, 4))} {nome}
           </span>
         )}
         <Link href="/">Site</Link>

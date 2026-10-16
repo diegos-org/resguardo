@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { FormAcaoPagamento } from "@/components/pagamentos/FormAcaoPagamento";
+import { dataBr, dataHoraNoFuso, dataNoFuso, horaNoFuso } from "@/lib/datas";
 import { ancoraDaLiberacao } from "./ancoras";
 import { DOCUMENTOS_LEGAIS, PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
 import type { SituacaoDevolucao } from "@/db/schema";
-import { horaNoFuso } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import {
@@ -45,9 +45,8 @@ type Props = {
 };
 
 const FUSO = "America/Sao_Paulo";
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: FUSO, dateStyle: "short", timeStyle: "short" });
-const dia = (d: Date) => d.toLocaleDateString("pt-BR", { timeZone: FUSO });
-const dataBr = (d: string) => d.split("-").reverse().join("/");
+const quando = (d: Date) => dataHoraNoFuso(d, FUSO);
+const dia = (d: Date) => dataNoFuso(d, FUSO);
 const FORMA = { pix: "Pix", cartao: "Cartão de crédito" } as const;
 /** Verificação do banco (3DS) pedida e o resultado lido, em palavras (só para quem lê o financeiro). */
 const TRES_DS: Record<ModoTresDS, string> = { on_fraud_risk: "quando houver risco", never: "nunca" };

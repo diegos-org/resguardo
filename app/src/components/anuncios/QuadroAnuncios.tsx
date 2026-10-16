@@ -3,6 +3,7 @@ import { salvarAnuncioAcao } from "@/anuncios/acoes";
 import type { listarAnuncios } from "@/anuncios/repositorio";
 import { CANAIS_ANUNCIO, compararAnuncios, SITUACOES, type ReferenciaComparacao, type Situacao } from "@/anuncios/regras";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
+import { dataHoraNoFuso, FUSO_PADRAO, rotuloDoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { fraseDoImovel } from "@/site/frase-do-imovel";
 import { FormAnuncio } from "./FormAnuncio";
@@ -63,7 +64,7 @@ export function QuadroAnuncios({ imovel: i, podeEditar, siteDaOrg, fotosNoSite =
           <p className={styles.miudo}>{ids.length ? `IDs vinculados: ${ids.map(v => v.idExterno).join(", ")}` : "Sem ID deste canal vinculado ao imóvel."} Vínculo não comprova publicação.</p>
           {ids.length > 1 && <p>Há mais de um vínculo neste canal. Esta ficha registra uma referência principal; confira os demais no canal.</p>}
           {a?.url ? <a href={a.url} target="_blank" rel="noopener noreferrer">Abrir anúncio no {nomes[canal]}</a> : <p>Link não cadastrado</p>}
-          <p className={styles.miudo}>{a?.conferidoEm ? `Conferência manual em ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(a.conferidoEm)} (Brasília).` : "Aguardando conferência manual."}</p>
+          <p className={styles.miudo}>{a?.conferidoEm ? `Conferência manual em ${dataHoraNoFuso(a.conferidoEm)} (${rotuloDoFuso(FUSO_PADRAO)}).` : "Aguardando conferência manual."}</p>
           <dl><dt>Título</dt><dd>{a?.titulo || "Não informado"}</dd><dt>Descrição</dt><dd>{a?.descricao || "Não informada"}</dd><dt>Preço base informado</dt><dd>{a?.precoBase == null ? "Não informado" : formatBRL(a.precoBase)}</dd></dl>
           <div><strong>Fotos de referência</strong>{a?.fotos.length ? <ol>{a.fotos.map((url, n) => <li key={url}><a href={url} target="_blank" rel="noopener noreferrer">Abrir foto {n + 1}</a></li>)}</ol> : <p>Nenhuma foto informada.</p>}</div>
           {podeEditar && <details><summary>Editar referência do {nomes[canal]}</summary><FormAnuncio imovelId={i.id} canal={canal} inicial={a} salvar={salvarAnuncioAcao} /></details>}

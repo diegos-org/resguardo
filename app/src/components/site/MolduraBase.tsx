@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { hojeISO } from "@/lib/datas";
 import { MARCA_PADRAO } from "@/site/marca";
 import { ID_CONTEUDO, LinkNovaJanela, PularParaConteudo } from "./Acessibilidade";
 import styles from "./site.module.css";
@@ -59,7 +60,8 @@ export function MolduraBase({
   largura?: "miolo" | "cheia";
   children: ReactNode;
 }) {
-  const ano = new Date().getFullYear();
+  // O ano de São Paulo: das 21h às 23h59 de 31/12 o servidor (em UTC) já está no ano seguinte.
+  const ano = Number(hojeISO().slice(0, 4));
   const nome = nomeRecebido.trim();
   const frase = rodape?.trim() || nome;
   return (

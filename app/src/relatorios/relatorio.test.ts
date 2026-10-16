@@ -158,6 +158,10 @@ describe("textos do relatório (modelo oficial, M5.7)", () => {
     const p = textosDoRelatorio({ ...base, situacao: "parcial", ate: "2026-10-20", metricas: { ...base.metricas, parcialAte: 20, anterior: mesDados({ mes: "2026-09" }) } });
     expect(p.emissao).toBe("parcial até 20/10");
     expect(p.periodo).toBe("1 a 20/10/2026 (parcial: posição de 20/10/2026)");
+    // Dia e mês de um dígito saem com o zero, como na posição (M7.22): antes, "1 a 5/3/2026" e "parcial até 5/3".
+    const marco = textosDoRelatorio({ ...base, ano: 2026, mes: 3, situacao: "parcial", ate: "2026-03-05", metricas: { ...base.metricas, parcialAte: 5, anterior: mesDados({ mes: "2026-02" }) } });
+    expect(marco.periodo).toBe("1 a 05/03/2026 (parcial: posição de 05/03/2026)");
+    expect(marco.emissao).toBe("parcial até 05/03");
     expect(p.aviso).toContain("inclusive as que ainda não aconteceram");
     expect(p.quadros[4]).toMatchObject({ valor: "mês em andamento", semDado: true });
     expect(textosDoRelatorio({ ...base, situacao: "futuro" }).periodo).toContain("previsto");

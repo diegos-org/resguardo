@@ -6,6 +6,7 @@
 import { and, asc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { imoveis, lancamentos, proprietarioImoveis, proprietarios, representantes } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { dataBr, diaMesBr } from "@/lib/datas";
 import { lancamentoEmVigor } from "@/portal/posse";
 import { lerEmpresa, NOME_EMPRESA_INICIAL } from "@/configuracoes/empresa";
 import { periodoDosFiltros } from "@/lib/filtros";
@@ -268,7 +269,6 @@ export function comPaginas(t: TextosRelatorio, p: PaginasDasSecoes): TextosRelat
 }
 
 const SITUACAO_RESERVA: Record<SituacaoReserva, string> = { definido: "definido", em_conferencia: "em conferência", em_conferencia_disputa: "em conferência (disputa do pagamento)", sem_calculo: "sem cálculo ainda" };
-const br = (d: string) => d.split("-").reverse().join("/");
 const ultimoDia = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).getUTCDate();
 const capitalizar = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios);
@@ -290,7 +290,7 @@ export function textoDoSaldo(r: Rodape, empresa: string, diaFechamento: number =
   const fora = textoForaPorDisputa(r) ? [textoForaPorDisputa(r)!] : [];
   switch (r.situacao) {
     case "pago":
-      return [`Repasse de ${valor} pago em ${br(r.dataPagamento!)}.`, ...depois];
+      return [`Repasse de ${valor} pago em ${dataBr(r.dataPagamento!)}.`, ...depois];
     case "no_repasse_posterior":
       return [`O saldo deste mês já entrou no repasse de ${nomeMes(r.repassePosterior!)}.`, ...depois];
     case "fechado":
@@ -403,7 +403,6 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const mesNome = nomeDoMes(mes);
   const extenso = nomeDoPeriodo({ ano: d.ano, mes: d.mes });
   const fim = ultimoDia(d.ano, d.mes);
-  const ateDia = d.ate ? Number(d.ate.slice(8, 10)) : null;
   const r = d.resumo;
   const resultado = r.suaParte - r.despesas;
   const doMes = d.partes.filter((p) => p.mes === mes);
@@ -414,11 +413,11 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
   const tiposContrato = [...new Set(d.contratos.map((c) => c.tipoNome.toLowerCase()))];
   const lugar = [...new Set(d.imoveis.map((i) => [i.bairro, i.cidade].filter(Boolean).join(", ")).filter(Boolean))].join(" · ");
 
-  const periodo = d.situacao === "parcial" ? `1 a ${ateDia}/${d.mes}/${d.ano} (parcial: posição de ${br(d.ate!)})` : `1 a ${fim} de ${mesNome}${d.situacao === "futuro" ? " (previsto: só reservas já confirmadas)" : ""}`;
-  const emissao = d.situacao === "parcial" ? `parcial até ${ateDia}/${d.mes}` : d.situacao === "futuro" ? "mês ainda não começou" : "fechamento do mês";
+  const periodo = d.situacao === "parcial" ? `1 a ${dataBr(d.ate!)} (parcial: posição de ${dataBr(d.ate!)})` : `1 a ${fim} de ${mesNome}${d.situacao === "futuro" ? " (previsto: só reservas já confirmadas)" : ""}`;
+  const emissao = d.situacao === "parcial" ? `parcial até ${diaMesBr(d.ate!)}` : d.situacao === "futuro" ? "mês ainda não começou" : "fechamento do mês";
   const aviso =
     d.situacao === "parcial"
-      ? `Relatório parcial, para acompanhar o andamento do mês, com a posição de ${br(d.ate!)}. Ele já inclui as reservas confirmadas até o fim do mês, inclusive as que ainda não aconteceram (como no portal): os números podem mudar. O fechamento completo vem no início do mês seguinte.`
+      ? `Relatório parcial, para acompanhar o andamento do mês, com a posição de ${dataBr(d.ate!)}. Ele já inclui as reservas confirmadas até o fim do mês, inclusive as que ainda não aconteceram (como no portal): os números podem mudar. O fechamento completo vem no início do mês seguinte.`
       : d.situacao === "futuro"
         ? "Mês ainda não começou: só reservas já confirmadas, nada foi recebido ainda."
         : null;
@@ -564,7 +563,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
     const saldoTexto = x.saldo > 0 ? `(a ${e} deve a você)` : x.saldo < 0 ? `(você deve à ${e})` : "(zerado)";
     const linhas: LinhaValor[] = [{ texto: `Saldo do acerto em ${fim}/${d.mes} ${saldoTexto}${quem}`, valor: formatBRL(Math.abs(x.saldo)), tipo: "normal" }];
     if (x.descontado > 0) linhas.push({ texto: `− Adiantamentos descontados${quem}`, valor: `− ${formatBRL(x.descontado)}`, tipo: "sub" });
-    if (x.situacao === "pago") linhas.push({ texto: `Transferido em ${br(x.dataPagamento!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
+    if (x.situacao === "pago") linhas.push({ texto: `Transferido em ${dataBr(x.dataPagamento!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     else if (x.situacao === "proprietario_deve") {
       // M8.2c: o desconto de reserva cancelada com devolução ao hóspede sai do próximo repasse; só o resto se transfere.
       const { proximoRepasse, transferir } = divisaoDoDeve(x);
@@ -572,7 +571,7 @@ export function textosDoRelatorio(d: DadosRelatorio): TextosRelatorio {
       if (transferir) linhas.push({ texto: `Você transfere no fechamento${quem}`, valor: formatBRL(transferir), tipo: "total" });
     } else if (x.situacao === "fechado" || x.situacao === "empresa_deve") linhas.push({ texto: `A transferir no fechamento${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     else if (x.situacao === "no_repasse_posterior") linhas.push({ texto: `Levado pelo repasse de ${nomeMes(x.repassePosterior!)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
-    else if (x.situacao === "parcial") linhas.push({ texto: `Saldo parcial, fecha em ${br(`${d.ano}-${String(d.mes).padStart(2, "0")}-${String(fim).padStart(2, "0")}`)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
+    else if (x.situacao === "parcial") linhas.push({ texto: `Saldo parcial, fecha em ${dataBr(`${d.ano}-${String(d.mes).padStart(2, "0")}-${String(fim).padStart(2, "0")}`)}${quem}`, valor: formatBRL(x.valor), tipo: "total" });
     return linhas;
   });
 

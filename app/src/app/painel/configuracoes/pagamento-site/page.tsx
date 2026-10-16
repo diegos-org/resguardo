@@ -22,10 +22,10 @@ import {
   NAO_COMPARECIMENTO_HORAS_MAX,
   TEXTOS_TRES_DS,
 } from "@/configuracoes/pagamento-site";
+import { dataHoraNoFuso, horaNoFuso } from "@/lib/datas";
 import { CODIGOS_CAUSA_CONTESTACAO } from "@/pagamentos/contestacao-regras";
 import { getDb } from "@/db/client";
 import { listarCategorias } from "@/despesas/categorias";
-import { horaNoFuso } from "@/lib/datas";
 import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
 import { conferirAgoraAcao, religarCartaoAcao, salvarConfigPagamentoSiteAcao } from "@/pagamentos/acoes-painel";
 import { CARTOES_POR_HORA_NA_ORGANIZACAO, MAXIMO_CARTAO_POR_COTACAO } from "@/pagamentos/andamento";
@@ -44,7 +44,7 @@ import { motivosPorImovel, podeCobrar, TEXTO_SEM_COBRANCA } from "@/pagamentos/o
 import { MODOS_TRES_DS, PARCELAS_MAXIMAS } from "@/pagamentos/provedor";
 
 const FUSO = "America/Sao_Paulo";
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: FUSO, dateStyle: "short", timeStyle: "short" });
+const quando = (d: Date) => dataHoraNoFuso(d, FUSO);
 const nota = { fontSize: "0.8125rem", color: "var(--scl-texto-2)", margin: 0 } as const;
 
 /** Os campos editáveis de cada causa da decisão de quem arca (M8.2e), com o rótulo de cada um. */

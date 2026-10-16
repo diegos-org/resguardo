@@ -14,7 +14,7 @@ import { getDb } from "@/db/client";
 import { EXPLICACAO_FONTE_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
 import { diaDaSemana, somarDias } from "@/imoveis/regras-venda";
 import { listarImoveis } from "@/imoveis/repositorio";
-import { hojeISO } from "@/lib/datas";
+import { dataBr, dataHoraNoFuso, hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { descontoBp } from "@/marketplace/precos";
@@ -23,8 +23,7 @@ import { lerPrecosMarketplace } from "@/marketplace/precos-config";
 const primeiro = (v: string | string[] | undefined) => Array.isArray(v) ? v[0] : v;
 const dinheiro = (v: number | null | undefined) => v === null || v === undefined ? "não informado" : formatBRL(v);
 const numero = (v: number | null | undefined) => v === null || v === undefined ? "não informado" : String(v);
-const dataBr = (d: string) => d.split("-").reverse().join("/");
-const instante = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, dateStyle: "short", timeStyle: "short" }).format(d);
+const instante = (d: Date, fuso: string) => dataHoraNoFuso(d, fuso);
 const ACOES: Record<LinhaPlano["acao"], string> = { enviar: "Enviar (diferente ou sem leitura)", igual: "Igual: nada a enviar", sem_dados: "Nada a enviar" };
 const BLOQUEIO: Record<string, string> = { blackout: "fechado", none: "aberto", exception: "exceção", noCheckIn: "sem entrada", noCheckOut: "sem saída", noCheckInOrCheckOut: "sem entrada nem saída" };
 

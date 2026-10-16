@@ -1,4 +1,5 @@
 import { secoesParaMostrar, type VersaoComoFunciona } from "@/configuracoes/como-funciona";
+import { dataBr, dataHoraNoFuso } from "@/lib/datas";
 import type { DadosDoProprietario } from "@/portal/dados-contrato";
 import styles from "./portal.module.css";
 
@@ -19,9 +20,6 @@ type Props = {
   aceitar?: (f: FormData) => Promise<void>;
   mensagem?: { tipo: "ok" | "erro"; texto: string } | null;
 };
-
-export const dataBr = (d: string) => d.split("-").reverse().join("/");
-export const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /** O "Como funciona" como o proprietário lê (M5.6): texto por seção, quadro "Seus dados" e o aceite. */
 export function DocumentoComoFunciona({ versao, empresa, dados, donos, aceitar, mensagem }: Props) {
@@ -79,9 +77,9 @@ export function DocumentoComoFunciona({ versao, empresa, dados, donos, aceitar, 
         {donos.map((d) => (
           <p key={d.nome} style={{ margin: 0 }}>
             {d.aceite
-              ? `${d.nome}: versão ${versao.numero} aceita em ${quando(d.aceite.aceitoEm)} (${d.aceite.email}).`
+              ? `${d.nome}: versão ${versao.numero} aceita em ${dataHoraNoFuso(d.aceite.aceitoEm)} (${d.aceite.email}).`
               : d.ultimo
-                ? `${d.nome}: a versão ${d.ultimo.versao} foi aceita em ${quando(d.ultimo.aceitoEm)}; o texto mudou em ${dataBr(versao.data)} — leia e aceite a versão ${versao.numero}.`
+                ? `${d.nome}: a versão ${d.ultimo.versao} foi aceita em ${dataHoraNoFuso(d.ultimo.aceitoEm)}; o texto mudou em ${dataBr(versao.data)} — leia e aceite a versão ${versao.numero}.`
                 : `${d.nome}: ainda sem aceite.`}
           </p>
         ))}

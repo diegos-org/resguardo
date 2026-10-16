@@ -62,3 +62,33 @@ export const escreverHora = (h: string) => lerHora(h) ?? h;
 export function horaNoFuso(d: Date, fuso = FUSO_PADRAO): string {
   return new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
 }
+
+/** Uma data guardada ("AAAA-MM-DD") para pessoas: "16/10/2026". Sem fuso: a data já é o dia. O que não é data sai como está. */
+export function dataBr(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+/** Uma data guardada ("AAAA-MM-DD") sem o ano: "16/10". O que não é data sai como está. */
+export function diaMesBr(iso: string): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[2]}/${m[1]}` : iso;
+}
+
+/** O dia de um instante no fuso (padrão: São Paulo): "16/10/2026". */
+export const dataNoFuso = (d: Date, fuso = FUSO_PADRAO) => dataBr(hojeISO(fuso, d));
+
+/** O dia de um instante no fuso, sem o ano: "16/10". */
+export const diaMesNoFuso = (d: Date, fuso = FUSO_PADRAO) => diaMesBr(hojeISO(fuso, d));
+
+/**
+ * Dia e hora de um instante no fuso, com o ano: "16/10/2026 às 15:05" (painel, PDFs e e-mails à equipe). Sem vírgula e
+ * sem segundos; o " às " é montado aqui, sem depender da versão do ICU.
+ */
+export const dataHoraNoFuso = (d: Date, fuso = FUSO_PADRAO) => `${dataNoFuso(d, fuso)} às ${horaNoFuso(d, fuso)}`;
+
+/** Dia e hora de um instante no fuso, sem o ano: "16/10 às 15:05" (os prazos e os registros que o hóspede vê). */
+export const diaHoraNoFuso = (d: Date, fuso = FUSO_PADRAO) => `${diaMesBr(hojeISO(fuso, d))} às ${horaNoFuso(d, fuso)}`;
+
+/** Como dizer o fuso ao lado de uma hora: "horário de Brasília" no padrão, "horário do local do imóvel" nos outros. */
+export const rotuloDoFuso = (fuso: string) => (fuso === FUSO_PADRAO ? "horário de Brasília" : "horário do local do imóvel");

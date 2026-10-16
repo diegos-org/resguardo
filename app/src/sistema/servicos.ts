@@ -3,6 +3,7 @@
  * "ok" só quando foi testado agora (o banco); "configurado" quando a chave existe mas o
  * serviço não foi testado nesta abertura (não afirmar que funciona sem ter conferido).
  */
+import { dataHoraNoFuso } from "@/lib/datas";
 import { ambienteDoSentry, situacaoDoSentry } from "@/observabilidade/sentry";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
@@ -15,7 +16,7 @@ export type Servico = { nome: string; paraQue: string; situacao: SituacaoServico
 export const NOME_MERCADO_PAGO = "Pagamentos (Mercado Pago)";
 export const NOME_SENTRY = "Avisos de erro (Sentry)";
 
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+const quando = (d: Date) => dataHoraNoFuso(d);
 
 /**
  * No deploy de produção sem as chaves de teste (que ficam só no ambiente Preview): é o esperado, não falta nada. Só no

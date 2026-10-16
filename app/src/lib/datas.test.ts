@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { instanteLocal as instanteDoPortal, somarDias as somarDoPortal } from "@/hospede/portal";
-import { escreverHora, FUSO_PADRAO, HORA_VALIDA, horaNoFuso, hojeISO, instanteLocal, lerHora, PADRAO_DO_CAMPO_HORA, somarDias } from "./datas";
+import {
+  dataBr,
+  dataHoraNoFuso,
+  dataNoFuso,
+  diaHoraNoFuso,
+  diaMesBr,
+  diaMesNoFuso,
+  escreverHora,
+  FUSO_PADRAO,
+  HORA_VALIDA,
+  horaNoFuso,
+  hojeISO,
+  instanteLocal,
+  lerHora,
+  PADRAO_DO_CAMPO_HORA,
+  rotuloDoFuso,
+  somarDias,
+} from "./datas";
 
 describe("datas no fuso do imóvel", () => {
   it("somarDias anda pelo calendário (mês, ano e ano bissexto)", () => {
@@ -85,5 +102,48 @@ describe("datas no fuso do imóvel", () => {
       expect(saida, saida).toMatch(HORA_VALIDA);
       expect(saida).not.toMatch(/AM|PM/i);
     }
+  });
+
+  it("dataBr e diaMesBr: a data guardada em dd/mm/aaaa e dd/mm, sem fuso; o que não é data sai como está", () => {
+    expect(dataBr("2026-10-16")).toBe("16/10/2026");
+    expect(dataBr("2026-03-05")).toBe("05/03/2026");
+    expect(diaMesBr("2026-10-16")).toBe("16/10");
+    expect(diaMesBr("2026-03-05")).toBe("05/03");
+    for (const t of ["", "a combinar", "16/10/2026"]) {
+      expect(dataBr(t), t).toBe(t);
+      expect(diaMesBr(t), t).toBe(t);
+    }
+  });
+
+  it("dataNoFuso, dataHoraNoFuso e diaHoraNoFuso: o dia e a hora do instante em São Paulo (sem ISO, UTC nem segundos)", () => {
+    const noite = new Date("2026-10-17T01:30:00Z"); // 16/10 às 22:30 em São Paulo; 17/10 em UTC.
+    expect(dataNoFuso(noite)).toBe("16/10/2026");
+    expect(dataHoraNoFuso(noite)).toBe("16/10/2026 às 22:30");
+    expect(dataHoraNoFuso(noite, "America/Sao_Paulo")).toBe("16/10/2026 às 22:30");
+    expect(diaHoraNoFuso(noite)).toBe("16/10 às 22:30");
+    // Meia-noite e cinco é "00:05", do dia certo.
+    expect(dataHoraNoFuso(new Date("2026-10-17T03:05:00Z"))).toBe("17/10/2026 às 00:05");
+    expect(diaHoraNoFuso(new Date("2026-03-05T12:07:45Z"))).toBe("05/03 às 09:07");
+    // Outro fuso, outro dia e outra hora para o mesmo instante.
+    expect(dataHoraNoFuso(new Date("2026-07-10T23:05:00Z"), "Europe/Lisbon")).toBe("11/07/2026 às 00:05");
+    expect(diaHoraNoFuso(new Date("2026-07-10T23:05:00Z"), "Europe/Lisbon")).toBe("11/07 às 00:05");
+    expect(dataNoFuso(noite, "UTC")).toBe("17/10/2026");
+    expect(diaMesNoFuso(noite)).toBe("16/10");
+    expect(diaMesNoFuso(noite, "UTC")).toBe("17/10");
+    // A virada do ano é a de São Paulo (o rodapé "©" usa o ano daqui).
+    expect(hojeISO(FUSO_PADRAO, new Date("2027-01-01T02:00:00Z")).startsWith("2026")).toBe(true);
+    for (let h = 0; h < 24; h++) {
+      const d = new Date(Date.UTC(2026, 9, 16, h, 7, 59));
+      for (const saida of [dataHoraNoFuso(d), diaHoraNoFuso(d)]) {
+        expect(saida, saida).toMatch(/^\d{2}\/\d{2}(\/\d{4})? às ([01]\d|2[0-3]):[0-5]\d$/);
+        expect(saida).not.toMatch(/AM|PM|:\d{2}:\d{2}|,|T\d|Z/);
+      }
+    }
+  });
+
+  it("rotuloDoFuso: horário de Brasília no padrão, horário do local do imóvel nos outros", () => {
+    expect(rotuloDoFuso("America/Sao_Paulo")).toBe("horário de Brasília");
+    expect(rotuloDoFuso(FUSO_PADRAO)).toBe("horário de Brasília");
+    expect(rotuloDoFuso("Europe/Lisbon")).toBe("horário do local do imóvel");
   });
 });

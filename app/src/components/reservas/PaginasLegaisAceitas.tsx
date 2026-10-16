@@ -1,7 +1,8 @@
 import { DOCUMENTOS_LEGAIS, PAGINAS_LEGAIS } from "@/configuracoes/paginas-legais-texto";
+import { dataHoraNoFuso } from "@/lib/datas";
 import type { AceiteSite } from "@/site/aceites";
 
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+const quando = (d: Date) => dataHoraNoFuso(d);
 const ORIGEM = { pix: "ao gerar o Pix", cartao: "ao pagar com cartão" } as const;
 
 /**

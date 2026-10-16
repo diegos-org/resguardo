@@ -163,13 +163,13 @@ describe("vista do pagamento para o navegador (M8.2a)", () => {
     expect(linhaDaAnalise("2026-10-01T14:10:00.000Z", agora, "America/Sao_Paulo")).toBe(
       "O prazo das datas acabou às 11:10: se a análise aprovar e as datas ainda estiverem livres, confirmamos a reserva; senão, devolvemos o valor integral.",
     );
-    expect(linhaDaAnalise("2026-09-30T14:10:00.000Z", agora, "America/Sao_Paulo")).toContain("O prazo das datas acabou em 30/09, 11:10:");
+    expect(linhaDaAnalise("2026-09-30T14:10:00.000Z", agora, "America/Sao_Paulo")).toContain("O prazo das datas acabou em 30/09 às 11:10:");
     expect(linhaDaAnalise(null, agora, "America/Sao_Paulo")).toBeNull();
     expect(linhaDaAnalise("não é data", agora, "America/Sao_Paulo")).toBeNull();
   });
 
   it("mensagem para a equipe: a cotação e uma linha sobre o pagamento; com as datas seguradas, a de sempre", () => {
-    const texto = "Olá! Fiz a cotação COT-ABCDEFGH no site.\nEntrada: 12/10 · Saída: 15/10.\nAs datas estão seguradas para mim até 01/10, 12:30. Quero confirmar a reserva.";
+    const texto = "Olá! Fiz a cotação COT-ABCDEFGH no site.\nEntrada: 12/10 · Saída: 15/10.\nAs datas estão seguradas para mim até 01/10 às 12:30. Quero confirmar a reserva.";
     expect(mensagemDoContato(texto, "pagar", null)).toBe(texto);
     expect(mensagemDoContato(texto, "pix_esgotado", null)).toBe(texto);
     expect(mensagemDoContato(texto, "aprovado_sem_datas", null)).toBe("Olá! Fiz a cotação COT-ABCDEFGH no site.\nEntrada: 12/10 · Saída: 15/10.\nPaguei pelo Pix, mas a página diz que não deu para garantir as datas.");
@@ -280,7 +280,7 @@ describe("textoDoCancelamento: o texto único da página e das mensagens (M8.2c)
     expect(texto("cancelada_sem_devolucao", { ...semDevolucao, integralAte: "2026-10-06", arrependimentoAte: "2026-10-17" }).decisao).toBe(
       "Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até 17/10. [sem devolução: prazo]",
     );
-    // A política para o arrependimento na entrada, e a entrada (15/10, 15:00) vem antes dos 7 dias: o texto diz a entrada.
+    // A política para o arrependimento na entrada, e a entrada (15/10 às 15:00) vem antes dos 7 dias: o texto diz a entrada.
     const comEntrada = { ...semDevolucao, integralAte: "2026-10-06", arrependimentoAte: "2026-10-17", entradaEm: "2026-10-15T18:00:00.000Z" };
     expect(texto("cancelada_sem_devolucao", { ...comEntrada, arrependimentoAteEntrada: true }).decisao).toBe(
       "Esta reserva foi paga quando o prazo de reembolso integral já tinha passado. Arrependimento: até a entrada, em 15/10. [sem devolução: prazo]",

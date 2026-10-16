@@ -7,6 +7,7 @@ import { Periodos } from "@/components/imoveis/Periodos";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
 import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
 import { DIAS_SEMANA, type Periodo } from "@/imoveis/regras-venda";
+import { dataBr, dataHoraNoFuso } from "@/lib/datas";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { formatBRL } from "@/lib/money";
 import { type PrecosMarketplace, simular } from "@/marketplace/precos";
@@ -58,8 +59,7 @@ type Props = {
   registrarManutencao: AcaoSimples;
 };
 
-const dataBr = (d: string) => d.split("-").reverse().join("/");
-const quando = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(d);
+const quando = (d: Date) => dataHoraNoFuso(d);
 const NOMES_SITUACAO_ENVIO: Record<string, string> = { ok: "concluído", parcial: "concluído com pendências", erro: "com erro", ocupada: "não rodou (ocupado)", desligada: "desligado", incerto: "incerto", executando: "em andamento" };
 const ESTADO_LIMPEZA = { pedida: "A fazer", confirmada: "A fazer", realizada: "Feita" } as const;
 

@@ -59,14 +59,15 @@ it("datas seguradas: prazo no fuso do imóvel, pedido e botão do WhatsApp com a
   const holdAte = new Date("2026-10-01T15:30:00Z"); // 12:30 em São Paulo
   render(<Cotacao vista={vista({ estado: "segurada", reserva: { codigo: "SCL-TESTE1", estado: "pedido" } }, { estado: "segurada", holdAte })} whatsapp="5521999990000" email="" />);
   expect(screen.getByRole("heading", { name: "Datas seguradas" })).toBeTruthy();
-  expect(screen.getByText(/pedido SCL-TESTE1/).textContent).toContain("12:30");
+  // O prazo como em Minha reserva: dia e hora, sem ano, com o fuso (M7.22).
+  expect(screen.getByText(/pedido SCL-TESTE1/).textContent).toContain("até 01/10 às 12:30 (horário de Brasília) (pedido SCL-TESTE1)");
   // Abre outra janela (M7.11): o fim do link, só para o leitor de tela, avisa.
   const botao = screen.getByRole("link", { name: /^Falar com a equipe pelo WhatsApp/ });
   expect(botao.textContent).toBe("Falar com a equipe pelo WhatsApp (abre em nova janela)");
   const link = botao.getAttribute("href") ?? "";
   expect(link.startsWith("https://wa.me/5521999990000?text=")).toBe(true);
   expect(decodeURIComponent(link)).toContain("COT-ABCDEFGH");
-  expect(decodeURIComponent(link)).toContain("seguradas para mim até 01/10, 12:30");
+  expect(decodeURIComponent(link)).toContain("seguradas para mim até 01/10 às 12:30");
   cleanup();
   render(<Cotacao vista={vista({ estado: "expirada" }, { estado: "expirada", holdAte })} whatsapp={null} email="contato@example.com" />);
   expect(screen.getByRole("heading", { name: "O tempo desta cotação acabou" })).toBeTruthy();

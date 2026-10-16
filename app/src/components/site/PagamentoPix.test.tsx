@@ -75,7 +75,8 @@ describe("o que o hóspede vê em cada situação do pagamento (M8.2a)", () => {
     expect(screen.getByRole("heading", { name: "Pague com Pix" })).toBeTruthy();
     expect(screen.getByText("CONVITE EDITAVEL")).toBeTruthy();
     expect(screen.getByText("R$ 1.824,00")).toBeTruthy();
-    expect(screen.getByText(/seguradas para você até/).textContent).toContain("12:30");
+    // O prazo como em Minha reserva: dia e hora, sem ano, com o fuso (M7.22).
+    expect(screen.getByText(/seguradas para você até/).textContent).toContain("até 01/10 às 12:30 (horário de Brasília).");
     expect(screen.getByText("Prefere combinar com a equipe?")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Falar com a equipe pelo WhatsApp" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Gerar Pix" }));

@@ -7,6 +7,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { CampoHora } from "@/components/CampoHora";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
+import { dataHoraNoFuso } from "@/lib/datas";
 
 export default async function Agenda({ searchParams }: PageProps<"/painel/agenda">) {
   const sessao = await exigirSessaoPainel();
@@ -54,7 +55,7 @@ export default async function Agenda({ searchParams }: PageProps<"/painel/agenda
         </p>
       )}
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
-        Última agenda enviada: {ultima ? ultima.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "nenhuma ainda"}
+        Última agenda enviada: {ultima ? dataHoraNoFuso(ultima) : "nenhuma ainda"}
       </p>
 
       {agenda.secoes.length === 0 && <p>Nenhum imóvel ativo.</p>}

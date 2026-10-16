@@ -1,14 +1,11 @@
 import type { ReactNode } from "react";
 import { HORA_LIMITE_DO_DIA } from "@/configuracoes/politica-cancelamento";
 import { CAMPOS_VERSAO, DOCUMENTOS_LEGAIS, type DocumentoLegal as Documento, PAGINAS_LEGAIS, type VersoesLegais } from "@/configuracoes/paginas-legais-texto";
+import { dataBr, diaHoraNoFuso, diaMesBr, hojeISO, rotuloDoFuso } from "@/lib/datas";
 import type { AceiteNaPagina } from "@/site/aceites";
 import { LinkNovaJanela } from "./Acessibilidade";
 import { DocumentoLegal } from "./DocumentoLegal";
 import styles from "./site.module.css";
-
-const br = (d: string) => d.split("-").reverse().join("/");
-const formato = (fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o });
-const horario = (fuso: string) => (fuso === "America/Sao_Paulo" ? "horário de Brasília" : "horário do local do imóvel");
 
 /** A versão aceita (ou a que vai ser aceita) de um documento, numa aba nova: a página do pagamento fica como está. */
 function LinkLegal({ doc, versoes, children }: { doc: Documento; versoes: VersoesLegais; children?: ReactNode }) {
@@ -22,7 +19,7 @@ export function PrazoDoReembolso({ prazo, fuso }: { prazo: AceiteNaPagina["prazo
   if (prazo.tipo === "integral_ate") {
     return (
       <p className={styles.texto}>
-        Para esta reserva, o reembolso integral vale para pedidos de cancelamento até <strong>{`${HORA_LIMITE_DO_DIA} de ${br(prazo.data)}`}</strong> ({horario(fuso)}).
+        Para esta reserva, o reembolso integral vale para pedidos de cancelamento até <strong>{`${HORA_LIMITE_DO_DIA} de ${dataBr(prazo.data)}`}</strong> ({rotuloDoFuso(fuso)}).
       </p>
     );
   }
@@ -68,7 +65,7 @@ export function BlocoAceite({ aceite, fuso, aoMarcar }: { aceite: AceiteNaPagina
             <LinkLegal doc="cancelamento" versoes={versoes}>
               Política de cancelamento versão {daReserva.versao}
             </LinkLegal>
-            , aceita em {formato(fuso, { day: "2-digit", month: "2-digit" }).format(new Date(daReserva.em))}.
+            , aceita em {diaMesBr(hojeISO(fuso, new Date(daReserva.em)))}.
           </span>
         ) : (
           <span>
@@ -106,7 +103,7 @@ export function AceiteFeito({ aceito, fuso, prazo }: { aceito: NonNullable<Aceit
         <LinkLegal doc="privacidade" versoes={v}>
           Política de privacidade (versão {v.privacidade})
         </LinkLegal>{" "}
-        em {formato(fuso, { day: "2-digit", month: "2-digit" }).format(em)} às {formato(fuso, { hour: "2-digit", minute: "2-digit" }).format(em)}.
+        em {diaHoraNoFuso(em, fuso)}.
       </p>
       {prazo && <PrazoDoReembolso prazo={prazo} fuso={fuso} />}
     </div>

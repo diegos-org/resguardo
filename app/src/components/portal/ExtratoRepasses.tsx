@@ -1,4 +1,5 @@
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
+import { dataBr, dataNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { NOMES_SITUACAO_EMAIL } from "@/repasses/email";
 import { ROTULO_DISPUTA_PROPRIETARIO } from "@/pagamentos/contestacao-regras";
@@ -22,7 +23,6 @@ type Props = {
   mensagem?: { tipo: "ok" | "erro"; texto: string } | null;
 };
 
-const dataBr = (d: string) => d.split("-").reverse().join("/");
 const caixa: React.CSSProperties = { background: "var(--scl-papel)", border: "1px solid var(--scl-borda)", borderRadius: 8, padding: 16 };
 const rotulo: React.CSSProperties = { color: "var(--scl-texto-2)", fontSize: "0.875rem" };
 const celula: React.CSSProperties = { padding: "8px 10px", borderBottom: "1px solid var(--scl-areia)", whiteSpace: "nowrap" };
@@ -45,7 +45,7 @@ function situacaoDaDisputa(p: Parte): string {
 
 export function situacaoNoPortal(r: Pick<Repasse, "tipo" | "situacao" | "dataPagamento" | "estornadoEm">): string {
   // Estornado fica no histórico: as reservas dele voltam ao extrato (disponível ou a liberar) e entram no próximo repasse.
-  if (r.situacao === "estornado") return `Estornado pela empresa${r.estornadoEm ? ` em ${r.estornadoEm.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : ""}: as reservas voltaram ao extrato`;
+  if (r.situacao === "estornado") return `Estornado pela empresa${r.estornadoEm ? ` em ${dataNoFuso(r.estornadoEm)}` : ""}: as reservas voltaram ao extrato`;
   // M4.11: acerto feito fora do sistema, antes do início dele — nada foi pago por aqui.
   if (r.tipo === "por_fora") return "Acertado fora do sistema, antes do início";
   return r.situacao === "pago" ? `Pago em ${dataBr(r.dataPagamento!)}` : "A pagar pela empresa";

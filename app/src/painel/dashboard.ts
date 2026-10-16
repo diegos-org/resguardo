@@ -33,7 +33,7 @@ import { prazoDosDocumentos } from "@/pagamentos/contestacao-tela";
 import { avisosDeContestacaoNosRepasses } from "@/repasses/avisos-contestacao";
 import { avisosDeDescontos } from "@/repasses/descontos";
 import { partesDoProprietario } from "@/repasses/extrato";
-import { hojeISO, horaNoFuso } from "@/lib/datas";
+import { diaHoraNoFuso, FUSO_PADRAO, hojeISO, horaNoFuso } from "@/lib/datas";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
 import { rotinasPendentes } from "@/rotinas/rotinas";
@@ -326,11 +326,8 @@ export async function carregarDashboard(
 
 // ---------------------------------------------------------------- alteração de reserva paga pelo site (M8.2d)
 
-const horaSP = (d: Date, agora: Date) => {
-  const f = (x: Date, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(x);
-  const hora = horaNoFuso(d);
-  return f(d, { day: "2-digit", month: "2-digit" }) === f(agora, { day: "2-digit", month: "2-digit" }) ? hora : `${f(d, { day: "2-digit", month: "2-digit" })} às ${hora}`;
-};
+/** "15:05" no mesmo dia; "16/10 às 15:05" noutro (São Paulo). */
+const horaSP = (d: Date, agora: Date) => (hojeISO(FUSO_PADRAO, d) === hojeISO(FUSO_PADRAO, agora) ? horaNoFuso(d) : diaHoraNoFuso(d));
 /** Os códigos das reservas do aviso (até 5; o resto em número): quem lê sabe qual abrir. */
 const codigosDoAviso = (xs: readonly { codigo: string }[]) => (xs.length <= 5 ? xs.map((x) => x.codigo).join(", ") : `${xs.slice(0, 5).map((x) => x.codigo).join(", ")} e mais ${xs.length - 5}`);
 const linkDoAviso = (xs: readonly { reservaId: string }[]) => (xs.length === 1 ? `/painel/reservas/${xs[0].reservaId}` : "/painel/reservas");

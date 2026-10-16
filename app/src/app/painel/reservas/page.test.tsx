@@ -55,7 +55,7 @@ it("página preserva filtros nos links, mostra consulta/data local e oculta fina
   expect(html).toContain("26–50 de 56");
   expect(html).toContain("Próxima");
   expect(html).toContain("situacao=consulta&amp;escopo=historico&amp;ordem=origem&amp;pagina=3");
-  expect(html).toContain("01/10/2026, 23:30:00");
+  expect(html).toContain("01/10/2026 às 23:30");
   expect(html).not.toContain("<th>Bruto</th>");
   expect(html).not.toContain("possível overbooking");
   expect(mocks.listar.mock.calls[0][1]).toBe("org");

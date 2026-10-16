@@ -8,7 +8,7 @@ import { pedirCancelamentoAcao, sairHospede } from "@/hospede/acoes";
 import { type CancelamentoNoPortal, cancelamentoNoPortal, ESTADIA_COMECOU, JA_CANCELADA, NAO_DA, PEDIDO_DESLIGADO, PEDIDO_OCUPADO, perguntaDoPedidoDeCancelamento, textoDaPoliticaNoPortal } from "@/hospede/cancelamento";
 import { INSTRUCOES_HORA, type ReservaDoHospede, reservasDoHospede } from "@/hospede/portal";
 import { emailDoHospede } from "@/hospede/sessao-atual";
-import { escreverHora } from "@/lib/datas";
+import { diaHoraNoFuso, escreverHora, FUSO_PADRAO } from "@/lib/datas";
 import { carregarSite, metadadosDeMinhaReserva } from "@/site/pagina";
 import { TEXTO_PARA_CANCELAR_FALE_COM_A_EQUIPE } from "@/pagamentos/contestacao-regras";
 import { linkWhatsapp } from "@/site/site";
@@ -52,11 +52,8 @@ const ERROS_DO_PEDIDO: Record<string, string> = {
   "cancelamento-ocupado": PEDIDO_OCUPADO,
 };
 
-const BRASILIA = "America/Sao_Paulo";
-const diaHoraBrasilia = (d: Date) => {
-  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: BRASILIA, ...o }).format(d);
-  return `${f({ day: "2-digit", month: "2-digit" })} às ${f({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`;
-};
+/** "16/10 às 22:30" no horário de Brasília (o que a política conta). */
+const diaHoraBrasilia = (d: Date) => diaHoraNoFuso(d, FUSO_PADRAO);
 /**
  * "Cancelar a reserva" em Minha reserva (M8.2c): só para reservas pagas pelo site deste e-mail. O hóspede só PEDE (a data
  * e a hora ficam registradas na hora); a equipe confirma por escrito e cancela no painel. Nunca valores.

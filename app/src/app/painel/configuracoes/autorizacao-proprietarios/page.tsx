@@ -10,10 +10,10 @@ import { CAIXAS_AUTORIZACAO, enviosPorVersao, historicoDaAutorizacao, lerVersoes
 import { lerEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
 import { usuarios } from "@/db/schema";
+import { dataBr, dataNoFuso } from "@/lib/datas";
 import { FORMULARIOS_PROPRIETARIO, montarAutorizacao } from "@/proprietarios/autorizacao";
 
-const br = (d: string) => d.split("-").reverse().join("/");
-const dia = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+const dia = (d: Date) => dataNoFuso(d);
 const nota = { fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 } as const;
 
 /**
@@ -81,7 +81,7 @@ export default async function AutorizacaoProprietarios() {
                           {v.numero}
                           {v.numero === atual.numero ? " (em vigor)" : ""}
                         </td>
-                        <td>{v.data ? br(v.data) : "veio com o sistema"}</td>
+                        <td>{v.data ? dataBr(v.data) : "veio com o sistema"}</td>
                         <td>{(v.autorId && autores.get(v.autorId)) || "—"}</td>
                         <td>{e ? `${e.envios}${e.primeiro ? ` (o primeiro em ${dia(e.primeiro)})` : ""}` : "nenhum"}</td>
                         <td style={{ whiteSpace: "normal", minWidth: 280 }}>&ldquo;{v.secoes.texto}&rdquo;</td>

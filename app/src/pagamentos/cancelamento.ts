@@ -61,7 +61,7 @@ import {
 import type { Db } from "@/db/types";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { hojeISO, instanteLocal } from "@/lib/datas";
+import { diaHoraNoFuso as diaHoraBr, diaMesBr, diaMesNoFuso as diaBr, hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReservaDados } from "@/repasses/recebimentos";
@@ -257,12 +257,9 @@ const FOLGA_MOMENTO_MS = 59_000;
 /** Um pedido registrado mais de 48 h depois de chegar pede conferência. */
 const REGISTRO_TARDIO_MS = 48 * 3_600_000;
 
-const fmt = (d: Date, fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
-/** "dd/mm" no fuso. */
-export const diaBr = (d: Date, fuso = FUSO_PAGAMENTO) => fmt(d, fuso, { day: "2-digit", month: "2-digit" });
-/** "dd/mm às HH:MM" no fuso. */
-export const diaHoraBr = (d: Date, fuso = FUSO_PAGAMENTO) => `${diaBr(d, fuso)} às ${fmt(d, fuso, { hour: "2-digit", minute: "2-digit" })}`;
-const dataIsoBr = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
+/** "dd/mm" e "dd/mm às HH:MM" no fuso (padrão: São Paulo, o fuso do pagamento): as escritas únicas de lib/datas. */
+export { diaBr, diaHoraBr };
+const dataIsoBr = diaMesBr;
 const minuto = (d: Date) => Math.floor(d.getTime() / 60_000);
 const emVigor = () => and(isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`);
 

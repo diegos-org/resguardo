@@ -1,4 +1,5 @@
 import type { LinhaHistorico } from "@/auditoria/auditoria";
+import { dataHoraNoFuso } from "@/lib/datas";
 
 const ROTULOS: Record<string, string> = {
   codigo: "Código",
@@ -63,16 +64,18 @@ const ACOES: Record<string, string> = {
   "beds24.enviar": "enviou calendário e preços ao Beds24",
 };
 
+/**
+ * O valor de um campo para pessoas. As datas "AAAA-MM-DD" soltas no texto saem em dd/mm/aaaa (M7.22), também nos
+ * registros antigos, sem mexer no que está gravado; os carimbos ISO ("2026-10-16T...") e os UUID ficam como estão.
+ */
 function valor(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   if (v === true) return "sim";
   if (v === false) return "não";
   if (Array.isArray(v)) return v.length ? `${v.length} item(ns)` : "nenhum";
-  const t = String(v);
+  const t = String(v).replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, "$3/$2/$1");
   return t.length > 60 ? `${t.slice(0, 57)}…` : t;
 }
-
-const quando = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
 
 export function HistoricoAlteracoes({ linhas }: { linhas: LinhaHistorico[] }) {
   return (
@@ -84,7 +87,7 @@ export function HistoricoAlteracoes({ linhas }: { linhas: LinhaHistorico[] }) {
         <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
           {linhas.map((l) => (
             <li key={l.id} style={{ fontSize: "0.875rem", borderLeft: "3px solid var(--scl-areia)", paddingLeft: 10 }}>
-              <strong>{l.autor ?? "Sistema"}</strong> {ACOES[l.acao] ?? l.acao} · {quando.format(l.criadoEm)}
+              <strong>{l.autor ?? "Sistema"}</strong> {ACOES[l.acao] ?? l.acao} · {dataHoraNoFuso(l.criadoEm)}
               {!/\.(criar|importar)$/.test(l.acao) && (
                 <ul style={{ listStyle: "none", color: "var(--scl-texto-2)" }}>
                   {Object.entries(l.mudancas).map(([campo, [antes, depois]]) => (

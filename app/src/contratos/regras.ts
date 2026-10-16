@@ -1,4 +1,5 @@
 import { TIPOS_CONTRATO, type TipoContrato } from "@/db/schema";
+import { dataBr } from "@/lib/datas";
 import { bpParaTexto, percentualParaBp } from "@/lib/percentual";
 
 export { bpParaTexto, percentualParaBp };
@@ -76,7 +77,7 @@ export function validarContrato(
     const novo = { tipo, comissaoBp, inicio, fim };
     const conflito = existentes.find((c) => sobrepoe(c, novo));
     if (conflito) {
-      erros.geral = `Conflita com o contrato de ${conflito.inicio}${conflito.fim ? ` a ${conflito.fim}` : " (sem fim)"}. Encerre o contrato anterior antes.`;
+      erros.geral = `Conflita com o contrato de ${dataBr(conflito.inicio)}${conflito.fim ? ` a ${dataBr(conflito.fim)}` : " (sem fim)"}. Encerre o contrato anterior antes.`;
     }
   }
   if (Object.keys(erros).length) return { ok: false, erros };

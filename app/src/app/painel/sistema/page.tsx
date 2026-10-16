@@ -6,7 +6,7 @@ import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
-import { hojeISO } from "@/lib/datas";
+import { dataHoraNoFuso, hojeISO } from "@/lib/datas";
 import { situacaoDoMercadoPago } from "@/pagamentos/integracao";
 import { NOMES_ORIGEM } from "@/reservas/regras";
 import { AUTOMACOES, ultimasExecucoes } from "@/sistema/automacoes";
@@ -21,7 +21,7 @@ const SELO: Record<SituacaoServico, { texto: string; cor: string }> = {
   planejado: { texto: "Ainda não construído", cor: "var(--scl-neutro-fundo)" },
 };
 const RECEBE = { split: "canal paga o proprietário", empresa: "empresa recebe e repassa", a_confirmar: "a confirmar" };
-const quando = (d: Date | null) => (d ? d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "—");
+const quando = (d: Date | null) => (d ? dataHoraNoFuso(d) : "—");
 
 export default async function Sistema() {
   const sessao = await exigirSessaoPainel();

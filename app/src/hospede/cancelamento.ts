@@ -24,7 +24,7 @@ import { cancelamentosReserva, contestacoesPagamento, cotacoes, devolucoesPagame
 import type { Db } from "@/db/types";
 import { avisarEquipePorEmail, type ResultadoAviso } from "@/email/aviso-equipe";
 import type { Correio } from "@/email/correio";
-import { hojeISO, instanteLocal } from "@/lib/datas";
+import { diaHoraNoFuso, diaMesBr, FUSO_PADRAO, hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { disputaDoPagamentoOuSituacao } from "@/pagamentos/contestacao-regras";
 import { entradasDaReserva } from "@/pagamentos/entradas";
@@ -254,7 +254,7 @@ export async function pedirCancelamentoPeloHospede(
   }
 }
 
-const diaIso = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
+const diaIso = diaMesBr;
 
 /**
  * O que a política aceita diz em Minha reserva, sem valores (M9.1): o prazo do reembolso integral, o arrependimento (só
@@ -275,10 +275,8 @@ export function textoDaPoliticaNoPortal(c: Pick<CancelamentoNoPortal, "semPoliti
 export const perguntaDoPedidoDeCancelamento = (codigo: string, semPolitica: boolean) =>
   `Pedir o cancelamento da reserva ${codigo}? A data e a hora em que recebemos o pedido ficam registradas agora. A equipe confirma com você, por escrito, o valor que será devolvido${semPolitica ? "" : " pela política que você aceitou ao pagar"}.`;
 
-const diaHoraBrasilia = (d: Date) => {
-  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(d);
-  return `${f({ day: "2-digit", month: "2-digit" })} às ${f({ hour: "2-digit", minute: "2-digit" })}`;
-};
+/** "16/10 às 22:30" no horário de Brasília (o que a política conta). */
+const diaHoraBrasilia = (d: Date) => diaHoraNoFuso(d, FUSO_PADRAO);
 
 /** O e-mail à equipe (puro): o código da reserva, o apartamento e a hora; nunca o nome nem o e-mail do hóspede. */
 export function mensagemPedidoDeCancelamento(d: { reservaCodigo: string; imovel: string; recebidoEm: Date }, linkPainel: string): { assunto: string; texto: string } {
