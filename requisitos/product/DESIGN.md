@@ -43,7 +43,17 @@ porque no celular estreito o texto pode ter duas linhas; na produção, sem a fa
 revisão em 15/10, conferido por teste do CSS e da ordem das páginas, com a moldura logo depois da faixa, e ainda não em
 navegador); motivo: o texto do estudo deixou de ser verdade (o
 pagamento de teste está ligado nas prévias) e as cores dele não eram tokens; objetivo: quem testa não confundir a prévia
-com o site de verdade, dizendo só o que o código garante.
+com o site de verdade, dizendo só o que o código garante; (9) **16/10/2026 (M0.10), menu do painel no
+celular**: antes, até 760px o menu lateral virava uma faixa horizontal no topo que rolava para o lado (com a folga de
+8px e o `scroll-padding` do desvio 6), sem nada indicando a rolagem, e as últimas seções, como Configurações, ficavam
+fora da tela; agora, um botão "Menu" (o `<summary>` de um `<details>`, que abre e fecha sem JavaScript) mostra o nome
+da seção atual ("Menu · Reservas") e abre a lista inteira logo abaixo, em grade (duas colunas em 360px), com a seção
+atual marcada pela barra dourada à esquerda, como no computador, e alvos de toque de 44px; a lista fecha sozinha ao
+trocar de página; o `<summary>` entrou na regra única do contorno de foco em `globals.css`, então todo "abrir e
+fechar" do sistema passa a ter o contorno de 3px deslocado 5px (antes, o padrão do navegador), e o do botão "Menu" é
+o creme do menu verde; no cabeçalho do painel, no celular, o selo e o Sair descem para a linha de baixo em vez de
+espremer o texto; no computador, nada muda; motivo: Diego não achou o menu do painel no celular (16/10) e não chegou
+a Configurações; objetivo: todas as seções à vista com um toque, também no celular.
 Aprovado por Diego em 4/10/2026: adotar o visual do estudo do "Sage" (site público,
 `prototipos/acervo-visual-2026-10` e `prototipos/scl-publico`) como design geral do projeto —
 site, portal do hóspede, portal do proprietário e painel —, com os ajustes abaixo. O painel usa a

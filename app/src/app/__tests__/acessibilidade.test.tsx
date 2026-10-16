@@ -104,7 +104,7 @@ const MINIMO_INDICADOR = 3; // WCAG 1.4.11 (e DESIGN.md): 3:1 para contornos, í
 const VERDES = ["--scl-floresta", "--scl-profundo", "--scl-musgo", "--scl-salvia"];
 const CLAROS = ["--scl-creme", "--scl-papel", "--scl-areia"];
 
-const SELETOR_FOCO = "a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible";
+const SELETOR_FOCO = "a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible";
 const FOCO = regra(GLOBAL, SELETOR_FOCO);
 const [larguraFoco, , corFoco] = (valor(FOCO, "outline") ?? "").split(/\s+/);
 const deslocamentoFoco = parseFloat(valor(FOCO, "outline-offset") ?? "0");
@@ -264,12 +264,80 @@ describe("contorno de foco visível sobre os verdes (M7.11)", () => {
     const miniaturas = regra(site, ".miniaturasRolagem");
     expect(Math.min(...folgas(valor(miniaturas, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
     expect(parseFloat(valor(miniaturas, "scroll-padding")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
-    // Menu do painel no celular, que rola para o lado.
-    const menu = regras(ler("components/painel/painel.module.css")).find((r) => r.seletor === ".menu" && valor(r.corpo, "overflow-x"))!.corpo;
-    expect(Math.min(...folgas(valor(menu, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
-    // A padding só vale no começo e no fim da rolagem; no meio, o navegador leva o item com foco até a borda, menos o
-    // scroll-padding.
-    expect(parseFloat(valor(menu, "scroll-padding-inline")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // O menu do painel no celular rolava para o lado até o M0.10; agora abre a lista inteira (conferido mais abaixo).
+  });
+});
+
+/** As regras de dentro de um @media (achado pelo par de chaves) e as de fora de todos eles. */
+function porTela(css: string, condicao: string): { dentro: Regra[]; fora: Regra[] } {
+  const limpo = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const inicio = limpo.indexOf(`@media ${condicao}`);
+  if (inicio < 0) throw new Error(`@media ${condicao} não encontrado`);
+  const abre = limpo.indexOf("{", inicio);
+  let fim = abre + 1;
+  for (let nivel = 1; nivel > 0; fim++) nivel += limpo[fim] === "{" ? 1 : limpo[fim] === "}" ? -1 : 0;
+  const semMedias = (texto: string) => texto.replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
+  return { dentro: regras(limpo.slice(abre + 1, fim - 1)), fora: regras(semMedias(limpo)) };
+}
+
+describe("menu do painel no celular (M0.10)", () => {
+  const PAINEL = ler("components/painel/painel.module.css");
+  const CELULAR = "(max-width: 760px)";
+  const { dentro: celular, fora: computador } = porTela(PAINEL, CELULAR);
+  const em = (lista: Regra[], seletor: string) => {
+    const achada = lista.find((r) => r.seletor === seletor);
+    if (!achada) throw new Error(`regra ${seletor} não encontrada`);
+    return achada.corpo;
+  };
+
+  it("no computador, nada muda: o botão Menu não aparece e a lista lateral segue em coluna, sempre à vista", () => {
+    expect(valor(em(computador, ".gaveta"), "display")).toBe("none");
+    const menu = em(computador, ".menu");
+    expect([valor(menu, "display"), valor(menu, "flex-direction")]).toEqual(["flex", "column"]);
+    // A lista só se esconde com o <details> fechado, e isso só no celular.
+    expect(computador.filter((r) => r.seletor.includes("[open]"))).toEqual([]);
+  });
+
+  it("no celular, o botão Menu abre a lista inteira, sem rolagem para o lado", () => {
+    expect(valor(em(celular, ".gaveta"), "display")).toBe("block");
+    expect(valor(em(celular, ".gaveta:not([open]) + .menu"), "display")).toBe("none");
+    const menu = em(celular, ".menu");
+    expect(valor(menu, "display")).toBe("grid");
+    // Nenhuma regra do menu rola (nem esconde o que passa da borda), no celular ou no computador.
+    for (const r of regras(PAINEL).filter((x) => /\.menu\b/.test(x.seletor))) expect(r.corpo, r.seletor).not.toMatch(/overflow|scroll-/);
+    // Os itens quebram em linhas (grade), em vez de seguir numa faixa só.
+    expect(valor(menu, "grid-template-columns")).toMatch(/^repeat\(auto-fill, minmax\(/);
+    expect(valor(em(celular, ".menu a"), "white-space")).toBeUndefined();
+  });
+
+  it("alvos de toque de 44px: o botão e cada seção da lista", () => {
+    expect(parseFloat(valor(em(celular, ".botaoMenu"), "min-height")!)).toBeGreaterThanOrEqual(44);
+    expect(parseFloat(valor(em(celular, ".menu a"), "min-height")!)).toBeGreaterThanOrEqual(44);
+  });
+
+  it("o contorno do foco (M7.11) aparece no botão e fica inteiro sobre o verde do menu", () => {
+    // O botão é um <summary>, que entra no mesmo contorno dos links e botões.
+    expect(SELETOR_FOCO.split(", ")).toContain("summary:focus-visible");
+    // O menu lateral é o contêiner verde que troca o contorno para o creme (M7.11)…
+    expect(FOCO_CLARO.test(regra(PAINEL, ".lateral"))).toBe(true);
+    // …e, no celular, a folga dos quatro lados cobre o alcance do contorno (deslocamento mais espessura).
+    const folgas = (valor(em(celular, ".lateral"), "padding") ?? "").split(/\s+/).map(parseFloat);
+    expect(Math.min(...folgas)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // O triângulo padrão do <summary> sai: o botão tem a própria seta.
+    expect(valor(em(celular, ".botaoMenu"), "list-style")).toBe("none");
+    expect(valor(em(celular, ".botaoMenu::-webkit-details-marker"), "display")).toBe("none");
+  });
+
+  it("cabeçalho do painel no celular: o selo e o Sair descem de linha em vez de estourar a largura", () => {
+    for (const seletor of [".cabecalho", ".cabecalhoAcoes"]) {
+      const quebra = celular.filter((r) => r.seletor.split(", ").includes(seletor)).map((r) => valor(r.corpo, "flex-wrap"));
+      expect(quebra, seletor).toContain("wrap");
+    }
+    // O selo não se espreme em duas linhas dentro da pílula.
+    expect(valor(em(celular, ".selo"), "white-space")).toBe("nowrap");
+    // No computador, como antes: uma linha só.
+    expect(valor(em(computador, ".cabecalho"), "flex-wrap")).toBeUndefined();
+    expect(valor(em(computador, ".cabecalhoAcoes"), "flex-wrap")).toBeUndefined();
   });
 });
 

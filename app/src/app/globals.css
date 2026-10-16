@@ -118,12 +118,14 @@ textarea {
   font: inherit;
 }
 
-/* Foco do teclado (DESIGN.md): 3px, deslocado 5px; a cor muda nos contêineres verdes (--scl-foco-cor, M7.11). */
+/* Foco do teclado (DESIGN.md): 3px, deslocado 5px; a cor muda nos contêineres verdes (--scl-foco-cor, M7.11). O
+   <summary> (abre e fecha um <details>, como o botão "Menu" do painel no celular, M0.10) é um controle como o botão. */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
+summary:focus-visible,
 [tabindex]:focus-visible {
   outline: 3px solid var(--scl-foco-cor);
   outline-offset: 5px;
