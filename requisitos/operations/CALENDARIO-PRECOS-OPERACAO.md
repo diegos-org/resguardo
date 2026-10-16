@@ -4,6 +4,16 @@ Consolidação solicitada por Diego em 1/10/2026. Origem: decisões diretas de 1
 
 **Atualização de 6/10/2026:** decisões novas de sobras, alta temporada de Búzios e testes de feriados constam nas seções temáticas. Descontos retirados, 35 referências de Búzios e 42 mínimos de sobras foram conferidos; estado e limites estão no [resultado confirmado](#resultado-confirmado-de-610--preços-descontos-mínimos-e-limites). Trechos de 1–4/10 preservam a história e não substituem os resultados posteriores. Detalhe sanitizado do antes/depois no [registro de 6/10](RODADA-2026-10-06.md).
 
+## Pisos absolutos vigentes — decisão de 15/10/2026
+
+Os limites absolutos aprovados passaram de **R$300 para R$330 nos estúdios 102, 103, 399 e 403**, de **R$650 para R$680 no 303** e de **R$350 para R$380 em Búzios**. Esta atualização prevalece sobre os limites anteriores preservados nos registros históricos abaixo. O objetivo é impedir diárias abaixo dos novos mínimos, sem transformar o piso em preço-alvo nem elevar automaticamente toda a grade.
+
+Os pisos mais altos de faixas específicas continuam valendo: em D3–D7, **R$350 nos estúdios e R$700 no 303**. Em Búzios, o novo limite de R$380 vale na última hora D0–D7; fora dessa faixa, permanece o piso geral de R$450. Não somar novamente R$30 aos pisos de outras faixas. A decisão não altera bases B, tetos, percentuais de desconto, multiplicadores, reservas ou bloqueios.
+
+A referência técnica necessária para suportar o desconto nativo é diferente da base B. Em D0–D2, com redução de 25%, referências mínimas de **R$440,00**, **R$906,67** e **R$506,67** produzem, respectivamente, os pisos de R$330, R$680 e R$380, considerado o arredondamento em centavos. Elevar a referência somente quando necessário para defender o piso; preservar referências e tarifas especiais superiores. Guardar a referência original e não acumular cortes.
+
+Atualizar o requisito não comprova configuração, execução ou proteção permanente. A conferência deve distinguir referência, diária após desconto nativo e cotação final do canal. A correção de uma noite não autoriza ligar o envio do SCL nem comprova que as noites seguintes estarão protegidas. O alcance do piso após o desconto próprio do site e o tratamento de última hora em grandes eventos precisam ser reconciliados com as decisões específicas; não alterar essas estratégias por inferência.
+
 ## Fonte e estado de implantação
 
 - Prevalece a direção de 24/9: **SCL como fonte oficial**, enviando calendário/preços ao Beds24 e às OTAs pelo M3.7, após implementação, teste em imóvel escolhido e ativação expressa por Diego. **Atualização de 4/10:** a fonte de **preços** passa a ser escolhida por imóvel (ROADMAP M3.9: automáticos da SCL, definidos no Beds24 pelo proprietário ou pela ferramenta dele, ou digitados no portal); a direção "SCL envia" vale sempre para o calendário e, para os preços, só quando a SCL é a fonte escolhida — em imóvel com preços do Beds24, o M3.7 não escreve preços (até o M3.9 existir, esse imóvel não é marcado para envio). Essa é a direção do sistema; em 1/10 Diego pediu expressamente esta rodada diretamente pelo Beds24 enquanto o painel não efetua escrita.
@@ -66,7 +76,9 @@ Os valores são diárias antes de taxas/limpeza/descontos, não receita líquida
 | Antecedência da noite (fuso local) | Redução sobre referência original | Piso estúdios | Piso 303 |
 |---|---:|---:|---:|
 | D−7 a D−3 | 15% | R$350 | R$700 |
-| D−2 a D0 | 25% | R$300 | R$650 |
+| D−2 a D0 | 25% | R$330 | R$680 |
+
+Tabela atualizada pelos limites absolutos de 15/10/2026. Antes dessa decisão, a faixa D0–D2 tinha pisos de R$300/R$650; os registros datados preservam esse histórico. Os pisos D3–D7 não mudaram.
 
 Preço = maior entre piso aprovado e referência original × (1−percentual). Guardar a referência antes da primeira redução. Ao passar para 25%, recalcular sobre ela; nunca reduzir novamente o preço que já recebeu 15%. Os pisos registrados são limites, não alvos obrigatórios nem valores a recalcular automaticamente se B mudar.
 
@@ -286,6 +298,8 @@ de entrada/saída restritos no cadastro ainda não são enviados. O teste no 103
 
 
 ## Pisos de Búzios — decisão e aplicação de 6/10/2026
+
+**Registro histórico:** os valores e resultados desta seção descrevem 6/10. Desde 15/10, o piso de última hora passou de R$350 para R$380, conforme a seção de pisos absolutos vigentes; o piso geral de R$450 permanece. A referência compensatória de R$466,67 citada abaixo atendia ao limite antigo, não ao atual.
 
 Diego definiu **R$450 de piso geral** e **R$350 de piso de última hora D0–D7**, somente no inventário livre, no horizonte de nove meses de **6/10/2026 a 6/7/2027**, inclusive. São limites mínimos, não diárias uniformes, preços-alvo nem definição da base B. Não copiar a direção para os apartamentos do Leblon ou reduzir valores já acima do piso.
 
