@@ -97,8 +97,13 @@ const assinaturaDaOcupacao = (xs: readonly { checkin: string; checkout: string; 
  * quarto não ligado a outro imóvel — a mesma regra da importação. Vínculo ausente, repetido ou ambíguo = null:
  * nenhuma leitura nem estado enviado descreve o imóvel até o cadastro ser corrigido.
  */
-async function quartoVinculado(db: Db, org: string, imovelId: string): Promise<string | null> {
-  const validos = (await listarMapeamentosBeds24(db, org)).filter(m => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
+export async function quartoVinculado(db: Db, org: string, imovelId: string): Promise<string | null> {
+  return quartoDoVinculo(await listarMapeamentosBeds24(db, org), imovelId);
+}
+
+/** A mesma régua de `quartoVinculado`, sobre os vínculos já lidos (M8.3: a lista de imóveis em Integrações lê uma vez só). */
+export function quartoDoVinculo(mapas: readonly VinculoBeds24[], imovelId: string): string | null {
+  const validos = mapas.filter(vinculoValidoParaEnvio);
   const doImovel = validos.filter(m => m.imovelId === imovelId);
   if (doImovel.length !== 1) return null;
   return validos.some(m => m.imovelId !== imovelId && m.roomId === doImovel[0].roomId) ? null : doImovel[0].roomId;

@@ -44,6 +44,40 @@ describe("serviços", () => {
   });
 });
 
+describe("Beds24 em Serviços (M8.3a): as duas chaves pelas funções, independentes, e o aviso de credencial fora da produção", () => {
+  const beds24 = (e: Record<string, string>) => situacaoServicos(e as unknown as NodeJS.ProcessEnv, null).find((x) => x.nome === "Beds24")!.detalhe;
+  const PRODUCAO = { VERCEL_ENV: "production", NODE_ENV: "production", BEDS24_REFRESH_TOKEN: "refresh-ficticio" };
+
+  it("só a chave do calendário: o calendário ligado e as reservas desligadas", () => {
+    const d = beds24({ ...PRODUCAO, BEDS24_ESCRITA: "ligada" });
+    expect(d).toContain("envio para o Beds24 LIGADO");
+    expect(d).toContain("reservas do site no Beds24: chave desligada (BEDS24_ESCRITA_RESERVAS)");
+  });
+
+  it("só a chave das reservas: as reservas prontas no deploy de produção e o calendário desligado; o valor \"Ligada\" não liga", () => {
+    const d = beds24({ ...PRODUCAO, BEDS24_ESCRITA_RESERVAS: "ligada" });
+    expect(d).toContain("envio para o Beds24 desligado (BEDS24_ESCRITA)");
+    expect(d).toContain("reservas do site no Beds24: chave LIGADA e pronta neste deploy");
+    expect(d).not.toContain("Credencial de escrita presente fora da produção");
+    expect(beds24({ ...PRODUCAO, BEDS24_ESCRITA_RESERVAS: "Ligada" })).toContain("reservas do site no Beds24: chave desligada");
+  });
+
+  it("a chave das reservas numa prévia (ou nos testes) não fica pronta; o refresh token ali dá o aviso, sem mostrar o valor", () => {
+    const d = beds24({ ...PRODUCAO, VERCEL_ENV: "preview", BEDS24_ESCRITA_RESERVAS: "ligada" });
+    expect(d).toContain("chave ligada, mas a escrita não sai daqui");
+    expect(d).toContain("Credencial de escrita presente fora da produção");
+    expect(d).not.toContain("refresh-ficticio");
+    expect(beds24({ NODE_ENV: "test", BEDS24_API_KEY: "token-direto" })).not.toContain("Credencial de escrita presente fora da produção");
+    // Sem credencial nenhuma, as chaves aparecem do mesmo jeito.
+    expect(beds24({ BEDS24_ESCRITA_RESERVAS: "ligada" })).toContain("Falta BEDS24_REFRESH_TOKEN");
+    expect(beds24({ BEDS24_ESCRITA_RESERVAS: "ligada" })).toContain("reservas do site no Beds24: chave ligada");
+  });
+
+  it("a rotina das reservas do site aparece como planejada, do M8.3c", () => {
+    expect(AUTOMACOES.find((a) => a.id === "reservas-beds24")).toMatchObject({ situacao: "planejada", item: "M8.3c", nome: "Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)", quando: expect.stringContaining("BEDS24_ESCRITA_RESERVAS=ligada") });
+  });
+});
+
 describe("Mercado Pago em Serviços e Integrações (M8.2a): a mesma situação de situacaoDoMercadoPago", () => {
   const mp = (o: Partial<SituacaoMercadoPago> = {}): SituacaoMercadoPago => ({
     situacao: "teste",

@@ -4,7 +4,17 @@
  * `fetch` é injetado; nenhum teste chega ao Beds24 (a barreira do setup derrubaria).
  */
 import { describe, expect, it } from "vitest";
-import { ClienteBeds24Http, credencialDeEscritaForaDaProducao, escritaBeds24Ligada, escritaBeds24Pronta, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta, escritorDoAmbiente } from "./http";
+import {
+  ambienteDeEscritaDeReservas,
+  ClienteBeds24Http,
+  credencialDeEscritaForaDaProducao,
+  escritaBeds24Ligada,
+  escritaBeds24Pronta,
+  escritaReservasBeds24Ligada,
+  escritaReservasBeds24Pronta,
+  escritorDoAmbiente,
+  simulacaoReservasBeds24Permitida,
+} from "./http";
 import { normalizarCredencial } from "./normalizar";
 
 const env = (o: Record<string, string | undefined>) => o as unknown as NodeJS.ProcessEnv;
@@ -53,6 +63,20 @@ describe("trava de ambiente da escrita de reservas (desenho 2.2; testes 1 e 2)",
     expect(credencialDeEscritaForaDaProducao(env({ ...PRONTO, NODE_ENV: "development" }))).toBe(true);
     expect(credencialDeEscritaForaDaProducao(env({ VERCEL_ENV: "preview", BEDS24_API_KEY: "token-direto-ficticio" }))).toBe(false);
     expect(credencialDeEscritaForaDaProducao(env({ VERCEL_ENV: "preview" }))).toBe(false);
+  });
+
+  it("Simular (desenho 2.4): fora do deploy de produção com qualquer chave, ou nele com a chave das reservas desligada", () => {
+    expect(ambienteDeEscritaDeReservas(env(PRONTO))).toBe(true);
+    expect(ambienteDeEscritaDeReservas(env({ ...PRONTO, NODE_ENV: "test" }))).toBe(false);
+    expect(simulacaoReservasBeds24Permitida(env(PRONTO))).toBe(false);
+    // Ligada sem o refresh token ainda é a chave ligada no deploy de produção: quem decide lá é a rotina.
+    expect(simulacaoReservasBeds24Permitida(env({ ...PRONTO, BEDS24_REFRESH_TOKEN: undefined }))).toBe(false);
+    expect(simulacaoReservasBeds24Permitida(env({ ...PRONTO, BEDS24_ESCRITA_RESERVAS: undefined }))).toBe(true);
+    expect(simulacaoReservasBeds24Permitida(env({ ...PRONTO, BEDS24_ESCRITA_RESERVAS: "Ligada" }))).toBe(true);
+    expect(simulacaoReservasBeds24Permitida(env({ ...PRONTO, VERCEL_ENV: "preview" }))).toBe(true);
+    expect(simulacaoReservasBeds24Permitida(env({ ...PRONTO, NODE_ENV: "test" }))).toBe(true);
+    // A chave do calendário não muda nada aqui.
+    expect(simulacaoReservasBeds24Permitida(env({ ...PRONTO, BEDS24_ESCRITA_RESERVAS: undefined, BEDS24_ESCRITA: "ligada" }))).toBe(true);
   });
 });
 

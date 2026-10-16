@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), execute: vi.fn(), redirect: vi.fn(), execucoes: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
@@ -22,6 +22,8 @@ beforeEach(() => {
   m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   m.mp.mockResolvedValue({ situacao: "so_nas_previas", motivo: null, contaDeTeste: null, segredoWebhook: true, ultimoAvisoValidoEm: null, assinaturasRecusadasHoje: 0, enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago" });
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 it("operação não abre Sistema", async () => {
   m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
@@ -55,4 +57,17 @@ it("rotina que não rodou (M8.3a): o resumo com o selo de aviso, não o de falha
   const h = renderToStaticMarkup(await Page());
   expect(h).toContain('style="background:var(--scl-aviso-fundo)">Não rodou: envio de reserva do site ao Beds24 em andamento</span>');
   expect(h).toContain('style="background:var(--scl-erro-fundo)">Falhou: Credencial Beds24 não configurada.</span>');
+});
+
+it("M8.3a: as duas chaves do Beds24 pelas funções, o aviso de credencial de escrita fora da produção e a rotina das reservas como planejada (M8.3c)", async () => {
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("BEDS24_REFRESH_TOKEN", "refresh-secreto-ficticio");
+  vi.stubEnv("BEDS24_ESCRITA", "ligada");
+  const h = renderToStaticMarkup(await Page());
+  expect(h).toContain("envio para o Beds24 LIGADO");
+  expect(h).toContain("reservas do site no Beds24: chave desligada (BEDS24_ESCRITA_RESERVAS)");
+  expect(h).toContain("Credencial de escrita presente fora da produção");
+  expect(h).not.toContain("refresh-secreto-ficticio");
+  expect(h).toContain("Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)");
+  expect(h).toContain("M8.3c");
 });

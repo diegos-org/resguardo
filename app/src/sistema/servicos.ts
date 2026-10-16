@@ -3,6 +3,7 @@
  * "ok" só quando foi testado agora (o banco); "configurado" quando a chave existe mas o
  * serviço não foi testado nesta abertura (não afirmar que funciona sem ter conferido).
  */
+import { credencialDeEscritaForaDaProducao, escritaBeds24Ligada, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta } from "@/beds24/http";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
 import { deployDeProducao } from "@/sistema/ambiente";
@@ -21,6 +22,29 @@ const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_P
  * chave segue como "desligado".
  */
 export const TEXTO_PRODUCAO_SEM_CHAVES = "Deploy de produção: o teste do pagamento roda nas prévias (as chaves de teste ficam só no ambiente Preview da Vercel)";
+/**
+ * M8.3: o refresh token (que pode escrever no Beds24) fora do deploy de produção, onde a escrita de reservas nunca sai:
+ * Sistema e Integrações avisam com este texto (`credencialDeEscritaForaDaProducao`).
+ */
+export const TEXTO_CREDENCIAL_ESCRITA_FORA_DA_PRODUCAO =
+  "Credencial de escrita presente fora da produção: o BEDS24_REFRESH_TOKEN está neste ambiente. Ele deve ficar só no ambiente Production da Vercel; nas prévias, só a BEDS24_API_KEY (leitura).";
+
+/**
+ * As duas chaves do Beds24, cada uma pela sua função (nunca a variável direto): o envio de calendário e preços
+ * (`BEDS24_ESCRITA`, M3.7) e as reservas do site (`BEDS24_ESCRITA_RESERVAS`, M8.3), independentes nos dois sentidos.
+ */
+function chavesBeds24(env: NodeJS.ProcessEnv): string {
+  const calendario = escritaBeds24Ligada(env)
+    ? "envio para o Beds24 LIGADO (só para os imóveis marcados em Configurações → Calendário e preços)"
+    : "envio para o Beds24 desligado (BEDS24_ESCRITA)";
+  const reservas = escritaReservasBeds24Pronta(env)
+    ? "reservas do site no Beds24: chave LIGADA e pronta neste deploy (só para os imóveis ligados em Integrações)"
+    : escritaReservasBeds24Ligada(env)
+      ? "reservas do site no Beds24: chave ligada, mas a escrita não sai daqui (só no deploy de produção, com o refresh token)"
+      : "reservas do site no Beds24: chave desligada (BEDS24_ESCRITA_RESERVAS)";
+  return [calendario, reservas, ...(credencialDeEscritaForaDaProducao(env) ? [TEXTO_CREDENCIAL_ESCRITA_FORA_DA_PRODUCAO] : [])].join(" · ");
+}
+
 export const producaoSemChaves = (mp: SituacaoMercadoPago, env: NodeJS.ProcessEnv) =>
   deployDeProducao(env) && mp.situacao === "desligado" && ambienteMercadoPago(env.MERCADOPAGO_AMBIENTE) !== null;
 
@@ -87,11 +111,7 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
       nome: "Beds24",
       paraQue: "Reservas, calendário e preços das OTAs",
       situacao: beds24 ? "configurado" : "nao_configurado",
-      detalhe: !beds24
-        ? "Falta BEDS24_REFRESH_TOKEN (ou BEDS24_API_KEY para token direto)"
-        : env.BEDS24_ESCRITA?.trim() === "ligada"
-          ? "Credencial configurada, conexão não testada · envio para o Beds24 LIGADO (só para os imóveis marcados em Configurações → Calendário e preços)"
-          : "Credencial configurada, conexão não testada · envio para o Beds24 desligado (BEDS24_ESCRITA)",
+      detalhe: `${beds24 ? "Credencial configurada, conexão não testada" : "Falta BEDS24_REFRESH_TOKEN (ou BEDS24_API_KEY para token direto)"} · ${chavesBeds24(env)}`,
     },
     { nome: "WhatsApp (Meta)", paraQue: "Atendimento e mensagens", situacao: "planejado", detalhe: "Chega no M10 (depende da verificação no Meta)" },
     mercadoPago

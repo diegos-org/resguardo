@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), redirect: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), redirect: vi.fn(), reservasBeds24: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({
@@ -12,7 +12,29 @@ vi.mock("@/beds24/sincronizacao", () => ({ ultimasSincronizacoes: async () => []
 vi.mock("@/components/configuracoes/TestarBeds24", () => ({ TestarBeds24: () => null }));
 vi.mock("@/components/configuracoes/SincronizarBeds24", () => ({ SincronizarBeds24: () => null }));
 vi.mock("@/pagamentos/integracao", () => ({ situacaoDoMercadoPago: m.mp }));
+// M8.3a: a seção das reservas do site no Beds24 (o painel lê do banco; os botões são do servidor).
+vi.mock("@/beds24/reservas-site-painel", () => ({ painelReservasBeds24: m.reservasBeds24 }));
+vi.mock("@/beds24/acoes-reservas", () => ({
+  pausarReservasBeds24Acao: vi.fn(),
+  retomarReservasBeds24Acao: vi.fn(),
+  ligarImovelReservasBeds24Acao: vi.fn(),
+  desligarImovelReservasBeds24Acao: vi.fn(),
+  conferirEscoposReservasBeds24Acao: vi.fn(),
+}));
+import type { PainelReservasBeds24 } from "@/beds24/reservas-site-painel";
 import Page from "./page";
+
+const PAINEL: PainelReservasBeds24 = {
+  chave: { ligada: false, ambienteDeProducao: false, pronta: false },
+  credencial: { refreshToken: false, soTokenDireto: false, foraDaProducao: false },
+  pausa: null,
+  ensaio: null,
+  marca: "nao_conferida",
+  importacaoAutomatica: false,
+  semLigar: "sem_ensaio",
+  imoveis: [{ id: "im1", codigo: "103", ligadoEm: null, ligadoPor: null, quartoDoVinculo: "20" }],
+  contadores: { pendente: 0, em_envio: 0, conferida: 0, divergente: 0, conflito: 0, aguardando_equipe: 0, manual: 0, encerrada: 0 },
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -29,6 +51,7 @@ beforeEach(() => {
     assinaturasRecusadasHoje: 1,
     enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago",
   });
+  m.reservasBeds24.mockResolvedValue(PAINEL);
   vi.stubEnv("VERCEL_ENV", "preview");
   vi.stubEnv("MERCADOPAGO_ACCESS_TOKEN", "TEST-token-secreto-ficticio");
 });
@@ -50,4 +73,54 @@ it("Mercado Pago pela mesma função de Sistema: linha na tabela com as variáve
   expect(h).toContain("https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago");
   expect(h).toContain("aqui use Conferir agora");
   expect(h).not.toContain("TEST-token-secreto-ficticio");
+});
+
+it("M8.3a: as duas chaves do Beds24 (calendário e reservas do site), cada uma pela sua função, os escopos do convite e só em Production", async () => {
+  const h = renderToStaticMarkup(await Page());
+  expect(m.reservasBeds24).toHaveBeenCalledWith(expect.anything(), "org", process.env);
+  // Na tabela (a mesma de Sistema) e no texto das variáveis.
+  expect(h).toContain("envio para o Beds24 desligado (BEDS24_ESCRITA)");
+  expect(h).toContain("reservas do site no Beds24: chave desligada (BEDS24_ESCRITA_RESERVAS)");
+  expect(h).toContain("Reservas do site no Beds24 só com BEDS24_ESCRITA_RESERVAS=ligada");
+  expect(h).toContain("nunca escrita nem all em bookings-personal");
+  expect(h).toContain("O refresh token de escrita vai só no ambiente Production da Vercel");
+  // A seção nova.
+  expect(h).toContain('aria-label="Reservas do site no Beds24"');
+  expect(h).toContain("Chave BEDS24_ESCRITA_RESERVAS: <strong>desligada</strong>");
+  expect(h).toContain("fora do deploy de produção");
+  expect(h).not.toContain("Credencial de escrita presente fora da produção");
+});
+
+it("M8.3a: o refresh token numa prévia avisa \"credencial de escrita presente fora da produção\" (na tabela e na seção), sem mostrar o valor", async () => {
+  vi.stubEnv("BEDS24_REFRESH_TOKEN", "refresh-secreto-ficticio");
+  vi.stubEnv("BEDS24_ESCRITA_RESERVAS", "ligada");
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, chave: { ...PAINEL.chave, ligada: true }, credencial: { refreshToken: true, soTokenDireto: false, foraDaProducao: true } });
+  const h = renderToStaticMarkup(await Page());
+  expect(h.split("Credencial de escrita presente fora da produção").length - 1).toBe(2);
+  expect(h).toContain("reservas do site no Beds24: chave ligada, mas a escrita não sai daqui");
+  expect(h).toContain("Chave BEDS24_ESCRITA_RESERVAS: <strong>ligada</strong>");
+  expect(h).not.toContain("refresh-secreto-ficticio");
+});
+
+it("M8.3a: a prontidão só leitura (escopos por um botão, marca, ensaio, importação automática), a pausa, o imóvel que não liga sem ensaio e os contadores", async () => {
+  m.reservasBeds24.mockResolvedValue({
+    ...PAINEL,
+    pausa: { em: "2026-10-16T12:00:00.000Z", por: "Admin Fictício" },
+    importacaoAutomatica: false,
+    contadores: { ...PAINEL.contadores, conferida: 2, divergente: 1 },
+  });
+  const h = renderToStaticMarkup(await Page());
+  expect(h).toContain("Prontidão (só leitura)");
+  expect(h).toContain("Conferir os escopos");
+  expect(h).toContain("Marca do SCL: ainda não conferida");
+  expect(h).toContain("Último ensaio:");
+  expect(h).toContain("nenhum ainda");
+  expect(h).toContain("Importação automática do Beds24: <strong>desligada</strong>");
+  expect(h).toContain("<strong>Pausado</strong> desde 16/10/2026");
+  expect(h).toContain("por Admin Fictício");
+  expect(h).toContain(">Retomar</button>");
+  expect(h).toContain("falta um ensaio conferido com a credencial atual");
+  expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Ligar<\/button>/);
+  expect(h).toContain("Conferida: o Beds24 está igual ao SCL: 2");
+  expect(h).toContain("Diferente no Beds24: 1");
 });

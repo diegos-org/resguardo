@@ -244,14 +244,36 @@ export const escritaReservasBeds24Ligada = (env: NodeJS.ProcessEnv): boolean => 
  * Depois dela vêm as condições do painel (pausa, prontidão e imóvel ligado), em `reservas-site-config.ts`.
  */
 export const escritaReservasBeds24Pronta = (env: NodeJS.ProcessEnv): boolean =>
-  deployDeProducao(env) && env.NODE_ENV === "production" && escritaReservasBeds24Ligada(env) && Boolean(env.BEDS24_REFRESH_TOKEN?.trim());
+  ambienteDeEscritaDeReservas(env) && escritaReservasBeds24Ligada(env) && Boolean(env.BEDS24_REFRESH_TOKEN?.trim());
+
+/**
+ * O único lugar onde a escrita de reservas pode sair (condições 1 e 2 da trava): o deploy de produção da Vercel rodando
+ * como produção. Prévia, `vercel dev`, computador e testes ficam fora, mesmo com VERCEL_ENV simulado.
+ */
+export const ambienteDeEscritaDeReservas = (env: NodeJS.ProcessEnv): boolean => deployDeProducao(env) && env.NODE_ENV === "production";
 
 /**
  * Credencial que pode escrever (o refresh token) num lugar onde a escrita de reservas nunca sai (prévia, `vercel dev`,
  * computador, testes): Sistema e Integrações avisam, porque o token novo deve ficar só em Production (desenho 7).
  */
 export const credencialDeEscritaForaDaProducao = (env: NodeJS.ProcessEnv): boolean =>
-  Boolean(env.BEDS24_REFRESH_TOKEN?.trim()) && !(deployDeProducao(env) && env.NODE_ENV === "production");
+  Boolean(env.BEDS24_REFRESH_TOKEN?.trim()) && !ambienteDeEscritaDeReservas(env);
+
+/**
+ * O botão "Simular" da ficha (desenho 2.4 e 8): só fora do deploy de produção ou com a chave das reservas desligada. Lá,
+ * com a chave ligada, quem decide é a rotina (M8.3c); a simulação nunca usa a rede, em lugar nenhum.
+ */
+export const simulacaoReservasBeds24Permitida = (env: NodeJS.ProcessEnv): boolean => !ambienteDeEscritaDeReservas(env) || !escritaReservasBeds24Ligada(env);
+
+/**
+ * Leitor dos escopos da credencial (prontidão, GET /authentication/details), só leitura e só com a escrita de reservas
+ * pronta (`escritaReservasBeds24Pronta`: o deploy de produção, a chave e o refresh token). Nas prévias, no computador e
+ * nos testes devolve null: a prontidão diz que não leu, e nenhuma chamada sai.
+ */
+export function leitorDeCredencialDoAmbiente(env: NodeJS.ProcessEnv): LeitorCredencialBeds24 | null {
+  if (!escritaReservasBeds24Pronta(env)) return null;
+  return new ClienteBeds24Http({ refreshToken: env.BEDS24_REFRESH_TOKEN!.trim(), maxPaginas: 1, timeoutMs: 15_000 });
+}
 
 /** A escrita realmente sai: sinal "ligada" E credencial — a régua única de `escritorDoAmbiente`, que o portal também lê. */
 export const escritaBeds24Pronta = (env: NodeJS.ProcessEnv = process.env) => escritaBeds24Ligada(env) && credencialBeds24Presente(env);

@@ -19,6 +19,14 @@ export const AUTOMACOES: readonly Automacao[] = [
   { id: "recalculo-deploy", nome: "Recálculo do financeiro (reservas de hoje em diante)", quando: "A cada versão publicada", situacao: "ativa", item: "M4.2c" },
   { id: "sync-beds24", nome: "Sincronização de reservas e calendário com o Beds24", quando: "Diária, entre 6h15 e 7h15, quando ligada em Integrações; também manual", situacao: "ativa", item: "M3.3" },
   { id: "envio-beds24", nome: "Envio de calendário e preços ao Beds24/OTAs", quando: "Diário às 7h (depois da importação), quando ligado em Configurações → Calendário e preços e com BEDS24_ESCRITA=ligada; também manual na prévia", situacao: "ativa", item: "M3.7" },
+  // M8.3: a rotina chega no M8.3c (a escrita); até lá, "Simular" na ficha da reserva faz o papel dela, sem rede.
+  {
+    id: "reservas-beds24",
+    nome: "Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)",
+    quando: "A cada 10 minutos, fora das janelas da importação e do envio diários, só no deploy de produção; escreve só com BEDS24_ESCRITA_RESERVAS=ligada e a configuração pronta; também na ficha",
+    situacao: "planejada",
+    item: "M8.3c",
+  },
   { id: "agenda-diaria", nome: "Agenda diária da equipe (próximos 5 dias)", quando: "Todo dia às 20h", situacao: "ativa", item: "M6.3" },
   { id: "fechamento-email", nome: "E-mail do fechamento mensal aos proprietários (relatório em PDF)", quando: "Todo dia às 9h, do dia do fechamento (dia 2 por padrão; Configurações → Repasses) até o mês ser fechado e enviado", situacao: "ativa", item: "M5.4" },
   { id: "fechamento-mensal", nome: "Fechamento e repasse automáticos do mês", quando: "No dia do fechamento de cada mês (dia 2 por padrão; Configurações → Repasses)", situacao: "planejada", item: "M4.9" },

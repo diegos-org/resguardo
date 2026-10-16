@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AlteracaoDoPainel } from "@/pagamentos/alteracao-painel";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 
@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
   historico: vi.fn(),
   alteracoes: vi.fn(),
   portador: vi.fn(),
+  noBeds24: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, redirect: vi.fn() }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
@@ -62,6 +63,9 @@ vi.mock("@/pagamentos/acoes-cancelamento", () => ({
   marcarOtaLiberadaAcao: vi.fn(),
   marcarHospedeAvisadoAcao: vi.fn(),
 }));
+// M8.3a: o bloco "No Beds24" (só leitura; "Simular" sem rede).
+vi.mock("@/beds24/reservas-site-painel", () => ({ fichaReservaNoBeds24: m.noBeds24 }));
+vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn() }));
 import Page from "./page";
 
 const reserva = {
@@ -129,6 +133,7 @@ beforeEach(() => {
   m.historico.mockResolvedValue([]);
   m.alteracoes.mockResolvedValue([]);
   m.portador.mockResolvedValue(null);
+  m.noBeds24.mockResolvedValue(null);
 });
 const html = async (busca: Record<string, string> = {}) =>
   renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve(busca) } as PageProps<"/painel/reservas/[id]">));
@@ -505,4 +510,36 @@ it("M8.2d (D26): a operação, em cada caso da alteração — aumento aplicado,
     expect(h).toContain('role="status"');
     expect(h).not.toMatch(VALORES);
   }
+});
+
+describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
+  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true };
+  beforeEach(() => {
+    m.reserva.mockResolvedValue({ ...reserva, fonte: "site" });
+    m.noBeds24.mockResolvedValue(ficha);
+  });
+
+  it.each(["admin", "operacao"])("%s vê o bloco da reserva do site e o Simular (reserva:editar)", async (papel) => {
+    m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    const h = await html();
+    expect(m.noBeds24).toHaveBeenCalledWith({}, "org", "r1", process.env);
+    expect(h).toContain('aria-label="Reserva no Beds24"');
+    expect(h).toContain(">Simular</button>");
+  });
+
+  it("o resultado do Simular vem só de chaves conhecidas", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    expect(await html({ beds24: "simulada_imovel_desligado" })).toContain("Simulação gravada");
+    expect(await html({ beds24: "nada_marketplace" })).toContain("Nada seria enviado ao Beds24: o contrato é de marketplace");
+    expect(await html({ beds24: "<b>forjada</b>" })).not.toContain("forjada");
+  });
+
+  it("reserva de outra fonte (Beds24, planilha, manual): sem o bloco e sem ler nada dele", async () => {
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    for (const fonte of ["beds24", "csv", "manual", "alteracao"]) {
+      m.reserva.mockResolvedValue({ ...reserva, fonte });
+      expect(await html()).not.toContain('aria-label="Reserva no Beds24"');
+    }
+    expect(m.noBeds24).not.toHaveBeenCalled();
+  });
 });

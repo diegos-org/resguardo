@@ -12,6 +12,8 @@ import { imoveis } from "@/db/schema";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { ultimasSincronizacoes } from "@/beds24/sincronizacao";
 import { SincronizarBeds24 } from "@/components/configuracoes/SincronizarBeds24";
+import { painelReservasBeds24 } from "@/beds24/reservas-site-painel";
+import { ReservasSiteBeds24 } from "@/components/configuracoes/ReservasSiteBeds24";
 
 export const maxDuration = 300;
 
@@ -19,7 +21,8 @@ const ONDE: Record<string, string> = {
   "Banco de dados (Neon)": "DATABASE_URL",
   "Login com Google": "AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET",
   "E-mail do sistema (Resend)": "RESEND_API_KEY, EMAIL_REMETENTE",
-  Beds24: "BEDS24_REFRESH_TOKEN (recomendado) ou BEDS24_API_KEY (token direto). Envio de calendário/preços só com BEDS24_ESCRITA=ligada (o refresh token precisa do escopo de inventário).",
+  Beds24:
+    "BEDS24_REFRESH_TOKEN (recomendado) ou BEDS24_API_KEY (token direto, só leitura). Envio de calendário/preços só com BEDS24_ESCRITA=ligada (o refresh token precisa do escopo de inventário). Reservas do site no Beds24 só com BEDS24_ESCRITA_RESERVAS=ligada, independente da outra, e só no deploy de produção: o convite novo pede escrita em bookings, leitura em bookings-personal, bookings-financial e properties e escrita em inventory; nunca escrita nem all em bookings-personal, nunca all nem apagar. O refresh token de escrita vai só no ambiente Production da Vercel; na Preview, só a BEDS24_API_KEY de leitura.",
   [NOME_MERCADO_PAGO]:
     "MERCADOPAGO_PUBLIC_KEY, MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_AMBIENTE (teste): só no ambiente Preview da Vercel. MERCADOPAGO_WEBHOOK_SECRET: em Preview e Production (o aviso chega no endereço de produção).",
 };
@@ -32,10 +35,12 @@ export default async function Integracoes() {
   // A mesma função que Sistema lê (uma regra, um lugar).
   const mercadoPago = await situacaoDoMercadoPago(db);
   const servicos = situacaoServicos(process.env, null, mercadoPago);
-  const [config, mapas, locais, execucoes] = await Promise.all([
+  const [config, mapas, locais, execucoes, reservasNoBeds24] = await Promise.all([
     lerConfigBeds24(db, org), listarMapeamentosBeds24(db, org),
     db.select({ id: imoveis.id, codigo: imoveis.codigo }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), eq(imoveis.ativo, true))).orderBy(asc(imoveis.codigo)),
     ultimasSincronizacoes(db, org),
+    // M8.3a: só leitura do banco e do ambiente; os escopos da credencial vêm por um botão (e só no deploy de produção).
+    painelReservasBeds24(db, org, process.env),
   ]);
   return (
     <>
@@ -69,6 +74,7 @@ export default async function Integracoes() {
       <MercadoPagoIntegracao mp={mercadoPago} env={process.env} />
       <TestarBeds24 />
       <SincronizarBeds24 config={config} mapas={mapas} imoveis={locais} execucoes={execucoes.map(e => ({ id: e.id, quando: e.iniciadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }), situacao: e.situacao, resumo: e.resumo, divergencias: e.divergencias }))} />
+      <ReservasSiteBeds24 p={reservasNoBeds24} />
     </>
   );
 }
