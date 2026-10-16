@@ -30,7 +30,7 @@ export default async function PainelLayout({ children }: LayoutProps<"/painel">)
       <div className={styles.principal}>
         <header className={styles.cabecalho}>
           <span>Painel interno</span>
-          <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <span className={styles.cabecalhoAcoes}>
             <span className={styles.selo}>Homologação · dados fictícios</span>
             <form action={sair}>
               <button type="submit" className={styles.sair}>
