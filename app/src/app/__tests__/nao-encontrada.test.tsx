@@ -143,7 +143,7 @@ describe("página não encontrada do site (M7.8)", () => {
   it("página do imóvel: código que não existe ou saiu do site cai na página \"Casa não encontrada\" (a aba vem dela)", async () => {
     const props = { params: Promise.resolve({ codigo: "NAOEXISTE" }), searchParams: Promise.resolve({}) };
     await expect(PaginaImovel(props)).rejects.toThrow("NAO_ENCONTRADA");
-    expect(m.imovel).toHaveBeenCalledWith({}, "org", "NAOEXISTE");
+    expect(m.imovel).toHaveBeenCalledWith({}, "org", "NAOEXISTE", "galeria");
     const app = join(dirname(fileURLToPath(import.meta.url)), "..");
     expect(existsSync(join(app, "imoveis", "[codigo]", "not-found.tsx"))).toBe(true);
     // O título da aba já sai "Casa não encontrada" pelos metadados da própria página, sem depender só da not-found.

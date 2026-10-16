@@ -6,12 +6,24 @@
  * (JPG ou PNG) e o tamanho. A ordem decide a galeria; a primeira é a capa. O site só mostra fotos de imóvel público e
  * ativo; sem foto, continua o quadro "foto em breve", nunca uma imagem genérica.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { arquivos, fotosImoveis, imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { enderecoDaFoto, type FotoPublica, LIMITE_FOTO, LIMITE_MINIATURA, limparLegenda, MAXIMO_FOTOS, type TipoFoto, tipoDaImagem } from "./fotos-regras";
+import {
+  BYTES_DAS_MEDIDAS,
+  enderecoDaFoto,
+  type FotoPublica,
+  LIMITE_FOTO,
+  LIMITE_MINIATURA,
+  limparLegenda,
+  MAXIMO_FOTOS,
+  type Medidas,
+  medidasDaImagem,
+  type TipoFoto,
+  tipoDaImagem,
+} from "./fotos-regras";
 
 export type FotoImovel = { id: string; ordem: number; legenda: string; tamanho: number; temMiniatura: boolean; criadoEm: Date };
 export type { FotoPublica };
@@ -186,19 +198,62 @@ export async function quantasFotos(db: Db, organizacaoId: string): Promise<Map<s
   return n;
 }
 
-/** Fotos para o site, por imóvel (a primeira é a capa). Quem chama já escolheu só imóveis públicos e ativos. */
-export async function fotosParaOSite(db: Db, organizacaoId: string, imovelIds: readonly string[]): Promise<Map<string, FotoPublica[]>> {
+/**
+ * Medidas já lidas, por organização e arquivo (M7.19). O conteúdo de um arquivo nunca muda depois de gravado (foto
+ * trocada é outro arquivo, com outro id), então cada um é lido uma vez só enquanto o servidor estiver de pé, e não a
+ * cada visita à página da casa. A organização entra na chave: o que uma leu não vale para outra, como no banco. O
+ * tamanho é limitado para não crescer sem fim: passou do limite, começa de novo.
+ */
+const medidasLidas = new Map<string, Medidas | null>();
+const MAXIMO_MEDIDAS_GUARDADAS = 5000;
+
+/** Medidas dos arquivos, pelo começo de cada um (`BYTES_DAS_MEDIDAS`, sem trazer a foto inteira); null = não deu para ler. */
+async function medidasDosArquivos(db: Db, organizacaoId: string, ids: readonly string[]): Promise<Map<string, Medidas | null>> {
+  const achadas = new Map<string, Medidas | null>();
+  const faltam: string[] = [];
+  const chave = (id: string) => `${organizacaoId}:${id}`;
+  for (const id of new Set(ids)) {
+    const guardada = medidasLidas.get(chave(id));
+    if (guardada !== undefined) achadas.set(id, guardada);
+    else faltam.push(id);
+  }
+  if (!faltam.length) return achadas;
+  const linhas = await db
+    .select({ id: arquivos.id, inicio: sql<Uint8Array>`substring(${arquivos.conteudo} from 1 for ${sql.raw(String(BYTES_DAS_MEDIDAS))})` })
+    .from(arquivos)
+    .where(and(eq(arquivos.organizacaoId, organizacaoId), inArray(arquivos.id, faltam)));
+  if (medidasLidas.size + linhas.length > MAXIMO_MEDIDAS_GUARDADAS) medidasLidas.clear();
+  for (const l of linhas) {
+    const medidas = medidasDaImagem(new Uint8Array(l.inicio));
+    achadas.set(l.id, medidas);
+    medidasLidas.set(chave(l.id), medidas);
+  }
+  return achadas;
+}
+
+/**
+ * Fotos para o site, por imóvel (a primeira é a capa). Quem chama já escolheu só imóveis públicos e ativos. Com
+ * `medidas` (a página da casa, M7.19), cada foto que tem as duas versões traz as medidas delas, para a galeria deixar o
+ * navegador escolher entre a pequena e a grande; as listas de casas não precisam (o cartão usa sempre a pequena).
+ */
+export async function fotosParaOSite(db: Db, organizacaoId: string, imovelIds: readonly string[], opcoes: { medidas?: boolean } = {}): Promise<Map<string, FotoPublica[]>> {
   const ids = imovelIds.filter(uuidValido);
   const porImovel = new Map<string, FotoPublica[]>();
   if (!ids.length) return porImovel;
   const linhas = await db
-    .select({ id: fotosImoveis.id, imovelId: fotosImoveis.imovelId, legenda: fotosImoveis.legenda, miniaturaId: fotosImoveis.miniaturaId })
+    .select({ id: fotosImoveis.id, imovelId: fotosImoveis.imovelId, legenda: fotosImoveis.legenda, arquivoId: fotosImoveis.arquivoId, miniaturaId: fotosImoveis.miniaturaId })
     .from(fotosImoveis)
     .where(and(eq(fotosImoveis.organizacaoId, organizacaoId), inArray(fotosImoveis.imovelId, ids)))
     .orderBy(asc(fotosImoveis.ordem), asc(fotosImoveis.criadoEm), asc(fotosImoveis.id));
+  // Só as fotos com as duas versões: sem a pequena, não há o que escolher.
+  const medidas = opcoes.medidas ? await medidasDosArquivos(db, organizacaoId, linhas.flatMap((l) => (l.miniaturaId ? [l.arquivoId, l.miniaturaId] : []))) : null;
   for (const l of linhas) {
     const lista = porImovel.get(l.imovelId) ?? [];
-    lista.push({ grande: enderecoDaFoto(l.id), pequena: enderecoDaFoto(l.id, l.miniaturaId ? "pequena" : "grande"), legenda: l.legenda });
+    const foto: FotoPublica = { grande: enderecoDaFoto(l.id), pequena: enderecoDaFoto(l.id, l.miniaturaId ? "pequena" : "grande"), legenda: l.legenda };
+    const grande = medidas?.get(l.arquivoId);
+    const pequena = l.miniaturaId ? medidas?.get(l.miniaturaId) : null;
+    if (grande && pequena) foto.medidas = { grande, pequena };
+    lista.push(foto);
     porImovel.set(l.imovelId, lista);
   }
   return porImovel;
