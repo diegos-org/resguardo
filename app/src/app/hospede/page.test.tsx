@@ -192,3 +192,16 @@ describe("Minha reserva: o pagamento em conferência (M8.2e)", () => {
     expect(h).not.toContain("Para cancelar, fale com a equipe.");
   });
 });
+
+describe("Minha reserva: os horários como antes (M7.20)", () => {
+  it("a hora escrita pela mesma função da página da cotação: '15h', '11h', '10h'; meia hora fica como está", async () => {
+    let h = await html();
+    expect(h).toContain("a partir das 15h");
+    expect(h).toContain("até 11h");
+    expect(h).toContain("às 10h.");
+    m.reservas.mockResolvedValue([{ ...reserva, entradaAPartirDe: "14:30", saidaAte: "09:00" }]);
+    h = await html();
+    expect(h).toContain("a partir das 14:30");
+    expect(h).toContain("até 9h");
+  });
+});

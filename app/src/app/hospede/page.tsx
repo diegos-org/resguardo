@@ -8,6 +8,7 @@ import { pedirCancelamentoAcao, sairHospede } from "@/hospede/acoes";
 import { type CancelamentoNoPortal, cancelamentoNoPortal, ESTADIA_COMECOU, JA_CANCELADA, NAO_DA, PEDIDO_DESLIGADO, PEDIDO_OCUPADO, perguntaDoPedidoDeCancelamento, textoDaPoliticaNoPortal } from "@/hospede/cancelamento";
 import { INSTRUCOES_HORA, type ReservaDoHospede, reservasDoHospede } from "@/hospede/portal";
 import { emailDoHospede } from "@/hospede/sessao-atual";
+import { escreverHora } from "@/lib/datas";
 import { carregarSite, metadadosDeMinhaReserva } from "@/site/pagina";
 import { TEXTO_PARA_CANCELAR_FALE_COM_A_EQUIPE } from "@/pagamentos/contestacao-regras";
 import { linkWhatsapp } from "@/site/site";
@@ -17,7 +18,6 @@ export const generateMetadata = () => metadadosDeMinhaReserva();
 
 const data = (d: string) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${d}T00:00:00Z`));
-const hora = (h: string) => h.replace(/^0?(\d+):00$/, "$1h");
 
 function Contato({ r }: { r: ReservaDoHospede }) {
   const { whatsapp, email, empresa } = r.contato;
@@ -155,11 +155,11 @@ function Reserva({
         <dl className={styles.detalhes}>
           <dt>Entrada</dt>
           <dd style={{ margin: 0 }}>
-            {data(r.checkin)}, a partir das {hora(r.entradaAPartirDe)}
+            {data(r.checkin)}, a partir das {escreverHora(r.entradaAPartirDe)}
           </dd>
           <dt>Saída</dt>
           <dd style={{ margin: 0 }}>
-            {data(r.checkout)}, até {hora(r.saidaAte)}
+            {data(r.checkout)}, até {escreverHora(r.saidaAte)}
           </dd>
           <dt>Noites</dt>
           <dd style={{ margin: 0 }}>{r.noites}</dd>
@@ -189,7 +189,7 @@ function Reserva({
           </div>
         ) : (
           <p className={styles.aviso} role="note">
-            O endereço completo e as instruções de chegada aparecem aqui em {data(r.instrucoes.dia)}, às {hora(INSTRUCOES_HORA)}.
+            O endereço completo e as instruções de chegada aparecem aqui em {data(r.instrucoes.dia)}, às {escreverHora(INSTRUCOES_HORA)}.
           </p>
         )}
         {!r.encerrada && <CancelarReserva codigo={r.codigo} c={cancelamento} textos={textos} agora={agora} />}

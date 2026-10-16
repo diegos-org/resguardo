@@ -19,9 +19,12 @@ const m = vi.hoisted(() => ({
   versaoPrivacidade: vi.fn(),
   cartaoNoSite: vi.fn(),
   pagarComCartao: vi.fn(),
+  regrasDaCasa: vi.fn(),
+  estaNoSite: vi.fn(),
 }));
 vi.mock("@/site/pagina", () => ({ carregarSite: m.site, metadadosDoSite: vi.fn() }));
-vi.mock("@/site/cotacoes", async (orig) => ({ ...(await orig<typeof import("@/site/cotacoes")>()), verCotacao: m.verCotacao }));
+vi.mock("@/site/cotacoes", async (orig) => ({ ...(await orig<typeof import("@/site/cotacoes")>()), verCotacao: m.verCotacao, regrasDaCasaDaCotacao: m.regrasDaCasa }));
+vi.mock("@/site/site", async (orig) => ({ ...(await orig<typeof import("@/site/site")>()), estaNoSite: m.estaNoSite }));
 vi.mock("@/calendario/regras-config", () => ({ lerRegrasCalendario: async () => ({ site: { minutosHold: 30 } }) }));
 vi.mock("@/site/pagamento", () => ({ portaoDoSite: m.portao, vistaDoPagamento: m.vistaPagamento, pixPossivel: m.pixPossivel, cartaoNoSite: m.cartaoNoSite }));
 vi.mock("@/site/checkout", () => ({ autorizadoNaCotacao: m.autorizado }));
@@ -52,6 +55,7 @@ const pagamento = (over: Partial<PagamentoDoHospede>): PagamentoDoHospede => ({
 const CARTAO = { chavePublica: "TEST-chave-publica-ficticia", valor: 182400, parcelasMaximas: null, emailTeste: "test@testuser.com" };
 const GATE_OK = { ok: true, ambiente: "teste", provedor: {} };
 const GATE_NAO = { ok: false, motivo: "desligado", texto: "desligado" };
+const REGRAS_DA_CASA = { entrada: "14:00", saida: "10:00", convivencia: ["Não aceita animais", "Proibido fumar"], texto: "Silêncio depois das 22h." };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -70,6 +74,8 @@ beforeEach(() => {
   m.versaoPrivacidade.mockResolvedValue(null);
   m.cartaoNoSite.mockResolvedValue(false);
   m.pagarComCartao.mockResolvedValue({});
+  m.regrasDaCasa.mockResolvedValue(REGRAS_DA_CASA);
+  m.estaNoSite.mockResolvedValue(true);
 });
 afterEach(() => vi.unstubAllEnvs());
 const html = async (codigo = "COT-ABCDEFGH") => renderToStaticMarkup(await Page({ params: Promise.resolve({ codigo }) } as PageProps<"/reservar/[codigo]">));
@@ -507,5 +513,91 @@ describe("uma faixa só na página da cotação (M7.12)", () => {
     // Sem pagamento de teste, nada.
     m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pix_aguardando", dinheiroSemDesfecho: true, pix, ambienteTeste: false }));
     expect(await html()).not.toContain("Ambiente de teste");
+  });
+});
+
+describe("horários e regras da casa na página da cotação (M7.20)", () => {
+  const HORARIOS = "Entrada a partir das 14h · Saída até as 10h";
+  const COM_DATAS = "/imoveis/403?checkin=2026-10-12&amp;checkout=2026-10-15&amp;guests=4";
+  const temRegras = (h: string) => h.includes(HORARIOS) && h.includes(">Regras da casa</h3>") && h.includes("<li>Não aceita animais</li><li>Proibido fumar</li>") && h.includes("Silêncio depois das 22h.");
+  const semRegras = (h: string) => !h.includes("Entrada a partir das") && !h.includes("Regras da casa") && !h.includes("Silêncio depois das 22h.");
+
+  it("lê as regras pela cotação e a casa no site pelo código dela (a leitura curta, sem montar a casa nem as fotos)", async () => {
+    await html();
+    expect(m.regrasDaCasa).toHaveBeenCalledWith({}, "org", "COT-ABCDEFGH");
+    expect(m.estaNoSite).toHaveBeenCalledWith({}, "org", "403");
+  });
+
+  it("aberta e válida: horários, regras, o nome da casa com as datas e 'Mudar as datas' (antes do formulário de segurar)", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("aberta", { reserva: null }));
+    const h = await html();
+    expect(temRegras(h)).toBe(true);
+    expect(h).toContain(`<a href="${COM_DATAS}">Studio Exemplo</a>`);
+    expect(h).toContain(`href="${COM_DATAS}#planejar"`);
+    expect(h).toContain(">Mudar as datas</a>");
+    expect(h.indexOf("Regras da casa")).toBeLessThan(h.indexOf("Segurar as datas"));
+  });
+
+  it("segurada (sem o Pix e com ele) e com o pagamento em andamento: horários e regras antes do pagamento; sem 'Mudar as datas'; a casa sem as datas", async () => {
+    let h = await html();
+    expect(temRegras(h)).toBe(true);
+    expect(h).not.toContain("Mudar as datas");
+    expect(h).toContain('<a href="/imoveis/403">Studio Exemplo</a>');
+    m.portao.mockResolvedValue(GATE_OK);
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "pagar" }));
+    h = await html();
+    expect(temRegras(h)).toBe(true);
+    expect(h.indexOf("Regras da casa")).toBeLessThan(h.indexOf("Pague com Pix"));
+    expect(h.indexOf("Regras da casa")).toBeLessThan(h.indexOf("Gerar Pix"));
+    expect(h).not.toContain("Mudar as datas");
+    // Pagamento em andamento numa cotação que a rotina já marcou como vencida: o pagamento manda.
+    m.verCotacao.mockResolvedValue(vistaCotacao("expirada"));
+    for (const estado of ["pix_aguardando", "verificando", "cartao_em_analise"] as const) {
+      m.vistaPagamento.mockResolvedValue(pagamento({ estado, dinheiroSemDesfecho: true }));
+      h = await html();
+      expect([estado, temRegras(h)]).toEqual([estado, true]);
+      expect(h).not.toContain("Mudar as datas");
+      expect(h).toContain('<a href="/imoveis/403">Studio Exemplo</a>');
+    }
+  });
+
+  it("reserva feita (confirmada pela equipe ou paga pelo site): horários e regras, mesmo com a casa fora do site (aí, só o nome)", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("convertida", { reserva: { codigo: "SCL-TESTE1", estado: "confirmada" } }));
+    let h = await html();
+    expect(temRegras(h)).toBe(true);
+    expect(h).toContain('<a href="/imoveis/403">Studio Exemplo</a>');
+    m.vistaPagamento.mockResolvedValue(pagamento({ estado: "confirmada", reservaCodigo: "SCL-TESTE1" }));
+    h = await html();
+    expect(temRegras(h)).toBe(true);
+    // A casa saiu do site: as regras continuam (vêm da ficha), o nome fica sem link.
+    m.estaNoSite.mockResolvedValue(false);
+    h = await html();
+    expect(temRegras(h)).toBe(true);
+    expect(h).not.toContain("/imoveis/403");
+    expect(h).toContain("Studio Exemplo (403)");
+  });
+
+  it("expirada, cancelada, desatualizada ou aberta que mudou: sem horários nem regras, nem 'Mudar as datas'; o nome da casa leva as datas", async () => {
+    const atual = { situacao: "disponivel" as const, motivos: [], noites: 3, cotacao: { diarias: 150000, limpeza: 25000, hospedeExtra: 30000, valorCheio: 205000, desconto: 8200, total: 196800 }, leituraEm: null };
+    for (const v of [vistaCotacao("expirada"), vistaCotacao("cancelada"), vistaCotacao("desatualizada", { reserva: null }), vistaCotacao("aberta", { reserva: null, mudou: true, atual })]) {
+      m.verCotacao.mockResolvedValue(v);
+      const h = await html();
+      expect([v.estado, v.mudou, semRegras(h)]).toEqual([v.estado, v.mudou, true]);
+      expect(h).not.toContain("Mudar as datas");
+      expect(h).toContain(`<a href="${COM_DATAS}">Studio Exemplo</a>`);
+    }
+  });
+
+  it("reserva confirmada pela equipe (sem pagamento no site) e cancelada depois: sem horários nem regras", async () => {
+    m.verCotacao.mockResolvedValue(vistaCotacao("convertida", { reserva: { codigo: "SCL-TESTE1", estado: "cancelada" } }));
+    expect(semRegras(await html())).toBe(true);
+  });
+
+  it("pagamento sem as datas, devolvido ou reserva cancelada pela política: sem horários nem regras", async () => {
+    for (const estado of ["aprovado_sem_datas", "devolvido", "cancelada_devolvida", "cancelada_sem_devolucao"] as const) {
+      m.vistaPagamento.mockResolvedValue(pagamento({ estado, reservaCodigo: "SCL-TESTE1" }));
+      const h = await html();
+      expect([estado, semRegras(h)]).toEqual([estado, true]);
+    }
   });
 });
