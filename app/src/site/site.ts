@@ -270,6 +270,12 @@ export function lerPedidoConsulta(sp: Record<string, string | string[] | undefin
   return { imovel: ler("imovel"), entrada: ler("entrada"), saida: ler("saida"), hospedes: ler("hospedes") };
 }
 
+/**
+ * O pedido foi enviado (e passa pela conferência) quando tem alguma data: a regra única da consulta, da busca em todas as
+ * casas (M7.9) e do link da casa (M7.21). Sem datas (só a casa ou só as pessoas), é uma visita: nenhum aviso.
+ */
+export const pedidoEnviado = (p: Pick<PedidoConsulta, "entrada" | "saida">): boolean => !!(p.entrada || p.saida);
+
 export type ErrosConsulta = Partial<Record<keyof PedidoConsulta, string>>;
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;

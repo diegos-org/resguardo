@@ -7,7 +7,7 @@ import { salvarRecebimento } from "@/imoveis/recebimento";
 import { AUTOMACOES, execucaoNaoRodou, naoRodou, registrarExecucao, ultimasExecucoes } from "./automacoes";
 import { regrasEmVigor } from "./regras";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
-import { NOME_MERCADO_PAGO, servicoMercadoPago, situacaoServicos } from "./servicos";
+import { NOME_MERCADO_PAGO, NOME_SENTRY, servicoMercadoPago, situacaoServicos } from "./servicos";
 
 describe("serviços", () => {
   it("refresh token configura Beds24 sem afirmar conexão testada nem expor o valor", () => {
@@ -83,6 +83,27 @@ describe("Beds24 em Serviços (M8.3a): as duas chaves pelas funções, independe
 
   it("a rotina das reservas do site aparece como planejada, do M8.3c", () => {
     expect(AUTOMACOES.find((a) => a.id === "reservas-beds24")).toMatchObject({ situacao: "planejada", item: "M8.3c", nome: "Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)", quando: expect.stringContaining("BEDS24_ESCRITA_RESERVAS=ligada") });
+  });
+});
+
+describe("Sentry em Serviços e Integrações (M0.9): a mesma regra que liga o envio", () => {
+  const DSN = "https://chavepublicaficticia@o0.ingest.exemplo.io/0";
+  const linha = (env: Record<string, string>) => situacaoServicos({ NODE_ENV: "test", ...env } as NodeJS.ProcessEnv, null).find((x) => x.nome === NOME_SENTRY)!;
+
+  it("ligado no deploy de produção e nas prévias; sem endereço, falta configurar", () => {
+    expect(linha({ NEXT_PUBLIC_SENTRY_DSN: DSN, VERCEL_ENV: "production" })).toMatchObject({ situacao: "configurado", detalhe: expect.stringContaining("Ligado no deploy de produção") });
+    expect(linha({ NEXT_PUBLIC_SENTRY_DSN: DSN, VERCEL_ENV: "preview" })).toMatchObject({ situacao: "configurado", detalhe: expect.stringContaining("nesta prévia") });
+    expect(linha({ VERCEL_ENV: "production" })).toMatchObject({ situacao: "nao_configurado", detalhe: expect.stringContaining("Falta NEXT_PUBLIC_SENTRY_DSN") });
+    expect(linha({ NEXT_PUBLIC_SENTRY_DSN: DSN })).toMatchObject({ situacao: "configurado", detalhe: expect.stringContaining("desligado aqui") });
+  });
+
+  it("endereço de envio com a forma errada aparece como problema, sem mostrar o valor", () => {
+    for (const dsn of ["https://chave@o0.ingest.exemplo.io/projeto", "valor-colado-errado", `"${DSN}"`]) {
+      const l = linha({ NEXT_PUBLIC_SENTRY_DSN: dsn, VERCEL_ENV: "production" });
+      expect(l.situacao, dsn).toBe("falha");
+      expect(l.detalhe).toContain("Confira o valor na Vercel");
+      expect(JSON.stringify(l)).not.toMatch(/o0\.ingest|colado-errado|chavepublicaficticia/);
+    }
   });
 });
 

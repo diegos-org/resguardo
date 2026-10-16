@@ -12,6 +12,7 @@ import { organizacoes, proprietarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { Correio } from "@/email/correio";
 import { hojeISO } from "@/lib/datas";
+import { ErroDeRotina, type FalhasDaRotina, somarFalhas, totalDeFalhas } from "@/observabilidade/erro-de-rotina";
 import { registrarExecucao } from "@/sistema/automacoes";
 import { enviarEmailsDeRepasses } from "./email";
 import { geraAntecipadoEm } from "./periodicidade";
@@ -60,46 +61,52 @@ export function resumoDosEmails(e: ResultadoRotinaRepasses["emails"]): string {
   return resumoDaRotina({ gerados: 0, semDisponivel: 0, falhas: [], emails: e }).replace(/^0 repasse\(s\) antecipado\(s\) gerado\(s\),? ?/, "") || "nada a enviar";
 }
 
-/** Só os e-mails, de todas as organizações (rotina de hora em hora). E-mail recusado fica como erro na execução. */
+/**
+ * Só os e-mails, de todas as organizações (rotina de hora em hora). E-mail recusado fica como erro na execução: o detalhe
+ * em Sistema e, no aviso ao Sentry, só as contagens (M0.9, `ErroDeRotina`).
+ */
 export function emailsDeRepassesDeTodas(db: Db, correio: Correio | null, agora: Date): Promise<string> {
   return registrarExecucao(db, "repasses-emails", async () => {
     const orgs = await db.select({ id: organizacoes.id }).from(organizacoes);
     const partes: string[] = [];
-    let erro = false;
+    const falhas: FalhasDaRotina = {};
     for (const o of orgs) {
       try {
         const e = await enviarEmailsDeRepasses(db, o.id, correio, agora);
         partes.push(resumoDosEmails(e));
-        if (e.falhas) erro = true;
+        somarFalhas(falhas, { email_nao_enviado: e.falhas });
       } catch {
         partes.push("erro ao enviar e-mails de uma organização");
-        erro = true;
+        somarFalhas(falhas, { erro_na_organizacao: 1 });
       }
     }
     const resumo = partes.join("; ") || "nenhuma organização";
-    if (erro) throw new Error(resumo);
+    if (totalDeFalhas(falhas)) throw new ErroDeRotina(resumo, falhas);
     return resumo;
   });
 }
 
-/** Todas as organizações; uma falha não impede as outras. Falha ou e-mail recusado fica como erro na execução. */
+/**
+ * Todas as organizações; uma falha não impede as outras. Falha ou e-mail recusado fica como erro na execução: em Sistema,
+ * o detalhe (com o nome do proprietário cujo antecipado não saiu); no aviso ao Sentry, só as contagens (M0.9).
+ */
 export function repassesDeTodas(db: Db, correio: Correio | null, agora: Date): Promise<string> {
   return registrarExecucao(db, "repasses-periodicos", async () => {
     const orgs = await db.select({ id: organizacoes.id }).from(organizacoes);
     const partes: string[] = [];
-    let erro = false;
+    const falhas: FalhasDaRotina = {};
     for (const o of orgs) {
       try {
         const r = await rotinaDeRepasses(db, o.id, correio, agora);
         partes.push(resumoDaRotina(r));
-        if (r.falhas.length || r.emails.falhas) erro = true;
+        somarFalhas(falhas, { antecipado_nao_gerado: r.falhas.length, email_nao_enviado: r.emails.falhas });
       } catch {
         partes.push("erro ao gerar repasses ou enviar e-mails de uma organização");
-        erro = true;
+        somarFalhas(falhas, { erro_na_organizacao: 1 });
       }
     }
     const resumo = partes.join("; ") || "nenhuma organização";
-    if (erro) throw new Error(resumo);
+    if (totalDeFalhas(falhas)) throw new ErroDeRotina(resumo, falhas);
     return resumo;
   });
 }
