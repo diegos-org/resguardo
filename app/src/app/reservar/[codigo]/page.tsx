@@ -12,7 +12,7 @@ import { aceiteDaDiferencaParaPagina, aceiteParaPagina } from "@/site/aceites";
 import { segurarDatasAcao } from "@/site/acoes";
 import { continuarPagamentoAcao, gerarPixAcao, pagarComCartaoAcao } from "@/site/acoes-pagamento";
 import { autorizadoNaCotacao } from "@/site/checkout";
-import { codigoCotacaoValido, textoDaCotacao, verCotacao } from "@/site/cotacoes";
+import { codigoCotacaoValido, regrasDaCasaDaCotacao, textoDaCotacao, verCotacao } from "@/site/cotacoes";
 import { cartaoNoSite, pixPossivel, portaoDoSite, vistaDoPagamento } from "@/site/pagamento";
 import {
   contatoPrincipal,
@@ -25,6 +25,8 @@ import {
   TITULO_PAGAMENTO,
 } from "@/site/pagamento-vista";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
+import { regrasNaCotacao } from "@/site/regras-da-casa";
+import { imovelDoSite } from "@/site/site";
 import { ambienteDeTeste } from "@/sistema/ambiente";
 
 export const generateMetadata = () => metadadosDoSite("Cotação");
@@ -84,6 +86,8 @@ const COM_ACEITE = new Set([...ESTADOS_QUE_PAGAM, "confirmada"]);
  * site (M8.2a), a situação do pagamento vence a da cotação ("expirada", "cancelada") e o pagamento vem primeiro (o Pix
  * em destaque; o cartão de crédito ao lado quando ligado, M8.2b). M8.2d: a alteração da reserva paga vem acima do quadro
  * do pagamento (`AlteracaoNaReserva`), com o pagamento da diferença no aumento e o aceite na política da reserva (D11).
+ * M7.20: os horários e as regras da casa (da ficha do imóvel, mesmo que a casa tenha saído do site) enquanto a estadia vale,
+ * e o nome da casa como link para a página dela enquanto ela está no site.
  */
 export default async function PaginaCotacao({ params }: PageProps<"/reservar/[codigo]">) {
   const { codigo: bruto } = await params;
@@ -93,10 +97,16 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
   if (!conteudo) return <SiteEmConfiguracao />;
   const organizacaoId = conteudo.organizacaoId;
   const agora = new Date();
-  const [vista, regras, gate] = await Promise.all([verCotacao(db, organizacaoId, codigo, agora), lerRegrasCalendario(db, organizacaoId), portaoDoSite(db, organizacaoId, agora)]);
+  const [vista, regras, gate, regrasDaCasa] = await Promise.all([
+    verCotacao(db, organizacaoId, codigo, agora),
+    lerRegrasCalendario(db, organizacaoId),
+    portaoDoSite(db, organizacaoId, agora),
+    regrasDaCasaDaCotacao(db, organizacaoId, codigo),
+  ]);
   if (!vista) notFound();
   const c = vista.cotacao;
-  const autorizado = await autorizadoNaCotacao(c.id, agora);
+  // M7.20: a casa no site só decide os links (o nome da casa e "Mudar as datas"); as regras vêm da ficha, sem olhar o site.
+  const [casaDoSite, autorizado] = await Promise.all([imovelDoSite(db, organizacaoId, c.imovelCodigo), autorizadoNaCotacao(c.id, agora)]);
   const vistaPagamento = await vistaDoPagamento(db, organizacaoId, c.id, agora, { comAutorizacao: autorizado, gate: async () => gate });
   const pagamento = vistaPagamento && vistaPagamento.estado !== "sem_pagamento" ? vistaPagamento : null;
   // Sem pagamento em curso: o texto "nenhum pagamento é feito no site" depende de o Pix ser oferecido para esta
@@ -171,6 +181,8 @@ export default async function PaginaCotacao({ params }: PageProps<"/reservar/[co
           pagamentoNoSite={pagamentoNoSite}
           comCartao={cartaoNoPagamento}
           reservaAtual={pagamento?.reservaAtual && reservaCodigo ? { codigo: reservaCodigo, ...pagamento.reservaAtual } : null}
+          regras={regrasNaCotacao(vista, pagamento?.estado ?? null) ? regrasDaCasa : null}
+          casaNoSite={!!casaDoSite}
           formulario={
             mostraFormulario ? (
               <FormSegurar codigo={codigo} minutos={regras.site.minutosHold} acao={segurarDatasAcao} comPagamento={pagamentoNoSite} comCartao={cartaoNoPagamento} privacidade={privacidade} />

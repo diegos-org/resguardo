@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { instanteLocal as instanteDoPortal, somarDias as somarDoPortal } from "@/hospede/portal";
-import { hojeISO, instanteLocal, somarDias } from "./datas";
+import { escreverHora, hojeISO, instanteLocal, somarDias } from "./datas";
 
 describe("datas no fuso do imóvel", () => {
   it("somarDias anda pelo calendário (mês, ano e ano bissexto)", () => {
@@ -25,5 +25,15 @@ describe("datas no fuso do imóvel", () => {
   it("o portal do hóspede continua exportando as mesmas funções (uma regra, um lugar)", () => {
     expect(instanteDoPortal).toBe(instanteLocal);
     expect(somarDoPortal).toBe(somarDias);
+  });
+
+  it("escreverHora (Minha reserva e a página da cotação, M7.20): hora cheia vira '15h', sem o zero da frente; o resto fica como está", () => {
+    expect(escreverHora("15:00")).toBe("15h");
+    expect(escreverHora("11:00")).toBe("11h");
+    expect(escreverHora("09:00")).toBe("9h");
+    expect(escreverHora("10:00")).toBe("10h");
+    expect(escreverHora("00:00")).toBe("0h");
+    expect(escreverHora("15:30")).toBe("15:30");
+    expect(escreverHora("09:30")).toBe("09:30");
   });
 });

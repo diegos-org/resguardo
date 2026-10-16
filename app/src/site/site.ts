@@ -20,6 +20,7 @@ import { uuidValido } from "@/lib/ids";
 import type { IconeEnviado } from "./icone";
 import { enderecoImagemSite, iconeDaMarcaEnviada, lerImagensSite } from "./imagens-site";
 import { MARCA_PADRAO } from "./marca";
+import { HORARIOS_PADRAO } from "./regras-da-casa";
 
 export type ImovelPublico = {
   codigo: string;
@@ -184,8 +185,9 @@ function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
     aceitaAnimais: l.aceitaAnimais ?? false,
     permiteFumar: l.permiteFumar ?? false,
     permiteFestas: l.permiteFestas ?? false,
-    checkinAPartirDe: l.checkinAPartirDe ?? "15:00",
-    checkoutAte: l.checkoutAte ?? "11:00",
+    // Sem ficha, os mesmos horários da página da cotação (M7.20).
+    checkinAPartirDe: l.checkinAPartirDe ?? HORARIOS_PADRAO.entrada,
+    checkoutAte: l.checkoutAte ?? HORARIOS_PADRAO.saida,
     estadiaMinima: l.estadiaMinima,
     fotos,
   };

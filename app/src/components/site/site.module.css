@@ -1149,6 +1149,15 @@
   color: var(--scl-tinta);
 }
 
+/* "Regras da casa" no quadro da cotação (M7.20): o mesmo título da ficha, h3 abaixo do título da cotação. */
+.bloco .tituloFicha {
+  margin: 16px 0 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--scl-tinta);
+}
+
 .comodidades {
   list-style: none;
   padding: 0;
