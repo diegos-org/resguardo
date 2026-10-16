@@ -30,6 +30,7 @@ import {
   montarConsulta,
   numeroWhatsapp,
   organizacaoDoSite,
+  pedidoEnviado,
   temCasaNoSite,
 } from "./site";
 
@@ -218,6 +219,14 @@ describe("site público (M7.1)", () => {
     expect(lerPedidoConsulta({ imovel: "102", entrada: "2026-10-10", saida: "2026-10-12", hospedes: "2" })).toEqual(esperado);
     expect(lerPedidoConsulta({ property: "102", checkin: "2026-10-10", checkout: "2026-10-12", guests: "2", scenario: "x" })).toEqual(esperado);
     expect(lerPedidoConsulta({ imovel: ["a", "b"] })).toEqual({ imovel: "", entrada: "", saida: "", hospedes: "" });
+  });
+
+  it("pedido enviado: com alguma data (as duas ou só uma); sem datas, só a casa ou só as pessoas, é uma visita (M7.21)", () => {
+    expect(pedidoEnviado({ entrada: "2026-10-10", saida: "2026-10-12" })).toBe(true);
+    expect(pedidoEnviado({ entrada: "2026-10-10", saida: "" })).toBe(true);
+    expect(pedidoEnviado({ entrada: "", saida: "2026-10-12" })).toBe(true);
+    expect(pedidoEnviado(lerPedidoConsulta({ property: "102", guests: "2" }))).toBe(false);
+    expect(pedidoEnviado(lerPedidoConsulta({}))).toBe(false);
   });
 
   it("título da aba usa o nome da empresa do site", () => {

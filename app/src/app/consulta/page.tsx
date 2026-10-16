@@ -1,6 +1,6 @@
 import { Disponibilidade } from "@/components/site/Disponibilidade";
 import { SegurarDatas } from "@/components/site/SegurarDatas";
-import { FormConsulta } from "@/components/site/FormConsulta";
+import { ALVO_DO_RESULTADO, FormConsulta } from "@/components/site/FormConsulta";
 import { Moldura, SiteEmConfiguracao, TextoComDestaque } from "@/components/site/Moldura";
 import { CabecalhoBusca, ResultadosBusca } from "@/components/site/ResultadosBusca";
 import { BotaoContato, SemCasas, textoSemCasas } from "@/components/site/SemCasas";
@@ -13,10 +13,10 @@ import { podeSegurar } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
 import { pixPossivel, portaoDoSite } from "@/site/pagamento";
 import { carregarSite, metadadosDoSite } from "@/site/pagina";
-import { ASSUNTO_CONSULTA, AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato, contatoDoSite, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, mensagemDaBusca, montarConsulta } from "@/site/site";
+import { ASSUNTO_CONSULTA, AVISO_SEM_CONTATO, CASA_FORA_DO_SITE, canalDeContato, contatoDoSite, hojeMaisCedo, imoveisDoSite, imovelDoSite, lerPedidoConsulta, mensagemDaBusca, montarConsulta, type PedidoConsulta, pedidoEnviado } from "@/site/site";
 
-/** Busca em todas as casas (M7.9): o pedido tem datas, mas nenhuma casa escolhida ("Todas as casas"). */
-const ehBusca = (p: { imovel: string; entrada: string; saida: string }) => !p.imovel && !!(p.entrada || p.saida);
+/** Busca em todas as casas (M7.9): o pedido foi enviado (`pedidoEnviado`), mas sem casa escolhida ("Todas as casas"). */
+const ehBusca = (p: PedidoConsulta) => !p.imovel && pedidoEnviado(p);
 
 /**
  * Prévia do link (M7.13): a frase que a própria página mostra (Configurações → Textos do site) — na consulta, a frase
@@ -38,7 +38,7 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
   const { db, conteudo } = await carregarSite();
   if (!conteudo) return <SiteEmConfiguracao />;
   const pedido = lerPedidoConsulta(sp);
-  const enviado = !!(pedido.entrada || pedido.saida);
+  const enviado = pedidoEnviado(pedido);
   const todos = await imoveisDoSite(db, conteudo.organizacaoId);
   const { textos } = conteudo;
   const busca = ehBusca(pedido);
@@ -122,8 +122,9 @@ export default async function Consulta({ searchParams }: PageProps<"/consulta">)
           <FormConsulta imoveis={todos} valores={pedido} erros={erros} hoje={hojeMinimo} canal={canal} comPagamento={gate.ok} />
         </div>
         {/* Olho, título e frase do quadro em Configurações → Textos do site (M7.16): olho e frase vazios não aparecem;
-            título vazio volta ao texto inicial. */}
-        <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo">
+            título vazio volta ao texto inicial. Com a disponibilidade consultada, o quadro é o resultado do envio (M7.21):
+            a página abre nele, com o foco ali; sem ela (erro de preenchimento ou sem datas), fica no topo. */}
+        <aside className={styles.resumoViagem} aria-labelledby="titulo-resumo" {...(disponibilidade ? ALVO_DO_RESULTADO : {})}>
           {textos.resumoOlho && <p className={styles.olho}>{textos.resumoOlho}</p>}
           <h2 id="titulo-resumo">
             <TextoComDestaque texto={tituloDaSecao(textos, "resumoTitulo")} />
