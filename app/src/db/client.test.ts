@@ -107,6 +107,12 @@ describe("resumoDaQueda", () => {
     expect(resumo.startsWith("Error: falha ao conectar em ")).toBe(true);
   });
 
+  it("tira a senha inteira mesmo quando ela tem um caractere que encerra o endereço", () => {
+    const resumo = resumoDaQueda(new Error("falha em postgresql://usuario:hunter2)abc@banco.exemplo.com/scl"));
+    expect(resumo).not.toContain("hunter2");
+    expect(resumo).toBe("Error: falha em postgresql://[credenciais]@banco.exemplo.com/scl");
+  });
+
   it("tira dados pessoais pela mesma limpeza dos avisos", () => {
     const resumo = resumoDaQueda(new Error("falha para fulano@exemplo.com"));
     expect(resumo).toBe("Error: falha para [e-mail]");

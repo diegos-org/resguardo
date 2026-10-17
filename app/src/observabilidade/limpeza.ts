@@ -101,6 +101,11 @@ const RE_VALOR_NO_MEIO_DO_ERRO_DO_POSTGRES = /\b(value|time zone) "[\s\S]*?" (is
 // Endereços dentro de um texto: com esquema (https://, postgresql://, webpack-internal://) ou um caminho solto que
 // começa por "/" (como "GET /reservar/COT-…").
 const RE_ENDERECO_NO_TEXTO = /[a-z][a-z0-9+.-]{0,31}:\/\/[^\s"'<>()]*|(?<![\p{L}\p{N}_.~/-])\/[^\s"'<>()]*/giu;
+// Credenciais de um endereço dentro de um texto (usuário:senha@), apagadas antes da regra acima: uma senha pode ter um
+// parêntese ou aspas, que encerram o endereço naquela regra, e o pedaço da senha antes deles sairia. Vai até a última "@"
+// antes de uma barra, "?", "#" ou espaço (uma "@" na senha também some), com um teto de tamanho para o custo da busca
+// continuar proporcional ao texto.
+const RE_CREDENCIAIS_NO_TEXTO = /([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/?#]{0,256}@/giu;
 
 const soDigitos = (s: string) => s.replace(/\D/g, "");
 
@@ -252,9 +257,13 @@ export function limparEndereco(endereco: string): string {
   return cortado ? `${limpo}/${MARCADORES.cortado}` : limpo;
 }
 
-/** Texto limpo: endereços pela regra dos endereços e o resto pela regra dos dados pessoais e segredos. */
+/**
+ * Texto limpo: credenciais de endereço primeiro, endereços pela regra dos endereços e o resto pela regra dos dados
+ * pessoais e segredos.
+ */
 export function limparTexto(texto: string): string {
-  return limparDados(cortarTexto(texto).replace(RE_ENDERECO_NO_TEXTO, (endereco) => limparEndereco(endereco)));
+  const semCredenciais = cortarTexto(texto).replace(RE_CREDENCIAIS_NO_TEXTO, `$1${MARCADORES.credenciais}@`);
+  return limparDados(semCredenciais.replace(RE_ENDERECO_NO_TEXTO, (endereco) => limparEndereco(endereco)));
 }
 
 // Nomes de campo cujo valor nunca sai, seja qual for (em extra, contexts, dados dos rastros).
