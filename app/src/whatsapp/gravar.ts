@@ -50,6 +50,7 @@ const instante = (d: Date | null) => (d ? sql`${d.toISOString()}::timestamptz` :
  */
 export async function gravarBlocos(tx: Db, organizacaoId: string, blocos: BlocoLido[], agora: Date): Promise<ResultadoGravacao> {
   const r: ResultadoGravacao = { emails: [], contagem: {} };
+  await travarIdentidades(tx, organizacaoId, blocos);
   for (const b of blocos) {
     somarContagens(r.contagem, b.contagem);
     if (b.campo === "account_update") {
@@ -64,6 +65,42 @@ export async function gravarBlocos(tx: Db, organizacaoId: string, blocos: BlocoL
     await tx.insert(whatsappEventos).values({ organizacaoId, campo: b.campo, itens, resultado, recebidoEm: agora });
   }
   return r;
+}
+
+/**
+ * As chaves das travas de criação de conversa (uso interno, nunca registradas): uma por BSUID e uma por telefone na
+ * forma única (a menor das variantes de `chavesDoWaId`, a mesma com e sem o nono dígito), sem repetição e em ordem.
+ * Os índices únicos da 0073 só cobrem o `wa_id` exato: sem esta trava, duas entregas paralelas do mesmo cliente, uma
+ * com o nono dígito e outra sem, achariam as duas "nenhuma conversa" e criariam duas.
+ * @internal Exportado só para teste.
+ */
+export function chavesDasTravas(org: string, identidades: readonly Identidade[]): string[] {
+  const chaves = new Set<string>();
+  for (const c of identidades) {
+    if (c.bsuid !== null) chaves.add(`whatsapp:contato:${org}:b:${c.bsuid}`);
+    const variantes = c.waId !== null ? chavesDoWaId(c.waId) : [];
+    if (variantes.length) chaves.add(`whatsapp:contato:${org}:w:${[...variantes].sort()[0]}`);
+  }
+  return [...chaves].sort();
+}
+
+/**
+ * Antes do primeiro bloco, as travas de todas as identidades que podem ganhar conversa no corpo (as do passo 1),
+ * numa instrução só e na ordem do hash: duas entregas que disputam as mesmas identidades as tomam na mesma ordem.
+ * Ficam até o fim da transação.
+ */
+async function travarIdentidades(tx: Db, org: string, blocos: readonly BlocoLido[]): Promise<void> {
+  const quem = blocos.flatMap((b) => [
+    ...[...b.perfis, ...b.mensagens, ...b.edicoes, ...b.apagamentos].map((x) => x.cliente),
+    ...b.trocas.flatMap((t) => [t.anterior, t.nova]),
+  ]);
+  const chaves = chavesDasTravas(org, quem);
+  if (!chaves.length) return;
+  const lista = sql.join(
+    chaves.map((k) => sql`${k}`),
+    sql`, `,
+  );
+  await tx.execute(sql`select pg_advisory_xact_lock(h) from (select hashtext(k) as h from unnest(array[${lista}]::text[]) as k order by 1) as ordem`);
 }
 
 /**

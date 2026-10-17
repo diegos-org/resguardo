@@ -71,7 +71,8 @@ afterAll(() => close());
 describe("a conversa com o banco (M10.1a)", () => {
   it("o admin vê o vínculo à proprietária com o nome, o link e \"Desfazer vínculo\", e o histórico com o verbo novo", async () => {
     const h = await abrir(admin, vinculada);
-    expect(h).toContain(`Vinculada a Proprietário ${PROPRIETARIA} por Admin Fictício em `);
+    expect(h).toContain("Vinculada por Admin Fictício em ");
+    expect(h).toContain(` a: Proprietário ${PROPRIETARIA}.`);
     expect(h).toContain(`href="/painel/proprietarios/${proprietarioId}"`);
     expect(h).toContain(">Desfazer vínculo</button>");
     expect(h).toContain("vinculou a conversa do WhatsApp");
@@ -80,7 +81,8 @@ describe("a conversa com o banco (M10.1a)", () => {
   it("com admin e operação, a operação abre a mesma conversa: \"um proprietário\", sem o nome, sem link de proprietário e sem \"Desfazer vínculo\"", async () => {
     const h = await abrir(operacao, vinculada);
     expect(h).toContain("Olá, quero falar sobre o apartamento.");
-    expect(h).toContain("Vinculada a um proprietário por Admin Fictício em ");
+    expect(h).toContain("Vinculada por Admin Fictício em ");
+    expect(h).toContain(" a: um proprietário.");
     expect(h).not.toContain(PROPRIETARIA);
     expect(h).not.toContain("/painel/proprietarios/");
     expect(h).not.toContain("Desfazer vínculo");

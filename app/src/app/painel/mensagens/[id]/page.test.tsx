@@ -268,14 +268,14 @@ describe("vínculo (6.4)", () => {
     const h = await html();
     const t = texto(h);
     expect(m.candidatos).not.toHaveBeenCalled();
-    expect(t).toContain("Vinculada a Reserva SCL-ABC234 · Studio Exemplo por Diego em 17/10/2026 às 13:00.");
+    expect(t).toContain("Vinculada por Diego em 17/10/2026 às 13:00 a: Reserva SCL-ABC234 · Studio Exemplo.");
     // "Abrir" é o botão principal; "Desfazer vínculo", o secundário (.pequeno), como os "Desfazer" do painel.
     expect(h).toMatch(/<a href="\/painel\/reservas\/r1" class="_botao_\w+">Abrir<\/a>/);
     expect(h).toMatch(/data-pergunta="Desfazer o vínculo desta conversa com Reserva SCL-ABC234 · Studio Exemplo\? A conversa continua guardada." class="_pequeno_\w+">Desfazer vínculo<\/button>/);
     expect(t).not.toContain("Sugestões de vínculo");
     expect(t).not.toContain("Procurar e vincular");
     m.obter.mockResolvedValue(conversa({ vinculo: { tipo: "reserva", rotulo: "Reserva SCL-ABC234", selo: "Reserva SCL-ABC234", link: null, podeDesfazer: true, confirmadoPor: null, confirmadoEm: new Date("2026-10-17T16:00:00Z") } }));
-    expect(texto(await html())).toContain("por usuário removido em 17/10/2026 às 13:00.");
+    expect(texto(await html())).toContain("Vinculada por usuário removido em 17/10/2026 às 13:00 a: Reserva SCL-ABC234.");
   });
 
   it("com admin e operação, a operação diante do vínculo a um proprietário feito pelo admin: o rótulo genérico, sem link nem \"Desfazer vínculo\"", async () => {
@@ -283,7 +283,7 @@ describe("vínculo (6.4)", () => {
     configuracao("admin_e_operacao");
     m.obter.mockResolvedValue(conversa({ vinculo: { tipo: "proprietario", rotulo: "um proprietário", selo: "Proprietário", link: null, podeDesfazer: false, confirmadoPor: "Diego", confirmadoEm: new Date("2026-10-17T16:00:00Z") } }));
     const h = await html();
-    expect(texto(h)).toContain("Vinculada a um proprietário por Diego em 17/10/2026 às 13:00.");
+    expect(texto(h)).toContain("Vinculada por Diego em 17/10/2026 às 13:00 a: um proprietário.");
     expect(h).not.toContain("/painel/proprietarios/");
     expect(h).not.toContain("Desfazer vínculo");
     expect(h).not.toMatch(/>Abrir<\/a>/);

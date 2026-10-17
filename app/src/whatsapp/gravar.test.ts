@@ -10,6 +10,7 @@ import { auditoria, whatsappAvisosDia, whatsappConta, whatsappContatos, whatsapp
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
+import { chavesDasTravas } from "./gravar";
 import { MOTIVOS_DESCONEXAO } from "./regras";
 import {
   avisoDeAgenda,
@@ -236,6 +237,31 @@ describe("edição, apagamento e reação", () => {
 });
 
 describe("identidade das conversas", () => {
+  it("a trava de criação é a mesma com e sem o nono dígito (duas entregas paralelas não criam duas conversas)", () => {
+    const comNove = chavesDasTravas("org", [{ waId: CANARIOS.waIdBr, bsuid: null }]);
+    expect(comNove).toHaveLength(1);
+    expect(chavesDasTravas("org", [{ waId: CANARIOS.waIdBrSem9, bsuid: null }])).toEqual(comNove);
+    // Estrangeiro: uma chave só, a dele; BSUID: a dele; sem repetição e em ordem; wa_id fora da forma não trava nada.
+    const varias = chavesDasTravas("org", [
+      { waId: CANARIOS.waIdEstrangeiro, bsuid: CANARIOS.bsuid },
+      { waId: CANARIOS.waIdBrSem9, bsuid: null },
+      { waId: CANARIOS.waIdBr, bsuid: CANARIOS.bsuid },
+      { waId: "12", bsuid: null },
+    ]);
+    expect(varias).toEqual([...new Set(varias)].sort());
+    expect(varias).toHaveLength(3);
+    expect(varias).toContain(comNove[0]);
+    // A organização faz parte da chave: a mesma pessoa em duas empresas não disputa a mesma trava.
+    expect(chavesDasTravas("outra", [{ waId: CANARIOS.waIdBr, bsuid: null }])).not.toEqual(comNove);
+  });
+
+  it("as duas formas do mesmo celular, em entregas seguidas, caem na mesma conversa", async () => {
+    await entregar(avisoDeMensagens({ contatos: [contatoDoAviso({ waId: CANARIOS.waIdBr })], mensagens: [itemDoAviso({ id: "wamid.TESTE.1", de: CANARIOS.waIdBr, em: min(0) })] }));
+    await entregar(avisoDeMensagens({ contatos: [contatoDoAviso({ waId: CANARIOS.waIdBrSem9 })], mensagens: [itemDoAviso({ id: "wamid.TESTE.2", de: CANARIOS.waIdBrSem9, em: min(1) })] }));
+    expect(await conversas()).toHaveLength(1);
+    expect(new Set((await mensagens()).map((m) => m.contatoId)).size).toBe(1);
+  });
+
   it("contato só com BSUID; o mesmo cliente chegando depois com wa_id completa a linha (e o nome do perfil)", async () => {
     await entregar(avisoDeMensagens({ contatos: [contatoDoAviso({ waId: null, bsuid: CANARIOS.bsuid, nome: null })], mensagens: [itemDoAviso({ id: "wamid.TESTE.1", de: null, deUsuario: CANARIOS.bsuid, em: min(0) })] }));
     expect(await conversas()).toMatchObject([{ waId: null, bsuid: CANARIOS.bsuid, nomePerfil: "" }]);

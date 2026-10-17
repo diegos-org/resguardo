@@ -22,7 +22,9 @@ export function PainelVinculo({ contatoId, vinculo, sugestoes }: { contatoId: st
     return (
       <section aria-label="Vínculo da conversa" className={styles.cartao}>
         <h2>Vínculo</h2>
-        <p>{`Vinculada a ${vinculo.rotulo} por ${vinculo.confirmadoPor ?? "usuário removido"} em ${dataHoraNoFuso(vinculo.confirmadoEm)}.`}</p>
+        {/* Quem e quando vêm antes do rótulo: o rótulo da reserva termina na situação dela ("… · cancelada"), e "cancelada
+            por Fulano" daria a entender que foi essa pessoa que cancelou. */}
+        <p>{`Vinculada por ${vinculo.confirmadoPor ?? "usuário removido"} em ${dataHoraNoFuso(vinculo.confirmadoEm)} a: ${vinculo.rotulo}.`}</p>
         {/* "Abrir" é a ação principal (o botão musgo); "Desfazer vínculo" é a secundária, como os "Desfazer" do painel. */}
         {(vinculo.link || vinculo.podeDesfazer) && (
           <div className={styles.acoesVinculo}>
