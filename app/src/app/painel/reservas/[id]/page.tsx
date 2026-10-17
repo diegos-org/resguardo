@@ -123,8 +123,9 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
   const tarefaOta = (casos: readonly string[]) => noBeds24?.tarefas.find((t) => casos.includes(t.caso) && t.estado === "manual")?.texto;
   const textoOtaCancelamento = tarefaOta(["cancelada_bloqueio", "cancelada_criada"]);
   const textoOtaAlteracao = tarefaOta(["alterada_bloqueio", "alterada_criada"]);
-  // A reserva do site marcada como fechada nas OTAs e cancelada pelo botão de sempre (a confirmada à mão, sem pagamento).
-  const otaNoCancelar = r.fonte === "site" && noBeds24?.acompanhamento?.otaFechadaEm
+  // A reserva do site marcada como fechada nas OTAs e cancelada pelo botão de sempre (a confirmada à mão, sem pagamento): só
+  // quando a tarefa dela vai existir depois (acompanhamento manual e a saída depois de hoje), com o botão "Datas reabertas".
+  const otaNoCancelar = r.fonte === "site" && noBeds24?.acompanhamento?.otaFechadaEm && noBeds24.acompanhamento.situacao === "manual" && r.checkout > hojeISO(undefined, agora)
     ? ` As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de ${diaMesBr(r.checkin)} a ${diaMesBr(r.checkout)} para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha.`
     : "";
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).

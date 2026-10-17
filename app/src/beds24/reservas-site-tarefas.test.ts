@@ -78,11 +78,11 @@ async function d3(entrada = "2026-10-12", saida = "2026-10-15") {
   expect((await confirmarReserva(db, c.org, h.reservaId, equipe, minutos(2))).ok).toBe(true);
   return { reservaId: h.reservaId, reservaCodigo: (await c.reserva(h.reservaId)).codigo };
 }
-/** Uma alteração que aumenta a saída, aplicada pelo pagamento da diferença (M8.2d). */
-async function alterarSaida(x: { reservaId: string; cotacaoId: string }, saida: string) {
-  const { resultado } = await alterar(c, x.reservaId, { checkout: saida }, minutos(20), { autorId: equipe });
+/** Uma alteração que aumenta a saída, aplicada pelo pagamento da diferença (M8.2d) 5 minutos depois de `quando`. */
+async function alterarSaida(x: { reservaId: string; cotacaoId: string }, saida: string, quando = minutos(20)) {
+  const { resultado } = await alterar(c, x.reservaId, { checkout: saida }, quando, { autorId: equipe });
   if (!resultado.ok || !("alteracaoId" in resultado)) throw new Error("alteração não segurada");
-  expect((await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(25) })).resultado).toBe("aprovado");
+  expect((await pagarDiferenca(c, x.cotacaoId, resultado.alteracaoId, { quando: minutos(5, quando) })).resultado).toBe("aprovado");
   return resultado.alteracaoId;
 }
 
@@ -189,6 +189,28 @@ describe("teste 15: os textos por reserva (6.2)", () => {
     expect(alteracao.previa.previa.avisos).toContain("Depois de aplicada, mude as datas no Beds24 como o Início mostrar (no mesmo bloqueio: não apague nem crie outro).");
     for (const s of [previa.previa.pergunta, alteracao.previa.previa.pergunta, ...alteracao.previa.previa.avisos]) expect(s).not.toMatch(/apague o bloqueio|reabra/i);
   });
+
+  it("cancelada depois de uma mudança de datas ainda não marcada nas OTAs: o bloqueio está onde a última marca o pôs", async () => {
+    const semMarca = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "a@example.com", liberar: true });
+    const marcada = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05", email: "b@example.com", liberar: true });
+    const duas = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23", email: "d@example.com", liberar: true });
+    await alterarSaida(semMarca, "2026-10-24");
+    expect(await marcarOtaAtualizada(db, c.org, await alterarSaida(marcada, "2026-11-06"), equipe, minutos(30))).toEqual({ ok: true });
+    // A primeira mudança marcada (o bloqueio foi a 20/11 a 24/11), a segunda ainda não: o bloqueio está nas datas de antes dela.
+    expect(await marcarOtaAtualizada(db, c.org, await alterarSaida(duas, "2026-11-24"), equipe, minutos(30))).toEqual({ ok: true });
+    await alterarSaida(duas, "2026-11-25", minutos(40));
+    for (const x of [semMarca, marcada, duas]) expect((await cancelar(c, x.reservaId, empresa(), equipe, minutos(60))).resultado.ok).toBe(true);
+    expect((await tarefas()).avisos.map((a) => a.texto).sort()).toEqual(
+      [
+        `Reserva ${semMarca.reservaCodigo}, cancelada: mude o bloqueio de 20/10 a 23/10 para Cancelado (não apague).`,
+        `Reserva ${marcada.reservaCodigo}, cancelada: mude o bloqueio de 02/11 a 06/11 para Cancelado (não apague).`,
+        `Reserva ${duas.reservaCodigo}, cancelada: mude o bloqueio de 20/11 a 24/11 para Cancelado (não apague).`,
+      ].sort(),
+    );
+    expect((await daReserva(semMarca.reservaId))[0]).toMatchObject({ caso: "cancelada_bloqueio", checkin: "2026-10-20", checkout: "2026-10-23", texto: "Mude o bloqueio de 20/10 a 23/10 para Cancelado (não apague)." });
+    // A reserva agora tem as datas novas; a ficha e o Início leem o mesmo texto.
+    expect(await c.reserva(semMarca.reservaId)).toMatchObject({ checkin: "2026-10-20", checkout: "2026-10-24" });
+  });
 });
 
 describe("teste 16: a marca manual \"Datas fechadas nas OTAs\" (D8)", () => {
@@ -237,6 +259,12 @@ describe("teste 16: a marca manual \"Datas fechadas nas OTAs\" (D8)", () => {
     await db.update(beds24ReservasSite).set({ situacao: "pendente", motivo: null, roomId: "20", propertyId: "10" }).where(eq(beds24ReservasSite.reservaId, x.reservaId));
     await db.update(reservas).set({ beds24Id: "90001" }).where(eq(reservas.id, x.reservaId));
     expect(await marcarDatasFechadasNasOtas(db, admin, x.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: ERRO_MARCA_EM_ENVIO });
+    // Nem à mão nem com um motivo de configuração: a reserva já está no Beds24 (nunca "feche como bloqueio" por cima).
+    for (const [situacao, motivo] of [["manual", "deixada_a_mao"], ["pendente", "sem_vinculo"]] as const) {
+      await db.update(beds24ReservasSite).set({ situacao, motivo }).where(eq(beds24ReservasSite.reservaId, x.reservaId));
+      expect(await marcarDatasFechadasNasOtas(db, admin, x.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: ERRO_MARCA_EM_ENVIO });
+      expect((await daReserva(x.reservaId, minutos(30))).map((t) => [t.caso, t.marca])).toEqual([["paga", null]]);
+    }
     // O pedido com as datas seguradas (D9), a cancelada, a estadia que já passou.
     const hold = await c.segurar({ entrada: "2026-11-02", saida: "2026-11-05", email: "hold@example.com" });
     expect(await marcarDatasFechadasNasOtas(db, admin, hold.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: ERRO_NADA_A_FECHAR });
@@ -395,6 +423,23 @@ describe("teste 18: a carência do envio automático", () => {
     expect((await daReserva(x.reservaId, minutos(120), env())).map((t) => t.estado)).toEqual(["atrasada"]);
   });
 
+  it("a criação que o sistema está enviando leva as datas de agora: a alteração dela não é outra tarefa (com a chave desligada, as duas à mão)", async () => {
+    await ligarImovel();
+    const z = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "z@example.com", liberar: true });
+    await novaLinha(z, { situacao: "pendente" });
+    await alterarSaida(z, "2026-10-24");
+    const enviando = await daReserva(z.reservaId, minutos(40), PRONTO);
+    expect(enviando.map((t) => t.caso)).toEqual(["paga"]);
+    expect(enviando[0].estado).not.toBe("manual");
+    expect((await textos(minutos(40), PRONTO)).join("\n")).not.toContain("alterada");
+    expect((await daReserva(z.reservaId, minutos(40), env())).map((t) => [t.caso, t.estado])).toEqual([["paga", "manual"], ["alterada_bloqueio", "manual"]]);
+    // Cancelada antes de sair (o acompanhamento ainda pendente): o sistema é dono da criação; com o imóvel desligado, à mão.
+    await cancelar(c, z.reservaId, empresa(), equipe, minutos(60));
+    expect(await daReserva(z.reservaId, minutos(70), PRONTO)).toMatchObject([{ caso: "cancelada_bloqueio", estado: "sendo_enviada" }]);
+    await gravarConfig(db, c.org, "reservas_beds24", { pausado: null, imoveis: [], ensaio: null }, null);
+    expect(await daReserva(z.reservaId, minutos(70), PRONTO)).toMatchObject([{ caso: "cancelada_bloqueio", estado: "manual" }]);
+  });
+
   it("a classificação, na ordem da seção 6.1 (pura)", () => {
     const e = (o: Partial<EntradaDaTarefaOta> = {}): EntradaDaTarefaOta => ({ fato: "paga", criada: false, acompanhamento: null, emCurso: false, desligada: [], regua: null, desde: minutos(0), agora: minutos(10), ...o });
     const linha = (situacao: NonNullable<EntradaDaTarefaOta["acompanhamento"]>["situacao"], motivo: NonNullable<EntradaDaTarefaOta["acompanhamento"]>["motivo"] = null, otaFechadaEm: Date | null = null) => ({ acompanhamento: { situacao, motivo, otaFechadaEm } });
@@ -412,5 +457,20 @@ describe("teste 18: a carência do envio automático", () => {
     expect(classificarTarefa(e({ regua: "outra" }))).toEqual({ tipo: "tarefa", caso: "paga", estado: "manual" });
     expect(classificarTarefa(e({ fato: "alterada", desligada: ["imovel"] }))).toEqual({ tipo: "tarefa", caso: "alterada_bloqueio", estado: "manual" });
     expect(classificarTarefa(e({ fato: "alterada", criada: true, desligada: ["imovel"] }))).toEqual({ tipo: "tarefa", caso: "alterada_criada", estado: "sendo_enviada" });
+    // A paga criada pelo sistema, ainda sem a marca: nunca a tarefa de fechar como bloqueio; a atenção vale com qualquer motivo.
+    expect(classificarTarefa(e({ criada: true, ...linha("divergente", "marca_ilegivel") }))).toEqual({ tipo: "atencao", atencao: "divergente" });
+    expect(classificarTarefa(e({ criada: true, ...linha("aguardando_equipe", "sem_vinculo") }))).toEqual({ tipo: "atencao", atencao: "aguardando_equipe" });
+    expect(classificarTarefa(e({ criada: true, ...linha("aguardando_equipe", "bloqueio_manual") }))).toEqual({ tipo: "atencao", atencao: "transicao" });
+    expect(classificarTarefa(e({ criada: true, ...linha("pendente", "sem_vinculo") }))).toEqual({ tipo: "tarefa", caso: "paga", estado: "sendo_enviada" });
+    expect(classificarTarefa(e({ criada: true, ...linha("manual", "deixada_a_mao"), desligada: ["chave"], agora: minutos(31) }))).toEqual({ tipo: "tarefa", caso: "paga", estado: "atrasada" });
+    expect(classificarTarefa(e({ criada: true, ...linha("encerrada") }))).toEqual({ tipo: "nada" });
+    expect(classificarTarefa(e({ criada: true, ...linha("pendente", null, minutos(1)) }))).toEqual({ tipo: "nada" });
+    // A criação que espera o envio, cancelada ou alterada antes de sair: o sistema é dono dela (o imóvel ligado); o bloqueio à mão, não.
+    expect(classificarTarefa(e({ fato: "cancelada", ...linha("pendente") }))).toEqual({ tipo: "tarefa", caso: "cancelada_bloqueio", estado: "sendo_enviada" });
+    expect(classificarTarefa(e({ fato: "cancelada", ...linha("pendente"), desligada: ["imovel"] }))).toEqual({ tipo: "tarefa", caso: "cancelada_bloqueio", estado: "manual" });
+    expect(classificarTarefa(e({ fato: "cancelada", ...linha("pendente"), desligada: ["chave"] }))).toEqual({ tipo: "tarefa", caso: "cancelada_bloqueio", estado: "manual" });
+    expect(classificarTarefa(e({ fato: "cancelada", ...linha("manual", null, minutos(1)) }))).toEqual({ tipo: "tarefa", caso: "cancelada_bloqueio", estado: "manual" });
+    expect(classificarTarefa(e({ fato: "alterada", ...linha("pendente"), agora: minutos(31) }))).toEqual({ tipo: "tarefa", caso: "alterada_bloqueio", estado: "atrasada" });
+    expect(classificarTarefa(e({ fato: "cancelada" }))).toEqual({ tipo: "tarefa", caso: "cancelada_bloqueio", estado: "manual" });
   });
 });

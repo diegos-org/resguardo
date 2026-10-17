@@ -38,6 +38,12 @@ const ROTULOS: Record<string, string> = {
   // M8.2d: a alteração de reserva paga pelo site.
   alteracao: "Alteração",
   diferenca: "Diferença (centavos)",
+  // M8.2c, M8.2d e M8.3: as marcas das OTAs e o registro no Beds24.
+  otaLiberadaEm: "Datas reabertas nas OTAs",
+  otaAtualizadaEm: "Bloqueio mudado nas OTAs",
+  otaFechadaEm: "Datas fechadas nas OTAs",
+  situacaoNoBeds24: "Situação no Beds24",
+  beds24Id: "Id no Beds24",
 };
 
 const ACOES: Record<string, string> = {
@@ -62,6 +68,11 @@ const ACOES: Record<string, string> = {
   "configuracao.calendario_regras": "alterou calendário e preços",
   "beds24.sincronizar": "importou do Beds24",
   "beds24.enviar": "enviou calendário e preços ao Beds24",
+  "reserva.ota_liberada": "marcou as datas reabertas nas OTAs",
+  "alteracao.ota_atualizada": "marcou o bloqueio mudado nas OTAs",
+  "beds24.reserva.ota_fechada": "marcou as datas fechadas nas OTAs",
+  "beds24.reserva.ota_reaberta": "marcou as datas reabertas nas OTAs",
+  "beds24.reserva.adotar": "ligou a reserva ao registro do Beds24",
 };
 
 /** Um instante gravado com `toISOString()` ou com o deslocamento do fuso, também no meio do texto ("COT-1 até <ISO>"). */

@@ -142,6 +142,15 @@ describe("bloco No Beds24 da ficha", () => {
     expect(h).toContain("A equipe cuida à mão");
     expect(h).toContain("02/10/2026 às 09:00 (marcado pela equipe)");
     expect(h).toContain("Nada a fazer à mão nas OTAs para esta reserva agora.");
+    expect(h).not.toContain("Datas reabertas nas OTAs");
+    // A D3 cancelada e marcada "Datas reabertas nas OTAs": o acompanhamento encerrado diz quem marcou (o histórico tem a data).
+    const reaberta = html({
+      ...vazia,
+      desligada: ["ambiente", "chave", "credencial", "imovel"],
+      acompanhamento: { situacao: "encerrada", motivo: null, quarto: null, conferidaEm: null, lido: null, lidoEm: null, otaFechadaEm: new Date("2026-10-02T12:00:00Z"), otaFechadaAMao: true },
+    });
+    expect(reaberta).toMatch(/Datas reabertas nas OTAs<\/dt><dd>marcado pela equipe \(data e autor no histórico da reserva\)/);
+    expect(reaberta).not.toContain(">Datas reabertas nas OTAs</button>");
   });
 
   it("o resultado do Simular: simulada, repetida, com o imóvel desligado, nada (com o motivo); chave desconhecida, nada", () => {

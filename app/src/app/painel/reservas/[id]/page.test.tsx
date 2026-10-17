@@ -603,15 +603,32 @@ describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
   });
 
   it("M8.3b: a confirmada à mão (sem pagamento pelo site) marcada como fechada nas OTAs: o \"Cancelar reserva\" de sempre diz o que fazer depois", async () => {
-    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
-    m.pagamentos.mockResolvedValue([]);
-    m.noBeds24.mockResolvedValue({ ...ficha, acompanhamento: { situacao: "manual", motivo: null, quarto: null, conferidaEm: null, lido: null, lidoEm: null, otaFechadaEm: new Date("2026-10-02T12:00:00Z"), otaFechadaAMao: true } });
-    expect(await html()).toContain(
-      'data-pergunta="Cancelar a reserva SCL-TESTE1? O financeiro dela será estornado. As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha."',
-    );
-    // Sem a marca, a pergunta de sempre.
-    m.noBeds24.mockResolvedValue(ficha);
-    expect(await html()).toContain('data-pergunta="Cancelar a reserva SCL-TESTE1? O financeiro dela será estornado."');
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+      m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+      m.pagamentos.mockResolvedValue([]);
+      const marcada = (situacao: string) => ({ ...ficha, acompanhamento: { situacao, motivo: null, quarto: null, conferidaEm: null, lido: null, lidoEm: null, otaFechadaEm: new Date("2026-10-02T12:00:00Z"), otaFechadaAMao: true } });
+      m.noBeds24.mockResolvedValue(marcada("manual"));
+      expect(await html()).toContain(
+        'data-pergunta="Cancelar a reserva SCL-TESTE1? O financeiro dela será estornado. As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha."',
+      );
+      const deSempre = 'data-pergunta="Cancelar a reserva SCL-TESTE1? O financeiro dela será estornado."';
+      // Só quando a tarefa vai existir depois: o acompanhamento manual (não o encerrado nem o do sistema) e a saída depois de hoje.
+      for (const situacao of ["encerrada", "conferida", "pendente"]) {
+        m.noBeds24.mockResolvedValue(marcada(situacao));
+        expect(await html()).toContain(deSempre);
+      }
+      m.noBeds24.mockResolvedValue(marcada("manual"));
+      vi.setSystemTime(new Date("2026-10-15T15:00:00Z"));
+      expect(await html()).toContain(deSempre);
+      // Sem a marca, a pergunta de sempre.
+      vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+      m.noBeds24.mockResolvedValue(ficha);
+      expect(await html()).toContain(deSempre);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reserva de outra fonte (Beds24, planilha, manual): sem o bloco e sem ler nada dele", async () => {

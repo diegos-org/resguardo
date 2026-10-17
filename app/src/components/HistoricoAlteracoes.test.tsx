@@ -77,3 +77,37 @@ describe("datas no histórico (M7.22)", () => {
     expect(document.body.textContent).not.toMatch(/15\/10\/2026, |12:00:00/);
   });
 });
+
+describe("as marcas das OTAs no histórico da reserva (M8.2c, M8.2d e M8.3b)", () => {
+  it("as ações e os campos das marcas aparecem em português, sem o nome da coluna nem o código da ação", () => {
+    const de = (acao: string, mudancas: LinhaHistorico["mudancas"]): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao });
+    render(
+      <HistoricoAlteracoes
+        linhas={[
+          de("beds24.reserva.ota_fechada", { otaFechadaEm: [null, "2026-10-16T18:05:00.000Z"], situacaoNoBeds24: [null, "manual"] }),
+          de("beds24.reserva.ota_reaberta", { situacaoNoBeds24: ["manual", "encerrada"] }),
+          de("reserva.ota_liberada", { otaLiberadaEm: [null, "2026-10-16T18:05:00.000Z"] }),
+          de("alteracao.ota_atualizada", { otaAtualizadaEm: [null, "2026-10-16T18:05:00.000Z"] }),
+          de("beds24.reserva.adotar", { beds24Id: [null, "90001"] }),
+        ]}
+      />,
+    );
+    const texto = document.body.textContent ?? "";
+    for (const frase of [
+      "Pessoa Fictícia marcou as datas fechadas nas OTAs",
+      "Pessoa Fictícia marcou as datas reabertas nas OTAs",
+      "Pessoa Fictícia marcou o bloqueio mudado nas OTAs",
+      "Pessoa Fictícia ligou a reserva ao registro do Beds24",
+    ])
+      expect(texto).toContain(frase);
+    expect([...document.querySelectorAll("li li")].map((li) => li.textContent ?? "")).toEqual([
+      "Datas fechadas nas OTAs: — → 16/10/2026 às 15:05",
+      "Situação no Beds24: — → manual",
+      "Situação no Beds24: manual → encerrada",
+      "Datas reabertas nas OTAs: — → 16/10/2026 às 15:05",
+      "Bloqueio mudado nas OTAs: — → 16/10/2026 às 15:05",
+      "Id no Beds24: — → 90001",
+    ]);
+    expect(texto).not.toMatch(/ota_|otaFechadaEm|situacaoNoBeds24|beds24\.reserva/);
+  });
+});

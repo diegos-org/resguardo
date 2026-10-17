@@ -117,32 +117,35 @@ function casoDaTarefa(fato: FatoDaTarefaOta, criada: boolean): CasoTarefaOta {
 /**
  * A regra da seção 6.1, uma função, um lugar, na ordem:
  * 1. paga e D3 marcadas (`ota_fechada_em`, pela equipe ou pelo sistema) ou com o acompanhamento `conferida`/`encerrada`: nada;
- * 2. conflito, divergente ou aguardando a equipe (fora de configuração): só a atenção, nunca a tarefa manual;
- * 3. D3 (com ou sem o cancelamento comum): sempre à mão, nunca vai ao envio (a régua responde `sem_pagamento`);
- * 4. um envio desta reserva sem conclusão: o sistema está nele (sendo enviada ou atrasada, pelo relógio do fato);
- * 5. motivo de configuração, acompanhamento `manual` ou `encerrada`: à mão;
- * 6. a paga criada pelo sistema, ainda sem a marca: o sistema está nela (nunca "feche como bloqueio" o que já está lá);
+ * 2. a paga criada pelo sistema, ainda sem a marca: nunca "feche como bloqueio" o que já está lá. Conflito, divergente ou
+ *    aguardando a equipe (com qualquer motivo, inclusive o de configuração, como a marca ilegível): a atenção; senão, o
+ *    sistema está nela (sendo enviada ou atrasada);
+ * 3. conflito, divergente ou aguardando a equipe (fora de configuração): só a atenção, nunca a tarefa manual;
+ * 4. D3 (com ou sem o cancelamento comum): sempre à mão, nunca vai ao envio (a régua responde `sem_pagamento`);
+ * 5. um envio desta reserva sem conclusão: o sistema está nele (sendo enviada ou atrasada, pelo relógio do fato);
+ * 6. motivo de configuração, acompanhamento `manual` ou `encerrada`: à mão;
  * 7. o envio desligado (ambiente, chave, credencial ou pausa): à mão; o imóvel desligado só para a criação;
  * 8. a paga: a régua diz (`criar` = automática; `ja_no_beds24` = atenção; o resto, à mão);
- * 9. a cancelada e a alterada: o sistema só escreve na reserva que ele criou; o bloqueio feito à mão é sempre da equipe.
+ * 9. a cancelada e a alterada: o sistema escreve na reserva que ele criou e é dono da criação que ainda espera o envio
+ *    (acompanhamento `pendente`, o imóvel ligado); o bloqueio feito à mão é sempre da equipe.
  * Automática: sendo enviada até 30 minutos depois do fato; depois, atrasada.
  */
 export function classificarTarefa(e: EntradaDaTarefaOta): ClassificacaoTarefaOta {
   const a = e.acompanhamento;
   if ((e.fato === "paga" || e.fato === "d3") && (a?.otaFechadaEm || a?.situacao === "conferida" || a?.situacao === "encerrada")) return NADA;
+  const tempo = e.agora.getTime() - e.desde.getTime() < CARENCIA_ENVIO_RESERVA_MINUTOS * 60_000 ? "sendo_enviada" : "atrasada";
+  if (e.fato === "paga" && e.criada) {
+    const atencaoDaCriada = a?.situacao === "conflito" ? "conflito" : a?.situacao === "divergente" ? "divergente" : a?.situacao === "aguardando_equipe" ? (a.motivo === "bloqueio_manual" ? "transicao" : "aguardando_equipe") : null;
+    return atencaoDaCriada ? { tipo: "atencao", atencao: atencaoDaCriada } : { tipo: "tarefa", caso: "paga", estado: tempo };
+  }
   const atencao = atencaoDoAcompanhamento(a);
   if (atencao) return { tipo: "atencao", atencao };
   const caso = casoDaTarefa(e.fato, e.criada);
   const manual: ClassificacaoTarefaOta = { tipo: "tarefa", caso, estado: "manual" };
-  const automatica: ClassificacaoTarefaOta = {
-    tipo: "tarefa",
-    caso,
-    estado: e.agora.getTime() - e.desde.getTime() < CARENCIA_ENVIO_RESERVA_MINUTOS * 60_000 ? "sendo_enviada" : "atrasada",
-  };
+  const automatica: ClassificacaoTarefaOta = { tipo: "tarefa", caso, estado: tempo };
   if (e.fato === "d3" || e.fato === "d3_cancelada") return manual;
   if (e.emCurso) return automatica;
   if (a && (ehMotivoDeConfiguracao(a.motivo) || a.situacao === "manual" || a.situacao === "encerrada")) return manual;
-  if (e.fato === "paga" && e.criada) return automatica;
   if (e.desligada.some((m) => m !== "imovel" && m !== "sem_acompanhamento")) return manual;
   if (e.fato === "paga") {
     if (e.desligada.includes("imovel")) return manual;
@@ -150,7 +153,9 @@ export function classificarTarefa(e: EntradaDaTarefaOta): ClassificacaoTarefaOta
     if (e.regua === "ja_no_beds24") return { tipo: "atencao", atencao: "ja_no_beds24" };
     return e.regua === "criar" ? automatica : manual;
   }
-  return e.criada ? automatica : manual;
+  // A criação que espera o envio (acompanhamento `pendente`, o imóvel ligado) leva as datas de agora e, cancelada antes,
+  // nunca sai: o sistema é dono dela, e não há bloqueio feito à mão a mudar. Com o imóvel desligado, a paga ficou à mão.
+  return e.criada || (a?.situacao === "pendente" && !e.desligada.includes("imovel")) ? automatica : manual;
 }
 
 // ---------------------------------------------------------------- os textos (desenho 6.2) e os avisos do Início
@@ -301,6 +306,39 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
     .orderBy(asc(reservas.codigo));
   for (const { canceladaEm, ...r } of new Map(canceladas.map((x) => [x.id, x])).values()) candidatas.push({ fato: "cancelada", ...r, desde: canceladaEm ?? SEM_HORA, alteracaoIds: [] });
 
+  // Cancelada depois de uma mudança de datas que a equipe ainda não marcou nas OTAs: o bloqueio feito à mão ficou onde a
+  // última marca o pôs. A marca de uma alteração segue o texto da tarefa, com as datas da reserva naquela hora: depois da
+  // última marca, o bloqueio está nas datas de antes da primeira mudança aplicada depois dela (sem marca nenhuma, da primeira
+  // mudança). O texto leva essas datas; sem mudança depois da última marca, as da reserva agora.
+  const canceladasIds = candidatas.filter((c) => c.fato === "cancelada" || c.fato === "d3_cancelada").map((c) => c.id);
+  if (canceladasIds.length) {
+    const mudancas = await db
+      .select({
+        reservaId: alteracoesReserva.reservaId,
+        checkinAntes: alteracoesReserva.checkinAntes,
+        checkoutAntes: alteracoesReserva.checkoutAntes,
+        aplicadaEm: alteracoesReserva.aplicadaEm,
+        otaAtualizadaEm: alteracoesReserva.otaAtualizadaEm,
+      })
+      .from(alteracoesReserva)
+      .where(
+        and(
+          eq(alteracoesReserva.organizacaoId, org),
+          inArray(alteracoesReserva.reservaId, canceladasIds),
+          eq(alteracoesReserva.situacao, "aplicada"),
+          or(ne(alteracoesReserva.checkinAntes, alteracoesReserva.checkinDepois), ne(alteracoesReserva.checkoutAntes, alteracoesReserva.checkoutDepois)),
+        ),
+      )
+      .orderBy(asc(alteracoesReserva.aplicadaEm), asc(alteracoesReserva.id));
+    for (const c of candidatas) {
+      if (c.fato !== "cancelada" && c.fato !== "d3_cancelada") continue;
+      const dela = mudancas.filter((x) => x.reservaId === c.id);
+      const ultimaMarca = Math.max(-Infinity, ...dela.map((x) => x.otaAtualizadaEm?.getTime() ?? -Infinity));
+      const primeira = dela.find((x) => x.otaAtualizadaEm === null && (x.aplicadaEm ?? SEM_HORA).getTime() > ultimaMarca);
+      if (primeira) Object.assign(c, { checkin: primeira.checkinAntes, checkout: primeira.checkoutAntes });
+    }
+  }
+
   // Alterada: aplicada com as datas mudadas e o bloqueio ainda não marcado, a reserva confirmada e alguma noite (de antes ou
   // de agora) a partir de hoje. A reserva-pedido das datas seguradas nunca vai às OTAs; só as pessoas ou o valor não mexem
   // no bloqueio. Uma linha por reserva, com as alterações e a última aplicada.
@@ -377,9 +415,11 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
     const base = { reservaId: c.id, codigo: c.codigo, caso: k.caso, checkin: c.checkin, checkout: c.checkout };
     tarefas.push({ ...base, estado: k.estado, desde: c.desde, alteracaoIds: c.alteracaoIds, texto: textoDaTarefa(base), marca });
   }
-  // A atenção de uma reserva tira todas as tarefas dela (nunca uma instrução contrária para a mesma reserva).
+  // A atenção de uma reserva tira todas as tarefas dela (nunca uma instrução contrária para a mesma reserva). A criação que o
+  // sistema está enviando leva as datas de agora: a alteração dela não é outra tarefa.
+  const criandoAgora = new Set(tarefas.filter((t) => t.caso === "paga" && t.estado !== "manual").map((t) => t.reservaId));
   const lista = tarefas
-    .filter((t) => !atencoes.has(t.reservaId))
+    .filter((t) => !atencoes.has(t.reservaId) && !((t.caso === "alterada_bloqueio" || t.caso === "alterada_criada") && criandoAgora.has(t.reservaId)))
     .sort((x, y) => x.codigo.localeCompare(y.codigo) || ORDEM_DOS_CASOS.indexOf(x.caso) - ORDEM_DOS_CASOS.indexOf(y.caso));
   const linhas = [...atencoes.values()].sort((x, y) => x.codigo.localeCompare(y.codigo));
   return { tarefas: lista, atencoes: linhas, avisos: avisosDasTarefas(lista, linhas) };

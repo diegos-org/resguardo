@@ -216,6 +216,8 @@ export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) 
             : "nada lido ainda",
         ],
         ["Datas fechadas nas OTAs", a.otaFechadaEm ? `${quando(a.otaFechadaEm)} (${a.otaFechadaAMao ? "marcado pela equipe" : "pelo sistema"})` : "não marcado"],
+        // A reserva marcada à mão e cancelada pelo botão de sempre: "Datas reabertas nas OTAs" encerra o acompanhamento.
+        ...(a.situacao === "encerrada" && a.otaFechadaAMao ? ([["Datas reabertas nas OTAs", "marcado pela equipe (data e autor no histórico da reserva)"]] as [string, string][]) : []),
       ]
     : [["Id no Beds24", ficha.beds24Id ?? "nenhum"], ...(fechar ? ([["Datas fechadas nas OTAs", "não marcado"]] as [string, string][]) : [])];
   return (
