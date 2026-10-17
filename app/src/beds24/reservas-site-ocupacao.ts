@@ -1,14 +1,18 @@
 /**
  * Reserva paga do site no Beds24 (M8.3c, desenho 4.1 a 4.4): quem ocupa as noites de uma reserva antes de criá-la ou de
- * mudar as datas dela, e as noites com overbooking depois de uma escrita. Regras puras, sem banco e sem rede: quem chama lê
- * as reservas do quarto que se sobrepõem às noites (com `chegadaDe` explícito: sem ele, o Beds24 só devolve as futuras, e a
- * estadia em curso sumiria), o calendário do quarto, as noites que o M3.7 fechou (`beds24_calendario_enviado`) e os
- * bloqueios `beds24` do SCL, e entrega aqui. A leitura incompleta nunca dá `livre`.
+ * mudar as datas dela, e as noites com overbooking depois de uma escrita. As regras são puras, sem banco e sem rede; só
+ * `lerOcupantes` lê (o Beds24 pelo leitor injetado e o banco): as reservas do quarto que se sobrepõem às noites (com
+ * `chegadaDe` explícito: sem ele, o Beds24 só devolve as futuras, e a estadia em curso sumiria), o calendário do quarto, as
+ * noites que o M3.7 fechou (`beds24_calendario_enviado`) e os bloqueios `beds24` do SCL, e entrega à classificação. A
+ * leitura incompleta nunca dá `livre`.
  */
+import { and, eq, gt, inArray, lt } from "drizzle-orm";
+import { beds24CalendarioEnviado, bloqueios } from "@/db/schema";
+import type { Db } from "@/db/types";
 import { somarDias } from "@/lib/datas";
 import { dataValida } from "@/reservas/regras";
 import { type BloqueioAchadoBeds24, origemPodeSerDoScl } from "./reservas-site-regras";
-import type { DiaCalendario, ReservaBeds24 } from "./tipos";
+import { type DiaCalendario, ErroBeds24, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
 
 /** As noites `[chegada, saida)`, AAAA-MM-DD. Datas inválidas ou fora de ordem = nenhuma. */
 export function noitesDe(chegada: string, saida: string): string[] {
@@ -135,4 +139,58 @@ export function noitesComOverbooking(dias: readonly DiaCalendario[], quarto: str
 export function noitesSemLeitura(dias: readonly DiaCalendario[], quarto: string, noites: readonly string[]): string[] {
   const lidas = new Set(dias.filter((d) => d.roomId === quarto).map((d) => d.data));
   return [...new Set(noites)].filter((n) => !lidas.has(n)).sort();
+}
+
+// ---------------------------------------------------------------- a leitura (desenho 4.1 e 4.2)
+
+/** O que `lerOcupantes` confere: o imóvel do SCL (para os bloqueios e as noites do M3.7) e a entrada da classificação. */
+export type AlvoDosOcupantes = Pick<EntradaDosOcupantes, "alvo" | "noites" | "idProprio" | "comPostAnterior"> & { imovelId: string };
+
+/**
+ * `funcionou: false` = não dá para concluir (alguma leitura falhou, trouxe registro em formato inválido ou o mesmo id duas
+ * vezes, ou faltou no calendário uma noite a conferir): falha antes do POST, nunca `livre`. Com `funcionou`, a ocupação nunca
+ * é `leitura_incompleta`, e `dias` é o calendário lido (a releitura do overbooking compara com ele). `status`: o HTTP da recusa
+ * do Beds24 que derrubou a leitura (o 429, o 401 e o 403 param a volta do envio); sem ele, não houve resposta.
+ */
+export type LeituraDosOcupantes = { funcionou: true; ocupacao: Exclude<OcupacaoDasNoites, { resultado: "leitura_incompleta" }>; dias: DiaCalendario[] } | { funcionou: false; erro: string; status?: number };
+
+const naoConclui = (erro: string, status?: number): LeituraDosOcupantes => ({ funcionou: false, erro, ...(status !== undefined ? { status } : {}) });
+
+/**
+ * Lê quem ocupa as noites (desenho 4.1), só leitura: (1) as reservas do quarto que se sobrepõem às noites, todas as
+ * situações, com os info items (a chegada explícita desde 1900 e a saída depois da primeira noite: a estadia em curso entra);
+ * (2) o calendário do quarto nas noites; (3) no banco, as noites que o M3.7 fechou com blackout neste quarto e os bloqueios
+ * `beds24` do SCL no imóvel. Qualquer leitura com divergência ou id repetido, ou a noite que o calendário não trouxe, não
+ * conclui (`normalizarCalendario` descarta a faixa inteira com um valor inválido, e a reserva de situação desconhecida vai
+ * para as divergências: com as duas coisas juntas, a classificação diria "nada" sobre uma noite ocupada).
+ */
+export async function lerOcupantes(leitor: LeitorBeds24, db: Db, org: string, a: AlvoDosOcupantes): Promise<LeituraDosOcupantes> {
+  const noites = [...new Set(a.noites)].sort();
+  if (!noites.length) return { funcionou: true, ocupacao: { resultado: "livre" }, dias: [] };
+  const inicio = noites[0];
+  const fim = somarDias(noites[noites.length - 1], 1);
+  let lidas: ReservaBeds24[];
+  let dias: DiaCalendario[];
+  try {
+    const r = await leitor.reservas({ quarto: a.alvo.quarto, chegadaDe: "1900-01-01", chegadaAte: noites[noites.length - 1], saidaDe: somarDias(inicio, 1), incluirInfo: true });
+    if (r.divergencias.length) return naoConclui("A leitura das reservas do quarto trouxe registro em formato inválido: a conferência das noites não conclui.");
+    if (new Set(r.itens.map((b) => b.idExterno)).size !== r.itens.length) return naoConclui("A leitura das reservas do quarto trouxe o mesmo registro duas vezes: a conferência das noites não conclui.");
+    const c = await leitor.calendario({ roomIds: [a.alvo.quarto], inicio, fim });
+    if (c.divergencias.length) return naoConclui("O calendário do quarto voltou em formato inválido: a conferência das noites não conclui.");
+    lidas = r.itens;
+    dias = c.itens;
+  } catch (e) {
+    return e instanceof ErroBeds24 ? naoConclui(e.message, e.status) : naoConclui("Não foi possível ler o Beds24.");
+  }
+  const doScl = await db
+    .select({ data: beds24CalendarioEnviado.data })
+    .from(beds24CalendarioEnviado)
+    .where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, a.imovelId), eq(beds24CalendarioEnviado.roomId, a.alvo.quarto), eq(beds24CalendarioEnviado.bloqueio, "blackout"), inArray(beds24CalendarioEnviado.data, noites)));
+  const doBeds24 = await db
+    .select({ inicio: bloqueios.inicio, fim: bloqueios.fim })
+    .from(bloqueios)
+    .where(and(eq(bloqueios.organizacaoId, org), eq(bloqueios.imovelId, a.imovelId), eq(bloqueios.fonte, "beds24"), lt(bloqueios.inicio, fim), gt(bloqueios.fim, inicio)));
+  const ocupacao = classificarOcupantes({ alvo: a.alvo, noites, reservas: lidas, dias, blackoutsDoScl: new Set(doScl.map((d) => d.data)), bloqueiosDoBeds24NoScl: doBeds24, idProprio: a.idProprio, comPostAnterior: a.comPostAnterior });
+  if (ocupacao.resultado === "leitura_incompleta") return naoConclui("O calendário do quarto não trouxe todas as noites (ou trouxe a mesma noite diferente): a conferência das noites não conclui.");
+  return { funcionou: true, ocupacao, dias };
 }

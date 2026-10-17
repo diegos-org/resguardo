@@ -6,7 +6,7 @@ import { hojeISO } from "@/lib/datas";
 import { ErroDeRotina, type MotivoDeFalha, umaFalha } from "@/observabilidade/erro-de-rotina";
 import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
 import { sincronizarReserva } from "@/reservas/repositorio";
-import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
+import { lerConfigBeds24, listarMapeamentosBeds24, quartoAcessivelEmBrl } from "./configuracao";
 import { paraDadosReserva } from "./converter";
 import { avisoDaConferencia, avisoDeRegistroIlegivel, avisoDeReleituraSemConclusao, conferirNaImportacao, desvioNaImportacao, passarEnviandoVencidasAIncerta, prepararDesvioNaImportacao, type RegistroConhecido } from "./reservas-site";
 import { ErroBeds24, type LeitorBeds24, type Lido, type ReservaBeds24 } from "./tipos";
@@ -85,9 +85,9 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       if (new Set(mapas.map(m => m.imovelId)).size !== mapas.length || new Set(mapas.map(m => m.roomId)).size !== mapas.length) throw new ErroBeds24("Cada imóvel deve estar ligado a um único quarto Beds24. Remova os vínculos duplicados na ficha do imóvel.", "configuracao");
       const quartos = await leitor.quartos();
       for (const m of mapas) {
-        const q = quartos.itens.find(q => q.propertyId === m.propertyId && q.roomId === m.roomId);
-        if (!q) throw new ErroBeds24(`O quarto vinculado ao imóvel ${m.codigo} não está acessível. Confira seu mapeamento e as permissões.`, "configuracao");
-        if (q.moeda !== "BRL") throw new ErroBeds24(`A moeda do imóvel ${m.codigo} precisa estar confirmada como BRL no Beds24 antes da importação financeira.`, "configuracao");
+        const acesso = quartoAcessivelEmBrl(quartos.itens, m.propertyId, m.roomId);
+        if (acesso === "inacessivel") throw new ErroBeds24(`O quarto vinculado ao imóvel ${m.codigo} não está acessível. Confira seu mapeamento e as permissões.`, "configuracao");
+        if (acesso === "moeda") throw new ErroBeds24(`A moeda do imóvel ${m.codigo} precisa estar confirmada como BRL no Beds24 antes da importação financeira.`, "configuracao");
       }
       const res = resultado();
       // Com os info items (M8.3, desenho 5.4): é onde mora a marca do SCL nas reservas pagas do site e no ensaio.

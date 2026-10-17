@@ -101,8 +101,9 @@ export class ClienteBeds24Http implements LeitorBeds24, LeitorCredencialBeds24, 
     const r = await this.requisitar(caminho, params, corpo);
     if (!r.ok) throw r.erro;
     const resposta = r.resposta;
-    if (resposta.status === 403 && corpo) throw new ErroBeds24("Beds24 recusou a escrita (HTTP 403): a credencial não tem permissão de inventário. Gere um novo convite com escrita de inventário.", "http");
-    if (!resposta.ok) throw new ErroBeds24(`Beds24 respondeu HTTP ${resposta.status}.`, "http");
+    // O status vai junto (M8.3c): o 429, o 401 e o 403 de uma leitura param a volta do envio de reservas.
+    if (resposta.status === 403 && corpo) throw new ErroBeds24("Beds24 recusou a escrita (HTTP 403): a credencial não tem permissão de inventário. Gere um novo convite com escrita de inventário.", "http", 403);
+    if (!resposta.ok) throw new ErroBeds24(`Beds24 respondeu HTTP ${resposta.status}.`, "http", resposta.status);
     try {
       return await resposta.json();
     } catch {

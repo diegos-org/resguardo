@@ -47,6 +47,24 @@ describe("procurarReservaDoSite (M8.3a, teste 10): filtros", () => {
     expect(b.comMarca.map((r) => r.idExterno).sort()).toEqual(["7", "98765"]);
   });
 
+  it("M8.3c: a marca ambígua (dois códigos no info item, ou o info item SCL com texto inválido) não conclui, em qualquer leitura", async () => {
+    const ambiguas = [
+      registro({ id: 2, infoItems: [{ code: INFO_MARCA_SCL, text: CODIGO }, { code: INFO_MARCA_SCL, text: "SCL-ABCDEF" }] }),
+      registro({ id: 3, infoItems: [{ code: INFO_MARCA_SCL, text: "ilegível" }] }),
+      registro({ id: 4, infoItems: [], firstName: CODIGO, notes: "SCL-ABCDEF" }),
+    ];
+    for (const b of ambiguas) {
+      expect(await procurarReservaDoSite(falso(registro(), b), ALVO)).toMatchObject({ funcionou: false, erro: expect.stringContaining("marca do SCL ambígua") });
+    }
+    // Também na releitura por id e na pesquisa por texto (outro quarto e outra chegada: só ela traz o registro ambíguo).
+    const f = falso(registro(), registro({ id: 7, roomId: 999, arrival: "2026-12-01", infoItems: [{ code: INFO_MARCA_SCL, text: "?" }] }));
+    expect(await procurarReservaDoSite(f, { ...ALVO, idsConhecidos: ["7"] })).toMatchObject({ funcionou: false, erro: expect.stringContaining("marca do SCL ambígua") });
+    expect(f.filtrosLidos.at(-1)).toEqual({ ids: ["7"], chegadaDe: "1900-01-01", incluirInfo: true });
+    const t = falso(registro(), registro({ id: 8, roomId: 999, arrival: "2026-12-01", infoItems: [], lastName: CODIGO, notes: "SCL-ABCDEF" }));
+    expect(await procurarReservaDoSite(t, { ...ALVO, marcaNoNome: true })).toMatchObject({ funcionou: false, erro: expect.stringContaining("marca do SCL ambígua") });
+    expect(t.filtrosLidos.at(-1)).toEqual({ pesquisa: CODIGO, chegadaDe: "1900-01-01", incluirInfo: true });
+  });
+
   it("o ensaio nunca entra; a marca de outra reserva também não", async () => {
     const f = falso(registro({ infoItems: [{ code: INFO_ENSAIO_SCL, text: "x" }, { code: INFO_MARCA_SCL, text: CODIGO }] }), registro({ id: 2, infoItems: [{ code: INFO_MARCA_SCL, text: "SCL-ABCDEF" }] }));
     expect(await procurarReservaDoSite(f, ALVO)).toMatchObject({ funcionou: true, comMarca: [] });

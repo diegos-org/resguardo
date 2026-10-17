@@ -8,7 +8,7 @@
  * dado do hóspede: só o código SCL e as datas. Os funis do pagamento (`pagamentos/*`) nunca importam daqui (desenho 3.1);
  * os textos genéricos deles mandam seguir o aviso do Início.
  */
-import { and, asc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { alteracoesReserva, beds24ReservasOperacoes, beds24ReservasSite, cancelamentosReserva, pagamentos, reservas } from "@/db/schema";
@@ -18,7 +18,7 @@ import { uuidValido } from "@/lib/ids";
 import { travarReservaDoSite } from "./reservas-site";
 import { lerConfigReservasBeds24, ligacaoDoImovel, type MotivoDesligadaBeds24, motivosDesligada } from "./reservas-site-config";
 import { lerReservaParaBeds24 } from "./reservas-site-contexto";
-import { criadaPeloM83, MOTIVOS_CONFIGURACAO_BEDS24, type MotivoAcompanhamentoBeds24, reservaDoSiteParaBeds24, type SituacaoAcompanhamentoBeds24, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
+import { criadaPeloM83, detalheOperacaoBeds24, MOTIVOS_CONFIGURACAO_BEDS24, type MotivoAcompanhamentoBeds24, reservaDoSiteParaBeds24, type SituacaoAcompanhamentoBeds24, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
 import { tentarTravaBeds24 } from "./trava";
 
 /**
@@ -115,6 +115,13 @@ function casoDaTarefa(fato: FatoDaTarefaOta, criada: boolean): CasoTarefaOta {
 }
 
 /**
+ * O cancelamento conferido (ou a cancelada antes de criar) com um bloqueio feito à mão que sobrou sobre as noites (M8.3c,
+ * desenho 4.4 e 6.3): o sistema não marca as datas reabertas e deixa a reserva `manual`/`bloqueio_manual`. A tarefa é a do
+ * bloqueio ("Mude o bloqueio de dd/mm a dd/mm para Cancelado"), mesmo na reserva que o sistema criou, com as noites achadas.
+ */
+const sobrouBloqueio = (a: { situacao: SituacaoAcompanhamentoBeds24; motivo: MotivoAcompanhamentoBeds24 | null } | null) => a?.situacao === "manual" && a.motivo === "bloqueio_manual";
+
+/**
  * A regra da seção 6.1, uma função, um lugar, na ordem:
  * 1. paga e D3 marcadas (`ota_fechada_em`, pela equipe ou pelo sistema) ou com o acompanhamento `conferida`/`encerrada`: nada;
  * 2. a paga criada pelo sistema, ainda sem a marca: nunca "feche como bloqueio" o que já está lá. Conflito, divergente ou
@@ -140,7 +147,7 @@ export function classificarTarefa(e: EntradaDaTarefaOta): ClassificacaoTarefaOta
   }
   const atencao = atencaoDoAcompanhamento(a);
   if (atencao) return { tipo: "atencao", atencao };
-  const caso = casoDaTarefa(e.fato, e.criada);
+  const caso = casoDaTarefa(e.fato, e.criada && !(e.fato === "cancelada" && sobrouBloqueio(a)));
   const manual: ClassificacaoTarefaOta = { tipo: "tarefa", caso, estado: "manual" };
   const automatica: ClassificacaoTarefaOta = { tipo: "tarefa", caso, estado: tempo };
   if (e.fato === "d3" || e.fato === "d3_cancelada") return manual;
@@ -381,6 +388,20 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
   const todas = [...new Set(candidatas.map((c) => c.id))];
   const acompanhamentos = new Map((await db.select().from(beds24ReservasSite).where(and(eq(beds24ReservasSite.organizacaoId, org), inArray(beds24ReservasSite.reservaId, todas)))).map((a) => [a.reservaId, a]));
   const op = beds24ReservasOperacoes;
+  // A cancelada com o bloqueio feito à mão que sobrou (`sobrouBloqueio`, M8.3c): o texto leva as noites do bloqueio que o
+  // sistema achou (`detalhe.bloqueio` da última operação que o achou), não as da reserva.
+  const comBloqueio = candidatas.filter((c) => c.fato === "cancelada" && sobrouBloqueio(acompanhamentos.get(c.id) ?? null));
+  if (comBloqueio.length) {
+    const achados = await db
+      .select({ reservaId: op.reservaId, detalhe: op.detalhe })
+      .from(op)
+      .where(and(eq(op.organizacaoId, org), inArray(op.reservaId, comBloqueio.map((c) => c.id)), sql`(${op.detalhe} -> 'bloqueio') is not null`))
+      .orderBy(desc(op.iniciadoEm), desc(op.chave));
+    for (const c of comBloqueio) {
+      const b = detalheOperacaoBeds24(achados.find((x) => x.reservaId === c.id)?.detalhe).bloqueio;
+      if (b) Object.assign(c, { checkin: b.inicio, checkout: b.fim });
+    }
+  }
   const ativas: readonly string[] = SITUACOES_OPERACAO_ATIVAS;
   const operacoes = await db
     .select({ reservaId: op.reservaId, situacao: op.situacao, enviadoEm: op.enviadoEm, beds24Id: op.beds24Id })

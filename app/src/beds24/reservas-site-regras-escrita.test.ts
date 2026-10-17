@@ -1,14 +1,15 @@
 /**
  * Reserva paga do site no Beds24 (M8.3c) — as regras puras da escrita (desenho 3.3 a 3.8, 6.5 e 9): o `detalhe` de forma
  * fechada, a adoção só com a marca do info item e a origem (desenho 3.5 e 4.3), a resposta da fila à régua (3.3), as saídas
- * da incerteza da criação e do `atualizar`/`cancelar` (3.8), a regra da nova tentativa, as janelas e os atrasos da rotina (9)
- * e os casos do e-mail à equipe (6.5). Sem banco e sem rede.
+ * da incerteza da criação e do `atualizar`/`cancelar` (3.8) e a da `feita` por id, a regra da nova tentativa, as janelas e
+ * os atrasos da rotina (9) e os casos do e-mail à equipe (6.5). Sem banco e sem rede.
  */
 import { describe, expect, it } from "vitest";
 import {
   assinaturaEsperado,
   atrasoDaFalha,
   ATRASOS_FALHA_MINUTOS,
+  buscaSemConclusaoBeds24,
   casoDeEmailBeds24,
   type DecisaoAdocao,
   type DecisaoBeds24,
@@ -25,12 +26,16 @@ import {
   operacaoEmCurso,
   origemPodeSerDoScl,
   passoDaFila,
+  podeConcluirIncertezaBeds24,
   regraDeAdocao,
+  registroNossoBeds24,
   RESPOSTAS_DE_RECUSA_BEDS24,
   RESPOSTAS_SEM_RESPOSTA_BEDS24,
+  saidaDaFeitaPorId,
   saidaDaIncertezaDaCriacao,
   saidaDaIncertezaPorId,
   SITUACOES_ACOMPANHAMENTO_BEDS24,
+  SITUACOES_DE_EMAIL_BEDS24,
   SITUACOES_OPERACAO_BEDS24,
 } from "./reservas-site-regras";
 import { RESPOSTAS_BEDS24, type ReservaBeds24, type RespostaBeds24 } from "./tipos";
@@ -83,6 +88,15 @@ describe("adoção só com a marca do info item e a origem do SCL (desenho 3.5 e
     // A origem pela API que nomeia a OTA (o `channel` vazio dá "outro") também não prova a origem do SCL.
     for (const origemApi of ["Booking.com", "Airbnb", "airbnb api"]) expect(origemPodeSerDoScl({ canal: "outro", origemApi })).toBe(false);
     expect(origemPodeSerDoScl({ canal: "direta", origemApi: "Booking.com" })).toBe(false);
+  });
+
+  it("o registro nosso (a adoção, o Vincular e as duplicadas vivas do cancelamento): a marca do info item e a origem do SCL", () => {
+    expect(registroNossoBeds24(registro())).toBe(true);
+    expect(registroNossoBeds24(registro({ canal: "direta", origemApi: null }))).toBe(true);
+    // O código só no nome ou nas notas, ou o info item num registro de OTA ou de canal desconhecido sem a origem pela API.
+    expect(registroNossoBeds24(registro({ marcaFonte: "texto" }))).toBe(false);
+    expect(registroNossoBeds24(registro({ canal: "booking" }))).toBe(false);
+    expect(registroNossoBeds24(registro({ origemApi: null }))).toBe(false);
   });
 
   it("adota a reserva criada pelo SCL; com o código só no nome ou nas notas, ou num registro de canal, é marca em registro inesperado", () => {
@@ -286,6 +300,38 @@ describe("a saída da incerteza do atualizar e do cancelar, só pela releitura p
   });
 });
 
+describe("a saída por id do que o Beds24 já aceitou: a feita e a criação com o id (desenho 3.6 e 4.3)", () => {
+  const pedido = esperado();
+  const leu = (registro: LidoBeds24 | null, podeConcluirApagada = true) => ({ funcionou: true as const, registro, podeConcluirApagada });
+
+  it("os 5 min e a busca sem conclusão são uma regra só, para as saídas puras e para o trabalhador", () => {
+    expect(podeConcluirIncertezaBeds24(ENVIADO, depoisDe(4.99))).toBe(false);
+    expect(podeConcluirIncertezaBeds24(ENVIADO, depoisDe(5))).toBe(true);
+    expect([0, 1, 2].map(buscaSemConclusaoBeds24)).toEqual([
+      { saida: "sem_conclusao", buscas: 1, equipe: false }, { saida: "sem_conclusao", buscas: 2, equipe: false }, { saida: "sem_conclusao", buscas: 3, equipe: true },
+    ]);
+  });
+
+  it("a releitura que falhou não conclui: conta, e na terceira vai à equipe", () => {
+    expect(saidaDaFeitaPorId({ funcionou: false }, pedido, 0)).toEqual({ saida: "sem_conclusao", buscas: 1, equipe: false });
+    expect(saidaDaFeitaPorId({ funcionou: false }, pedido, 2)).toEqual({ saida: "sem_conclusao", buscas: 3, equipe: true });
+  });
+
+  it("não voltou: apagada só com a credencial e o quarto que permitem concluir; senão, a equipe (sem permissão)", () => {
+    expect(saidaDaFeitaPorId(leu(null), pedido, 0)).toEqual({ saida: "divergente", motivo: "apagada_no_beds24" });
+    expect(saidaDaFeitaPorId(leu(null, false), pedido, 0)).toEqual({ saida: "equipe", motivo: "sem_permissao" });
+  });
+
+  it("voltou diferente: divergente com o motivo; igual ao pedido: conferir, na hora (o POST já valeu: nunca os 5 min nem nova tentativa)", () => {
+    expect(saidaDaFeitaPorId(leu(lido({ saida: "2026-12-28" })), pedido, 0)).toEqual({ saida: "divergente", motivo: "mudada_no_beds24" });
+    expect(saidaDaFeitaPorId(leu(lido({ situacao: "cancelada" })), pedido, 0)).toEqual({ saida: "divergente", motivo: "cancelada_no_beds24" });
+    expect(saidaDaFeitaPorId(leu(lido({ hospedes: 2 })), pedido, 0)).toEqual({ saida: "divergente", motivo: "mudada_no_beds24" });
+    expect(saidaDaFeitaPorId(leu(lido()), pedido, 2)).toEqual({ saida: "conferir" });
+    // O cancelamento conferido que espera as duplicadas: o registro cancelado como o pedido.
+    expect(saidaDaFeitaPorId(leu(lido({ situacao: "cancelada", hospedes: 2 })), esperado({ situacao: "cancelada" }), 0)).toEqual({ saida: "conferir" });
+  });
+});
+
 describe("as janelas sem operação nova e os atrasos das falhas (desenho 9)", () => {
   const as = (hhmmss: string) => new Date(`2026-10-17T${hhmmss}Z`);
 
@@ -330,14 +376,21 @@ describe("os casos do e-mail à equipe (desenho 6.5)", () => {
     expect(casoDeEmailBeds24("conferida", null, "conferida")).toBeNull();
   });
 
-  it("a lista dos motivos de e-mail e a função não se separam: só os motivos da lista mandam, e cada um manda em algum caso", () => {
+  it("as listas dos motivos e das situações de e-mail e a função não se separam: só os da lista mandam, e cada um manda em algum caso", () => {
     const comEmail = new Set<string>();
+    const situacoes = new Set<string>();
     for (const situacao of SITUACOES_ACOMPANHAMENTO_BEDS24) {
       for (const motivo of [...MOTIVOS_ACOMPANHAMENTO_BEDS24, null]) {
-        for (const operacao of [...SITUACOES_OPERACAO_BEDS24, null]) if (casoDeEmailBeds24(situacao, motivo, operacao) !== null) comEmail.add(String(motivo));
+        for (const operacao of [...SITUACOES_OPERACAO_BEDS24, null]) {
+          if (casoDeEmailBeds24(situacao, motivo, operacao) === null) continue;
+          comEmail.add(String(motivo));
+          situacoes.add(situacao);
+        }
       }
     }
     expect([...comEmail].sort()).toEqual([...MOTIVOS_DE_EMAIL_BEDS24].sort());
+    // A varredura da rotina lê só estas situações: uma que a função mande e a lista não tenha nunca teria o e-mail.
+    expect([...situacoes].sort()).toEqual([...SITUACOES_DE_EMAIL_BEDS24].sort());
   });
 });
 

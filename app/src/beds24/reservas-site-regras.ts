@@ -412,11 +412,19 @@ export const origemPodeSerDoScl = (b: Pick<ReservaBeds24, "canal" | "origemApi">
   !canalNomeado(b.canal) && !(b.origemApi !== null && canalNomeado(canalDe(b.origemApi))) && (b.canal === "direta" || b.origemApi !== null);
 
 /**
+ * O registro "nosso" (desenho 3.5 e 4.3), uma regra para a adoção (`regraDeAdocao`), o "Vincular" e as duplicadas vivas do
+ * cancelamento: a marca do info item `SCL` (`marcaFonte = 'info'`; o código só no nome ou nas notas nunca basta) e a origem
+ * que pode ser a do SCL (`origemPodeSerDoScl`). Uma reserva de OTA com o código no info item nunca é nossa: cancelá-la no
+ * Beds24 liberaria o estoque sem cancelar na OTA (venda dupla).
+ */
+export const registroNossoBeds24 = (b: Pick<ReservaBeds24, "marcaFonte" | "canal" | "origemApi">): boolean => b.marcaFonte === "info" && origemPodeSerDoScl(b);
+
+/**
  * As regras de adoção (desenho 3.5), iguais no trabalhador, na importação e em "Vincular": exatamente um registro com a
  * marca, em `confirmed` ou `new` (a confirmada do SCL), no quarto guardado, com a chegada e a saída do esperado. Um
  * `black` ou um `cancelled` com o código, ou outras datas, é marca em registro inesperado; dois ou mais dos nossos, duplicada.
- * M8.3c (3.5 e 4.3): "nosso" é só o registro com a marca do info item `SCL` (`marcaFonte = 'info'`) e a origem que pode ser
- * a do SCL (`origemPodeSerDoScl`). A duplicada conta só os nossos: uma reserva de OTA com o código nas notas nunca entra nos
+ * M8.3c (3.5 e 4.3): "nosso" é só o registro com a marca do info item `SCL` e a origem que pode ser a do SCL
+ * (`registroNossoBeds24`). A duplicada conta só os nossos: uma reserva de OTA com o código nas notas nunca entra nos
  * ids (eles vão para `detalhe.duplicadas` e para "cancele no Beds24", e cancelá-la lá liberaria o estoque sem cancelar na
  * OTA: venda dupla). O código só no nome ou nas notas, ou num registro de canal, é marca em registro inesperado: nunca
  * adotado (e depois cancelado pelo sistema). `comMarca` são os registros lidos com a marca desta reserva, de qualquer fonte e
@@ -424,7 +432,7 @@ export const origemPodeSerDoScl = (b: Pick<ReservaBeds24, "canal" | "origemApi">
  */
 export function regraDeAdocao(comMarca: readonly ReservaBeds24[], esperado: EsperadoDaAdocao | null): DecisaoAdocao {
   if (!comMarca.length) return { adotar: false, motivo: "nenhum" };
-  const nossos = comMarca.filter((b) => b.marcaFonte === "info" && origemPodeSerDoScl(b));
+  const nossos = comMarca.filter(registroNossoBeds24);
   const ids = [...new Set(nossos.map((b) => b.idExterno))];
   if (ids.length > 1) return { adotar: false, motivo: "duplicada", ids: ids.sort() };
   const estranho = comMarca.find((b) => !nossos.includes(b));
@@ -496,8 +504,17 @@ export const MINUTOS_ANTES_DE_CONCLUIR_BEDS24 = 5;
 /** Na terceira busca sem conclusão, a incerteza vai à equipe (`aguardando_equipe`, motivo `incerta`). */
 export const BUSCAS_ATE_A_EQUIPE_BEDS24 = 3;
 
-const passaramCincoMinutos = (enviadoEm: Date, agora: Date) => agora.getTime() - enviadoEm.getTime() >= MINUTOS_ANTES_DE_CONCLUIR_BEDS24 * 60_000;
-const semConclusao = (buscas: number) => ({ saida: "sem_conclusao" as const, buscas: buscas + 1, equipe: buscas + 1 >= BUSCAS_ATE_A_EQUIPE_BEDS24 });
+/**
+ * A incerteza só conclui 5 min depois do POST (desenho 3.8, item 1), uma regra para as saídas puras daqui e para o
+ * trabalhador, que nem lê o Beds24 antes disso.
+ */
+export const podeConcluirIncertezaBeds24 = (enviadoEm: Date, agora: Date): boolean => agora.getTime() - enviadoEm.getTime() >= MINUTOS_ANTES_DE_CONCLUIR_BEDS24 * 60_000;
+
+/**
+ * A leitura que não concluiu (desenho 3.8, item 4), uma regra: `buscas_sem_conclusao` passa a `buscas` (o de agora + 1); na
+ * terceira, `equipe` (`aguardando_equipe`, motivo `incerta`). O contador é da incerteza: toda conclusão o zera.
+ */
+export const buscaSemConclusaoBeds24 = (buscas: number) => ({ saida: "sem_conclusao" as const, buscas: buscas + 1, equipe: buscas + 1 >= BUSCAS_ATE_A_EQUIPE_BEDS24 });
 
 /** Uma operação anterior da mesma reserva, no que a regra da nova tentativa olha. */
 export type OperacaoAnteriorBeds24 = {
@@ -561,14 +578,14 @@ export type SaidaDaIncerteza =
  * O `sem_id` nunca repete sozinho: o Beds24 disse que gravou, e um segundo POST arriscaria a duplicata.
  */
 export function saidaDaIncertezaDaCriacao(o: { resposta: RespostaBeds24 | null; enviadoEm: Date; agora: Date; leitura: LeituraDaIncerteza; jaHouveNovaTentativa: boolean; buscasSemConclusao: number }): SaidaDaIncerteza {
-  if (!passaramCincoMinutos(o.enviadoEm, o.agora)) return { saida: "aguardar" };
+  if (!podeConcluirIncertezaBeds24(o.enviadoEm, o.agora)) return { saida: "aguardar" };
   const l = o.leitura;
-  if (!l.funcionou) return semConclusao(o.buscasSemConclusao);
+  if (!l.funcionou) return buscaSemConclusaoBeds24(o.buscasSemConclusao);
   if (l.adocao.adotar) return { saida: "adotar", registro: l.adocao.registro };
   if (l.adocao.motivo === "duplicada") return { saida: "divergente", motivo: "duplicada", ids: l.adocao.ids };
   if (l.adocao.motivo === "marca_em_registro_inesperado") return { saida: "divergente", motivo: "marca_em_registro_inesperado", ids: [l.adocao.id] };
   if (l.ocupanteExato) return { saida: "candidato", id: l.ocupanteExato };
-  if (!l.credencialLeMarca) return semConclusao(o.buscasSemConclusao);
+  if (!l.credencialLeMarca) return buscaSemConclusaoBeds24(o.buscasSemConclusao);
   if (ehRecusa(o.resposta)) return { saida: "recusada", motivo: o.resposta === "recusada_disponibilidade" ? "sem_disponibilidade" : "recusada_pelo_beds24" };
   if (semResposta(o.resposta) && !o.jaHouveNovaTentativa) return { saida: "nova_tentativa" };
   return { saida: "equipe" };
@@ -611,18 +628,39 @@ const mesmoLido = (a: LidoBeds24, b: LidoBeds24) => a.quarto === b.quarto && a.c
  */
 export function saidaDaIncertezaPorId(o: { pedido: EsperadoBeds24; antes: LidoBeds24 | null; resposta: RespostaBeds24 | null; enviadoEm: Date; agora: Date; releitura: ReleituraDaIncerteza; jaHouveNovaTentativa: boolean; buscasSemConclusao: number }): SaidaDaIncertezaPorId {
   const l = o.releitura;
-  if (!l.funcionou) return semConclusao(o.buscasSemConclusao);
+  if (!l.funcionou) return buscaSemConclusaoBeds24(o.buscasSemConclusao);
   if (!l.registro) return l.podeConcluirApagada ? { saida: "divergente", motivo: "apagada_no_beds24" } : { saida: "equipe", motivo: "sem_permissao" };
   const dif = diferencaNoBeds24(o.pedido, l.registro);
   if (!dif) return { saida: "conferir" };
   if (o.antes && mesmoLido(o.antes, l.registro)) {
-    if (!passaramCincoMinutos(o.enviadoEm, o.agora)) return { saida: "aguardar" };
+    if (!podeConcluirIncertezaBeds24(o.enviadoEm, o.agora)) return { saida: "aguardar" };
     if (ehRecusa(o.resposta)) return { saida: "recusada", motivo: o.resposta === "recusada_disponibilidade" ? "sem_disponibilidade" : "recusada_pelo_beds24" };
     if (semResposta(o.resposta) && !o.jaHouveNovaTentativa) return { saida: "nova_tentativa" };
     return { saida: "equipe", motivo: "incerta" };
   }
-  if (!o.antes) return passaramCincoMinutos(o.enviadoEm, o.agora) ? { saida: "equipe", motivo: "incerta" } : { saida: "aguardar" };
+  if (!o.antes) return podeConcluirIncertezaBeds24(o.enviadoEm, o.agora) ? { saida: "equipe", motivo: "incerta" } : { saida: "aguardar" };
   return { saida: "divergente", motivo: dif.motivo };
+}
+
+/** O que a saída por id do fato já aceito pode concluir: nunca aguardar, nova tentativa nem recusa. */
+export type SaidaDaFeitaPorId = Extract<SaidaDaIncertezaPorId, { saida: "conferir" | "divergente" | "equipe" | "sem_conclusao" }>;
+
+/**
+ * A saída por id do que o Beds24 já aceitou (desenho 3.6 e 4.3): a `feita` (o cancelamento conferido que espera as
+ * duplicadas; a criação adotada pela importação ou sem a releitura) e a criação `enviando` vencida com o id (a queda entre a
+ * resposta e a fase 3). O POST já valeu, então nunca há os 5 min, a comparação com o `antes` nem nova tentativa — só a
+ * releitura, como na incerteza do `atualizar` e do `cancelar`:
+ * - igual ao pedido: `conferir` (a conferência depois confere também a marca);
+ * - não voltou: `divergente`/`apagada_no_beds24` só com a credencial e o quarto que permitem concluir; senão a equipe,
+ *   `sem_permissao` (a troca de token ou o acesso tirado fazem todos os ids sumirem);
+ * - outra coisa: `divergente` com o motivo de `diferencaNoBeds24`;
+ * - a releitura falhou: `sem_conclusao`, como na incerteza.
+ */
+export function saidaDaFeitaPorId(releitura: ReleituraDaIncerteza, pedido: EsperadoBeds24, buscasSemConclusao: number): SaidaDaFeitaPorId {
+  if (!releitura.funcionou) return buscaSemConclusaoBeds24(buscasSemConclusao);
+  if (!releitura.registro) return releitura.podeConcluirApagada ? { saida: "divergente", motivo: "apagada_no_beds24" } : { saida: "equipe", motivo: "sem_permissao" };
+  const dif = diferencaNoBeds24(pedido, releitura.registro);
+  return dif ? { saida: "divergente", motivo: dif.motivo } : { saida: "conferir" };
 }
 
 // ---------------------------------------------------------------- a rotina (desenho 9)
@@ -677,14 +715,21 @@ export const MOTIVOS_DE_EMAIL_BEDS24 = [
 ] as const satisfies readonly MotivoAcompanhamentoBeds24[];
 
 /**
+ * As situações do acompanhamento que podem pedir e-mail (a varredura da rotina lê só estas). A função lê esta lista: fora
+ * dela, nunca há e-mail (as duas não se separam, como nos motivos).
+ */
+export const SITUACOES_DE_EMAIL_BEDS24 = ["conflito", "conferida", "divergente", "aguardando_equipe"] as const satisfies readonly SituacaoAcompanhamentoBeds24[];
+
+/**
  * A transição que pede e-mail à equipe (desenho 6.5), uma regra: o conflito (`conflito`/`noites_ocupadas`, "Possível venda
  * dupla"); o overbooking que o Beds24 informa depois de uma escrita certa (`conferida`/`noites_ocupadas`, texto próprio: o
  * sistema criou); a divergência apagada, mudada ou cancelada no Beds24 e a marca ilegível; a recusa do POST (a operação
  * `recusada`: sem disponibilidade, recusada pelo Beds24 ou sem permissão — a falta de disponibilidade lida ANTES do POST
- * não manda, nada foi enviado); e a 5ª falha. Só com um motivo de `MOTIVOS_DE_EMAIL_BEDS24`. null = sem e-mail (a linha de
- * atenção do Início continua).
+ * não manda, nada foi enviado); e a 5ª falha. Só numa situação de `SITUACOES_DE_EMAIL_BEDS24` e com um motivo de
+ * `MOTIVOS_DE_EMAIL_BEDS24`. null = sem e-mail (a linha de atenção do Início continua).
  */
 export function casoDeEmailBeds24(situacao: SituacaoAcompanhamentoBeds24, motivo: MotivoAcompanhamentoBeds24 | null, operacao: SituacaoOperacaoBeds24 | null): CasoDeEmailBeds24 | null {
+  if (!(SITUACOES_DE_EMAIL_BEDS24 as readonly string[]).includes(situacao)) return null;
   if (motivo === null || !(MOTIVOS_DE_EMAIL_BEDS24 as readonly string[]).includes(motivo)) return null;
   if (motivo === "noites_ocupadas") return situacao === "conflito" ? "conflito" : situacao === "conferida" ? "overbooking" : null;
   if (situacao === "divergente") return motivo === "marca_ilegivel" ? "marca_ilegivel" : motivo === "mudada_no_beds24" || motivo === "cancelada_no_beds24" || motivo === "apagada_no_beds24" ? "divergencia" : null;

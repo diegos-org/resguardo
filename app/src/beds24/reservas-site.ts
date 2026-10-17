@@ -1,10 +1,11 @@
 /**
  * Reserva paga do site no Beds24 (M8.3, desenho em `requisitos/product/RESERVA-SITE-BEDS24.md`): o que lê o Beds24 e o
- * que a importação faz com a reserva do site. Nada aqui escreve no Beds24 (a escrita é o M8.3c, atrás de
- * `escritaReservasBeds24Pronta`).
- * - `procurarReservaDoSite` (3.5): a busca pela marca do SCL, só leitura.
+ * que a importação faz com a reserva do site. Este arquivo só lê o Beds24 e grava no SCL: quem escreve no Beds24 é o
+ * trabalhador do M8.3c (`reservas-site-envio.ts`, atrás de `escritaReservasBeds24Pronta`), que usa a busca e a adoção daqui.
+ * - `procurarReservaDoSite` (3.5): a busca pela marca do SCL, só leitura; não conclui com a marca ambígua (M8.3c).
  * - `adotarReservaCriada` (3.5): a adoção de um registro com a marca, pelas regras de adoção; a mesma função na importação
- *   e no trabalhador do M8.3c.
+ *   e no trabalhador do M8.3c. `vincularRegistro` (3.8, M8.3c) é a variante do "Já existe, vincular o id": o id que a equipe
+ *   informou, relido por id, com a duplicada já cancelada e o vínculo sem a marca.
  * - `conferirNaImportacao` (5.2 b): a importação confere a reserva do site contra o `esperado` e nunca a muda.
  * - `prepararDesvioNaImportacao` e `desvioNaImportacao` (5.2 a–e): o desvio no laço da importação, antes da conferência de
  *   vínculo e do ramo de bloqueio.
@@ -15,7 +16,7 @@ import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { beds24ReservasOperacoes, beds24ReservasSite, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { assinaturaAtualDoScl, type DecisaoAdocao, diferencaNaMarca, diferencaNoBeds24, type DiferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, regraDeAdocao, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
+import { assinaturaAtualDoScl, type DecisaoAdocao, diferencaNaMarca, diferencaNoBeds24, type DiferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, origemPodeSerDoScl, regraDeAdocao, registroNossoBeds24, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
 import { ErroBeds24, type FiltroReservas, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
 import { JANELA_RESERVA_EM_ANDAMENTO_MINUTOS } from "./trava";
 
@@ -41,8 +42,11 @@ export type AlvoDaBusca = {
  * `funcionou` = todas as leituras responderam, nenhuma trouxe registro em formato inválido (um registro ilegível pode ser
  * o nosso: a busca não conclui) nem o mesmo id duas vezes, e o registro que voltou em mais de uma leitura voltou igual (senão,
  * qual cópia vale?). `comMarca` = os registros com a marca desta reserva, em todas as situações; o ensaio nunca entra.
+ * `status` = o HTTP da recusa do Beds24 que derrubou a leitura (M8.3c: o 429, o 401 e o 403 param a volta do envio); sem
+ * ele, não houve resposta. M8.3c (desenho 5.2): um registro com a marca ambígua (dois códigos, ou o info item `SCL` com um
+ * texto que não é código) também não conclui — ele pode ser o nosso com a marca estragada, e "não achou" criaria a duplicata.
  */
-export type BuscaDaReservaDoSite = { funcionou: true; comMarca: ReservaBeds24[]; lidoEm: string } | { funcionou: false; erro: string };
+export type BuscaDaReservaDoSite = { funcionou: true; comMarca: ReservaBeds24[]; lidoEm: string } | { funcionou: false; erro: string; status?: number };
 
 /**
  * Procura no Beds24 a reserva que o SCL criou (só leitura): (1) as reservas do quarto com a chegada explícita (sem ela, o
@@ -60,6 +64,7 @@ export async function procurarReservaDoSite(leitor: LeitorBeds24, alvo: AlvoDaBu
     for (const f of leituras) {
       const l = await leitor.reservas(f);
       if (l.divergencias.length) return { funcionou: false, erro: "A leitura do Beds24 trouxe registro em formato inválido: a busca não conclui." };
+      if (l.itens.some((b) => b.marcaAmbigua)) return { funcionou: false, erro: "A leitura do Beds24 trouxe registro com a marca do SCL ambígua (dois códigos, ou o código ilegível): a busca não conclui." };
       const nestaLeitura = new Set<string>();
       for (const b of l.itens) {
         if (nestaLeitura.has(b.idExterno)) return { funcionou: false, erro: "A leitura do Beds24 trouxe o mesmo registro duas vezes: a busca não conclui." };
@@ -71,7 +76,7 @@ export async function procurarReservaDoSite(leitor: LeitorBeds24, alvo: AlvoDaBu
       lidoEm = l.lidoEm;
     }
   } catch (e) {
-    return { funcionou: false, erro: e instanceof ErroBeds24 ? e.message : "Não foi possível ler o Beds24." };
+    return { funcionou: false, erro: e instanceof ErroBeds24 ? e.message : "Não foi possível ler o Beds24.", ...(e instanceof ErroBeds24 && e.status !== undefined ? { status: e.status } : {}) };
   }
   return { funcionou: true, comMarca: [...porId.values()].filter((b) => !b.ensaio && b.referenciaScl === alvo.referencia), lidoEm };
 }
@@ -119,6 +124,36 @@ export type ResultadoAdocao =
 const semAdocao = (d: Exclude<DecisaoAdocao, { adotar: true }>): ResultadoAdocao =>
   d.motivo === "duplicada" ? { adotada: false, motivo: "duplicada", ids: d.ids } : d.motivo === "marca_em_registro_inesperado" ? { adotada: false, motivo: d.motivo, id: d.id } : { adotada: false, motivo: "nenhum" };
 
+type ReservaTravada = NonNullable<Awaited<ReturnType<typeof travarReservaDoSite>>>["reserva"];
+
+/** Os ids do Beds24 já ligados à reserva: `reservas.beds24_id` e o de qualquer operação dela. */
+async function idsLigados(tx: Db, org: string, r: ReservaTravada): Promise<Set<string>> {
+  const comId = await tx.select({ beds24Id: beds24ReservasOperacoes.beds24Id }).from(beds24ReservasOperacoes).where(and(eq(beds24ReservasOperacoes.organizacaoId, org), eq(beds24ReservasOperacoes.reservaId, r.id), isNotNull(beds24ReservasOperacoes.beds24Id)));
+  return new Set([r.beds24Id, ...comId.map((x) => x.beds24Id)].filter((x): x is string => Boolean(x)));
+}
+
+/** O id já é de outra reserva do SCL (`reservas.beds24_id` é único por organização). */
+async function idDeOutraReserva(tx: Db, org: string, r: ReservaTravada, id: string): Promise<boolean> {
+  if (r.beds24Id === id) return false;
+  const [outra] = await tx.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.beds24Id, id), ne(reservas.id, r.id))).limit(1);
+  return Boolean(outra);
+}
+
+/**
+ * Grava o vínculo (o fato externo): `reservas.beds24_id`, com a auditoria `beds24.reserva.adotar` (o autor nulo é o
+ * sistema), e a criação em curso passa a `feita` com o mesmo id (a conferência segue sem POST).
+ */
+async function gravarVinculo(tx: Db, org: string, r: ReservaTravada, id: string, autorId: string | null) {
+  if (r.beds24Id !== id) {
+    await tx.update(reservas).set({ beds24Id: id }).where(eq(reservas.id, r.id));
+    await registrarAuditoria(tx, { organizacaoId: org, usuarioId: autorId, acao: "beds24.reserva.adotar", entidade: "reserva", entidadeId: r.id, mudancas: { beds24Id: [r.beds24Id, id] } });
+  }
+  await tx
+    .update(beds24ReservasOperacoes)
+    .set({ beds24Id: id, situacao: "feita" })
+    .where(and(eq(beds24ReservasOperacoes.organizacaoId, org), eq(beds24ReservasOperacoes.reservaId, r.id), eq(beds24ReservasOperacoes.tipo, "criar"), inArray(beds24ReservasOperacoes.situacao, [...SITUACOES_OPERACAO_ATIVAS])));
+}
+
 /**
  * Adota o registro do Beds24 que a criação deixou sem resposta (resposta perdida, `success: false` que gravou mesmo assim,
  * busca da incerteza), pelas regras de adoção: grava o fato externo — `reservas.beds24_id` e, na operação de criação em
@@ -135,24 +170,66 @@ export async function adotarReservaCriada(tx: Db, org: string, reservaId: string
   const d = regraDeAdocao(comMarca.filter((b) => !b.ensaio && b.referenciaScl === r.codigo), esperadoDaAdocao(a));
   if (!d.adotar) return semAdocao(d);
   const id = d.registro.idExterno;
-  const comId = await tx.select({ beds24Id: beds24ReservasOperacoes.beds24Id }).from(beds24ReservasOperacoes).where(and(eq(beds24ReservasOperacoes.organizacaoId, org), eq(beds24ReservasOperacoes.reservaId, r.id), isNotNull(beds24ReservasOperacoes.beds24Id)));
-  const ligados = new Set([r.beds24Id, ...comId.map((x) => x.beds24Id)].filter((x): x is string => Boolean(x)));
+  const ligados = await idsLigados(tx, org, r);
   if ([...ligados].some((x) => x !== id)) return { adotada: false, motivo: "duplicada", ids: [...new Set([...ligados, id])].sort() };
-  if (r.beds24Id !== id) {
-    const [outra] = await tx.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.beds24Id, id), ne(reservas.id, r.id))).limit(1);
-    if (outra) return { adotada: false, motivo: "id_de_outra_reserva", id };
-  }
+  if (await idDeOutraReserva(tx, org, r, id)) return { adotada: false, motivo: "id_de_outra_reserva", id };
   // Só aqui, com tudo casando: os avisos mais certos (sem acompanhamento, duplicada, id de outra reserva) vêm antes.
   if (o.leituraInconclusiva) return { adotada: false, motivo: "leitura_inconclusiva" };
-  if (r.beds24Id !== id) {
-    await tx.update(reservas).set({ beds24Id: id }).where(eq(reservas.id, r.id));
-    await registrarAuditoria(tx, { organizacaoId: org, usuarioId: o.autorId ?? null, acao: "beds24.reserva.adotar", entidade: "reserva", entidadeId: r.id, mudancas: { beds24Id: [r.beds24Id, id] } });
-  }
-  await tx
-    .update(beds24ReservasOperacoes)
-    .set({ beds24Id: id, situacao: "feita" })
-    .where(and(eq(beds24ReservasOperacoes.organizacaoId, org), eq(beds24ReservasOperacoes.reservaId, r.id), eq(beds24ReservasOperacoes.tipo, "criar"), inArray(beds24ReservasOperacoes.situacao, [...SITUACOES_OPERACAO_ATIVAS])));
+  await gravarVinculo(tx, org, r, id, o.autorId ?? null);
   return { adotada: true, beds24Id: id };
+}
+
+export type ResultadoVinculo =
+  | { vinculado: true; beds24Id: string; semMarca: boolean }
+  /** A reserva não é do site, não tem acompanhamento, ou ele está `manual` ou `encerrada`. */
+  | { vinculado: false; motivo: "sem_acompanhamento" }
+  /**
+   * O registro não bate com a criação: a situação (`confirmed` ou `new`), o quarto guardado, as datas do esperado, a marca do
+   * info item e a origem que pode ser a do SCL (desenho 3.5); o ensaio ou outro código nunca.
+   */
+  | { vinculado: false; motivo: "nao_bate"; id: string }
+  /** Sem a marca desta reserva, com a credencial que lê a marca: o registro não é nosso. */
+  | { vinculado: false; motivo: "sem_marca"; id: string }
+  /** Outros registros nossos com a marca desta reserva ainda vivos (não `cancelled`): "cancele no Beds24 (não apague): …". */
+  | { vinculado: false; motivo: "duplicada"; ids: string[] }
+  | { vinculado: false; motivo: "id_de_outra_reserva"; id: string };
+
+/**
+ * "Já existe, vincular o id" (desenho 3.8; M8.3c): a variante da adoção para o id que a equipe informou, relido por id fora
+ * da transação. Quem chama tem a trava `beds24:<org>` e decide antes se a credencial lê a marca. As mesmas regras de adoção
+ * (`regraDeAdocao`), com duas diferenças, para a equipe ter saída:
+ * - na duplicada, aceita o id escolhido quando todos os OUTROS registros nossos com a marca (`comMarca`, relidos agora) estão
+ *   `cancelled` — a equipe os cancelou no Beds24; senão, recusa com os ids vivos. Sem isso a duplicada nunca sairia:
+ *   `regraDeAdocao` conta os registros com a marca em todas as situações;
+ * - `semMarca` (só quando a credencial não lê a marca, com a segunda confirmação): o registro sem marca legível, `confirmed`
+ *   ou `new`, no quarto guardado, com as datas do esperado e a origem que pode ser a do SCL (a do ocupante exato). Com a
+ *   credencial que lê a marca, um registro sem a marca desta reserva não é nosso: recusa.
+ * Grava o mesmo fato da adoção (`reservas.beds24_id`, a criação em curso em `feita`) e a auditoria com o autor; a operação
+ * `vincular`, a conferência e as marcas são de quem chama.
+ */
+export async function vincularRegistro(tx: Db, org: string, reservaId: string, registro: ReservaBeds24, comMarca: readonly ReservaBeds24[], o: { semMarca?: boolean; autorId?: string | null } = {}): Promise<ResultadoVinculo> {
+  const t = await travarReservaDoSite(tx, org, reservaId, "update");
+  if (!t?.acompanhamento || t.acompanhamento.situacao === "manual" || t.acompanhamento.situacao === "encerrada") return { vinculado: false, motivo: "sem_acompanhamento" };
+  const { reserva: r, acompanhamento: a } = t;
+  const id = registro.idExterno;
+  const esperado = esperadoDaAdocao(a);
+  if (registro.ensaio) return { vinculado: false, motivo: "nao_bate", id };
+  if (o.semMarca && registro.referenciaScl !== r.codigo) {
+    // Sem marca legível só: o código de outra reserva, ou a marca ambígua, nunca é a nossa.
+    const bate = registro.referenciaScl === null && !registro.marcaAmbigua && registro.estado === "confirmada" && esperado !== null && registro.roomId === esperado.quarto && registro.checkin === esperado.chegada && registro.checkout === esperado.saida && origemPodeSerDoScl(registro);
+    if (!bate) return { vinculado: false, motivo: "nao_bate", id };
+  } else {
+    if (registro.referenciaScl !== r.codigo) return { vinculado: false, motivo: "sem_marca", id };
+    const nosso = (b: ReservaBeds24) => !b.ensaio && b.referenciaScl === r.codigo && registroNossoBeds24(b);
+    const vivos = [...new Set(comMarca.filter((b) => nosso(b) && b.idExterno !== id && b.estado !== "cancelada").map((b) => b.idExterno))].sort();
+    if (vivos.length) return { vinculado: false, motivo: "duplicada", ids: vivos };
+    if (!regraDeAdocao([registro], esperado).adotar) return { vinculado: false, motivo: "nao_bate", id };
+  }
+  const ligados = await idsLigados(tx, org, r);
+  if ([...ligados].some((x) => x !== id)) return { vinculado: false, motivo: "duplicada", ids: [...new Set([...ligados, id])].sort() };
+  if (await idDeOutraReserva(tx, org, r, id)) return { vinculado: false, motivo: "id_de_outra_reserva", id };
+  await gravarVinculo(tx, org, r, id, o.autorId ?? null);
+  return { vinculado: true, beds24Id: id, semMarca: registro.referenciaScl !== r.codigo };
 }
 
 // ---------------------------------------------------------------- conferência na importação (desenho 5.2 b)
