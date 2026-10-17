@@ -113,6 +113,17 @@ describe("Simular (M8.3a, teste 11)", () => {
     expect(await simularSemRede(admin, x.reservaId)).toEqual({ ok: false, motivo: "envio_em_curso" });
   });
 
+  it("cancelada com uma criação real sem conclusão (o POST tentado, sem o id): nada é simulado, em vez de \"nada a cancelar\"", async () => {
+    const x = await pagarEConfirmar(c);
+    const equipe = await usuarioDeTeste(c, "Equipe Três");
+    const canc = await cancelar(c, x.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(59));
+    expect(canc.resultado.ok).toBe(true);
+    // Sem a criação incerta, a régua diz que não há nada a cancelar lá.
+    expect(await simularSemRede(admin, x.reservaId, env(), minutos(70))).toEqual({ ok: false, motivo: "cancelada_sem_beds24" });
+    await db.insert(beds24ReservasOperacoes).values({ organizacaoId: c.org, reservaId: x.reservaId, tipo: "criar", chave: `criar:${x.reservaId}:1`, modo: "real", situacao: "incerta", enviadoEm: minutos(20), pedido: { quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4, situacao: "confirmada", referencia: x.reservaCodigo } });
+    expect(await simularSemRede(admin, x.reservaId, env(), minutos(70))).toEqual({ ok: false, motivo: "envio_em_curso" });
+  });
+
   it("o mesmo estado simulado como criação e depois como atualização são duas intenções: a chave leva o tipo", async () => {
     const x = await pagarEConfirmar(c);
     const a = await simularSemRede(admin, x.reservaId);
