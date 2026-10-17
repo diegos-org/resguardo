@@ -361,4 +361,101 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0072.hash]);
     expect(await aplicarMigracoesPendentes(executar, ate0072)).toBe(1);
   }, 120_000);
+
+  it("a 0073 (M10.1a, WhatsApp) cria as cinco tabelas vazias, com os únicos e CHECKs do desenho, nomes até 63 caracteres, e é idempotente", async () => {
+    const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
+    const m0073 = todas[73];
+    expect(m0073.sql.join("\n")).toContain('"whatsapp_mensagens"');
+    // Só até a 0073 (as seguintes terão o próprio teste).
+    const ate0073 = todas.slice(0, 74);
+    expect(await aplicarMigracoesPendentes(executar, todas.slice(0, 73))).toBe(73);
+    const um = async <T,>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows[0];
+    const { id: org } = (await um<{ id: string }>("insert into organizacoes (nome) values ('Org') returning id"))!;
+    const { id: outra } = (await um<{ id: string }>("insert into organizacoes (nome) values ('Outra') returning id"))!;
+    const { id: im } = (await um<{ id: string }>("insert into imoveis (organizacao_id, codigo, nome) values ($1, '403', 'Studio Fictício') returning id", [org]))!;
+    const { id: reserva } = (await um<{ id: string }>("insert into reservas (organizacao_id, imovel_id, codigo, origem, checkin, checkout, fonte) values ($1, $2, 'SCL-7K2QXM', 'site', '2026-12-20', '2026-12-27', 'site') returning id", [org, im]))!;
+    const { id: cotacao } = (await um<{ id: string }>(
+      "insert into cotacoes (organizacao_id, imovel_id, codigo, checkin, checkout, noites, hospedes, diarias, limpeza, hospede_extra, valor_cheio, total, situacao) values ($1, $2, 'COT-7K3M9QX2', '2026-12-20', '2026-12-27', 7, 2, 100000, 10000, 0, 110000, 110000, 'disponivel') returning id",
+      [org, im],
+    ))!;
+
+    expect(await aplicarMigracoesPendentes(executar, ate0073)).toBe(1);
+    const TABELAS = ["whatsapp_avisos_dia", "whatsapp_conta", "whatsapp_contatos", "whatsapp_eventos", "whatsapp_mensagens"];
+    const linhas = async () => (await db.query<{ t: string; n: number }>(TABELAS.map((t) => `select '${t}' as t, count(*)::int as n from ${t}`).join(" union all ") + " order by 1")).rows;
+    // Nada nasce sozinho: nenhuma conversa, mensagem, evento, contador ou situação de conta para os dados de antes.
+    expect((await linhas()).every((r) => r.n === 0)).toBe(true);
+    const restricoes = async () =>
+      (await db.query<{ n: string }>("select c.conname as n from pg_constraint c join pg_class t on t.oid = c.conrelid where t.relname like 'whatsapp_%' order by 1")).rows.map((r) => r.n);
+    const indices = async () => (await db.query<{ n: string }>("select indexname as n from pg_indexes where tablename like 'whatsapp_%' order by 1")).rows.map((r) => r.n);
+    const antes = { restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas() };
+    expect(antes.tabelas).toEqual(expect.arrayContaining(TABELAS));
+    expect(antes.restricoes).toEqual(
+      expect.arrayContaining([
+        "whatsapp_contatos_pedido_contato_fk", "whatsapp_contatos_cadastro_fk", "whatsapp_mensagens_contato_id_whatsapp_contatos_id_fk",
+        "whatsapp_contatos_vinculo_confirmado_por_usuarios_id_fk", "whatsapp_contatos_identidade", "whatsapp_contatos_wa_id_digitos",
+        "whatsapp_contatos_um_vinculo", "whatsapp_mensagens_apagada_sem_texto", "whatsapp_mensagens_wamid_tamanho", "whatsapp_conta_progresso",
+      ]),
+    );
+    expect(antes.indices).toEqual(
+      expect.arrayContaining([
+        "whatsapp_contatos_wa_id", "whatsapp_contatos_bsuid", "whatsapp_contatos_ultima", "whatsapp_contatos_reserva", "whatsapp_contatos_cotacao",
+        "whatsapp_mensagens_wamid", "whatsapp_mensagens_contato", "whatsapp_eventos_chave", "whatsapp_eventos_recebido",
+      ]),
+    );
+    // Nenhum nome passa dos 63 caracteres do Postgres. Ele corta o nome comprido (e o `conname = '...'` da migração corta
+    // igual), então medir o catálogo não prova nada: mede os nomes escritos na 0073.
+    const nomesNaMigracao = [...m0073.sql.join("\n").matchAll(/conname = '([^']+)'|INDEX IF NOT EXISTS "([^"]+)"/g)].map((m) => m[1] ?? m[2]);
+    expect(nomesNaMigracao).toHaveLength(26); // 11 chaves estrangeiras, 6 CHECKs, 9 índices
+    expect(nomesNaMigracao.every((n) => n.length <= 63)).toBe(true);
+    expect([...antes.restricoes, ...antes.indices]).toEqual(expect.arrayContaining(nomesNaMigracao));
+
+    // Os únicos (23505) e os CHECKs (23514) que o banco garante sozinho. Valores fictícios.
+    const codigo = async (sql: string, params: unknown[] = []) => {
+      try {
+        await db.query(sql, params);
+        return "ok";
+      } catch (e) {
+        return (e as { code?: string }).code;
+      }
+    };
+    const contato = (colunas: string, valores: string, params: unknown[]) => codigo(`insert into whatsapp_contatos (organizacao_id, ${colunas}) values ($1, ${valores})`, params);
+    expect(await contato("wa_id", "'16505551234'", [org])).toBe("ok");
+    expect(await contato("wa_id", "'16505551234'", [org])).toBe("23505");
+    expect(await contato("wa_id", "'16505551234'", [outra])).toBe("ok");
+    expect(await contato("bsuid", "'BR.Ficticio0000000000000001'", [org])).toBe("ok");
+    expect(await contato("bsuid", "'BR.Ficticio0000000000000001'", [org])).toBe("23505");
+    expect(await contato("nome_perfil", "'Sem identidade'", [org])).toBe("23514");
+    expect(await contato("wa_id", "'5521a99990000'", [org])).toBe("23514");
+    expect(await contato("wa_id, reserva_id, cotacao_id, vinculo_confirmado_em", "'5521999990000', $2, $3, now()", [org, reserva, cotacao])).toBe("23514");
+    expect(await contato("wa_id, reserva_id", "'5521999990000', $2", [org, reserva])).toBe("23514");
+    expect(await contato("wa_id, vinculo_confirmado_em", "'5521999990000', now()", [org])).toBe("23514");
+    expect(await contato("wa_id, cotacao_id, vinculo_confirmado_em", "'5521999990000', $2, now()", [org, cotacao])).toBe("ok");
+    const { id: conversa } = (await um<{ id: string }>("select id from whatsapp_contatos where organizacao_id = $1 and wa_id = '16505551234'", [org]))!;
+    const mensagem = (wamid: string, extra = "", valores = "") =>
+      codigo(`insert into whatsapp_mensagens (organizacao_id, contato_id, wamid, direcao, origem, tipo, enviada_em${extra}) values ($1, $2, $3, 'recebida', 'tempo_real', 'texto', now()${valores})`, [org, conversa, wamid]);
+    expect(await mensagem("wamid.TESTE.A")).toBe("ok");
+    expect(await mensagem("wamid.TESTE.A")).toBe("23505");
+    expect(await mensagem("wamid.TESTE.B", ", texto, apagada_em", ", 'ainda com texto', now()")).toBe("23514");
+    expect(await mensagem("")).toBe("23514");
+    expect(await mensagem("w".repeat(257))).toBe("23514");
+    expect(await mensagem("w".repeat(256))).toBe("ok");
+    expect(await codigo("insert into whatsapp_conta (organizacao_id, progresso_historico) values ($1, 101)", [org])).toBe("23514");
+    expect(await codigo("insert into whatsapp_conta (organizacao_id, progresso_historico) values ($1, 100)", [org])).toBe("ok");
+    const evento = (chave: string) => codigo("insert into whatsapp_eventos (organizacao_id, campo, chave, resultado) values ($1, 'account_update', $2, 'gravado')", [org, chave]);
+    expect(await evento("")).toBe("ok");
+    expect(await evento("")).toBe("ok");
+    expect(await evento("account_update:PARTNER_REMOVED:1:-:-")).toBe("ok");
+    expect(await evento("account_update:PARTNER_REMOVED:1:-:-")).toBe("23505");
+    // A cotação vinculada não some com a cotação: a chave estrangeira recusa (a limpeza de 30 dias não a apaga, site/cotacoes.ts).
+    expect(await codigo("delete from cotacoes where id = $1", [cotacao])).toBe("23503");
+
+    // As instruções de novo (banco compartilhado das prévias): nada muda, nem as linhas já gravadas.
+    const gravadas = await linhas();
+    expect(gravadas.find((r) => r.t === "whatsapp_contatos")?.n).toBe(4);
+    for (const instrucao of m0073.sql) await db.exec(instrucao);
+    expect({ restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas(), linhas: await linhas() }).toEqual({ ...antes, linhas: gravadas });
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0073.hash]);
+    expect(await aplicarMigracoesPendentes(executar, ate0073)).toBe(1);
+    expect(await linhas()).toEqual(gravadas);
+  }, 120_000);
 });

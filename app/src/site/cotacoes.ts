@@ -6,17 +6,17 @@
  * pedido vence sozinho (rotina) e a equipe confirma ou cancela no painel; o pagamento online (M8.2) vai
  * usar este mesmo hold. Nada é escrito no Beds24 aqui (M8.3).
  */
-import { randomInt } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
-import { cotacoes, type EstadoCotacao, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
+import { cotacoes, type EstadoCotacao, imoveis, imoveisDetalhes, pagamentos, reservas, whatsappContatos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dataBr, diaHoraNoFuso } from "@/lib/datas";
 import { expirarAlteracoesVencidas } from "@/pagamentos/alteracao-prazo";
 import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, PRAZO_CARTAO_SEM_RESPOSTA_DIAS } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
+import { codigoCotacaoValido, gerarCodigoCotacao } from "./codigo-cotacao";
 import { consultarDisponibilidade, type Disponibilidade } from "./disponibilidade";
 import { type RegrasDaCasa, regrasDaCasa } from "./regras-da-casa";
 import type { PedidoConsulta } from "./site";
@@ -39,14 +39,9 @@ export const GUARDAR_COTACAO_SEM_PEDIDO_DIAS = 30;
  */
 export { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS };
 
-const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/1/I
-/** Código público da cotação, ex.: COT-7K2QXM9A. Não é credencial. */
-export function gerarCodigoCotacao(): string {
-  let s = "";
-  for (let i = 0; i < 8; i++) s += ALFABETO[randomInt(ALFABETO.length)];
-  return `COT-${s}`;
-}
-export const codigoCotacaoValido = (c: string) => /^COT-[A-HJ-NP-Z2-9]{8}$/.test(c);
+// Código público da cotação: puro, em ./codigo-cotacao (M10.1a: o vínculo do WhatsApp lê os códigos sem importar este
+// módulo, que grava cotações e reservas). Reexportado aqui para quem já importava daqui.
+export { codigoCotacaoValido, codigosDeCotacaoNoTexto, gerarCodigoCotacao } from "./codigo-cotacao";
 
 const MENSAGEM_ESTADO: Record<EstadoCotacao, string> = {
   aberta: "",
@@ -403,8 +398,9 @@ async function fecharHold(tx: Db, c: { id: string; organizacaoId: string; reserv
 /**
  * Fecha o ciclo dos holds (ver `fecharHold`). Sem `imovelId` (rotina), cada hold vence numa transação curta
  * própria, travando o imóvel primeiro (a ordem única: imóvel → reserva → cotação → pagamentos), e a rotina
- * também apaga cotações que nunca viraram pedido depois de 30 dias. Com `imovelId` (antes de segurar), roda na
- * transação de quem chama, que já travou o imóvel. `organizacaoId` null = todas as empresas (rotina).
+ * também apaga cotações que nunca viraram pedido depois de 30 dias (menos as vinculadas a uma conversa do WhatsApp,
+ * M10.1a). Com `imovelId` (antes de segurar), roda na transação de quem chama, que já travou o imóvel.
+ * `organizacaoId` null = todas as empresas (rotina).
  */
 export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null, agora = new Date(), imovelId?: string): Promise<ResumoExpiracao> {
   const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0, falhas: 0 };
@@ -455,6 +451,8 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
         inArray(cotacoes.estado, ["aberta", "desatualizada"]),
         isNull(cotacoes.reservaId),
         lt(cotacoes.criadaEm, new Date(agora.getTime() - GUARDAR_COTACAO_SEM_PEDIDO_DIAS * 86_400_000)),
+        // M10.1a: cotação vinculada a uma conversa do WhatsApp não é apagada (a FK não deixaria, e o vínculo é histórico).
+        notExists(db.select({ um: sql`1` }).from(whatsappContatos).where(eq(whatsappContatos.cotacaoId, cotacoes.id))),
       ),
     )
     .returning({ id: cotacoes.id });

@@ -6,12 +6,13 @@
  */
 import type { Db } from "@/db/types";
 import { ESPERA_TELA_MS, esperarNoMaximo } from "@/lib/prazo";
+import { ENDERECO_PRODUCAO } from "@/sistema/ambiente";
 import { contaDeTesteConfirmada, estadoPagamentoDoAmbiente, provedorDoAmbiente } from "./ambiente";
 import { situacaoDosAvisos } from "./eventos";
 import type { ProvedorPagamento } from "./provedor";
 
 /** Endereço do aviso assinado para configurar no Mercado Pago (o deploy de produção, fixo). */
-export const ENDERECO_WEBHOOK = "https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago";
+export const ENDERECO_WEBHOOK = `${ENDERECO_PRODUCAO}/api/pagamentos/mercadopago`;
 
 /** Segredo dos avisos (MERCADOPAGO_WEBHOOK_SECRET), em qualquer ambiente; null = ausente ou vazio (todo aviso é recusado). */
 export function segredoDoWebhook(env: NodeJS.ProcessEnv = process.env): string | null {

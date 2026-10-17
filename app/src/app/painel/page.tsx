@@ -10,6 +10,7 @@ import { hojeISO } from "@/lib/datas";
 import { comFiltros, descreverFiltros, lerFiltros, manterFiltros, periodoDosFiltros } from "@/lib/filtros";
 import { formatBRL } from "@/lib/money";
 import { carregarDashboard, contaDeTesteParaInicio } from "@/painel/dashboard";
+import { contarConversasSemResposta } from "@/whatsapp/conversas";
 
 const dataBr = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
 const pct = (t: number | null) => (t === null ? "—" : `${Math.round(t * 100)}%`);
@@ -52,6 +53,10 @@ export default async function PainelInicio({ searchParams }: PageProps<"/painel"
     verCancelamentos: podeFazer(sessao.papel, "reserva:editar"),
     contaDeTesteMercadoPago: verFinanceiro ? await contaDeTesteParaInicio() : null,
     env: process.env,
+    // M10.1a: a contagem decide o acesso sozinha (0 para quem não vê as conversas, sem consultar); o dashboard só mostra
+    // o número. A situação da conta do WhatsApp, só para quem edita as configurações.
+    conversasSemResposta: await contarConversasSemResposta(db, sessao),
+    verContaWhatsapp: podeFazer(sessao.papel, "configuracao:editar"),
   });
   const porId = new Map(imoveis.map((i) => [i.id, i]));
 

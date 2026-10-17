@@ -4,7 +4,7 @@ import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/pr
 import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, lancamentos, organizacoes, reservas } from "@/db/schema";
+import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, lancamentos, organizacoes, reservas, whatsappContatos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
@@ -14,6 +14,7 @@ import { ErroProvedor } from "@/pagamentos/provedor";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario } from "@/pagamentos/testes";
 import {
   codigoCotacaoValido,
+  codigosDeCotacaoNoTexto,
   criarCotacao,
   ERRO_EMAIL_EM_ANDAMENTO,
   estenderHold,
@@ -105,6 +106,22 @@ describe("cotação do site (M8.1)", () => {
     ]);
     expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 2, falhas: 0 });
     expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toHaveLength(2 + MAXIMO_COTACOES_ABERTAS_POR_IMOVEL);
+  });
+
+  it("M10.1a: a rotina não falha nem apaga cotação vinculada a uma conversa do WhatsApp; apaga a não vinculada com mais de 30 dias", async () => {
+    const velha = (codigo: string) => ({ organizacaoId: org, imovelId: im, codigo, estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora });
+    const [vinculada] = await db.insert(cotacoes).values(velha("COT-VINCULA2")).returning();
+    await db.insert(cotacoes).values(velha("COT-SOLTA234"));
+    // Conversa fictícia vinculada (à mão) à cotação velha: a chave estrangeira não deixaria apagar, e o vínculo é histórico.
+    await db.insert(whatsappContatos).values({ organizacaoId: org, waId: "16505551234", cotacaoId: vinculada.id, vinculoConfirmadoEm: agora });
+    expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 1, falhas: 0 });
+    expect((await db.select({ codigo: cotacoes.codigo }).from(cotacoes).where(eq(cotacoes.organizacaoId, org))).map((c) => c.codigo)).toEqual(["COT-VINCULA2"]);
+    // Pela rotina de todas as empresas também; desfeito o vínculo, a próxima volta apaga.
+    expect((await expirarHoldsVencidos(db, null, agora)).falhas).toBe(0);
+    expect(await db.select({ id: cotacoes.id }).from(cotacoes).where(eq(cotacoes.id, vinculada.id))).toHaveLength(1);
+    await db.update(whatsappContatos).set({ cotacaoId: null, vinculoConfirmadoEm: null }).where(eq(whatsappContatos.cotacaoId, vinculada.id));
+    expect((await expirarHoldsVencidos(db, org, agora)).removidas).toBe(1);
+    expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toEqual([]);
   });
 
   it("reaproveitar exige a mesma situação; o teto vale mesmo com pedidos simultâneos", async () => {
@@ -377,5 +394,19 @@ describe("o mesmo e-mail com um cartão sem resposta (M8.2b)", () => {
     expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:40 (estendido pelo pagamento); depois disso o pedido vence sozinho.");
     await db.transaction((tx) => voltarHold(tx, c.org, s.cotacaoId, minutos(30), minutos(40), AGORA, null));
     expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:30; depois disso o pedido vence sozinho.");
+  });
+});
+
+describe("códigos de cotação soltos num texto (M10.1a, sugestão de vínculo do WhatsApp)", () => {
+  it("acha o código gerado no meio do texto, sem repetição e na ordem; mesmo alfabeto de codigoCotacaoValido; grudado ou minúsculo não conta", async () => {
+    const c = (await cotar()).codigo;
+    expect(codigosDeCotacaoNoTexto(`Fiz a cotação ${c}, pode confirmar?`)).toEqual([c]);
+    expect(codigosDeCotacaoNoTexto("COT-7K3M9QX2 e COT-ABCDEFGH, de novo COT-7K3M9QX2.")).toEqual(["COT-7K3M9QX2", "COT-ABCDEFGH"]);
+    // Fora do alfabeto (0, O, 1, I), curto, longo ou grudado em letra ou número: nada. Quem chama passa em maiúsculas.
+    expect(codigosDeCotacaoNoTexto("COT-7K3M9QX0 COT-7K3M9QXO COT-7K3M9QX1 COT-7K3M9QXI COT-7K3M9QX COT-7K3M9QX22 XCOT-7K3M9QX2")).toEqual([]);
+    expect(codigosDeCotacaoNoTexto("cot-7k3m9qx2")).toEqual([]);
+    expect(codigosDeCotacaoNoTexto("cot-7k3m9qx2".toUpperCase())).toEqual(["COT-7K3M9QX2"]);
+    for (const t of codigosDeCotacaoNoTexto("COT-7K3M9QX2 COT-ABCDEFGH")) expect(codigoCotacaoValido(t)).toBe(true);
+    expect(codigosDeCotacaoNoTexto("")).toEqual([]);
   });
 });

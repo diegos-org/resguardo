@@ -29,14 +29,19 @@ export const SECOES: readonly Secao[] = [
   { slug: "manutencao", titulo: "Manutenção", marco: "M6.2", descricao: "Pedidos, orçamentos, aprovação e custos de manutenção." , exige: "manutencao:ler" },
   { slug: "portaria", titulo: "Portaria", marco: "M6.4", descricao: "Documentos de portaria: pedidos, encaminhamento e entrega (sem guardar documentos)." , exige: "reserva:editar", interno: true },
   { slug: "rotinas", titulo: "Rotinas", marco: "M6.5", descricao: "Tarefas que se repetem: conferência das faxinas, manutenção, lembretes." , exige: "rotina:ler", interno: true },
-  { slug: "mensagens", titulo: "Mensagens", marco: "M10.1", descricao: "Caixa de entrada do WhatsApp e mensagens programadas." , exige: "mensagem:ler" },
+  // M10.1a: quem vê as conversas é `whatsapp/acesso.ts` (a configuração "Quem vê as conversas", padrão só o admin): o
+  // layout esconde a seção pelo `ocultar` de `secoesPara` para a operação enquanto a configuração não liberar.
+  { slug: "mensagens", titulo: "Mensagens", marco: "M10.1a", descricao: "Caixa de entrada do WhatsApp.", exige: "mensagem:ler" },
   { slug: "sistema", titulo: "Sistema", marco: "M1.6", descricao: "Serviços ligados, automações e regras em vigor." , exige: "configuracao:editar" },
   { slug: "configuracoes", titulo: "Configurações", marco: "M1.7", descricao: "Empresa, usuários, regras financeiras, integrações, categorias, modelos de mensagem, textos e páginas legais do site." , exige: "configuracao:editar" },
 ];
 
-/** Só as seções que este papel pode abrir. */
-export function secoesPara(papel: Papel): Secao[] {
-  return SECOES.filter((s) => podeFazer(papel, s.exige) && !(s.interno && papel === "proprietario"));
+/**
+ * Só as seções que este papel pode abrir, menos as de `ocultar` (M10.1a: o layout passa "mensagens" quando a sessão não
+ * vê as conversas; a permissão do papel sozinha não basta, a configuração decide em `whatsapp/acesso.ts`).
+ */
+export function secoesPara(papel: Papel, ocultar: readonly string[] = []): Secao[] {
+  return SECOES.filter((s) => podeFazer(papel, s.exige) && !(s.interno && papel === "proprietario") && !ocultar.includes(s.slug));
 }
 
 export function encontrarSecao(slug: string): Secao | undefined {

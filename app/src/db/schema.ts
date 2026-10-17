@@ -28,6 +28,19 @@ import type {
 } from "@/pagamentos/contestacao-regras";
 import type { PeriodicidadeRepasse } from "@/repasses/periodicidade";
 import type { SituacaoDisponibilidade } from "@/site/disponibilidade";
+import type {
+  CampoAviso,
+  Direcao,
+  EventoConta,
+  IniciadoPor,
+  MotivoDesconexao,
+  Origem,
+  ResultadoEmail,
+  ResultadoEvento,
+  Sincronizacao,
+  SituacaoConta,
+  TipoMensagem,
+} from "@/whatsapp/regras";
 
 /**
  * Esquema do banco (Drizzle). Novas tabelas entram aqui e geram migração com
@@ -2369,3 +2382,182 @@ export const beds24ReservasOperacoes = pgTable(
     foreignKey({ columns: [t.acompanhamentoId], foreignColumns: [beds24ReservasSite.id], name: "beds24_reservas_operacoes_acompanhamento_fk" }),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// M10.1a: WhatsApp (recebimento; desenho em requisitos/product/WHATSAPP.md). Não guarda mídia, url, id de mídia, sha256,
+// nome de arquivo, coordenadas, contato compartilhado nem system.body. Listas fechadas em whatsapp/regras.ts; colunas de
+// texto sem CHECK de lista, como as do M8.2 e do M8.3; CHECK só para a estrutura. Telefone (`wa_id`), BSUID, nomes, texto
+// e `wamid` só existem em `whatsapp_contatos` e `whatsapp_mensagens`; eventos, contadores e a situação da conta não levam
+// nenhum dado pessoal. Nada aqui escreve na Meta.
+// ---------------------------------------------------------------------------
+
+/**
+ * Situação da conta do WhatsApp da organização, escrita só pelos avisos (`account_update`, histórico, agenda). Uma linha
+ * por organização, criada no primeiro aviso; sem linha = "não conectada". A configuração editável (ids da Meta e quem vê
+ * as conversas) mora no armazém `configuracoes`, chave "whatsapp".
+ */
+export const whatsappConta = pgTable(
+  "whatsapp_conta",
+  {
+    organizacaoId: uuid("organizacao_id").primaryKey().references(() => organizacoes.id),
+    situacao: text("situacao").$type<SituacaoConta>().notNull().default("nao_conectada"),
+    ultimoEvento: text("ultimo_evento").$type<EventoConta>(),
+    motivo: text("motivo").$type<MotivoDesconexao>(),
+    iniciadoPor: text("iniciado_por").$type<IniciadoPor>(),
+    /** Hora da Meta (`entry.time`) do último evento aplicado: só um evento mais novo muda a situação. */
+    situacaoEm: timestamp("situacao_em", { withTimezone: true }),
+    /** PARTNER_ADDED: começa o prazo de 24 h para pedir os contatos e o histórico (M10.1b). */
+    conectadoEm: timestamp("conectado_em", { withTimezone: true }),
+    sincronizacaoContatos: text("sincronizacao_contatos").$type<Sincronizacao>().notNull().default("nao_pedida"),
+    /** Último aviso de agenda aceito, mesmo que tudo nele tenha sido descartado: a Meta não manda sinal de fim. */
+    contatosRecebidosEm: timestamp("contatos_recebidos_em", { withTimezone: true }),
+    sincronizacaoHistorico: text("sincronizacao_historico").$type<Sincronizacao>().notNull().default("nao_pedida"),
+    /** Maior `progress` recebido do histórico (0 a 100). */
+    progressoHistorico: integer("progresso_historico"),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("whatsapp_conta_progresso", sql`${t.progressoHistorico} is null or (${t.progressoHistorico} between 0 and 100)`)],
+);
+
+/**
+ * A conversa: um cliente do WhatsApp da empresa. O BSUID (`user_id`) é a chave principal; o `wa_id` (só dígitos, com DDI)
+ * é a segunda, opcional. Troca de identidade não funde conversas: se colidir, as duas ficam com `conflito_identidade`.
+ * O vínculo (reserva, cotação, pedido de contato, cadastro pelo site ou proprietário) é no máximo um e só existe
+ * confirmado à mão: ter um alvo e ter `vinculo_confirmado_em` andam juntos (CHECK). Sugestões não são guardadas.
+ */
+export const whatsappContatos = pgTable(
+  "whatsapp_contatos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    waId: text("wa_id"),
+    bsuid: text("bsuid"),
+    nomePerfil: text("nome_perfil").notNull().default(""),
+    /** Só de quem já tem conversa (agenda do celular, `smb_app_state_sync`); nunca cria conversa. */
+    nomeAgenda: text("nome_agenda").notNull().default(""),
+    nomeAgendaEm: timestamp("nome_agenda_em", { withTimezone: true }),
+    /** Qualquer mensagem, de qualquer origem: ordena a lista. */
+    ultimaMensagemEm: timestamp("ultima_mensagem_em", { withTimezone: true }),
+    /** Só `recebida` em tempo real ("sem resposta" e "não lida"; o histórico não conta). */
+    ultimaRecebidaEm: timestamp("ultima_recebida_em", { withTimezone: true }),
+    /** Só `enviada_*` em tempo real (a resposta pelo celular conta). */
+    ultimaEnviadaEm: timestamp("ultima_enviada_em", { withTimezone: true }),
+    /** Estado interno: nada é marcado como lido na Meta. */
+    lidaAte: timestamp("lida_ate", { withTimezone: true }),
+    conflitoIdentidade: boolean("conflito_identidade").notNull().default(false),
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    cotacaoId: uuid("cotacao_id").references(() => cotacoes.id),
+    /** Chaves estrangeiras com nome próprio (abaixo): o automático passaria de 63 caracteres. */
+    pedidoContatoId: uuid("pedido_contato_id"),
+    cadastroMarketplaceId: uuid("cadastro_marketplace_id"),
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
+    vinculoConfirmadoPor: uuid("vinculo_confirmado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    vinculoConfirmadoEm: timestamp("vinculo_confirmado_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_contatos_wa_id").on(t.organizacaoId, t.waId).where(sql`${t.waId} is not null`),
+    uniqueIndex("whatsapp_contatos_bsuid").on(t.organizacaoId, t.bsuid).where(sql`${t.bsuid} is not null`),
+    // Na ordem da lista (mais recente primeiro, conversa sem mensagem no fim): só assim o índice serve à ordenação.
+    index("whatsapp_contatos_ultima").on(t.organizacaoId, t.ultimaMensagemEm.desc().nullsLast()),
+    index("whatsapp_contatos_reserva").on(t.reservaId).where(sql`${t.reservaId} is not null`),
+    // A limpeza de cotações de 30 dias (site/cotacoes.ts) não apaga a cotação vinculada: consulta por esta coluna.
+    index("whatsapp_contatos_cotacao").on(t.cotacaoId).where(sql`${t.cotacaoId} is not null`),
+    foreignKey({ columns: [t.pedidoContatoId], foreignColumns: [pedidosContatoProprietario.id], name: "whatsapp_contatos_pedido_contato_fk" }),
+    foreignKey({ columns: [t.cadastroMarketplaceId], foreignColumns: [cadastrosMarketplace.id], name: "whatsapp_contatos_cadastro_fk" }),
+    // "is not null" explícito porque um CHECK que dá null passa.
+    check("whatsapp_contatos_identidade", sql`${t.waId} is not null or ${t.bsuid} is not null`),
+    check("whatsapp_contatos_wa_id_digitos", sql`${t.waId} is null or ${t.waId} ~ '^[0-9]{6,20}$'`),
+    check(
+      "whatsapp_contatos_um_vinculo",
+      sql`num_nonnulls(${t.reservaId}, ${t.cotacaoId}, ${t.pedidoContatoId}, ${t.cadastroMarketplaceId}, ${t.proprietarioId}) <= 1 and ((num_nonnulls(${t.reservaId}, ${t.cotacaoId}, ${t.pedidoContatoId}, ${t.cadastroMarketplaceId}, ${t.proprietarioId}) = 1) = (${t.vinculoConfirmadoEm} is not null))`,
+    ),
+  ],
+);
+
+/**
+ * Uma mensagem (recebida, ou enviada pelo celular). Única por organização e `wamid` (tratado como dado pessoal): repetição,
+ * eco e histórico do mesmo `wamid` viram uma linha só. Só texto e legenda; da mídia, só o tipo e o mime. Apagada não tem
+ * texto (CHECK). `situacao` só existe para as enviadas pelo painel (M10.2) e fica nula aqui.
+ */
+export const whatsappMensagens = pgTable(
+  "whatsapp_mensagens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    contatoId: uuid("contato_id").notNull().references(() => whatsappContatos.id),
+    wamid: text("wamid").notNull(),
+    direcao: text("direcao").$type<Direcao>().notNull(),
+    origem: text("origem").$type<Origem>().notNull(),
+    tipo: text("tipo").$type<TipoMensagem>().notNull(),
+    texto: text("texto").notNull().default(""),
+    anexoMime: text("anexo_mime"),
+    /** `context.id` (a mensagem respondida), sem exigir formato. */
+    respostaA: text("resposta_a"),
+    /** `timestamp` da Meta. */
+    enviadaEm: timestamp("enviada_em", { withTimezone: true }).notNull(),
+    recebidaEm: timestamp("recebida_em", { withTimezone: true }).notNull().defaultNow(),
+    /** Hora da edição aplicada (só uma edição mais nova muda o texto). */
+    editadaEm: timestamp("editada_em", { withTimezone: true }),
+    apagadaEm: timestamp("apagada_em", { withTimezone: true }),
+    /** Emoji da reação; null = sem reação (ou retirada). */
+    reacao: text("reacao"),
+    reacaoEm: timestamp("reacao_em", { withTimezone: true }),
+    situacao: text("situacao"),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_mensagens_wamid").on(t.organizacaoId, t.wamid),
+    index("whatsapp_mensagens_contato").on(t.contatoId, t.enviadaEm),
+    // Apagamento é absorvente: nada depois devolve o texto.
+    check("whatsapp_mensagens_apagada_sem_texto", sql`${t.apagadaEm} is null or ${t.texto} = ''`),
+    // 256 = LIMITE_WAMID (whatsapp/regras.ts).
+    check("whatsapp_mensagens_wamid_tamanho", sql`char_length(${t.wamid}) between 1 and 256`),
+  ],
+);
+
+/**
+ * Um bloco (`change`) processado, sem nada do corpo: campo, quantos itens mudaram e o resultado; nos eventos de conta,
+ * o código, o motivo, a hora da Meta e o e-mail. A `chave` (só `account_update`) dá a idempotência e nunca leva wamid,
+ * telefone, BSUID nem id da Meta: `account_update:<event>:<entry.time>:<reason ou ->:<ban_state ou ->`. Apagado depois
+ * de 90 dias.
+ */
+export const whatsappEventos = pgTable(
+  "whatsapp_eventos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    campo: text("campo").$type<CampoAviso>().notNull(),
+    /** Código do evento de conta validado, ou vazio. */
+    tipo: text("tipo").$type<EventoConta | "">().notNull().default(""),
+    motivo: text("motivo").$type<MotivoDesconexao>(),
+    chave: text("chave").notNull().default(""),
+    /** Linhas novas ou alteradas do bloco. */
+    itens: integer("itens").notNull().default(0),
+    resultado: text("resultado").$type<ResultadoEvento>().notNull(),
+    /** `entry.time` do account_update. */
+    ocorridoEm: timestamp("ocorrido_em", { withTimezone: true }),
+    recebidoEm: timestamp("recebido_em", { withTimezone: true }).notNull().defaultNow(),
+    avisarPorEmail: boolean("avisar_por_email").notNull().default(false),
+    /** Só com o e-mail enviado; sem ele, a rotina tenta de novo. */
+    emailAvisoEm: timestamp("email_aviso_em", { withTimezone: true }),
+    /** Último resultado do envio (Integrações mostra a causa certa de um e-mail não enviado). */
+    emailResultado: text("email_resultado").$type<ResultadoEmail>(),
+  },
+  (t) => [uniqueIndex("whatsapp_eventos_chave").on(t.organizacaoId, t.chave).where(sql`${t.chave} <> ''`), index("whatsapp_eventos_recebido").on(t.recebidoEm)],
+);
+
+/**
+ * Contas agregadas dos avisos do WhatsApp por dia (São Paulo), como `pagamentos_avisos_dia`: sem organização (a
+ * assinatura inválida chega antes de saber de quem é) e sem nenhum dado do aviso. Apagadas depois de 90 dias, menos o
+ * último dia com aviso válido.
+ */
+export const whatsappAvisosDia = pgTable("whatsapp_avisos_dia", {
+  dia: date("dia", { mode: "string" }).primaryKey(),
+  assinaturasRecusadas: integer("assinaturas_recusadas").notNull().default(0),
+  ilegiveis: integer("ilegiveis").notNull().default(0),
+  outraConta: integer("outra_conta").notNull().default(0),
+  desconhecidos: integer("desconhecidos").notNull().default(0),
+  ignorados: integer("ignorados").notNull().default(0),
+  ultimoValidoEm: timestamp("ultimo_valido_em", { withTimezone: true }),
+});

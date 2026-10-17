@@ -39,6 +39,8 @@ import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
 import { rotinasPendentes } from "@/rotinas/rotinas";
 import { regrasEmVigor } from "@/sistema/regras";
+import { contaDoWhatsapp } from "@/whatsapp/integracao";
+import type { SituacaoConta } from "@/whatsapp/regras";
 import { calcularOcupacao, type Financeiro, mesesDoAno, type OcupacaoImovel, ocupacaoTotal, resumoFinanceiro } from "./indicadores";
 
 export type Alerta = { nivel: "atencao" | "info"; texto: string; link?: string };
@@ -65,6 +67,15 @@ export async function contaDeTesteParaInicio(o: { env?: NodeJS.ProcessEnv; prove
   if (!provedor) return null;
   return esperarNoMaximo(contaDeTesteConfirmada(provedor), o.esperaMs ?? ESPERA_TELA_MS, null);
 }
+
+/** M10.1a: a conta do WhatsApp no Início (para quem edita as configurações): só a situação, sem dado nenhum. */
+const AVISO_DA_CONTA: Record<SituacaoConta, string | null> = {
+  nao_conectada: null,
+  conectada: null,
+  desconectada: "A conexão do WhatsApp com o sistema caiu: as mensagens novas não chegam ao painel.",
+  aguardando_reconexao: "O WhatsApp está aguardando reconexão (troca de aparelho ou reinstalação).",
+  suspensa: "A Meta suspendeu ou vai suspender a conta do WhatsApp.",
+};
 
 /** Sem o ambiente de quem chama, as tarefas das OTAs ficam todas à mão (nenhuma chave lida: o lado seguro). */
 const AMBIENTE_DESLIGADO = {} as NodeJS.ProcessEnv;
@@ -98,6 +109,15 @@ export async function carregarDashboard(
     contaDeTesteMercadoPago?: boolean | null;
     /** M8.3b: o ambiente das tarefas das OTAs (a chave das reservas e o deploy de produção); ausente = `{}`, tudo à mão. */
     env?: NodeJS.ProcessEnv;
+    /**
+     * M10.1a: quantas conversas do WhatsApp estão sem resposta, já contadas por quem chama com
+     * `contarConversasSemResposta(db, sessao)`, que devolve 0 para quem não vê as conversas. O dashboard nunca consulta as
+     * conversas nem decide quem as vê (quem reaproveitar estes avisos, como o `ver_pendencias` do MCP, não tem como
+     * mostrar a contagem a quem não pode).
+     */
+    conversasSemResposta?: number;
+    /** M10.1a: quem edita as configurações recebe o aviso da conta do WhatsApp desconectada, aguardando ou suspensa. */
+    verContaWhatsapp?: boolean;
     agora?: Date;
   },
 ): Promise<Dashboard> {
@@ -136,6 +156,14 @@ export async function carregarDashboard(
     const [contatos, cadastros] = await Promise.all([contarPedidosNovos(db, organizacaoId), contarCadastrosPendentes(db, organizacaoId)]);
     if (contatos) alertas.push({ nivel: "info", texto: `${contatos} pedido(s) de contato de proprietário esperando resposta.`, link: "/painel/proprietarios/contatos" });
     if (cadastros) alertas.push({ nivel: "info", texto: `${cadastros} cadastro(s) de proprietário pelo site esperando análise.`, link: "/painel/proprietarios/cadastros" });
+  }
+  // WhatsApp (M10.1a): da organização toda, sem nome, telefone nem trecho de conversa.
+  if (o.conversasSemResposta && o.conversasSemResposta > 0) {
+    alertas.push({ nivel: "info", texto: `${o.conversasSemResposta} conversa(s) do WhatsApp sem resposta.`, link: "/painel/mensagens?filtro=sem_resposta" });
+  }
+  if (o.verContaWhatsapp) {
+    const texto = AVISO_DA_CONTA[(await contaDoWhatsapp(db, organizacaoId, o.agora ?? new Date())).situacao];
+    if (texto) alertas.push({ nivel: "atencao", texto, link: "/painel/configuracoes/integracoes" });
   }
   // Cancelamento pela política (M8.2c): da operação, fora dos avisos do financeiro e sem valores.
   // A mensagem pendente ao hóspede (decisão, devolução feita) leva o valor: o aviso dela só para quem lê o financeiro.

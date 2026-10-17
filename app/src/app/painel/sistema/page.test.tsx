@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), execute: vi.fn(), redirect: vi.fn(), execucoes: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), execute: vi.fn(), redirect: vi.fn(), execucoes: vi.fn(), wa: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
@@ -10,7 +10,33 @@ vi.mock("@/sistema/automacoes", async (original) => ({ ...(await original<typeof
 vi.mock("@/sistema/regras", () => ({ regrasEmVigor: async () => [] }));
 vi.mock("@/configuracoes/regras-financeiras", () => ({ lerRegrasFinanceiras: async () => ({ base: "bruto" }) }));
 vi.mock("@/pagamentos/integracao", () => ({ situacaoDoMercadoPago: m.mp }));
+// M10.1a: a linha do WhatsApp, pela mesma função de Integrações.
+vi.mock("@/whatsapp/integracao", () => ({ situacaoDoWhatsapp: m.wa }));
+import type { SituacaoWhatsapp } from "@/whatsapp/integracao";
 import Page from "./page";
+
+const WHATSAPP: SituacaoWhatsapp = {
+  recebimentoLigado: false,
+  token: "curto",
+  segredoConfigurado: true,
+  config: { wabaId: "200000000000002", numeroId: null, quemVeConversas: "so_admin" },
+  conta: {
+    situacao: "nao_conectada",
+    ultimoEvento: null,
+    motivo: null,
+    iniciadoPor: null,
+    situacaoEm: null,
+    conectadoEm: null,
+    prazo24h: null,
+    sincronizacaoContatos: "nao_pedida",
+    contatosRecebidosEm: null,
+    sincronizacaoHistorico: "nao_pedida",
+    progressoHistorico: null,
+  },
+  avisos: { hoje: { assinaturas_recusadas: 0, ilegiveis: 0, outra_conta: 0, desconhecidos: 0, ignorados: 0 }, ultimoValidoEm: null },
+  eventosDaConta: [],
+  enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/whatsapp",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -20,6 +46,7 @@ beforeEach(() => {
   m.execute.mockResolvedValue([]);
   m.execucoes.mockResolvedValue(new Map([["pedidos-site", { nome: "pedidos-site", iniciadoEm: new Date("2026-10-08T13:00:00Z"), ok: true, resumo: "Pagamentos: 1 conferido(s)" }]]));
   m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  m.wa.mockResolvedValue(WHATSAPP);
   m.mp.mockResolvedValue({ situacao: "so_nas_previas", motivo: null, contaDeTeste: null, segredoWebhook: true, ultimoAvisoValidoEm: null, assinaturasRecusadasHoje: 0, enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago" });
   // A sessão pode ter a credencial real (e as chaves) do Beds24 no ambiente: cada teste parte sem elas.
   for (const v of ["BEDS24_REFRESH_TOKEN", "BEDS24_API_KEY", "BEDS24_ESCRITA", "BEDS24_ESCRITA_RESERVAS"]) vi.stubEnv(v, undefined);
@@ -72,4 +99,24 @@ it("M8.3a: as duas chaves do Beds24 pelas funções, o aviso de credencial de es
   expect(h).not.toContain("refresh-secreto-ficticio");
   expect(h).toContain("Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)");
   expect(h).toContain("M8.3c");
+});
+
+it("M10.1a: a linha do WhatsApp pela mesma função de Integrações (situacaoDoWhatsapp, com o ambiente e a organização da sessão), dizendo o que falta, sem valor nenhum", async () => {
+  const h = renderToStaticMarkup(await Page());
+  expect(m.wa).toHaveBeenCalledTimes(1);
+  expect(m.wa).toHaveBeenCalledWith(expect.anything(), "org", process.env, expect.any(Date));
+  expect(h).toContain("WhatsApp (Meta)");
+  expect(h).toContain("Caixa de entrada do WhatsApp (recebimento)");
+  expect(h).toContain("senha de verificação curta demais (mínimo 32 caracteres)");
+  expect(h).toContain("recebimento desligado (WHATSAPP_RECEBIMENTO)");
+  expect(h).toContain("falta o id do número em Integrações");
+  expect(h).not.toContain("200000000000002");
+  expect(h).not.toContain("Ainda não construído");
+});
+
+it("M10.1a: sem banco, a linha do WhatsApp diz que não foi conferida (sem chamar a função)", async () => {
+  m.execute.mockRejectedValue(new Error("fora do ar"));
+  const h = renderToStaticMarkup(await Page());
+  expect(m.wa).not.toHaveBeenCalled();
+  expect(h.split("Situação não conferida nesta abertura").length - 1).toBe(2);
 });

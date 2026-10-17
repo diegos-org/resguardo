@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Fragment } from "react";
 import { ACOES, PERMISSOES, podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import styles from "@/components/formularios.module.css";
@@ -6,6 +7,8 @@ import { Usuarios } from "@/components/configuracoes/Usuarios";
 import { alterarUsuarioAcao, novoUsuarioAcao } from "@/configuracoes/acoes";
 import { listarUsuarios, NOMES_PAPEL } from "@/configuracoes/usuarios";
 import { getDb } from "@/db/client";
+import { podeVerConversasCom } from "@/whatsapp/acesso";
+import { lerConfigWhatsapp } from "@/whatsapp/configuracao";
 
 const NOME_ACAO: Record<(typeof ACOES)[number], string> = {
   "imovel:ler": "Ver imóveis",
@@ -38,7 +41,10 @@ const PAPEIS_TABELA = ["admin", "operacao", "proprietario", "limpeza"] as const;
 export default async function PaginaUsuarios() {
   const sessao = await exigirSessaoPainel();
   if (!podeFazer(sessao.papel, "usuario:gerenciar")) redirect("/painel/configuracoes");
-  const todos = await listarUsuarios(getDb(), sessao.organizacaoId);
+  const db = getDb();
+  const [todos, whatsapp] = await Promise.all([listarUsuarios(db, sessao.organizacaoId), lerConfigWhatsapp(db, sessao.organizacaoId)]);
+  // M10.1a: quem vê as conversas do WhatsApp depende da configuração (padrão só o admin): a mesma regra das telas.
+  const verConversas = (papel: (typeof PAPEIS_TABELA)[number]) => podeVerConversasCom({ ...sessao, papel, imovelIds: [] }, whatsapp.quemVeConversas);
   const equipe = todos.filter((u) => u.papel === "admin" || u.papel === "operacao");
   const donos = todos.filter((u) => u.papel === "proprietario");
   return (
@@ -73,12 +79,25 @@ export default async function PaginaUsuarios() {
             </thead>
             <tbody>
               {ACOES.map((a) => (
-                <tr key={a}>
-                  <td>{NOME_ACAO[a]}</td>
-                  {PAPEIS_TABELA.map((p) => (
-                    <td key={p}>{PERMISSOES[p].includes(a) ? "✓" : "—"}</td>
-                  ))}
-                </tr>
+                <Fragment key={a}>
+                  <tr>
+                    <td>{NOME_ACAO[a]}</td>
+                    {PAPEIS_TABELA.map((p) => (
+                      <td key={p}>{PERMISSOES[p].includes(a) ? "✓" : "—"}</td>
+                    ))}
+                  </tr>
+                  {/* Logo abaixo de "Ver mensagens" (a política), para ler as duas juntas: a conversa depende também da configuração. */}
+                  {a === "mensagem:ler" && (
+                    <tr>
+                      <td>
+                        Ver as conversas do WhatsApp <span style={{ fontSize: "0.8125rem", color: "var(--scl-texto-2)" }}>(muda em Configurações → Integrações → WhatsApp)</span>
+                      </td>
+                      {PAPEIS_TABELA.map((p) => (
+                        <td key={p}>{verConversas(p) ? "✓" : "—"}</td>
+                      ))}
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

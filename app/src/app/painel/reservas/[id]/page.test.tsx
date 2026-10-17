@@ -17,6 +17,8 @@ const m = vi.hoisted(() => ({
   alteracoes: vi.fn(),
   portador: vi.fn(),
   noBeds24: vi.fn(),
+  conversas: vi.fn(),
+  configWhatsapp: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, redirect: vi.fn() }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
@@ -74,6 +76,10 @@ vi.mock("@/components/BotaoConfirmar", () => ({
 // M8.3a: o bloco "No Beds24" (só leitura; "Simular" sem rede).
 vi.mock("@/beds24/reservas-site-painel", () => ({ fichaReservaNoBeds24: m.noBeds24 }));
 vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn(), marcarDatasFechadasNasOtasAcao: vi.fn(), marcarDatasReabertasNasOtasAcao: vi.fn() }));
+// M10.1a: o bloco "Conversa no WhatsApp". Quem vê as conversas é decidido de verdade (`whatsapp/acesso.ts`), com a
+// configuração "Quem vê as conversas" simulada; as conversas da reserva também.
+vi.mock("@/whatsapp/configuracao", async (original) => ({ ...(await original<typeof import("@/whatsapp/configuracao")>()), lerConfigWhatsapp: m.configWhatsapp }));
+vi.mock("@/whatsapp/conversas", async (original) => ({ ...(await original<typeof import("@/whatsapp/conversas")>()), conversasDaReserva: m.conversas }));
 import Page from "./page";
 
 const reserva = {
@@ -142,6 +148,8 @@ beforeEach(() => {
   m.alteracoes.mockResolvedValue([]);
   m.portador.mockResolvedValue(null);
   m.noBeds24.mockResolvedValue(null);
+  m.conversas.mockResolvedValue({ confirmadas: [], sugeridas: 0 });
+  m.configWhatsapp.mockResolvedValue({ wabaId: null, numeroId: null, quemVeConversas: "so_admin" });
 });
 const html = async (busca: Record<string, string> = {}) =>
   renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve(busca) } as PageProps<"/painel/reservas/[id]">));
@@ -638,5 +646,73 @@ describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
       expect(await html()).not.toContain('aria-label="Reserva no Beds24"');
     }
     expect(m.noBeds24).not.toHaveBeenCalled();
+  });
+});
+
+describe("M10.1a: Conversa no WhatsApp na ficha", () => {
+  const CONVERSA = "33333333-3333-4333-8333-333333333333";
+  const comConversa = {
+    confirmadas: [
+      {
+        id: CONVERSA,
+        nome: "Visitante Fictício",
+        ultimaMensagemEm: new Date("2026-10-11T15:00:00Z"),
+        mensagens: [
+          { id: "m1", direcao: "recebida", previa: "Chego às 15:00, tudo certo?", enviadaEm: new Date("2026-10-11T14:00:00Z") },
+          { id: "m2", direcao: "enviada_celular", previa: "Tudo certo!", enviadaEm: new Date("2026-10-11T15:00:00Z") },
+        ],
+      },
+    ],
+    sugeridas: 2,
+  };
+
+  it("o admin vê o bloco: a conversa confirmada com as últimas mensagens e o link, e as sugestões apontando para a caixa de entrada", async () => {
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.conversas.mockResolvedValue(comConversa);
+    const h = await html();
+    expect(m.conversas).toHaveBeenCalledWith({}, expect.objectContaining({ papel: "admin", organizacaoId: "org" }), "r1", expect.any(Date));
+    expect(h).toContain('aria-label="Conversa no WhatsApp"');
+    expect(h).toContain("Conversa no WhatsApp");
+    expect(h).toContain(" · última mensagem 11/10/2026 às 12:00");
+    expect(h).toContain("Cliente · 11/10 às 11:00: Chego às 15:00, tudo certo?");
+    expect(h).toContain("Celular · 11/10 às 12:00: Tudo certo!");
+    expect(h).toContain(`href="/painel/mensagens/${CONVERSA}"`);
+    expect(h).toContain(">Abrir a conversa<");
+    expect(h).toContain("2 conversa(s) com sugestão de vínculo a esta reserva: ");
+    expect(h).toContain('href="/painel/mensagens?filtro=sem_vinculo"');
+  });
+
+  it("sem conversa confirmada nem sugestão: o bloco não aparece", async () => {
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    expect(await html()).not.toContain("Conversa no WhatsApp");
+  });
+
+  it("operação com o padrão só o admin: o bloco não aparece e conversasDaReserva não é chamada", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.conversas.mockResolvedValue(comConversa);
+    const h = await html();
+    expect(m.configWhatsapp).toHaveBeenCalledWith({}, "org");
+    expect(m.conversas).not.toHaveBeenCalled();
+    expect(h).not.toContain("Conversa no WhatsApp");
+    expect(h).not.toContain("/painel/mensagens");
+  });
+
+  it("com a configuração liberada (admin e operação), a operação vê o bloco", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.configWhatsapp.mockResolvedValue({ wabaId: null, numeroId: null, quemVeConversas: "admin_e_operacao" });
+    m.conversas.mockResolvedValue(comConversa);
+    expect(await html()).toContain("Conversa no WhatsApp");
+    expect(m.conversas).toHaveBeenCalledTimes(1);
+  });
+
+  it("o proprietário nunca vê o bloco, com qualquer valor da configuração (nem a configuração é lida)", async () => {
+    m.sessao.mockResolvedValue({ papel: "proprietario", organizacaoId: "org", usuarioId: "u", imovelIds: ["im"] });
+    m.configWhatsapp.mockResolvedValue({ wabaId: null, numeroId: null, quemVeConversas: "admin_e_operacao" });
+    m.conversas.mockResolvedValue(comConversa);
+    const h = await html();
+    expect(h).toContain("SCL-TESTE1");
+    expect(m.configWhatsapp).not.toHaveBeenCalled();
+    expect(m.conversas).not.toHaveBeenCalled();
+    expect(h).not.toContain("Conversa no WhatsApp");
   });
 });

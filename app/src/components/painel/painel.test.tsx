@@ -133,6 +133,20 @@ describe("Menu por papel", () => {
     for (const visivel of ["Início", "Calendário", "Reservas", "Limpezas"]) expect(nomes).toContain(visivel);
   });
 
+  it("M10.1a: operação com o padrão só o admin — com `ocultar` vindo do layout, \"Mensagens\" não aparece; sem `ocultar`, como antes", () => {
+    render(<Menu papel="operacao" ocultar={["mensagens"]} />);
+    const nomes = screen.getAllByRole("link").map((l) => l.textContent);
+    expect(nomes).not.toContain("Mensagens");
+    expect(nomes).toContain("Reservas");
+    cleanup();
+    render(<Menu papel="operacao" />);
+    expect(screen.getAllByRole("link").map((l) => l.textContent)).toContain("Mensagens");
+    expect(secoesPara("operacao", ["mensagens"]).map((x) => x.slug)).not.toContain("mensagens");
+    expect(secoesPara("operacao").map((x) => x.slug)).toContain("mensagens");
+    // A seção é a caixa de entrada do M10.1a.
+    expect(encontrarSecao("mensagens")).toMatchObject({ titulo: "Mensagens", marco: "M10.1a", descricao: "Caixa de entrada do WhatsApp." });
+  });
+
   it("admin vê tudo; hóspede não vê nada", () => {
     expect(secoesPara("admin")).toHaveLength(SECOES.length);
     expect(secoesPara("hospede")).toHaveLength(0);

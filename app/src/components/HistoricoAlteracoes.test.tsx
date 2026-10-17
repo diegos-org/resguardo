@@ -111,3 +111,42 @@ describe("as marcas das OTAs no histórico da reserva (M8.2c, M8.2d e M8.3b)", (
     expect(texto).not.toMatch(/ota_|otaFechadaEm|situacaoNoBeds24|beds24\.reserva/);
   });
 });
+
+describe("histórico do WhatsApp (M10.1a)", () => {
+  const de = (acao: string, mudancas: LinhaHistorico["mudancas"], autor: string | null = "Diego"): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao, autor });
+
+  it("os rótulos são verbos, lidos como frase depois do autor, e os campos novos têm nome em português", () => {
+    render(
+      <HistoricoAlteracoes
+        linhas={[
+          de("whatsapp.conversa.vincular", { vinculo: [null, "reserva:00000000-0000-4000-8000-000000002026"] }),
+          de("whatsapp.conversa.desvincular", { vinculo: ["proprietario:00000000-0000-4000-8000-000000002027", null] }),
+          { ...de("whatsapp.conversa.vincular", { vinculo: ["tipo-desconhecido:00000000-0000-4000-8000-000000002028", "cotacao:00000000-0000-4000-8000-000000002029"] }), id: "vincular-2" },
+          de("whatsapp.conta.situacao", { situacao: ["conectada", "desconectada"], motivo: [null, "PRIMARY_INACTIVITY"] }, null),
+          de("configuracao.whatsapp", { quemVeConversas: ["so_admin", "admin_e_operacao"], wabaId: [null, "200000000000002"], numeroId: [null, "100000000000001"] }),
+        ]}
+      />,
+    );
+    const frases = [...document.querySelectorAll("section > ul > li")].map((li) => (li.textContent ?? "").split(" · ")[0]);
+    expect(frases).toEqual([
+      "Diego vinculou a conversa do WhatsApp",
+      "Diego desfez o vínculo da conversa do WhatsApp",
+      "Diego vinculou a conversa do WhatsApp",
+      "Sistema mudou a situação da conta do WhatsApp",
+      "Diego alterou a configuração do WhatsApp",
+    ]);
+    const itens = [...document.querySelectorAll("li li")].map((li) => li.textContent ?? "");
+    expect(itens).toEqual([
+      // O vínculo (gravado "tipo:id") sai só pelo tipo, nunca o id; tipo fora da lista, "—".
+      "Vínculo: — → uma reserva",
+      "Vínculo: um proprietário → —",
+      "Vínculo: — → uma cotação",
+      "Situação: conectada → desconectada",
+      "Motivo: — → PRIMARY_INACTIVITY",
+      "Quem vê as conversas: so_admin → admin_e_operacao",
+      "Id da conta (WABA): — → 200000000000002",
+      "Id do número: — → 100000000000001",
+    ]);
+    expect(document.body.textContent).not.toMatch(/00000000-0000-4000-8000/);
+  });
+});

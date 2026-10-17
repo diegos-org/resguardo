@@ -40,6 +40,13 @@ export const AUTOMACOES: readonly Automacao[] = [
     situacao: "ativa",
     item: "M8.2a",
   },
+  {
+    id: "whatsapp",
+    nome: "WhatsApp: limpeza dos avisos antigos (90 dias) e e-mail da conta desconectada",
+    quando: "De hora em hora, aos 17 minutos, só no deploy de produção",
+    situacao: "ativa",
+    item: "M10.1a",
+  },
 ];
 
 export type Execucao = typeof execucoesAutomacao.$inferSelect;
