@@ -83,13 +83,37 @@ const emailDoEvento = (e: { avisarPorEmail: boolean; emailResultado: ResultadoEm
         : (e.emailResultado ?? "pendente");
 
 /**
+ * A situação da conta que os avisos escreveram (`whatsapp_conta`), com o prazo das 24 h; antes do primeiro aviso, "não
+ * conectado". Uma regra só para Integrações, Sistema, a caixa de entrada e o Início (M10.1a, bloco das telas): nada aqui
+ * leva id da Meta, telefone, nome ou trecho de conversa.
+ */
+export async function contaDoWhatsapp(db: Db, organizacaoId: string, agora: Date): Promise<SituacaoWhatsapp["conta"]> {
+  const [l] = await db.select().from(whatsappConta).where(eq(whatsappConta.organizacaoId, organizacaoId));
+  const conta = l
+    ? {
+        situacao: l.situacao,
+        ultimoEvento: l.ultimoEvento,
+        motivo: l.motivo,
+        iniciadoPor: l.iniciadoPor,
+        situacaoEm: l.situacaoEm,
+        conectadoEm: l.conectadoEm,
+        sincronizacaoContatos: l.sincronizacaoContatos,
+        contatosRecebidosEm: l.contatosRecebidosEm,
+        sincronizacaoHistorico: l.sincronizacaoHistorico,
+        progressoHistorico: l.progressoHistorico,
+      }
+    : CONTA_SEM_AVISO;
+  return { ...conta, prazo24h: prazoDas24h(conta, agora) };
+}
+
+/**
  * Só a organização da sessão (quem chama já conferiu `configuracao:editar`). `env` é o ambiente do servidor: daqui só
  * sai se cada variável existe (e se a senha de verificação é longa o bastante), nunca o valor.
  */
 export async function situacaoDoWhatsapp(db: Db, organizacaoId: string, env: NodeJS.ProcessEnv, agora: Date): Promise<SituacaoWhatsapp> {
-  const [config, linhaDaConta, avisos, eventos] = await Promise.all([
+  const [config, conta, avisos, eventos] = await Promise.all([
     lerConfigWhatsapp(db, organizacaoId),
-    db.select().from(whatsappConta).where(eq(whatsappConta.organizacaoId, organizacaoId)).then((r) => r[0] ?? null),
+    contaDoWhatsapp(db, organizacaoId, agora),
     situacaoDosAvisosWhatsapp(db, agora),
     db
       .select({
@@ -106,26 +130,12 @@ export async function situacaoDoWhatsapp(db: Db, organizacaoId: string, env: Nod
       .orderBy(desc(whatsappEventos.ocorridoEm), desc(whatsappEventos.recebidoEm))
       .limit(EVENTOS_DA_CONTA_NA_TELA),
   ]);
-  const conta = linhaDaConta
-    ? {
-        situacao: linhaDaConta.situacao,
-        ultimoEvento: linhaDaConta.ultimoEvento,
-        motivo: linhaDaConta.motivo,
-        iniciadoPor: linhaDaConta.iniciadoPor,
-        situacaoEm: linhaDaConta.situacaoEm,
-        conectadoEm: linhaDaConta.conectadoEm,
-        sincronizacaoContatos: linhaDaConta.sincronizacaoContatos,
-        contatosRecebidosEm: linhaDaConta.contatosRecebidosEm,
-        sincronizacaoHistorico: linhaDaConta.sincronizacaoHistorico,
-        progressoHistorico: linhaDaConta.progressoHistorico,
-      }
-    : CONTA_SEM_AVISO;
   return {
     recebimentoLigado: recebimentoLigado(env),
     token: situacaoDoToken(env),
     segredoConfigurado: segredoDoApp(env) !== null,
     config,
-    conta: { ...conta, prazo24h: prazoDas24h(conta, agora) },
+    conta,
     avisos,
     // O account_update só grava evento da lista fechada (o parser descarta o resto): o tipo vazio não chega aqui.
     eventosDaConta: eventos.flatMap((e) => (e.tipo ? [{ tipo: e.tipo, motivo: e.motivo, ocorridoEm: e.ocorridoEm, email: emailDoEvento(e, agora) }] : [])),

@@ -110,6 +110,18 @@ export type ContadorDia = (typeof CONTADORES_DIA)[number];
 export const ALVOS_VINCULO = ["reserva", "cotacao", "pedido_contato", "cadastro_marketplace", "proprietario"] as const;
 export type AlvoVinculo = (typeof ALVOS_VINCULO)[number];
 
+/**
+ * O alvo só pelo tipo, sem nome, sem data do pedido, sem código: para quem vê a conversa e não lê o alvo
+ * (`whatsapp/vinculo.ts`) e no histórico da conversa, que mostra o vínculo sem o id gravado na auditoria.
+ */
+export const ROTULO_GENERICO_DO_ALVO: Record<AlvoVinculo, { rotulo: string; selo: string }> = {
+  reserva: { rotulo: "uma reserva", selo: "Reserva" },
+  cotacao: { rotulo: "uma cotação", selo: "Cotação" },
+  pedido_contato: { rotulo: "um pedido de contato", selo: "Pedido de contato" },
+  cadastro_marketplace: { rotulo: "um cadastro pelo site", selo: "Cadastro pelo site" },
+  proprietario: { rotulo: "um proprietário", selo: "Proprietário" },
+};
+
 // ---------------------------------------------------------------- limites (parser e CHECKs)
 
 /** Corpo do POST: o teto documentado pela Meta é 3 MB, e a Vercel recusa acima de 4,5 MB antes de chamar a função. */

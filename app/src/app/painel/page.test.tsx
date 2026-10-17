@@ -1,18 +1,25 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), dashboard: vi.fn(), conta: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), dashboard: vi.fn(), conta: vi.fn(), semResposta: vi.fn(), configWhatsapp: vi.fn() }));
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
+// O banco é um objeto vazio: qualquer consulta de verdade lançaria (o que prova, na operação, que a contagem não consulta).
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
 vi.mock("@/imoveis/repositorio", () => ({ listarImoveis: async () => [{ id: "im", codigo: "403", nome: "Studio Fictício", ativo: true }] }));
 vi.mock("@/painel/dashboard", () => ({ carregarDashboard: m.dashboard, contaDeTesteParaInicio: m.conta }));
+// M10.1a: a contagem das conversas sem resposta (simulada; no caso da operação, a função de verdade) e a configuração
+// "Quem vê as conversas" que `whatsapp/acesso.ts` lê.
+vi.mock("@/whatsapp/conversas", async (original) => ({ ...(await original<typeof import("@/whatsapp/conversas")>()), contarConversasSemResposta: m.semResposta }));
+vi.mock("@/whatsapp/configuracao", async (original) => ({ ...(await original<typeof import("@/whatsapp/configuracao")>()), lerConfigWhatsapp: m.configWhatsapp }));
 import Page from "./page";
 
 const vazio = { ocupacao: [], ocupacaoTotal: { vendidas: 0, disponiveis: 0, taxa: null }, reservasNoPeriodo: 0, proximasEntradas: [], proximasSaidas: [], financeiro: null, porMes: null };
 beforeEach(() => {
   vi.clearAllMocks();
   m.conta.mockResolvedValue(false);
+  m.semResposta.mockResolvedValue(0);
+  m.configWhatsapp.mockResolvedValue({ wabaId: null, numeroId: null, quemVeConversas: "so_admin" });
   m.dashboard.mockResolvedValue({
     ...vazio,
     alertas: [
@@ -75,4 +82,45 @@ it("M8.2d e M8.3b: a alteração segurada e as tarefas das OTAs aparecem com o l
   expect(h).toContain('href="/painel/reservas/r1"');
   expect(h).not.toContain("R$");
   expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true }));
+});
+
+describe("WhatsApp no Início (M10.1a)", () => {
+  it("a página passa ao dashboard o número que contarConversasSemResposta(db, sessao) devolveu; a conta do WhatsApp só para quem edita as configurações", async () => {
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.semResposta.mockResolvedValue(3);
+    await html();
+    expect(m.semResposta).toHaveBeenCalledWith({}, expect.objectContaining({ organizacaoId: "org", papel: "admin" }));
+    expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ conversasSemResposta: 3, verContaWhatsapp: true }));
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    await html();
+    expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verContaWhatsapp: false }));
+  });
+
+  it("o aviso das conversas sem resposta aparece com o link do filtro (os filtros do Início vão junto e a caixa de entrada os ignora)", async () => {
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.dashboard.mockResolvedValue({ ...vazio, alertas: [{ nivel: "info", texto: "2 conversa(s) do WhatsApp sem resposta.", link: "/painel/mensagens?filtro=sem_resposta" }] });
+    const h = await html({ imovel: "403" });
+    expect(h).toContain("2 conversa(s) do WhatsApp sem resposta.");
+    expect(h).toContain('href="/painel/mensagens?filtro=sem_resposta&amp;imovel=403"');
+  });
+
+  it("operação com o padrão só o admin: a contagem de verdade devolve 0 sem consultar o banco (um objeto vazio), e o Início não mostra a linha", async () => {
+    const real = await vi.importActual<typeof import("@/whatsapp/conversas")>("@/whatsapp/conversas");
+    m.semResposta.mockImplementation(real.contarConversasSemResposta);
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    await html();
+    expect(m.configWhatsapp).toHaveBeenCalledWith({}, "org");
+    expect(await m.semResposta.mock.results[0].value).toBe(0);
+    expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ conversasSemResposta: 0, verContaWhatsapp: false }));
+  });
+
+  it.each(["proprietario", "limpeza"])("%s: a contagem de verdade devolve 0 sem ler nem a configuração, com qualquer valor dela", async (papel) => {
+    const real = await vi.importActual<typeof import("@/whatsapp/conversas")>("@/whatsapp/conversas");
+    m.semResposta.mockImplementation(real.contarConversasSemResposta);
+    m.configWhatsapp.mockResolvedValue({ wabaId: null, numeroId: null, quemVeConversas: "admin_e_operacao" });
+    m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: ["im"] });
+    await html();
+    expect(m.configWhatsapp).not.toHaveBeenCalled();
+    expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ conversasSemResposta: 0, verContaWhatsapp: false }));
+  });
 });

@@ -6,7 +6,10 @@ import { MercadoPagoIntegracao } from "@/components/configuracoes/MercadoPagoInt
 import { TestarBeds24 } from "@/components/configuracoes/TestarBeds24";
 import { dataHoraNoFuso } from "@/lib/datas";
 import { situacaoDoMercadoPago } from "@/pagamentos/integracao";
-import { NOME_MERCADO_PAGO, NOME_SENTRY, situacaoServicos } from "@/sistema/servicos";
+import { NOME_MERCADO_PAGO, NOME_SENTRY, NOME_WHATSAPP, situacaoServicos } from "@/sistema/servicos";
+import { ambienteDeTeste } from "@/sistema/ambiente";
+import { WhatsappIntegracao } from "@/components/configuracoes/WhatsappIntegracao";
+import { situacaoDoWhatsapp } from "@/whatsapp/integracao";
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { imoveis } from "@/db/schema";
@@ -27,6 +30,8 @@ const ONDE: Record<string, string> = {
   [NOME_MERCADO_PAGO]:
     "MERCADOPAGO_PUBLIC_KEY, MERCADOPAGO_ACCESS_TOKEN e MERCADOPAGO_AMBIENTE (teste): só no ambiente Preview da Vercel. MERCADOPAGO_WEBHOOK_SECRET: em Preview e Production (o aviso chega no endereço de produção).",
   [NOME_SENTRY]: "NEXT_PUBLIC_SENTRY_DSN, em Production e Preview (é o endereço de envio do projeto no Sentry, público).",
+  [NOME_WHATSAPP]:
+    "WHATSAPP_VERIFY_TOKEN (pelo menos 32 caracteres, gerado só para isso) e WHATSAPP_APP_SECRET: só no ambiente Production da Vercel. WHATSAPP_RECEBIMENTO=ligada, que só o Diego liga. Os ids da Meta (conta e número) ficam aqui, em WhatsApp, no banco do sistema.",
 };
 
 export default async function Integracoes() {
@@ -36,14 +41,16 @@ export default async function Integracoes() {
   const org = sessao.organizacaoId;
   // A mesma função que Sistema lê (uma regra, um lugar).
   const mercadoPago = await situacaoDoMercadoPago(db);
-  const servicos = situacaoServicos(process.env, null, mercadoPago);
-  const [config, mapas, locais, execucoes, reservasNoBeds24] = await Promise.all([
+  const [config, mapas, locais, execucoes, reservasNoBeds24, whatsapp] = await Promise.all([
     lerConfigBeds24(db, org), listarMapeamentosBeds24(db, org),
     db.select({ id: imoveis.id, codigo: imoveis.codigo }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), eq(imoveis.ativo, true))).orderBy(asc(imoveis.codigo)),
     ultimasSincronizacoes(db, org),
     // M8.3a: só leitura do banco e do ambiente; os escopos da credencial vêm por um botão (e só no deploy de produção).
     painelReservasBeds24(db, org, process.env),
+    // M10.1a: a mesma função que Sistema lê; o quadro recebe só a situação e se é prévia, nunca o ambiente.
+    situacaoDoWhatsapp(db, org, process.env, new Date()),
   ]);
+  const servicos = situacaoServicos(process.env, null, mercadoPago, whatsapp);
   return (
     <>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 }}>
@@ -74,6 +81,7 @@ export default async function Integracoes() {
         </table>
       </div>
       <MercadoPagoIntegracao mp={mercadoPago} env={process.env} />
+      <WhatsappIntegracao w={whatsapp} naPrevia={ambienteDeTeste(process.env)} />
       <TestarBeds24 />
       <SincronizarBeds24 config={config} mapas={mapas} imoveis={locais} execucoes={execucoes.map(e => ({ id: e.id, quando: dataHoraNoFuso(e.iniciadoEm), situacao: e.situacao, resumo: e.resumo, divergencias: e.divergencias }))} />
       <ReservasSiteBeds24 p={reservasNoBeds24} />

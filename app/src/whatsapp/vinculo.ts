@@ -32,7 +32,7 @@ import { erroParaOAviso } from "@/observabilidade/erro-de-rotina";
 import { codigosDeReservaNoTexto, ehCodigoDeReserva } from "@/reservas/regras";
 import { codigoCotacaoValido, codigosDeCotacaoNoTexto } from "@/site/codigo-cotacao";
 import { exigirVerConversas } from "./acesso";
-import { ALVOS_VINCULO, type AlvoVinculo, type Direcao } from "./regras";
+import { ALVOS_VINCULO, type AlvoVinculo, type Direcao, ROTULO_GENERICO_DO_ALVO } from "./regras";
 import { chavesDeTelefone, chavesDoWaId, temChaveEmComum, ultimos8 } from "./telefone";
 
 // ---------------------------------------------------------------- erro sem dado pessoal
@@ -152,15 +152,6 @@ const permissaoDoAlvo = (tipo: unknown): Acao | null =>
 /** A sessão lê esse tipo de alvo? (Além de ver a conversa.) */
 const podeLerAlvo = (sessao: Sessao, tipo: AlvoVinculo): boolean => podeFazer(sessao.papel, PERMISSAO_DO_ALVO[tipo]);
 
-/** Para quem vê a conversa e não lê o alvo: o tipo, sem nome, sem data do pedido, sem código. */
-const GENERICO: Record<AlvoVinculo, { rotulo: string; selo: string }> = {
-  reserva: { rotulo: "uma reserva", selo: "Reserva" },
-  cotacao: { rotulo: "uma cotação", selo: "Cotação" },
-  pedido_contato: { rotulo: "um pedido de contato", selo: "Pedido de contato" },
-  cadastro_marketplace: { rotulo: "um cadastro pelo site", selo: "Cadastro pelo site" },
-  proprietario: { rotulo: "um proprietário", selo: "Proprietário" },
-};
-
 /**
  * Um alvo lido para a tela: `rotulo` (sem telefone), `selo` (o texto curto da lista: "Reserva SCL-…", "Cotação COT-…",
  * "Pedido de contato", "Cadastro pelo site", "Proprietário") e `link`. `entrada`/`saida` só da reserva (ordem).
@@ -203,7 +194,7 @@ async function descreverAlvos(db: Db, organizacaoId: string, alvos: readonly Alv
       .select({ id: pedidosContatoProprietario.id, nome: pedidosContatoProprietario.nome, criadoEm: pedidosContatoProprietario.criadoEm })
       .from(pedidosContatoProprietario)
       .where(and(eq(pedidosContatoProprietario.organizacaoId, organizacaoId), inArray(pedidosContatoProprietario.id, ps)));
-    for (const p of linhas) guardar("pedido_contato", p.id, { rotulo: `Pedido de contato de ${p.nome} (${dataNoFuso(p.criadoEm)})`, selo: GENERICO.pedido_contato.selo, link: "/painel/proprietarios/contatos" });
+    for (const p of linhas) guardar("pedido_contato", p.id, { rotulo: `Pedido de contato de ${p.nome} (${dataNoFuso(p.criadoEm)})`, selo: ROTULO_GENERICO_DO_ALVO.pedido_contato.selo, link: "/painel/proprietarios/contatos" });
   }
   const ks = ids("cadastro_marketplace");
   if (ks.length) {
@@ -211,7 +202,7 @@ async function descreverAlvos(db: Db, organizacaoId: string, alvos: readonly Alv
       .select({ id: cadastrosMarketplace.id, nome: cadastrosMarketplace.nome, criadoEm: cadastrosMarketplace.criadoEm })
       .from(cadastrosMarketplace)
       .where(and(eq(cadastrosMarketplace.organizacaoId, organizacaoId), inArray(cadastrosMarketplace.id, ks)));
-    for (const k of linhas) guardar("cadastro_marketplace", k.id, { rotulo: `Cadastro pelo site de ${k.nome} (${dataNoFuso(k.criadoEm)})`, selo: GENERICO.cadastro_marketplace.selo, link: "/painel/proprietarios/cadastros" });
+    for (const k of linhas) guardar("cadastro_marketplace", k.id, { rotulo: `Cadastro pelo site de ${k.nome} (${dataNoFuso(k.criadoEm)})`, selo: ROTULO_GENERICO_DO_ALVO.cadastro_marketplace.selo, link: "/painel/proprietarios/cadastros" });
   }
   const os = ids("proprietario");
   if (os.length) {
@@ -219,7 +210,7 @@ async function descreverAlvos(db: Db, organizacaoId: string, alvos: readonly Alv
       .select({ id: proprietarios.id, nome: proprietarios.nome })
       .from(proprietarios)
       .where(and(eq(proprietarios.organizacaoId, organizacaoId), inArray(proprietarios.id, os)));
-    for (const o of linhas) guardar("proprietario", o.id, { rotulo: `Proprietário ${o.nome}`, selo: GENERICO.proprietario.selo, link: `/painel/proprietarios/${o.id}` });
+    for (const o of linhas) guardar("proprietario", o.id, { rotulo: `Proprietário ${o.nome}`, selo: ROTULO_GENERICO_DO_ALVO.proprietario.selo, link: `/painel/proprietarios/${o.id}` });
   }
   return mapa;
 }
@@ -242,7 +233,7 @@ export async function vinculosNaTela(db: Db, sessao: Sessao, alvos: readonly Alv
       const pode = podeLerAlvo(sessao, a.tipo);
       const d = pode ? descricoes.get(chaveDoAlvo(a)) : undefined;
       // Sem a permissão, ou alvo que não está mais na organização: o genérico (só quem lê o alvo pode desfazer).
-      mapa.set(chaveDoAlvo(a), d ? { tipo: a.tipo, rotulo: d.rotulo, selo: d.selo, link: d.link, podeDesfazer: true } : { tipo: a.tipo, ...GENERICO[a.tipo], link: null, podeDesfazer: pode });
+      mapa.set(chaveDoAlvo(a), d ? { tipo: a.tipo, rotulo: d.rotulo, selo: d.selo, link: d.link, podeDesfazer: true } : { tipo: a.tipo, ...ROTULO_GENERICO_DO_ALVO[a.tipo], link: null, podeDesfazer: pode });
     }
     return mapa;
   });

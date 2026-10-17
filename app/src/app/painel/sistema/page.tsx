@@ -12,6 +12,7 @@ import { NOMES_ORIGEM } from "@/reservas/regras";
 import { AUTOMACOES, execucaoNaoRodou, ultimasExecucoes } from "@/sistema/automacoes";
 import { regrasEmVigor } from "@/sistema/regras";
 import { type SituacaoServico, situacaoServicos } from "@/sistema/servicos";
+import { situacaoDoWhatsapp } from "@/whatsapp/integracao";
 
 const SELO: Record<SituacaoServico, { texto: string; cor: string }> = {
   ok: { texto: "Funcionando (testado agora)", cor: "var(--scl-ok-fundo)" },
@@ -34,14 +35,16 @@ export default async function Sistema() {
   } catch {
     bancoOk = false;
   }
-  const [execucoes, regras, financeiras, mercadoPago] = await Promise.all([
+  const [execucoes, regras, financeiras, mercadoPago, whatsapp] = await Promise.all([
     ultimasExecucoes(db),
     regrasEmVigor(db, sessao.organizacaoId, hojeISO()),
     lerRegrasFinanceiras(db, sessao.organizacaoId),
     // A mesma função que Integrações lê (uma regra, um lugar); sem banco, a linha diz que não foi conferida.
     bancoOk ? situacaoDoMercadoPago(db) : Promise.resolve(null),
+    // M10.1a: a mesma função que Integrações lê, com a mesma proteção do banco.
+    bancoOk ? situacaoDoWhatsapp(db, sessao.organizacaoId, process.env, new Date()) : Promise.resolve(null),
   ]);
-  const servicos = situacaoServicos(process.env, bancoOk, mercadoPago);
+  const servicos = situacaoServicos(process.env, bancoOk, mercadoPago, whatsapp);
 
   return (
     <>

@@ -1,5 +1,6 @@
 import type { LinhaHistorico } from "@/auditoria/auditoria";
 import { dataHoraNoFuso } from "@/lib/datas";
+import { ALVOS_VINCULO, type AlvoVinculo, ROTULO_GENERICO_DO_ALVO } from "@/whatsapp/regras";
 
 const ROTULOS: Record<string, string> = {
   codigo: "Código",
@@ -44,6 +45,13 @@ const ROTULOS: Record<string, string> = {
   otaFechadaEm: "Datas fechadas nas OTAs",
   situacaoNoBeds24: "Situação no Beds24",
   beds24Id: "Id no Beds24",
+  // M10.1a: o vínculo da conversa do WhatsApp (só "tipo:id", sem nome), a situação da conta e a configuração.
+  vinculo: "Vínculo",
+  situacao: "Situação",
+  motivo: "Motivo",
+  quemVeConversas: "Quem vê as conversas",
+  wabaId: "Id da conta (WABA)",
+  numeroId: "Id do número",
 };
 
 const ACOES: Record<string, string> = {
@@ -73,6 +81,12 @@ const ACOES: Record<string, string> = {
   "beds24.reserva.ota_fechada": "marcou as datas fechadas nas OTAs",
   "beds24.reserva.ota_reaberta": "marcou as datas reabertas nas OTAs",
   "beds24.reserva.adotar": "ligou a reserva ao registro do Beds24",
+  // M10.1a: verbos, como os outros ("{autor} {ação}"). Só o da conversa tem tela de histórico (a página da conversa); os
+  // da configuração e da conta ficam para a leitura da auditoria.
+  "configuracao.whatsapp": "alterou a configuração do WhatsApp",
+  "whatsapp.conversa.vincular": "vinculou a conversa do WhatsApp",
+  "whatsapp.conversa.desvincular": "desfez o vínculo da conversa do WhatsApp",
+  "whatsapp.conta.situacao": "mudou a situação da conta do WhatsApp",
 };
 
 /** Um instante gravado com `toISOString()` ou com o deslocamento do fuso, também no meio do texto ("COT-1 até <ISO>"). */
@@ -97,6 +111,16 @@ function valor(v: unknown): string {
   return t.length > 60 ? `${t.slice(0, 57)}…` : t;
 }
 
+/**
+ * M10.1a: o vínculo da conversa do WhatsApp é gravado como "tipo:id" (sem nome); na tela sai só o tipo ("uma reserva"),
+ * nunca o id, que é texto técnico e, com as conversas liberadas à operação, apontaria um cadastro que ela não lê.
+ */
+function valorDoCampo(campo: string, v: unknown): string {
+  if (campo !== "vinculo" || typeof v !== "string") return valor(v);
+  const tipo = v.split(":")[0];
+  return (ALVOS_VINCULO as readonly string[]).includes(tipo) ? ROTULO_GENERICO_DO_ALVO[tipo as AlvoVinculo].rotulo : "—";
+}
+
 export function HistoricoAlteracoes({ linhas }: { linhas: LinhaHistorico[] }) {
   return (
     <section aria-label="Histórico de alterações" style={{ maxWidth: 820 }}>
@@ -112,7 +136,7 @@ export function HistoricoAlteracoes({ linhas }: { linhas: LinhaHistorico[] }) {
                 <ul style={{ listStyle: "none", color: "var(--scl-texto-2)" }}>
                   {Object.entries(l.mudancas).map(([campo, [antes, depois]]) => (
                     <li key={campo}>
-                      {ROTULOS[campo] ?? campo}: {valor(antes)} → {valor(depois)}
+                      {ROTULOS[campo] ?? campo}: {valorDoCampo(campo, antes)} → {valorDoCampo(campo, depois)}
                     </li>
                   ))}
                 </ul>
