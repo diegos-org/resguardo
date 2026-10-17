@@ -13,6 +13,7 @@ import {
   chaveOperacaoBeds24,
   chaveSimulacaoBeds24,
   type ContextoParaBeds24,
+  criadaPeloM83,
   type EsperadoBeds24,
   MOTIVOS_ACOMPANHAMENTO_BEDS24,
   MOTIVOS_CONFIGURACAO_BEDS24,
@@ -150,6 +151,18 @@ describe("régua da reserva do site no Beds24 (M8.3a, desenho 2.1)", () => {
       expect(reservaDoSiteParaBeds24(reserva({ estado: "cancelada" }), contexto({ ...criada("x", situacao), cancelamentoDecidido: true }))).toEqual({ decisao: "fora", motivo: situacao });
       expect(reservaDoSiteParaBeds24(reserva(), contexto({ acompanhamento: { situacao, quarto: null, assinaturaEsperada: null } }))).toEqual({ decisao: "fora", motivo: situacao });
     }
+  });
+});
+
+describe("\"criada pelo M8.3\" (desenho 6.2), uma regra para a régua e as tarefas das OTAs (M8.3b)", () => {
+  it("só com o quarto guardado e um id do Beds24 ligado; a linha da marca manual (sem quarto) nunca é criada pelo sistema", () => {
+    expect(criadaPeloM83({ quarto: "123456" }, "98765")).toBe(true);
+    expect(criadaPeloM83({ quarto: null }, "98765")).toBe(false);
+    expect(criadaPeloM83({ quarto: "123456" }, null)).toBe(false);
+    expect(criadaPeloM83(null, "98765")).toBe(false);
+    expect(criadaPeloM83(null, null)).toBe(false);
+    // A régua lê a mesma regra: com o id e sem o quarto, a reserva é de um registro que o sistema não criou.
+    expect(reservaDoSiteParaBeds24(reserva(), contexto({ acompanhamento: { situacao: "pendente", quarto: null, assinaturaEsperada: null }, beds24Id: "98765" }))).toEqual({ decisao: "fora", motivo: "ja_no_beds24" });
   });
 });
 

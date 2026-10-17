@@ -127,6 +127,10 @@ describe("alteração da reserva paga pelo site na ficha (M8.2d)", () => {
     expect(h).toContain('aria-label="Financeiro da alteração"');
     expect(h).toContain("+R$ 400,00");
     expect(h).toContain("Datas atualizadas nas OTAs");
+    // M8.3b: sem o texto da tarefa das OTAs, o genérico (no mesmo bloqueio, sem apagar); com ele, as datas da reserva.
+    expect(h).toContain("Mude as datas do bloqueio no Beds24 para as novas (não apague nem crie outro).");
+    expect(h).not.toMatch(/reabra as antigas|feche as novas datas/);
+    expect(html({ alteracoes: [aplicada()], textoOta: "Mude as datas do bloqueio para 10/11 a 15/11 (não apague nem crie outro)." })).toContain("Mude as datas do bloqueio para 10/11 a 15/11 (não apague nem crie outro).");
     expect(h).toContain("Copiar mensagem: alteração confirmada");
     expect(h).toContain("Calcular a alteração");
     const marcada = html({ alteracoes: [aplicada({ ota: { em: new Date("2026-10-02T15:00:00Z"), por: "Equipe Fictícia" } })] });
@@ -143,7 +147,7 @@ describe("alteração da reserva paga pelo site na ficha (M8.2d)", () => {
     const h = html({ alteracoes: [soPessoas] });
     expect(h).toContain("Alteração aplicada");
     expect(h).not.toContain("Datas atualizadas nas OTAs");
-    expect(h).not.toContain("mude o bloqueio nas OTAs");
+    expect(h).not.toContain("Mude as datas do bloqueio");
     expect(html({ alteracoes: [aplicada({ id: "a3" }), soPessoas] })).not.toContain("bloqueio nas OTAs ainda não marcado");
   });
 

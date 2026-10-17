@@ -6,6 +6,7 @@ import type { Db } from "@/db/types";
 import { estornar } from "@/financeiro/ledger";
 import { lerRegrasCalendario, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { TEXTOS_SITE_INICIAIS } from "@/configuracoes/textos-site";
+import { carregarDashboard } from "@/painel/dashboard";
 import { expirarHoldsVencidos } from "@/site/cotacoes";
 import { textoDoCancelamento } from "@/site/pagamento-vista";
 import { conferirTentativa } from "./conferencia";
@@ -36,6 +37,9 @@ beforeEach(async () => { c = await montarCenario(db); });
 
 const conferir = (id: string, quando: Date) => conferirTentativa(db, c.org, id, c.provedor, quando, { origem: "rotina", forcar: true });
 const vista = (cotacaoId: string, quando: Date, comAutorizacao = true, oferecido = true) => vistaDaCotacaoParaHospede(db, c.org, cotacaoId, quando, { comAutorizacao, oferecido });
+/** O Início de quem edita reservas, sem o financeiro: as tarefas das OTAs vêm dele (M8.3b), não dos avisos do pagamento. */
+const inicio = async (agora: Date) =>
+  (await carregarDashboard(db, c.org, { imoveis: [], todos: false, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: false, verCancelamentos: true, agora })).alertas.map((a) => a.texto);
 const outras = (n: number) => ({ entrada: `2026-11-${String(2 + n * 4).padStart(2, "0")}`, saida: `2026-11-${String(5 + n * 4).padStart(2, "0")}`, email: `v${n}@example.com` });
 
 describe("o que o hóspede vê (M8.2a)", () => {
@@ -269,7 +273,7 @@ describe("painel: pagamentos da reserva, lista e avisos do Início (M8.2a)", () 
     expect(lista.find((l) => l.id === pa.pagamentoId)?.aceite?.versoes).toEqual({ termos: 1, privacidade: 1, cancelamento: 1 });
   });
 
-  it("Início: aprovado sem desfecho, devolução pedida/recusada, liberação vencida, live_mode, dinheiro sem cálculo, configuração inválida e o informativo das OTAs", async () => {
+  it("Início: aprovado sem desfecho, devolução pedida/recusada, liberação vencida, live_mode, dinheiro sem cálculo e configuração inválida; as datas das OTAs saíram daqui (M8.3b)", async () => {
     const vazio = await avisosDePagamento(db, c.org, AGORA, { env: env({}) });
     expect(vazio.alertas).toEqual([]);
     expect((await avisosDePagamento(db, c.org, AGORA, { env: env({ MERCADOPAGO_AMBIENTE: "prod" }) })).alertas[0].texto).toContain("Configuração inválida");
@@ -286,19 +290,22 @@ describe("painel: pagamentos da reserva, lista e avisos do Início (M8.2a)", () 
     await conferir(pb.pagamentoId, minutos(4));
     await registrarEventoDeAviso(db, { tipo: "order", acao: "order.processed", dataId: "ORDREAL0001", requestId: "r-1", ts: "1", aoVivo: true }, AGORA);
     const r = await avisosDePagamento(db, c.org, new Date("2026-10-04T12:00:00Z"), { env: env({}) });
-    expect(r.contagens).toMatchObject({ aprovadoSemDesfecho: 1, liberacaoVencida: 1, aoVivo: 1, pagasAbertas: 1, semCalculo: 0 });
+    expect(r.contagens).toMatchObject({ aprovadoSemDesfecho: 1, liberacaoVencida: 1, aoVivo: 1, semCalculo: 0 });
+    expect(r.contagens).not.toHaveProperty("pagasAbertas");
     const textos = r.alertas.map((x) => x.texto).join("\n");
     expect(textos).toContain("aprovado(s) sem reserva");
     expect(textos).toContain("liberação prevista vencida");
     expect(textos).toContain("live_mode");
-    expect(textos).toContain("feche as datas nas OTAs");
-    // Escrita no Beds24 ligada e o envio automático ligado no painel: o informativo continua (o envio fecha só os
-    // bloqueios do SCL, nunca as datas das reservas, até o M8.3). Credencial fictícia: nada é chamado.
+    // A reserva paga com as datas a fechar nas OTAs é das tarefas das OTAs (M8.3b, para quem edita reservas, com a marca
+    // "Datas fechadas nas OTAs"): nada disso nos avisos do pagamento, nem com o envio do calendário ligado.
+    expect(textos).not.toContain("feche as datas");
     const regras = await lerRegrasCalendario(db, c.org);
     await salvarRegrasCalendario(db, c.org, { ...regras, envio: { ...regras.envio, automatico: true } }, null);
     const comEnvio = env({ BEDS24_ESCRITA: "ligada", BEDS24_REFRESH_TOKEN: "refresh-ficticio" });
-    expect((await avisosDePagamento(db, c.org, new Date("2026-10-04T12:00:00Z"), { env: comEnvio })).alertas.map((x) => x.texto).join()).toContain("feche as datas nas OTAs (no Beds24, como bloqueio).");
+    expect((await avisosDePagamento(db, c.org, new Date("2026-10-04T12:00:00Z"), { env: comEnvio })).alertas.map((x) => x.texto).join()).not.toContain("OTAs");
     await salvarRegrasCalendario(db, c.org, regras, null);
+    // No Início, para quem edita reservas, a linha da tarefa com o código (a fonte única é `tarefasDasOtas`).
+    expect((await inicio(new Date("2026-10-04T12:00:00Z"))).join("\n")).toContain("reserva(s) do site paga(s) (");
     // Devolução pedida e depois recusada.
     c.provedor.falhas.devolver = new ErroProvedor("incerto", "tempo");
     await devolverPeloProvedor(db, c.org, pa.pagamentoId, null, c.provedor, minutos(10));
@@ -619,7 +626,7 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     expect((await acoes(e.reservaId, minutos(71))).acoes).toMatchObject({ registrarTaxaPerdida: false, corrigirTaxaPerdida: true });
   });
 
-  it("Início da operação: um aviso por pedido (atenção depois de 24 h ou perto da entrada), as datas a reabrir nas OTAs e a mensagem pendente ao hóspede; nada de valores", async () => {
+  it("Início da operação: um aviso por pedido (atenção depois de 24 h ou perto da entrada), as datas a mudar para Cancelado nas OTAs e a mensagem pendente ao hóspede; nada de valores", async () => {
     const equipe = await usuarioDeTeste(c);
     const x = await pagarEConfirmar(c, longe);
     await pedir(c, x.reservaId, equipe, { recebidoEm: minutos(30), quando: minutos(40) });
@@ -631,11 +638,12 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     await pedir(c, y.reservaId, equipe, { recebidoEm: new Date("2026-10-09T10:00:00-03:00"), quando: new Date("2026-10-09T10:05:00-03:00") });
     const perto = (await avisos(new Date("2026-10-09T11:00:00-03:00"))).find((a) => a.texto.includes(y.reservaCodigo));
     expect(perto?.nivel).toBe("atencao");
-    // Cancelada: as datas a reabrir nas OTAs e a mensagem da decisão e da devolução.
+    // Cancelada: a mensagem da decisão e da devolução; as datas nas OTAs são das tarefas das OTAs (M8.3b), no Início.
     await cancelar(c, x.reservaId, entradaPadrao(), equipe, minutos(60));
     const depois = await avisos(minutos(70));
-    // Com o código da reserva e o link para a ficha dela (a lista do mês esconde as canceladas).
-    expect(depois).toContainEqual({ nivel: "info", texto: `1 reserva(s) do site cancelada(s) (${x.reservaCodigo}): reabra as datas nas OTAs (no Beds24, apague o bloqueio).`, link: `/painel/reservas/${x.reservaId}` });
+    expect(depois.some((a) => a.texto.includes("OTAs"))).toBe(false);
+    // Com o código da reserva e as datas, por reserva: mudar o bloqueio para Cancelado, nunca apagar.
+    expect(await inicio(minutos(70))).toContain(`Reserva ${x.reservaCodigo}, cancelada: mude o bloqueio de 20/11 a 23/11 para Cancelado (não apague).`);
     expect(depois).toContainEqual({ nivel: "info", texto: `1 cancelamento(s) com mensagem ao hóspede pendente (decisão ou devolução feita): avise o hóspede (${x.reservaCodigo}).`, link: `/painel/reservas/${x.reservaId}` });
     // Quem não lê o financeiro não copia essas mensagens (levam o valor): o aviso delas não aparece para ele.
     expect((await avisosDeCancelamento(db, c.org, minutos(70), { mensagensComValor: false })).some((a) => a.texto.includes("mensagem ao hóspede"))).toBe(false);
@@ -646,7 +654,9 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     expect((await avisos(minutos(90))).some((a) => a.texto.includes("mensagem ao hóspede"))).toBe(true);
     expect(await marcarHospedeAvisado(db, c.org, x.reservaId, "devolucao", equipe, minutos(90))).toEqual({ ok: true });
     const fim = await avisos(minutos(100));
-    expect(fim.some((a) => a.texto.includes("reabra as datas") || a.texto.includes("mensagem ao hóspede") || a.texto.includes(x.reservaCodigo))).toBe(false);
+    expect(fim.some((a) => a.texto.includes("mensagem ao hóspede") || a.texto.includes(x.reservaCodigo))).toBe(false);
+    // A marca "Datas reabertas nas OTAs" tirou a tarefa do Início.
+    expect((await inicio(minutos(100))).join("\n")).not.toContain(x.reservaCodigo);
     for (const a of [...depois, ...fim]) expect(a.texto).not.toContain("R$");
   });
 
@@ -710,38 +720,44 @@ describe("cancelamento pela política: a página do hóspede, o quadro do pagame
     expect((await avisosDePagamento(db, c.org, minutos(90), { env: env() })).contagens).toMatchObject({ devolucaoForaDoPrazo: 0, devolucaoRecusada: 2 });
   });
 
-  it("Início da operação: com mais de uma reserva, os códigos no texto e o link para a lista das canceladas de todo o histórico", async () => {
+  it("Início da operação: com mais de uma reserva cancelada, uma linha por reserva (o texto leva as datas dela), com o link para a ficha", async () => {
     const equipe = await usuarioDeTeste(c);
     const x = await pagarEConfirmar(c, longe);
     const y = await pagarEConfirmar(c, { entrada: "2026-11-25", saida: "2026-11-27", email: "y@example.com" });
     await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
     await cancelar(c, y.reservaId, empresa(), equipe, minutos(60));
-    const ota = (await avisosDeCancelamento(db, c.org, minutos(70))).find((a) => a.texto.includes("reabra as datas"));
-    expect(ota?.texto).toContain(`(${[x.reservaCodigo, y.reservaCodigo].sort().join(", ")})`);
-    expect(ota?.link).toBe("/painel/reservas?situacao=cancelada&escopo=historico");
+    expect((await avisosDeCancelamento(db, c.org, minutos(70))).some((a) => a.texto.includes("OTAs"))).toBe(false);
+    const linhas = (await inicio(minutos(70))).filter((t) => t.includes(", cancelada:"));
+    expect(linhas).toEqual(
+      [
+        [x.reservaCodigo, `Reserva ${x.reservaCodigo}, cancelada: mude o bloqueio de 20/11 a 23/11 para Cancelado (não apague).`],
+        [y.reservaCodigo, `Reserva ${y.reservaCodigo}, cancelada: mude o bloqueio de 25/11 a 27/11 para Cancelado (não apague).`],
+      ]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, t]) => t),
+    );
   });
 
-  it("Início da operação: com o envio automático ao Beds24 ligado, 'reabra as datas nas OTAs' continua (o envio fecha só os bloqueios do SCL, nunca reabre datas de reservas, até o M8.3)", async () => {
+  it("Início da operação: com o envio automático do calendário ligado, a tarefa da cancelada continua (a chave das reservas é outra) e só a marca a tira", async () => {
     const equipe = await usuarioDeTeste(c);
     const x = await pagarEConfirmar(c, longe);
     await cancelar(c, x.reservaId, empresa(), equipe, minutos(60));
-    const textos = async () => (await avisosDeCancelamento(db, c.org, minutos(70))).map((a) => a.texto).join("\n");
-    expect(await textos()).toContain("reabra as datas nas OTAs");
-    // Escrita ligada no ambiente e o envio automático ligado no painel. Credencial fictícia: nada é chamado.
+    const tarefa = `Reserva ${x.reservaCodigo}, cancelada: mude o bloqueio de 20/11 a 23/11 para Cancelado (não apague).`;
+    expect(await inicio(minutos(70))).toContain(tarefa);
+    // Escrita do calendário ligada no ambiente e o envio automático ligado no painel. Credencial fictícia: nada é chamado.
     vi.stubEnv("BEDS24_ESCRITA", "ligada");
     vi.stubEnv("BEDS24_REFRESH_TOKEN", "refresh-ficticio");
     try {
       const regras = await lerRegrasCalendario(db, c.org);
       await salvarRegrasCalendario(db, c.org, { ...regras, envio: { ...regras.envio, automatico: true } }, null);
-      const comEnvio = await textos();
-      expect(comEnvio).toContain(`(${x.reservaCodigo}): reabra as datas nas OTAs (no Beds24, apague o bloqueio).`);
-      expect(comEnvio).toContain("mensagem ao hóspede pendente");
+      expect(await inicio(minutos(70))).toContain(tarefa);
+      expect((await avisosDeCancelamento(db, c.org, minutos(70))).map((a) => a.texto).join("\n")).toContain("mensagem ao hóspede pendente");
     } finally {
       vi.unstubAllEnvs();
     }
-    // Só a marca da equipe (ou o M8.3) tira o aviso.
+    // Só a marca da equipe (ou a do sistema, no M8.3c) tira a tarefa.
     expect(await marcarOtaLiberada(db, c.org, x.reservaId, equipe, minutos(80))).toEqual({ ok: true });
-    expect(await textos()).not.toContain("reabra as datas nas OTAs");
+    expect(await inicio(minutos(80))).not.toContain(tarefa);
   });
 
   it("Início do financeiro: devolvida a menos e reserva devolvida no Mercado Pago fora do cancelamento (D21) contam e avisam", async () => {

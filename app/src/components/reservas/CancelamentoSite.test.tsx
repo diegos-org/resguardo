@@ -190,8 +190,14 @@ describe("cancelamento pela política na ficha (M8.2c)", () => {
     expect(h).toContain("o Mercado Pago pediu para esperar: o sistema tenta de novo sozinho");
     expect(h).toContain("resultado lançado em 01/10 · aguardando a devolução ser realizada");
     expect(h).toContain("já repassada: R$ 631,19 de desconto lançado em 01/10 — a descontar no próximo repasse");
-    expect(h).toContain("reabra as datas nas OTAs (no Beds24, apague o bloqueio)");
+    // M8.3b: sem o texto da tarefa das OTAs, o genérico; nunca "apague" (um bloqueio apagado nunca sai do SCL).
+    expect(h).toContain("Mude o bloqueio para Cancelado no Beds24 (não apague).");
+    expect(h).not.toMatch(/apague o bloqueio|reabra as datas/);
     expect(h).toContain("Datas reabertas nas OTAs");
+    // Com o texto da tarefa (o mesmo do Início), as datas da reserva.
+    const comTarefa = html({ reserva: { ...props().reserva, estado: "cancelada" }, cancelamento: cancelada, textoOta: "Mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague)." });
+    expect(comTarefa).toContain("Mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague).");
+    expect(comTarefa).not.toContain("Mude o bloqueio para Cancelado no Beds24 (não apague).");
     expect(h).toContain("Copiar mensagem: cancelamento");
     // Falta um dado: a mensagem não sai e o aviso diz o quê.
     expect(h).toContain("Copiar mensagem: devolução feita: falta {link} na reserva: complete antes de copiar.");

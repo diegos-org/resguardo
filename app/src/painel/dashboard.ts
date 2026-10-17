@@ -30,6 +30,7 @@ import {
   textoEscaladaDaDisputa,
 } from "@/pagamentos/contestacao-regras";
 import { prazoDosDocumentos } from "@/pagamentos/contestacao-tela";
+import { tarefasDasOtas } from "@/beds24/reservas-site-tarefas";
 import { avisosDeContestacaoNosRepasses } from "@/repasses/avisos-contestacao";
 import { avisosDeDescontos } from "@/repasses/descontos";
 import { partesDoProprietario } from "@/repasses/extrato";
@@ -65,6 +66,9 @@ export async function contaDeTesteParaInicio(o: { env?: NodeJS.ProcessEnv; prove
   return esperarNoMaximo(contaDeTesteConfirmada(provedor), o.esperaMs ?? ESPERA_TELA_MS, null);
 }
 
+/** Sem o ambiente de quem chama, as tarefas das OTAs ficam todas à mão (nenhuma chave lida: o lado seguro). */
+const AMBIENTE_DESLIGADO = {} as NodeJS.ProcessEnv;
+
 const somaDias = (d: string, n: number) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)) + n)).toISOString().slice(0, 10);
 
 export async function carregarDashboard(
@@ -85,12 +89,15 @@ export async function carregarDashboard(
     /** Quem lê o financeiro recebe os avisos do pagamento no site (M8.2a), da empresa toda. */
     verPagamentos?: boolean;
     /**
-     * Quem edita reservas recebe os avisos do cancelamento pela política (M8.2c: pedidos esperando, datas a reabrir nas
-     * OTAs, hóspede a avisar), da empresa toda e sem valores — mesmo sem acesso ao financeiro.
+     * Quem edita reservas recebe os avisos do cancelamento pela política (M8.2c: pedidos esperando, hóspede a avisar), da
+     * alteração (M8.2d) e as tarefas das OTAs (M8.3b: paga, D3, cancelada, alterada), da empresa toda e sem valores —
+     * mesmo sem acesso ao financeiro.
      */
     verCancelamentos?: boolean;
     /** Conta das chaves do Mercado Pago conferida agora (true/false); null ou ausente = não conferida (sem esse aviso). */
     contaDeTesteMercadoPago?: boolean | null;
+    /** M8.3b: o ambiente das tarefas das OTAs (a chave das reservas e o deploy de produção); ausente = `{}`, tudo à mão. */
+    env?: NodeJS.ProcessEnv;
     agora?: Date;
   },
 ): Promise<Dashboard> {
@@ -135,8 +142,11 @@ export async function carregarDashboard(
   if (o.verCancelamentos) alertas.push(...(await avisosDeCancelamento(db, organizacaoId, o.agora ?? new Date(), { mensagensComValor: o.verPagamentos === true })));
   // Alteração de reserva paga pelo site (M8.2d): as mesmas pessoas e a mesma regra das mensagens com valor.
   if (o.verCancelamentos) alertas.push(...(await avisosDeAlteracao(db, organizacaoId, o.agora ?? new Date(), { mensagensComValor: o.verPagamentos === true })));
+  // Tarefas das OTAs (M8.3b): a fonte única dos avisos da paga, da D3, da cancelada e da alterada, sem valores. O ambiente
+  // ausente conta como desligado (tudo à mão: o lado seguro).
+  if (o.verCancelamentos) alertas.push(...(await tarefasDasOtas(db, organizacaoId, o.agora ?? new Date(), o.env ?? AMBIENTE_DESLIGADO)).avisos);
   // Pagamento no site (M8.2a): da empresa toda, sem depender do filtro de imóveis (aprovado sem reserva, devoluções,
-  // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo, datas a fechar nas OTAs).
+  // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo).
   if (o.verPagamentos) {
     const pagamentos = await avisosDePagamento(db, organizacaoId, o.agora ?? new Date(), { contaDeTeste: o.contaDeTesteMercadoPago ?? null });
     alertas.push(...pagamentos.alertas);
@@ -334,12 +344,11 @@ const linkDoAviso = (xs: readonly { reservaId: string }[]) => (xs.length === 1 ?
 
 /**
  * Os avisos da alteração de reserva paga pelo site no Início (da operação: quem edita reservas, sem valores, da empresa
- * toda): cada alteração com as datas seguradas agora (pela situação que vale agora, com a carência do pagamento), as
- * reservas alteradas cujo bloqueio nas OTAs ainda não foi mudado (o envio ao Beds24 não muda datas de reservas), e as
- * mensagens ao hóspede pendentes (a proposta e a devolução feita levam valor: só para quem lê o financeiro).
+ * toda): cada alteração com as datas seguradas agora (pela situação que vale agora, com a carência do pagamento) e as
+ * mensagens ao hóspede pendentes (a proposta e a devolução feita levam valor: só para quem lê o financeiro). As datas a
+ * mudar nas OTAs da reserva alterada saíram daqui no M8.3b: são de `tarefasDasOtas` (beds24/reservas-site-tarefas.ts).
  */
 export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Date = new Date(), o: { mensagensComValor?: boolean } = {}): Promise<Alerta[]> {
-  const hoje = hojeISO("America/Sao_Paulo", agora);
   const alertas: Alerta[] = [];
   const seguradas = await db
     .select({ a: alteracoesReserva, codigo: reservasTabela.codigo })
@@ -363,32 +372,6 @@ export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Da
       link: `/painel/reservas/${a.reservaId}`,
     });
   }
-  // Aplicada e o bloqueio nas OTAs ainda não mudado (o M8.3 vai gravar sozinho; até lá, à mão), com alguma noite (de antes
-  // ou de agora) ainda por vir. A reserva-pedido das datas seguradas nunca vai às OTAs. Só a que mudou as datas: as pessoas
-  // ou o valor não mexem no bloqueio.
-  const otas = await db
-    .select({ reservaId: alteracoesReserva.reservaId, codigo: reservasTabela.codigo })
-    .from(alteracoesReserva)
-    .innerJoin(reservasTabela, eq(reservasTabela.id, alteracoesReserva.reservaId))
-    .where(
-      and(
-        eq(alteracoesReserva.organizacaoId, organizacaoId),
-        eq(alteracoesReserva.situacao, "aplicada"),
-        isNull(alteracoesReserva.otaAtualizadaEm),
-        or(ne(alteracoesReserva.checkinAntes, alteracoesReserva.checkinDepois), ne(alteracoesReserva.checkoutAntes, alteracoesReserva.checkoutDepois)),
-        eq(reservasTabela.estado, "confirmada"),
-        sql`greatest(${alteracoesReserva.checkoutAntes}, ${alteracoesReserva.checkoutDepois}) >= ${hoje}::date`,
-      ),
-    )
-    .orderBy(reservasTabela.codigo);
-  const alteradas = [...new Map(otas.map((x) => [x.reservaId, x])).values()];
-  // Sempre, mesmo com o envio ao Beds24 ligado: o envio fecha só os bloqueios do SCL, nunca as datas das reservas (até o M8.3).
-  if (alteradas.length)
-    alertas.push({
-      nivel: "info",
-      texto: `${alteradas.length} reserva(s) do site alterada(s) (${codigosDoAviso(alteradas)}): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).`,
-      link: linkDoAviso(alteradas),
-    });
   // A proposta leva a diferença e a devolução feita leva o valor: só quem as pode copiar (quem lê o financeiro) recebe o aviso.
   if (o.mensagensComValor === false) return alertas;
   const pendentes = await alteracoesComMensagemPendente(db, organizacaoId, agora);

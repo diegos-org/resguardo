@@ -9,7 +9,9 @@
  *   Ligar um imóvel exige um ensaio conferido com a credencial ATUAL: trocar o token deixa as criações paradas até um
  *   ensaio novo.
  * Deny-by-default: um valor torto conta como o lado seguro (imóvel desligado, sem ensaio; a pausa torta conta como
- * pausada). Toda mudança exige `configuracao:editar` e fica na auditoria (`configuracao.reservas_beds24`).
+ * pausada). Toda mudança exige `configuracao:editar` e fica na auditoria (`configuracao.reservas_beds24`). Aqui também o
+ * "desligada" calculado de cada reserva (`motivosDesligada`: o ambiente e a configuração), que a ficha e as tarefas das
+ * OTAs leem.
  */
 import { and, eq } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
@@ -17,7 +19,7 @@ import { gravarConfig, lerConfig, travarConfig } from "@/configuracoes/armazem";
 import { beds24ReservasOperacoes, imoveis } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { impressaoCredencialBeds24 } from "./http";
+import { ambienteDeEscritaDeReservas, escritaReservasBeds24Ligada, impressaoCredencialBeds24 } from "./http";
 
 export type PausaReservasBeds24 = {
   /** null = a pausa foi gravada sem a data legível (conta como pausada do mesmo jeito). */
@@ -75,6 +77,29 @@ export async function lerConfigReservasBeds24(db: Db, organizacaoId: string): Pr
 
 /** A ligação do imóvel (D6); null = desligado. */
 export const ligacaoDoImovel = (c: ConfigReservasBeds24, imovelId: string): ImovelLigadoBeds24 | null => c.imoveis.find((i) => i.imovelId === imovelId) ?? null;
+
+/**
+ * Por que o envio automático está desligado para esta reserva (pode haver mais de um): fora do deploy de produção, a
+ * chave `BEDS24_ESCRITA_RESERVAS`, o refresh token, a pausa geral, o imóvel não ligado (D6) ou nenhuma linha de
+ * acompanhamento. Vazio = ligado.
+ */
+export type MotivoDesligadaBeds24 = "ambiente" | "chave" | "credencial" | "pausa" | "imovel" | "sem_acompanhamento";
+
+/**
+ * Os motivos do "desligada", na ordem em que a tela mostra: a trava de ambiente (`escritaReservasBeds24Pronta`, aberta nas
+ * três primeiras) e depois as condições do painel. Uma regra, um lugar: a ficha (M8.3a) e as tarefas das OTAs (M8.3b) leem
+ * daqui.
+ */
+export function motivosDesligada(env: NodeJS.ProcessEnv, o: { pausada: boolean; imovelLigado: boolean; comAcompanhamento: boolean }): MotivoDesligadaBeds24[] {
+  const m: MotivoDesligadaBeds24[] = [];
+  if (!ambienteDeEscritaDeReservas(env)) m.push("ambiente");
+  if (!escritaReservasBeds24Ligada(env)) m.push("chave");
+  if (!env.BEDS24_REFRESH_TOKEN?.trim()) m.push("credencial");
+  if (o.pausada) m.push("pausa");
+  if (!o.imovelLigado) m.push("imovel");
+  if (!o.comAcompanhamento) m.push("sem_acompanhamento");
+  return m;
+}
 
 /** O último ensaio conferido vale para a credencial de agora (impressão igual e não vazia). */
 export const ensaioValeParaCredencial = (c: ConfigReservasBeds24, credencialAtual: string): boolean => Boolean(credencialAtual) && c.ensaio?.credencial === credencialAtual;

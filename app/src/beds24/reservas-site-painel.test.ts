@@ -12,12 +12,15 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { Beds24Falso } from "./falso";
 import { ClienteBeds24Http, impressaoCredencialBeds24, leitorDeCredencialDoAmbiente } from "./http";
-import { conferirEscoposReservasBeds24, fichaReservaNoBeds24, motivosDesligada, OPERACOES_NA_FICHA, painelReservasBeds24 } from "./reservas-site-painel";
+import { motivosDesligada } from "./reservas-site-config";
+import { conferirEscoposReservasBeds24, fichaReservaNoBeds24, OPERACOES_NA_FICHA, painelReservasBeds24 } from "./reservas-site-painel";
 import { chaveEnsaioBeds24, chaveSimulacaoBeds24 } from "./reservas-site-regras";
 import { ErroBeds24 } from "./tipos";
 
 const env = (o: Record<string, string | undefined> = {}) => o as unknown as NodeJS.ProcessEnv;
 const PRONTO = { VERCEL_ENV: "production", NODE_ENV: "production", BEDS24_ESCRITA_RESERVAS: "ligada", BEDS24_REFRESH_TOKEN: "refresh-ficticio" };
+/** Um instante fixo antes das estadias do teste (as tarefas das OTAs cortam pela data de hoje). */
+const AGORA = new Date("2026-10-16T15:00:00Z");
 
 let db: Db, close: () => Promise<void>, org: string, im: string, im2: string, reservaId: string, codigo: string, admin: string;
 let espiao: ReturnType<typeof vi.spyOn>;
@@ -48,9 +51,14 @@ describe("o \"desligada\" é calculado (nunca gravado)", () => {
 });
 
 describe("ficha da reserva", () => {
-  it("sem acompanhamento: desligada, sem histórico; simular só fora da produção ou com a chave desligada", async () => {
-    const f = await fichaReservaNoBeds24(db, org, reservaId, env());
-    expect(f).toEqual({ desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null });
+  it("sem acompanhamento: desligada, sem histórico; simular só fora da produção ou com a chave desligada; a tarefa das OTAs dela (M8.3b)", async () => {
+    const f = await fichaReservaNoBeds24(db, org, reservaId, env(), AGORA);
+    // Confirmada do site sem pagamento pelo site (a D3): fechar as datas à mão, com a marca (a mesma tarefa do Início).
+    const tarefa = { reservaId, codigo, caso: "d3", estado: "manual", checkin: "2026-12-20", checkout: "2026-12-27", desde: new Date(0), alteracaoIds: [], texto: expect.stringContaining("Feche as datas no Beds24 como bloqueio"), marca: "datas_fechadas" };
+    expect(f).toEqual({ desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [tarefa], atencoes: [] });
+    // Outra reserva não entra na ficha desta.
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-OUTRA1", origem: "site", fonte: "site", checkin: "2026-12-01", checkout: "2026-12-03", hospedes: 2 });
+    expect((await fichaReservaNoBeds24(db, org, reservaId, env(), AGORA))?.tarefas.map((t) => t.codigo)).toEqual([codigo]);
     expect((await fichaReservaNoBeds24(db, org, reservaId, env(PRONTO)))?.simular).toBe(false);
     expect((await fichaReservaNoBeds24(db, org, reservaId, env({ ...PRONTO, BEDS24_ESCRITA_RESERVAS: undefined })))?.simular).toBe(true);
   });

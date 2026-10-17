@@ -24,7 +24,7 @@ import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas
 import { Recebimentos } from "@/components/reservas/Recebimentos";
 import { ReservaNoBeds24 } from "@/components/reservas/ReservaNoBeds24";
 import { fichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
-import { dataBr, dataHoraNoFuso, diaHoraNoFuso, hojeISO } from "@/lib/datas";
+import { dataBr, dataHoraNoFuso, diaHoraNoFuso, diaMesBr, hojeISO } from "@/lib/datas";
 import { alteracaoDoPortador, alteracoesDaReserva } from "@/pagamentos/alteracao-painel";
 import { textoDoResultadoDaAlteracao } from "@/pagamentos/alteracao-tela";
 import { cancelamentoDaReserva, momentosDoCancelamento } from "@/pagamentos/cancelamento-painel";
@@ -116,8 +116,18 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     r.estado === "confirmada" &&
     (!momentos || agora.getTime() < momentos.entradaEm.getTime()) &&
     (disputasEquipe ?? disputasOperacao).some((d) => d.seguraValor && pagamentosSite.some((p) => p.id === d.pagamentoId && (p.desfecho === "reserva" || p.desfecho === "alteracao")));
-  // M8.3a: a reserva do site no Beds24 (só leitura, só para a equipe; "Simular" com reserva:editar, sem rede).
-  const noBeds24 = r.fonte === "site" && sessao.papel !== "proprietario" && podeFazer(sessao.papel, "reserva:ler") ? await fichaReservaNoBeds24(db, sessao.organizacaoId, r.id, process.env) : null;
+  // M8.3a: a reserva do site no Beds24 (só para a equipe; "Simular" com reserva:editar, sem rede). M8.3b: as tarefas das
+  // OTAs desta reserva (a mesma função do Início) e as marcas manuais.
+  const noBeds24 = r.fonte === "site" && sessao.papel !== "proprietario" && podeFazer(sessao.papel, "reserva:ler") ? await fichaReservaNoBeds24(db, sessao.organizacaoId, r.id, process.env, agora) : null;
+  // O texto das OTAs no cancelamento e na alteração vem da tarefa à mão desta reserva (uma regra, um lugar).
+  const tarefaOta = (casos: readonly string[]) => noBeds24?.tarefas.find((t) => casos.includes(t.caso) && t.estado === "manual")?.texto;
+  const textoOtaCancelamento = tarefaOta(["cancelada_bloqueio", "cancelada_criada"]);
+  const textoOtaAlteracao = tarefaOta(["alterada_bloqueio", "alterada_criada"]);
+  // A reserva do site marcada como fechada nas OTAs e cancelada pelo botão de sempre (a confirmada à mão, sem pagamento): só
+  // quando a tarefa dela vai existir depois (acompanhamento manual e a saída depois de hoje), com o botão "Datas reabertas".
+  const otaNoCancelar = r.fonte === "site" && noBeds24?.acompanhamento?.otaFechadaEm && noBeds24.acompanhamento.situacao === "manual" && r.checkout > hojeISO(undefined, agora)
+    ? ` As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de ${diaMesBr(r.checkin)} a ${diaMesBr(r.checkout)} para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha.`
+    : "";
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
 
@@ -227,7 +237,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
         <form action={cancelar}>
           <input type="hidden" name="id" value={r.id} />
           <BotaoConfirmar
-            pergunta={`Cancelar a reserva ${r.codigo}? O financeiro dela será estornado.`}
+            pergunta={`Cancelar a reserva ${r.codigo}? O financeiro dela será estornado.${otaNoCancelar}`}
             style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid var(--scl-erro)", color: "var(--scl-erro)", background: "var(--scl-papel)", cursor: "pointer" }}
           >
             Cancelar reserva
@@ -254,6 +264,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
               editarFinanceiro={editarFinanceiro}
               verValores={verValores}
               agora={agora}
+              textoOta={textoOtaAlteracao}
             />
           ) : null
         }
@@ -269,6 +280,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
               editarFinanceiro={editarFinanceiro}
               verValores={verValores}
               agora={agora}
+              textoOta={textoOtaCancelamento}
             />
           ) : null
         }

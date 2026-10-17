@@ -13,6 +13,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { mensagensDoCancelamento } from "@/mensagens/hospede";
+import { carregarDashboard } from "@/painel/dashboard";
 import { partesDoProprietario } from "@/repasses/extrato";
 import { dinheiroComAEmpresa, recebidoPorReserva } from "@/repasses/recebimentos";
 import { cancelarReservaContestada, canceladaPelaDisputa, previaDoCancelamentoContestado, TEXTO_PREVIA_MUDOU, TEXTO_SEM_DISPUTA_PARA_CANCELAR } from "./cancelamento";
@@ -573,6 +574,7 @@ describe("cancelar a reserva contestada (item 18)", () => {
     if (!pv.ok) throw new Error(pv.erro);
     expect(pv.previa).toMatchObject({ valorPago: TOTAL, valorRetido: TOTAL, disputas: [{ contestacaoId: x.l.id, pagamentoId: x.pagamentoId, valorEmRisco: TOTAL }] });
     expect(pv.previa.pergunta).toContain("sem devolução pelo sistema");
+    expect(pv.previa.pergunta).toContain("nas OTAs, siga o aviso do Início (no Beds24, mude para Cancelado; não apague)");
     expect(await cancelarReservaContestada(db, c.org, x.reservaId, { nota: "", assinatura: pv.previa.assinatura }, equipe, c.provedor, quando)).toMatchObject({ ok: false, codigo: "dados" });
     expect(await cancelarReservaContestada(db, c.org, x.reservaId, { nota: "Possível fraude.", assinatura: "velha" }, equipe, c.provedor, quando)).toMatchObject({ ok: false, codigo: "previa_mudou", erro: TEXTO_PREVIA_MUDOU });
     const motorAntes = (await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, x.reservaId), eq(lancamentos.origem, "motor")))).map((l) => l.id);
@@ -586,8 +588,10 @@ describe("cancelar a reserva contestada (item 18)", () => {
     expect(c.provedor.chamadas.filter((ch) => ch.metodo === "devolver")).toEqual([]);
     // O valor retido igual ao bruto: o motor divide como antes (nada muda no livro).
     expect((await db.select().from(lancamentos).where(and(eq(lancamentos.reservaId, x.reservaId), eq(lancamentos.origem, "motor")))).map((l) => l.id)).toEqual(motorAntes);
-    // A tarefa das OTAs e a página do hóspede.
-    expect((await avisosDeCancelamento(db, c.org, quando)).find((a) => a.texto.includes("reabra as datas nas OTAs"))?.texto).toContain(x.reservaCodigo);
+    // A tarefa das OTAs (M8.3b: no Início de quem edita reservas, mudar o bloqueio para Cancelado) e a página do hóspede.
+    const inicio = await carregarDashboard(db, c.org, { imoveis: [], todos: false, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-21", verFinanceiro: false, verCancelamentos: true, agora: quando });
+    expect(inicio.alertas.map((a) => a.texto)).toContain(`Reserva ${x.reservaCodigo}, cancelada: mude o bloqueio de 20/11 a 23/11 para Cancelado (não apague).`);
+    expect((await avisosDeCancelamento(db, c.org, quando)).some((a) => a.texto.includes("OTAs"))).toBe(false);
     // Sem a mensagem da decisão ao hóspede (nem o aviso de mensagem pendente): numa disputa, a equipe fala caso a caso.
     expect((await avisosDeCancelamento(db, c.org, sp("2026-10-23 10:00"))).some((a) => a.texto.includes("mensagem ao hóspede pendente"))).toBe(false);
     expect((await mensagensDoCancelamento(db, c.org, x.reservaId, quando)).decidido).toBeNull();

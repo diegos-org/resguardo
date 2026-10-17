@@ -1,7 +1,8 @@
 /**
  * Bloco "No Beds24" da ficha (M8.3a, desenho 8; seção 10, teste 12): os códigos do domínio em linguagem simples, o
- * "desligada" calculado, o histórico curto e o "Simular" só com a permissão e o ambiente. O componente só é importado no
- * painel: nenhuma tela do hóspede nem do portal cita o Beds24.
+ * "desligada" calculado, o histórico curto e o "Simular" só com a permissão e o ambiente. M8.3b (testes 15 e 16): o texto
+ * da tarefa das OTAs desta reserva e as marcas manuais, só com `reserva:editar`. O componente só é importado no painel:
+ * nenhuma tela do hóspede nem do portal cita o Beds24.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -9,16 +10,30 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { FichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
 import { MOTIVOS_ACOMPANHAMENTO_BEDS24, SITUACOES_ACOMPANHAMENTO_BEDS24 } from "@/beds24/reservas-site-regras";
+import type { TarefaOta } from "@/beds24/reservas-site-tarefas";
 
-vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn() }));
+vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn(), marcarDatasFechadasNasOtasAcao: vi.fn(), marcarDatasReabertasNasOtasAcao: vi.fn() }));
 import { NOMES_MOTIVO_NO_BEDS24, NOMES_SITUACAO_NO_BEDS24, ReservaNoBeds24, textoDaSimulacao } from "./ReservaNoBeds24";
 
 const ID = "11111111-1111-4111-8111-111111111111";
-const vazia: FichaReservaNoBeds24 = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null };
+const vazia: FichaReservaNoBeds24 = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [] };
+const tarefa = (o: Partial<TarefaOta> = {}): TarefaOta => ({
+  reservaId: ID,
+  codigo: "SCL-7K2QXM",
+  caso: "paga",
+  estado: "manual",
+  checkin: "2026-12-20",
+  checkout: "2026-12-27",
+  desde: new Date("2026-10-01T15:00:00Z"),
+  alteracaoIds: [],
+  texto: "Feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.",
+  marca: "datas_fechadas",
+  ...o,
+});
 const html = (ficha: FichaReservaNoBeds24, editar = true, resultado?: string) => renderToStaticMarkup(<ReservaNoBeds24 reservaId={ID} ficha={ficha} editar={editar} resultado={resultado} />);
 
 describe("bloco No Beds24 da ficha", () => {
-  it("sem acompanhamento: desligado com os motivos em palavras, o aviso de que nada é escrito ainda, e o Simular", () => {
+  it("sem acompanhamento: desligado com os motivos em palavras, nada a fazer à mão sem tarefa, e o Simular", () => {
     const h = html(vazia);
     expect(h).toContain('aria-label="Reserva no Beds24"');
     expect(h).toContain("<strong>desligado</strong>");
@@ -26,7 +41,8 @@ describe("bloco No Beds24 da ficha", () => {
     expect(h).toContain("a chave BEDS24_ESCRITA_RESERVAS não está ligada");
     expect(h).toContain("o imóvel não está ligado em Integrações");
     expect(h).toContain("o sistema ainda não acompanha esta reserva");
-    expect(h).toContain("o sistema não escreve reservas no Beds24");
+    expect(h).toContain("Nada a fazer à mão nas OTAs para esta reserva agora.");
+    expect(h).not.toContain("Datas fechadas nas OTAs");
     expect(h).toContain(`name="reservaId" value="${ID}"`);
     expect(h).toContain(">Simular</button>");
   });
@@ -34,11 +50,47 @@ describe("bloco No Beds24 da ficha", () => {
   it("pedido com as datas seguradas (D9): nunca manda fechar as datas à mão; o pedido vencido sem pagamento não manda abrir", () => {
     const segurado = html({ ...vazia, pedido: "segurado" });
     expect(segurado).toContain("É um pedido com as datas seguradas: ele não vai ao Beds24, e as datas não devem ser fechadas à mão nas OTAs");
-    expect(segurado).not.toContain("feche e abra as datas à mão");
+    expect(segurado).not.toContain("Feche as datas");
+    expect(segurado).not.toContain("Nada a fazer à mão nas OTAs para esta reserva agora.");
     const vencido = html({ ...vazia, pedido: "vencido" });
     expect(vencido).toContain("O pedido venceu sem pagamento");
-    expect(vencido).not.toContain("feche e abra as datas à mão");
-    expect(html(vazia)).toContain("feche e abra as datas à mão, como hoje");
+    expect(vencido).not.toContain("Feche as datas");
+  });
+
+  it("M8.3b: a tarefa das OTAs desta reserva com o botão da marca (reserva:editar); sem a permissão, só o texto", () => {
+    const paga = html({ ...vazia, tarefas: [tarefa()] });
+    expect(paga).toContain("Feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.");
+    expect(paga).toContain(">Datas fechadas nas OTAs</button>");
+    // Sem acompanhamento, a linha da marca aparece como "não marcado".
+    expect(paga).toMatch(/Datas fechadas nas OTAs<\/dt><dd>não marcado/);
+    expect(paga).not.toContain("Nada a fazer à mão nas OTAs");
+    const semEditar = html({ ...vazia, tarefas: [tarefa()] }, false);
+    expect(semEditar).toContain("Feche as datas no Beds24 como bloqueio");
+    expect(semEditar).not.toContain("</button>");
+    // A D3 cancelada pelo botão de sempre: mudar o bloqueio para Cancelado e "Datas reabertas nas OTAs".
+    const reabrir = html({ ...vazia, tarefas: [tarefa({ caso: "d3_cancelada", texto: "Mude o bloqueio de 20/12 a 27/12 para Cancelado (não apague).", marca: "datas_reabertas" })] });
+    expect(reabrir).toContain("Mude o bloqueio de 20/12 a 27/12 para Cancelado (não apague).");
+    expect(reabrir).toContain(">Datas reabertas nas OTAs</button>");
+    expect(reabrir).not.toContain(">Datas fechadas nas OTAs</button>");
+    // Sem a marca (envio em curso, a cancelada e a alterada, que têm a marca no quadro delas): nenhum botão das OTAs.
+    const semMarca = html({ ...vazia, tarefas: [tarefa({ caso: "cancelada_bloqueio", texto: "Mude o bloqueio de 20/12 a 27/12 para Cancelado (não apague).", marca: null })] });
+    expect(semMarca).not.toMatch(/Datas (fechadas|reabertas) nas OTAs<\/button>/);
+  });
+
+  it("M8.3b: o que o sistema está enviando e o que pede atenção (nunca \"feche como bloqueio\" por cima)", () => {
+    expect(html({ ...vazia, tarefas: [tarefa({ estado: "sendo_enviada", marca: null })] })).toContain("O sistema está enviando esta reserva ao Beds24: não feche nem mude as datas à mão.");
+    const atrasada = html({ ...vazia, tarefas: [tarefa({ estado: "atrasada", marca: null })] });
+    expect(atrasada).toContain("O envio desta reserva ao Beds24 está atrasado (mais de 30 minutos)");
+    expect(atrasada).not.toContain("Feche as datas");
+    const conflito = html({ ...vazia, atencoes: [{ reservaId: ID, codigo: "SCL-7K2QXM", tipo: "conflito" }] });
+    expect(conflito).toContain("As noites estão ocupadas por outra reserva no Beds24 (possível venda dupla): não feche como bloqueio sobre elas");
+    expect(conflito).not.toContain("Nada a fazer à mão nas OTAs");
+  });
+
+  it("M8.3b: o resultado das marcas (`?beds24=`), só de chaves conhecidas", () => {
+    expect(html(vazia, true, "ota_fechada")).toMatch(/class="[^"]*sucesso[^"]*">Datas marcadas como fechadas nas OTAs\./);
+    expect(html(vazia, true, "ota_reaberta")).toContain("Datas marcadas como reabertas nas OTAs.");
+    expect(html(vazia, true, "ota_inventada")).not.toContain('role="status"');
   });
 
   it("o Simular some sem reserva:editar ou quando o ambiente não deixa (deploy de produção com a chave ligada)", () => {
@@ -66,6 +118,8 @@ describe("bloco No Beds24 da ficha", () => {
       ],
       simular: true,
       pedido: null,
+      tarefas: [],
+      atencoes: [],
     });
     expect(h).toContain("Diferente no Beds24: cancelada no Beds24 por fora");
     expect(h).toContain("98765");
@@ -79,6 +133,26 @@ describe("bloco No Beds24 da ficha", () => {
     expect(h).toContain("a pausa geral está ligada em Integrações");
   });
 
+  it("a marca manual gravada (D8): \"marcado pela equipe\" e a equipe cuidando à mão", () => {
+    const h = html({
+      ...vazia,
+      desligada: ["ambiente", "chave", "credencial", "imovel"],
+      acompanhamento: { situacao: "manual", motivo: null, quarto: null, conferidaEm: null, lido: null, lidoEm: null, otaFechadaEm: new Date("2026-10-02T12:00:00Z"), otaFechadaAMao: true },
+    });
+    expect(h).toContain("A equipe cuida à mão");
+    expect(h).toContain("02/10/2026 às 09:00 (marcado pela equipe)");
+    expect(h).toContain("Nada a fazer à mão nas OTAs para esta reserva agora.");
+    expect(h).not.toContain("Datas reabertas nas OTAs");
+    // A D3 cancelada e marcada "Datas reabertas nas OTAs": o acompanhamento encerrado diz quem marcou (o histórico tem a data).
+    const reaberta = html({
+      ...vazia,
+      desligada: ["ambiente", "chave", "credencial", "imovel"],
+      acompanhamento: { situacao: "encerrada", motivo: null, quarto: null, conferidaEm: null, lido: null, lidoEm: null, otaFechadaEm: new Date("2026-10-02T12:00:00Z"), otaFechadaAMao: true },
+    });
+    expect(reaberta).toMatch(/Datas reabertas nas OTAs<\/dt><dd>marcado pela equipe \(data e autor no histórico da reserva\)/);
+    expect(reaberta).not.toContain(">Datas reabertas nas OTAs</button>");
+  });
+
   it("o resultado do Simular: simulada, repetida, com o imóvel desligado, nada (com o motivo); chave desconhecida, nada", () => {
     expect(textoDaSimulacao("simulada")).toContain("Simulação gravada");
     expect(textoDaSimulacao("simulada_imovel_desligado")).toContain("esta criação só sairia depois de ele ser ligado");
@@ -90,7 +164,7 @@ describe("bloco No Beds24 da ficha", () => {
       expect(t).not.toMatch(/sairia depois|até ele ser ligado/);
     }
     expect(textoDaSimulacao("repetida")).toContain("Nada mudou desde a última simulação");
-    expect(textoDaSimulacao("nada_sem_pagamento")).toBe("Nada seria enviado ao Beds24: não há pagamento pelo site que confirmou a reserva (confirmada à mão: feche as datas à mão).");
+    expect(textoDaSimulacao("nada_sem_pagamento")).toBe("Nada seria enviado ao Beds24: não há pagamento pelo site que confirmou a reserva (confirmada à mão: feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs).");
     expect(textoDaSimulacao("nada_fora_do_ambiente")).toContain("simular só vale fora do deploy de produção");
     expect(textoDaSimulacao("nada_toString")).toBeNull();
     expect(textoDaSimulacao("<script>")).toBeNull();
@@ -135,5 +209,11 @@ describe("o Beds24 fica no painel", () => {
     const leitores = quem("reservas-site-painel");
     expect(leitores.length).toBeGreaterThan(0);
     expect(leitores.every((f) => f.startsWith("app/painel/") || f.startsWith("beds24/") || f.startsWith("components/configuracoes/") || f.startsWith("components/reservas/"))).toBe(true);
+  });
+
+  it("M8.3b: as tarefas das OTAs só no painel (o Início e a ficha); nenhum funil do pagamento importa o módulo do M8.3", () => {
+    const quem = (nome: string) => arquivos(src).filter((f) => readFileSync(f, "utf8").includes(`/${nome}"`)).map((f) => relative(src, f).replaceAll("\\", "/")).sort();
+    expect(quem("reservas-site-tarefas")).toEqual(["beds24/acoes-reservas.ts", "beds24/reservas-site-painel.ts", "components/reservas/ReservaNoBeds24.tsx", "painel/dashboard.ts"]);
+    expect(arquivos(join(src, "pagamentos")).filter((f) => readFileSync(f, "utf8").includes("@/beds24/"))).toEqual([]);
   });
 });

@@ -53,6 +53,11 @@ export type PropsCancelamentoSite = {
   /** financeiro:ler — valores, a nota da decisão e as mensagens com valor. */
   verValores: boolean;
   agora: Date;
+  /**
+   * M8.3b: o que fazer nas OTAs com as datas desta reserva, o texto da tarefa (`tarefasDasOtas`, o mesmo do Início: o
+   * bloqueio feito à mão ou a reserva criada pelo sistema, sempre "não apague"). Sem ele, o texto genérico.
+   */
+  textoOta?: string;
 };
 
 function Linhas({ linhas }: { linhas: [string, ReactNode][] }) {
@@ -193,7 +198,7 @@ function Descartados({ c }: { c: CancelamentoDoPainel }) {
  * proprietário, as OTAs, as mensagens ao hóspede e os pedidos descartados. Valores, a nota da decisão e as mensagens com
  * valor só com `financeiro:ler`; as ações só com a permissão de cada uma (o servidor confere de novo).
  */
-export function CancelamentoSite({ reserva, pagamento, pagamentos, cancelamento: c, momentos, editarReserva, editarFinanceiro, verValores, agora }: PropsCancelamentoSite) {
+export function CancelamentoSite({ reserva, pagamento, pagamentos, cancelamento: c, momentos, editarReserva, editarFinanceiro, verValores, agora, textoOta }: PropsCancelamentoSite) {
   const confirmada = reserva.estado === "confirmada";
   if (!c && !confirmada) return null;
   const agoraSP = { data: hojeISO(FUSO, agora), hora: horaNoFuso(agora, FUSO) };
@@ -316,8 +321,8 @@ export function CancelamentoSite({ reserva, pagamento, pagamentos, cancelamento:
       ) : editarReserva ? (
         <form key="ota" action={marcarOtaLiberadaAcao} style={{ display: "inline" }}>
           <input type="hidden" name="reservaId" value={reserva.id} />
-          reabra as datas nas OTAs (no Beds24, apague o bloqueio){" "}
-          <BotaoConfirmar pergunta="Confirmar que as datas desta reserva já foram reabertas nas OTAs (no Beds24, o bloqueio foi apagado)?" style={botaoDiscreto}>
+          {textoOta ?? "Mude o bloqueio para Cancelado no Beds24 (não apague)."}{" "}
+          <BotaoConfirmar pergunta="Confirmar que as datas desta reserva já foram reabertas nas OTAs (no Beds24, mudadas para Cancelado, sem apagar)?" style={botaoDiscreto}>
             Datas reabertas nas OTAs
           </BotaoConfirmar>
         </form>

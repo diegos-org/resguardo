@@ -85,8 +85,10 @@ const mesmoRegistro = (a: ReservaBeds24, b: ReservaBeds24) =>
 /**
  * A reserva do site e o acompanhamento dela, travados na ordem única (desenho 3.6): quem chama já tem `beds24:<org>`; aqui
  * o imóvel (`no key update`), a reserva (`nivel`: `update` quando o `beds24_id`, chave única, vai mudar) e o acompanhamento.
+ * A adoção, a conferência da importação e as marcas manuais das OTAs (M8.3b, `reservas-site-tarefas.ts`) travam por aqui.
+ * Sem acompanhamento, a trava da reserva serializa quem vai criá-lo.
  */
-async function travarReservaDoSite(tx: Db, org: string, reservaId: string, nivel: "update" | "no key update") {
+export async function travarReservaDoSite(tx: Db, org: string, reservaId: string, nivel: "update" | "no key update") {
   const ondeReserva = and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org), eq(reservas.fonte, "site"));
   const [previa] = await tx.select({ imovelId: reservas.imovelId }).from(reservas).where(ondeReserva);
   if (!previa) return null;

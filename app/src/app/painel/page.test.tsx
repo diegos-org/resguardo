@@ -44,10 +44,10 @@ it("links dos alertas com os filtros do Início continuam válidos (link que já
   expect(h).toContain('href="/painel/rotinas?imovel=403&amp;ano=2026&amp;mes=10"');
 });
 
-it("M8.2c: quem edita reservas recebe os avisos do cancelamento pela política (sem valores), mesmo sem o financeiro", async () => {
+it("M8.2c e M8.3b: quem edita reservas recebe os avisos do cancelamento e as tarefas das OTAs (sem valores), mesmo sem o financeiro, com o ambiente", async () => {
   m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   await html();
-  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true, verPagamentos: false }));
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true, verPagamentos: false, env: process.env }));
   m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   await html();
   expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true, verPagamentos: true }));
@@ -57,18 +57,21 @@ it("M8.2c: quem edita reservas recebe os avisos do cancelamento pela política (
   expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: false }));
 });
 
-it("M8.2d: os avisos da alteração (datas seguradas, bloqueio a mudar nas OTAs) aparecem com o link da ficha, sem valores", async () => {
+it("M8.2d e M8.3b: a alteração segurada e as tarefas das OTAs aparecem com o link da ficha, sem valores", async () => {
   m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   m.dashboard.mockResolvedValue({
     ...vazio,
     alertas: [
       { nivel: "info", texto: "Alteração da reserva SCL-TESTE1: datas seguradas até 13:00, esperando o pagamento da diferença.", link: "/painel/reservas/r1" },
-      { nivel: "info", texto: "1 reserva(s) do site alterada(s) (SCL-TESTE1): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).", link: "/painel/reservas/r1" },
+      { nivel: "info", texto: "Reserva SCL-TESTE1, alterada: mude as datas do bloqueio para 12/10 a 16/10 (não apague nem crie outro).", link: "/painel/reservas/r1" },
+      { nivel: "info", texto: "1 reserva(s) do site paga(s) (SCL-TESTE2): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.", link: "/painel/reservas/r2" },
     ],
   });
   const h = await html();
   expect(h).toContain("Alteração da reserva SCL-TESTE1: datas seguradas até 13:00, esperando o pagamento da diferença.");
-  expect(h).toContain("mude o bloqueio nas OTAs");
+  expect(h).toContain("mude as datas do bloqueio para 12/10 a 16/10 (não apague nem crie outro)");
+  expect(h).toContain("feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs");
+  expect(h).toContain('href="/painel/reservas/r2"');
   expect(h).toContain('href="/painel/reservas/r1"');
   expect(h).not.toContain("R$");
   expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: true }));

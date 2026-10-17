@@ -807,7 +807,7 @@ async function completarPrevia(
     const horarios = (await lerHorariosReservas(db, organizacaoId, [r.id])).get(r.id);
     if (acordoVigente(horarios, "entrada", r) || acordoVigente(horarios, "saida", r)) avisos.push("O combinado de horário de entrada e saída desta reserva deixa de valer com as datas novas: registre de novo, se for o caso.");
     if (x.depois.checkout !== antes.checkout) avisos.push(`A limpeza de saída muda para ${dataBr(x.depois.checkout)} (a já confirmada volta a pedida).`);
-    avisos.push("Depois de aplicada, mude o bloqueio no Beds24: feche as novas datas e reabra as antigas.");
+    avisos.push("Depois de aplicada, mude as datas no Beds24 como o Início mostrar (no mesmo bloqueio: não apague nem crie outro).");
   }
   if (x.origemValor !== "cotacao" && x.cotacao.total !== null)
     avisos.push(`Cotação do site para as novas datas: ${formatBRL(x.cotacao.total)}; valor usado: ${formatBRL(x.depois.valor)} (${x.motivoValor ? NOMES_MOTIVO_VALOR[x.motivoValor] : NOMES_ORIGEM_VALOR[x.origemValor]}).`);
@@ -905,7 +905,7 @@ export function perguntaDaAlteracao(p: PreviaAlteracao, fuso: string, agora: Dat
       `Segurar as novas datas (${depois}, ${nNoites(noites(p.depois.checkin, p.depois.checkout))}, ${pessoas(p.depois.hospedes)}) até ${prazoBr(ate, agora, fuso)} e liberar para o hóspede pagar a diferença de ${formatBRL(p.diferenca)} na página da reserva?`,
       ...(p.quemPede === "empresa" ? ["A alteração é proposta pela SCL: confirme que o hóspede paga a diferença."] : []),
       `Até o pagamento, a reserva continua como está (${dataBr(p.antes.checkin)} a ${dataBr(p.antes.checkout)}).`,
-      mudaDatas ? "Quando ele pagar, a alteração vale sozinha; depois, mude o bloqueio nas OTAs (no Beds24)." : "Quando ele pagar, a alteração vale sozinha.",
+      mudaDatas ? "Quando ele pagar, a alteração vale sozinha; depois, mude as datas no Beds24 como o Início mostrar (não apague nem crie outro)." : "Quando ele pagar, a alteração vale sozinha.",
     ].join(" ");
   }
   if (p.rumo === "reducao" && p.direito === "integral") {
@@ -1494,7 +1494,10 @@ export async function decidirAprovacaoDaAlteracao(tx: Db, organizacaoId: string,
 
 type Resultado = { ok: true } | { ok: false; erro: string };
 
-/** "Datas atualizadas nas OTAs" (reserva:editar): uma vez, na alteração aplicada. O M8.3 grava sozinho quando chegar. */
+/**
+ * "Datas atualizadas nas OTAs" (reserva:editar): uma vez, na alteração aplicada. O texto do que fazer é da tarefa das OTAs
+ * (M8.3b, `beds24/reservas-site-tarefas.ts`); o M8.3c grava a marca sozinho (`por` nulo) quando a atualização for conferida.
+ */
 export async function marcarOtaAtualizada(db: Db, organizacaoId: string, alteracaoId: string, autorId: string | null, agora: Date = new Date()): Promise<Resultado> {
   if (!uuidValido(alteracaoId)) return { ok: false, erro: "Alteração não encontrada." };
   const [a] = await db.select().from(alteracoesReserva).where(and(eq(alteracoesReserva.id, alteracaoId), eq(alteracoesReserva.organizacaoId, organizacaoId)));
