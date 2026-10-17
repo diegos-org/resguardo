@@ -151,7 +151,8 @@ escreve no Beds24; o "Simular" da ficha continua mostrando o que seria enviado.
 - **Como foi testado:** pelos testes automáticos, com a versão de mentira do Beds24 e sem internet; um teste confere que
   nenhuma chamada sai numa volta inteira da rotina. Nenhuma chamada foi feita ao Beds24 de verdade. Os horários das
   rotinas diárias foram conferidos no banco da produção só com horários e contagens: a importação começa sempre às 06:15
-  e o envio de calendário às 07:00 (horário de Brasília), e a rotina nova nunca coincide com elas.
+  e o envio de calendário às 07:00 (horário de Brasília), e a rotina nova nunca coincide com elas. Resultado de 17/10: os
+  4.996 testes automáticos do sistema (361 arquivos) passaram, e a versão de produção foi montada sem erro.
 - **Para você:** nada agora. Quando quiser ligar, o passo a passo está na seção 6, item 51, com a pergunta ao suporte do
   Beds24 pronta para colar. As decisões 6, 7, 10 e 11 (seção 7) apontam para lá.
 
