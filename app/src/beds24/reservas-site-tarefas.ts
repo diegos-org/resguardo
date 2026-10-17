@@ -246,8 +246,8 @@ const SEM_HORA = new Date(0);
 
 /**
  * As tarefas das OTAs da organização (ou só de `reservaIds`, para a ficha), só leitura e sem trava. Os cortes de data são
- * os de antes (hoje em São Paulo): a paga, a D3 e a cancelada com a saída depois de hoje; a alterada com alguma noite (de
- * antes ou de agora) a partir de hoje. A régua só é lida para a paga quando o envio automático está ligado para ela (no
+ * os de antes (hoje em São Paulo): a paga, a D3 e a cancelada com a saída depois de hoje; a alterada com a saída (de antes
+ * ou de agora) hoje ou depois. A régua só é lida para a paga quando o envio automático está ligado para ela (no
  * M8.3b, só nos testes: ligar um imóvel exige o ensaio do M8.3c). `env` vem de quem chama; `{}` deixa tudo à mão.
  * Desvio do desenho (`tarefasDasOtas(db, org, agora)`): `env` explícito (regra do M8.3) e `reservaIds` (a ficha).
  */
@@ -339,8 +339,8 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
     }
   }
 
-  // Alterada: aplicada com as datas mudadas e o bloqueio ainda não marcado, a reserva confirmada e alguma noite (de antes ou
-  // de agora) a partir de hoje. A reserva-pedido das datas seguradas nunca vai às OTAs; só as pessoas ou o valor não mexem
+  // Alterada: aplicada com as datas mudadas e o bloqueio ainda não marcado, a reserva confirmada e a saída (de antes ou de
+  // agora) hoje ou depois. A reserva-pedido das datas seguradas nunca vai às OTAs; só as pessoas ou o valor não mexem
   // no bloqueio. Uma linha por reserva, com as alterações e a última aplicada.
   const alteradas = await db
     .select({ ...daReserva, alteracaoId: alteracoesReserva.id, aplicadaEm: alteracoesReserva.aplicadaEm })
