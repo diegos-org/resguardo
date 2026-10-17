@@ -182,6 +182,13 @@ export type DecisaoBeds24 =
 
 const fora = (motivo: MotivoForaBeds24): DecisaoBeds24 => ({ decisao: "fora", motivo });
 
+/**
+ * "Criada pelo M8.3" (desenho 6.2): o acompanhamento guarda o quarto e há um id do Beds24 ligado a ela (`reservas.beds24_id`
+ * ou o de uma operação real dela). Uma regra, um lugar: a régua e as tarefas das OTAs (M8.3b) leem daqui. Criada, o texto
+ * manual fala da reserva no Beds24; senão, do bloqueio que a equipe fez à mão.
+ */
+export const criadaPeloM83 = (a: { quarto: string | null } | null, beds24Id: string | null): boolean => Boolean(a?.quarto && beds24Id);
+
 function enviar(acao: AcaoBeds24, esperado: EsperadoBeds24, anterior: string | null): DecisaoBeds24 {
   const assinatura = assinaturaEsperado(esperado);
   return assinatura === anterior ? fora("sem_mudanca") : { decisao: "enviar", acao, esperado, assinatura };
@@ -212,8 +219,7 @@ export function reservaDoSiteParaBeds24(r: ReservaParaBeds24, c: ContextoParaBed
   const a = c.acompanhamento;
   if (a?.situacao === "manual") return fora("manual");
   if (a?.situacao === "encerrada") return fora("encerrada");
-  // "Criada pelo M8.3": o acompanhamento guarda o quarto e há um id do Beds24 ligado a ela.
-  const criadaPeloScl = Boolean(a?.quarto && c.beds24Id);
+  const criadaPeloScl = criadaPeloM83(a, c.beds24Id);
 
   if (r.estado === "cancelada") {
     if (!c.cancelamentoDecidido) return fora("cancelada_sem_decisao");

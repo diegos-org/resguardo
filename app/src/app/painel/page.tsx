@@ -46,10 +46,12 @@ export default async function PainelInicio({ searchParams }: PageProps<"/painel"
     verRotinas: podeFazer(sessao.papel, "rotina:ler"),
     verProprietarios: podeFazer(sessao.papel, "proprietario:editar"),
     verPagamentos: verFinanceiro,
-    // M8.2c: pedidos de cancelamento, datas a reabrir nas OTAs e hóspede a avisar (sem valores) para quem edita reservas.
-    // M8.2d: as alterações com as datas seguradas e as reservas alteradas com o bloqueio a mudar nas OTAs, pelas mesmas regras.
+    // M8.2c: pedidos de cancelamento e hóspede a avisar (sem valores) para quem edita reservas. M8.2d: as alterações com as
+    // datas seguradas, pelas mesmas regras. M8.3b: as tarefas das OTAs (paga, confirmada à mão sem pagamento, cancelada,
+    // alterada), também para a operação, sem valores; o ambiente diz se o envio automático está ligado.
     verCancelamentos: podeFazer(sessao.papel, "reserva:editar"),
     contaDeTesteMercadoPago: verFinanceiro ? await contaDeTesteParaInicio() : null,
+    env: process.env,
   });
   const porId = new Map(imoveis.map((i) => [i.id, i]));
 

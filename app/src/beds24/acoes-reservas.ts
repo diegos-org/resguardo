@@ -1,12 +1,15 @@
 "use server";
 
 /**
- * Reserva paga do site no Beds24 (M8.3a) — ações do painel. Nenhuma escreve no Beds24 e nenhuma chama a rede, salvo a
- * leitura dos escopos no deploy de produção com a escrita pronta (`conferirEscoposReservasBeds24`).
+ * Reserva paga do site no Beds24 (M8.3a e M8.3b) — ações do painel. Nenhuma escreve no Beds24 e nenhuma chama a rede, salvo
+ * a leitura dos escopos no deploy de produção com a escrita pronta (`conferirEscoposReservasBeds24`).
  *
  * Sempre nesta ordem: sessão (a empresa vem só dela) → permissão (deny-by-default) → validação → domínio, que confere a
  * permissão de novo.
  * - Ficha: "Simular" (`reserva:editar`) grava só uma operação simulada e volta à ficha com a chave do resultado.
+ * - Ficha (M8.3b, `reserva:editar`, com `BotaoConfirmar` na tela e auditoria no domínio): "Datas fechadas nas OTAs" (D8,
+ *   a marca manual da reserva paga sem criação pelo sistema e da confirmada à mão sem pagamento) e "Datas reabertas nas
+ *   OTAs" (a confirmada à mão, marcada e depois cancelada pelo "Cancelar reserva" comum). Recusa volta à ficha com `?erro=`.
  * - Integrações (`configuracao:editar`, com `BotaoConfirmar` na tela e auditoria no domínio): pausar e retomar, ligar e
  *   desligar um imóvel (D6; ligar exige um ensaio conferido com a credencial atual, e o ensaio é do M8.3c) e conferir os
  *   escopos da credencial (só leitura).
@@ -20,6 +23,7 @@ import { uuidValido } from "@/lib/ids";
 import { conferirEscoposReservasBeds24, type EscoposDaCredencial } from "./reservas-site-painel";
 import { desligarImovelReservasBeds24, ligarImovelReservasBeds24, pausarReservasBeds24, type ResultadoConfigReservasBeds24, retomarReservasBeds24 } from "./reservas-site-config";
 import { chaveDoResultadoDaSimulacao, simularReservaNoBeds24 } from "./reservas-site-simulacao";
+import { marcarDatasFechadasNasOtas, marcarDatasReabertasNasOtas, type ResultadoMarcaOta } from "./reservas-site-tarefas";
 
 export type EstadoReservasBeds24 = { ok?: boolean; mensagem?: string };
 export type EstadoEscoposReservasBeds24 = { mensagem?: string; resultado?: EscoposDaCredencial };
@@ -43,6 +47,27 @@ export async function simularReservaBeds24Acao(form: FormData): Promise<void> {
   const r = await simularReservaNoBeds24(getDb(), sessao, reservaId, process.env, new Date());
   revalidatePath(`/painel/reservas/${reservaId}`);
   return redirect(`/painel/reservas/${reservaId}?beds24=${chaveDoResultadoDaSimulacao(r)}`);
+}
+
+/** As duas marcas manuais da ficha: a mesma ordem; sucesso volta com `?beds24=<chave>`, recusa com `?erro=`. */
+async function marcarNaFicha(form: FormData, marcar: typeof marcarDatasFechadasNasOtas, chave: string): Promise<void> {
+  const sessao = await exigirSessaoPainel();
+  exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
+  const reservaId = texto(form, "reservaId");
+  if (!uuidValido(reservaId)) return redirect("/painel/reservas");
+  const r: ResultadoMarcaOta = await marcar(getDb(), sessao, reservaId, process.env, new Date());
+  revalidar();
+  return redirect(r.ok ? `/painel/reservas/${reservaId}?beds24=${chave}` : `/painel/reservas/${reservaId}?erro=${encodeURIComponent(r.erro)}`);
+}
+
+/** "Datas fechadas nas OTAs" (D8): a equipe fechou à mão, como bloqueio, as datas da reserva; o sistema nunca cria por cima. */
+export async function marcarDatasFechadasNasOtasAcao(form: FormData): Promise<void> {
+  return marcarNaFicha(form, marcarDatasFechadasNasOtas, "ota_fechada");
+}
+
+/** "Datas reabertas nas OTAs" da confirmada à mão cancelada: a equipe mudou o bloqueio para Cancelado no Beds24. */
+export async function marcarDatasReabertasNasOtasAcao(form: FormData): Promise<void> {
+  return marcarNaFicha(form, marcarDatasReabertasNasOtas, "ota_reaberta");
 }
 
 const SEM_PERMISSAO: EstadoReservasBeds24 = { ok: false, mensagem: "Somente quem edita as configurações muda o envio das reservas do site ao Beds24." };

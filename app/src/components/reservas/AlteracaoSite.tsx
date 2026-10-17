@@ -55,6 +55,11 @@ export type PropsAlteracaoSite = {
   /** financeiro:ler — valores, o financeiro da alteração, o motivo da desistência e as mensagens com valor. */
   verValores: boolean;
   agora: Date;
+  /**
+   * M8.3b: o que fazer nas OTAs com as datas desta reserva, o texto da tarefa (`tarefasDasOtas`, o mesmo do Início: as
+   * datas de agora no mesmo bloqueio, ou na reserva criada pelo sistema). Sem ele, o texto genérico.
+   */
+  textoOta?: string;
 };
 
 function Linhas({ linhas }: { linhas: [string, ReactNode][] }) {
@@ -181,15 +186,18 @@ function Avisado({ alteracaoId, qual, marca, editar, podeCopiar }: { alteracaoId
 /** A alteração mudou as datas (só as pessoas ou o valor não mexem no bloqueio das OTAs). */
 const mudouDatas = (a: Pick<AlteracaoDoPainel, "antes" | "depois">) => a.antes.checkin !== a.depois.checkin || a.antes.checkout !== a.depois.checkout;
 
-/** "Datas atualizadas nas OTAs" (reserva:editar) de uma alteração aplicada; o M8.3 vai gravar sozinho quando chegar. */
-function Otas({ a, editar }: { a: AlteracaoDoPainel; editar: boolean }) {
+/**
+ * "Datas atualizadas nas OTAs" (reserva:editar) de uma alteração aplicada, com o texto da tarefa das OTAs (M8.3b, o mesmo
+ * do Início); o M8.3c grava a marca sozinho quando a atualização da reserva criada pelo sistema for conferida.
+ */
+function Otas({ a, editar, textoOta }: { a: AlteracaoDoPainel; editar: boolean; textoOta?: string }) {
   if (a.ota) return <>bloqueio mudado em {diaBr(a.ota.em)} por {a.ota.por ?? "o sistema"}</>;
   if (!editar) return <>bloqueio ainda não marcado como mudado nas OTAs</>;
   return (
     <form action={marcarOtaAtualizadaAcao} style={{ display: "inline" }}>
       <input type="hidden" name="alteracaoId" value={a.id} />
-      mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas){" "}
-      <BotaoConfirmar pergunta="Confirmar que o bloqueio desta reserva já foi mudado nas OTAs (no Beds24: novas datas fechadas, antigas reabertas)?" style={botaoDiscreto}>
+      {textoOta ?? "Mude as datas do bloqueio no Beds24 para as novas (não apague nem crie outro)."}{" "}
+      <BotaoConfirmar pergunta="Confirmar que as datas desta reserva já foram mudadas nas OTAs (no Beds24, sem apagar nem criar outro)?" style={botaoDiscreto}>
         Datas atualizadas nas OTAs
       </BotaoConfirmar>
     </form>
@@ -237,7 +245,7 @@ function Segurada({ a, editarReserva, editarFinanceiro, verValores }: { a: Alter
 }
 
 /** Uma alteração aplicada: quando e por quem, as datas, o valor, a devolução, o financeiro, as OTAs e as mensagens. */
-function Aplicada({ a, editarReserva, verValores }: { a: AlteracaoDoPainel; editarReserva: boolean; verValores: boolean }) {
+function Aplicada({ a, editarReserva, verValores, textoOta }: { a: AlteracaoDoPainel; editarReserva: boolean; verValores: boolean; textoOta?: string }) {
   const quem = a.aplicadaPor ? `por ${a.aplicadaPor}` : `pelo pagamento da diferença${a.aplicadaTardia ? " (aprovado depois do prazo das datas, com as noites ainda livres)" : ""}`;
   const devolucao = devolucaoEmTexto(a, verValores);
   const linhas: [string, ReactNode][] = [
@@ -246,7 +254,7 @@ function Aplicada({ a, editarReserva, verValores }: { a: AlteracaoDoPainel; edit
     ["Datas e pessoas", deParaEmTexto(a)],
     ...(verValores ? ([["Valor", valorEmTexto(a)]] as [string, ReactNode][]) : []),
     ...(devolucao ? ([["Devolução da diferença", devolucao]] as [string, ReactNode][]) : []),
-    ...(mudouDatas(a) ? ([["OTAs", <Otas key="ota" a={a} editar={editarReserva} />]] as [string, ReactNode][]) : []),
+    ...(mudouDatas(a) ? ([["OTAs", <Otas key="ota" a={a} editar={editarReserva} textoOta={textoOta} />]] as [string, ReactNode][]) : []),
     ...(a.mensagens.confirmada || a.avisados.confirmacao
       ? ([["Hóspede avisado: alteração confirmada", <Avisado key="confirmacao" alteracaoId={a.id} qual="confirmacao" marca={a.avisados.confirmacao} editar={editarReserva} podeCopiar={verValores} />]] as [string, ReactNode][])
       : []),
@@ -298,7 +306,7 @@ function Historico({ lista, verValores }: { lista: readonly AlteracaoDoPainel[];
  * segurada aparece sem valores, e o formulário não aparece. Valores, o financeiro e as mensagens com valor só com
  * `financeiro:ler`; as ações só com a permissão de cada uma (o servidor confere de novo).
  */
-export function AlteracaoSite({ reserva, capacidade, alteracoes, comCancelamento, entradaEm, editarReserva, editarFinanceiro, verValores, agora }: PropsAlteracaoSite) {
+export function AlteracaoSite({ reserva, capacidade, alteracoes, comCancelamento, entradaEm, editarReserva, editarFinanceiro, verValores, agora, textoOta }: PropsAlteracaoSite) {
   const confirmada = reserva.estado === "confirmada";
   if (!confirmada && !alteracoes.length) return null;
   const segurada = alteracoes.find((a) => a.situacao === "segurada") ?? null;
@@ -335,7 +343,7 @@ export function AlteracaoSite({ reserva, capacidade, alteracoes, comCancelamento
         />
       )}
       {destaque.map((a) => (
-        <Aplicada key={a.id} a={a} editarReserva={editarReserva} verValores={verValores} />
+        <Aplicada key={a.id} a={a} editarReserva={editarReserva} verValores={verValores} textoOta={textoOta} />
       ))}
       <Historico lista={historico} verValores={verValores} />
     </section>

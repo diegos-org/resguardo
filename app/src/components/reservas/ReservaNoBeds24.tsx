@@ -1,15 +1,20 @@
 /**
- * Ficha da reserva (M8.3a, desenho 8): a reserva paga pelo site no Beds24, só leitura e só para a equipe. Mostra a
- * situação e o motivo em linguagem simples, o id no Beds24, o quarto, a última conferência e o que foi lido, o histórico
- * curto das operações e, quando o ambiente deixa, o botão "Simular" (nada vai ao Beds24). O domínio devolve códigos; os
- * rótulos ficam aqui. Só o painel importa este componente: nada do hóspede nem do portal cita o Beds24.
+ * Ficha da reserva (M8.3a, desenho 8): a reserva paga pelo site no Beds24, só para a equipe. Mostra a situação e o motivo
+ * em linguagem simples, o id no Beds24, o quarto, a última conferência e o que foi lido, o histórico curto das operações e,
+ * quando o ambiente deixa, o botão "Simular" (nada vai ao Beds24). M8.3b: o que fazer à mão nas OTAs para esta reserva (o
+ * mesmo texto do Início, de `tarefasDasOtas`) e as marcas "Datas fechadas nas OTAs" (D8) e "Datas reabertas nas OTAs" (a
+ * confirmada à mão, cancelada), com `BotaoConfirmar`. O domínio devolve códigos e os textos das tarefas; os rótulos ficam
+ * aqui. Só o painel importa este componente: nada do hóspede nem do portal cita o Beds24.
  */
+import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
-import { dataBr, dataHoraNoFuso } from "@/lib/datas";
-import { simularReservaBeds24Acao } from "@/beds24/acoes-reservas";
-import type { FichaReservaNoBeds24, MotivoDesligadaBeds24 } from "@/beds24/reservas-site-painel";
+import { dataBr, dataHoraNoFuso, diaMesBr } from "@/lib/datas";
+import { marcarDatasFechadasNasOtasAcao, marcarDatasReabertasNasOtasAcao, simularReservaBeds24Acao } from "@/beds24/acoes-reservas";
+import type { MotivoDesligadaBeds24 } from "@/beds24/reservas-site-config";
+import type { FichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
 import type { MotivoSemSimulacao } from "@/beds24/reservas-site-simulacao";
 import type { MotivoAcompanhamentoBeds24, SituacaoAcompanhamentoBeds24, SituacaoOperacaoBeds24, TipoOperacaoBeds24 } from "@/beds24/reservas-site-regras";
+import type { AtencaoOta, TarefaOta } from "@/beds24/reservas-site-tarefas";
 import type { EstadoBeds24 } from "@/beds24/tipos";
 
 const quando = (d: Date) => dataHoraNoFuso(d);
@@ -79,7 +84,7 @@ const SEM_SIMULACAO: Record<MotivoSemSimulacao, string> = {
   outra_fonte: "não é uma reserva do site",
   pedido: "ainda é um pedido (datas seguradas): nunca vai ao Beds24",
   nao_confirmada: "a reserva não está confirmada",
-  sem_pagamento: "não há pagamento pelo site que confirmou a reserva (confirmada à mão: feche as datas à mão)",
+  sem_pagamento: "não há pagamento pelo site que confirmou a reserva (confirmada à mão: feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs)",
   sem_contrato: "o imóvel não tem contrato vigente na entrada: confira o contrato",
   marketplace: "o contrato é de marketplace: fica de fora até o M12.2",
   manual: "a equipe cuida desta reserva à mão",
@@ -126,28 +131,76 @@ export function textoDaSimulacao(chave: string | undefined): string | null {
   return Object.hasOwn(SEM_SIMULACAO, motivo) ? `Nada seria enviado ao Beds24: ${SEM_SIMULACAO[motivo as MotivoSemSimulacao]}.` : null;
 }
 
+/** O resultado das marcas manuais (`?beds24=`); chave desconhecida = nada. */
+const MARCAS: Record<string, string> = {
+  ota_fechada: "Datas marcadas como fechadas nas OTAs.",
+  ota_reaberta: "Datas marcadas como reabertas nas OTAs.",
+};
+
 /**
- * O que a equipe faz à mão enquanto o sistema não escreve reservas. O pedido com as datas seguradas nunca vai ao Beds24 e
- * as datas dele não são fechadas nas OTAs (D9); o pedido vencido sem pagamento nunca teve nada fechado.
+ * O pedido com as datas seguradas nunca vai ao Beds24 e as datas dele não são fechadas nas OTAs (D9); o pedido vencido sem
+ * pagamento nunca teve nada fechado. As outras reservas seguem as tarefas das OTAs.
  */
-const AS_MAO: Record<NonNullable<FichaReservaNoBeds24["pedido"]> | "reserva", string> = {
-  reserva: "Por enquanto, o sistema não escreve reservas no Beds24: feche e abra as datas à mão, como hoje.",
+const AS_MAO: Record<NonNullable<FichaReservaNoBeds24["pedido"]>, string> = {
   segurado: "É um pedido com as datas seguradas: ele não vai ao Beds24, e as datas não devem ser fechadas à mão nas OTAs enquanto estiverem seguradas.",
   vencido: "O pedido venceu sem pagamento: ele nunca foi ao Beds24 e as datas dele não precisaram ser fechadas nas OTAs. Nada a fazer.",
 };
+const NADA_A_FAZER = "Nada a fazer à mão nas OTAs para esta reserva agora.";
+
+/** O que pede atenção, no lugar das tarefas (nunca "feche como bloqueio" sobre noites já ocupadas). */
+const ATENCAO: Record<AtencaoOta, string> = {
+  conflito: "As noites estão ocupadas por outra reserva no Beds24 (possível venda dupla): não feche como bloqueio sobre elas; decida com a equipe.",
+  divergente: "A reserva está diferente no Beds24: confira o que foi lido antes de mexer à mão.",
+  aguardando_equipe: "A reserva aguarda a equipe no Beds24: confira a situação abaixo.",
+  transicao: "Há um bloqueio feito à mão sobre as noites no Beds24: o sistema não cria por cima e não apaga o bloqueio.",
+  ja_no_beds24: "A reserva está ligada a um registro do Beds24 que o sistema não criou: confira o registro antes de mexer à mão.",
+};
+
+/** O texto de cada tarefa na ficha: o manual (6.2) ou o que o sistema está fazendo. */
+function textoNaFicha(t: TarefaOta): string {
+  if (t.estado === "sendo_enviada") return "O sistema está enviando esta reserva ao Beds24: não feche nem mude as datas à mão.";
+  if (t.estado === "atrasada") return "O envio desta reserva ao Beds24 está atrasado (mais de 30 minutos): confira o histórico abaixo antes de mexer à mão.";
+  return t.texto;
+}
+
+/** O botão da marca manual da tarefa (reserva:editar), com a pergunta do `BotaoConfirmar`. */
+function Marca({ reservaId, t }: { reservaId: string; t: TarefaOta }) {
+  const datas = `${diaMesBr(t.checkin)} a ${diaMesBr(t.checkout)}`;
+  if (t.marca === "datas_fechadas")
+    return (
+      <form action={marcarDatasFechadasNasOtasAcao} style={{ display: "inline" }}>
+        <input type="hidden" name="reservaId" value={reservaId} />
+        <BotaoConfirmar pergunta={`Confirmar que as datas desta reserva (${datas}) já foram fechadas nas OTAs (no Beds24, como bloqueio)? Depois disso o sistema nunca cria esta reserva no Beds24.`}>
+          Datas fechadas nas OTAs
+        </BotaoConfirmar>
+      </form>
+    );
+  if (t.marca === "datas_reabertas")
+    return (
+      <form action={marcarDatasReabertasNasOtasAcao} style={{ display: "inline" }}>
+        <input type="hidden" name="reservaId" value={reservaId} />
+        <BotaoConfirmar pergunta={`Confirmar que as datas desta reserva (${datas}) já foram reabertas nas OTAs (no Beds24, o bloqueio mudado para Cancelado, sem apagar)?`}>
+          Datas reabertas nas OTAs
+        </BotaoConfirmar>
+      </form>
+    );
+  return null;
+}
 
 type Props = {
   reservaId: string;
   ficha: FichaReservaNoBeds24;
-  /** `reserva:editar`: o botão "Simular" (quando o ambiente deixa). */
+  /** `reserva:editar`: o botão "Simular" (quando o ambiente deixa) e as marcas manuais das OTAs. */
   editar: boolean;
-  /** A chave do resultado do "Simular" (`?beds24=`). */
+  /** A chave do resultado do "Simular" ou de uma marca (`?beds24=`). */
   resultado?: string;
 };
 
 export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) {
   const a = ficha.acompanhamento;
   const texto = textoDaSimulacao(resultado);
+  const marcada = resultado && Object.hasOwn(MARCAS, resultado) ? MARCAS[resultado] : null;
+  const fechar = ficha.tarefas.some((t) => t.caso === "paga" || t.caso === "d3");
   const linhas: [string, string][] = a
     ? [
         ["Situação", `${NOMES_SITUACAO_NO_BEDS24[a.situacao]}${a.motivo ? `: ${NOMES_MOTIVO_NO_BEDS24[a.motivo]}` : ""}`],
@@ -164,7 +217,7 @@ export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) 
         ],
         ["Datas fechadas nas OTAs", a.otaFechadaEm ? `${quando(a.otaFechadaEm)} (${a.otaFechadaAMao ? "marcado pela equipe" : "pelo sistema"})` : "não marcado"],
       ]
-    : [["Id no Beds24", ficha.beds24Id ?? "nenhum"]];
+    : [["Id no Beds24", ficha.beds24Id ?? "nenhum"], ...(fechar ? ([["Datas fechadas nas OTAs", "não marcado"]] as [string, string][]) : [])];
   return (
     <section aria-label="Reserva no Beds24" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
       <h2 style={{ fontSize: "1.25rem" }}>No Beds24</h2>
@@ -172,6 +225,11 @@ export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) 
         // Só a simulação gravada é sucesso; "Nada seria enviado" é um aviso (avisar em vez de supor).
         <p role="status" className={resultado && Object.hasOwn(SIMULACAO, resultado) ? styles.sucesso : styles.alerta}>
           {texto}
+        </p>
+      )}
+      {marcada && (
+        <p role="status" className={styles.sucesso}>
+          {marcada}
         </p>
       )}
       <p style={{ margin: 0 }}>
@@ -182,9 +240,24 @@ export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) 
           </>
         ) : (
           <strong>ligado</strong>
-        )}{" "}
-        {AS_MAO[ficha.pedido ?? "reserva"]}
+        )}
+        {ficha.pedido ? ` ${AS_MAO[ficha.pedido]}` : ""}
       </p>
+      {!ficha.pedido && (
+        <div aria-label="Nas OTAs" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {ficha.atencoes.map((x) => (
+            <p key={x.tipo} role="note" className={styles.alerta} style={{ margin: 0 }}>
+              {ATENCAO[x.tipo]}
+            </p>
+          ))}
+          {ficha.tarefas.map((t) => (
+            <div key={t.caso}>
+              {textoNaFicha(t)} {editar && <Marca reservaId={reservaId} t={t} />}
+            </div>
+          ))}
+          {!ficha.atencoes.length && !ficha.tarefas.length && <p style={{ margin: 0 }}>{NADA_A_FAZER}</p>}
+        </div>
+      )}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
         {linhas.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>

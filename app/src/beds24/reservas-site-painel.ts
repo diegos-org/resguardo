@@ -2,7 +2,8 @@
  * Reserva paga do site no Beds24 (M8.3a, desenho 8): o que o painel mostra, só leitura. O domínio devolve códigos; os
  * rótulos ficam nos componentes (`components/reservas/ReservaNoBeds24.tsx`, `components/configuracoes/ReservasSiteBeds24.tsx`).
  * - `fichaReservaNoBeds24`: o bloco da ficha (situação e motivo, id no Beds24, quarto, última conferência e leitura,
- *   histórico curto das operações) e o "desligada", calculado e nunca gravado (chave, pausa, imóvel ou nenhuma linha).
+ *   histórico curto das operações), o "desligada", calculado e nunca gravado (chave, pausa, imóvel ou nenhuma linha), e as
+ *   tarefas das OTAs desta reserva (M8.3b), da mesma função do Início (`tarefasDasOtas`).
  * - `painelReservasBeds24`: a seção de Integrações (chave e ambiente, credencial, prontidão sem rede, pausa geral,
  *   imóveis ligados e contadores por situação).
  * - `conferirEscoposReservasBeds24`: os escopos da credencial (GET /authentication/details), lidos só no deploy de
@@ -16,7 +17,8 @@ import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
 import { ambienteDeEscritaDeReservas, credencialDeEscritaForaDaProducao, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta, impressaoCredencialBeds24, leitorDeCredencialDoAmbiente, simulacaoReservasBeds24Permitida } from "./http";
-import { ensaioValeParaCredencial, lerConfigReservasBeds24, ligacaoDoImovel } from "./reservas-site-config";
+import { ensaioValeParaCredencial, lerConfigReservasBeds24, ligacaoDoImovel, type MotivoDesligadaBeds24, motivosDesligada } from "./reservas-site-config";
+import { type LinhaAtencaoOta, type TarefaOta, tarefasDasOtas } from "./reservas-site-tarefas";
 import {
   avaliarEscoposBeds24,
   type LidoBeds24,
@@ -30,25 +32,6 @@ import {
   type TipoOperacaoBeds24,
 } from "./reservas-site-regras";
 import { ErroBeds24, type LeitorCredencialBeds24 } from "./tipos";
-
-/**
- * Por que o envio automático está desligado para esta reserva (pode haver mais de um): fora do deploy de produção, a
- * chave `BEDS24_ESCRITA_RESERVAS`, o refresh token, a pausa geral, o imóvel não ligado (D6) ou nenhuma linha de
- * acompanhamento. Vazio = ligado.
- */
-export type MotivoDesligadaBeds24 = "ambiente" | "chave" | "credencial" | "pausa" | "imovel" | "sem_acompanhamento";
-
-/** Os motivos do "desligada", na ordem em que a tela mostra. */
-export function motivosDesligada(env: NodeJS.ProcessEnv, o: { pausada: boolean; imovelLigado: boolean; comAcompanhamento: boolean }): MotivoDesligadaBeds24[] {
-  const m: MotivoDesligadaBeds24[] = [];
-  if (!ambienteDeEscritaDeReservas(env)) m.push("ambiente");
-  if (!escritaReservasBeds24Ligada(env)) m.push("chave");
-  if (!env.BEDS24_REFRESH_TOKEN?.trim()) m.push("credencial");
-  if (o.pausada) m.push("pausa");
-  if (!o.imovelLigado) m.push("imovel");
-  if (!o.comAcompanhamento) m.push("sem_acompanhamento");
-  return m;
-}
 
 export type OperacaoNaFicha = {
   id: string;
@@ -89,6 +72,10 @@ export type FichaReservaNoBeds24 = {
    * nada foi fechado. null = a reserva passou do pedido (confirmada, ou cancelada depois de confirmada).
    */
   pedido: PedidoNaFicha | null;
+  /** M8.3b: o que fazer à mão nas OTAs (ou o que o sistema está enviando) para esta reserva, de `tarefasDasOtas`. */
+  tarefas: TarefaOta[];
+  /** M8.3b: o que pede atenção nesta reserva (conflito, divergência, aguardando a equipe), no lugar das tarefas. */
+  atencoes: LinhaAtencaoOta[];
 };
 
 export type PedidoNaFicha = "segurado" | "vencido";
@@ -97,7 +84,7 @@ export type PedidoNaFicha = "segurado" | "vencido";
 export const OPERACOES_NA_FICHA = 10;
 
 /** O bloco da ficha de uma reserva do site; null = reserva fora da organização ou de outra fonte. */
-export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: string, env: NodeJS.ProcessEnv): Promise<FichaReservaNoBeds24 | null> {
+export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: string, env: NodeJS.ProcessEnv, agora: Date = new Date()): Promise<FichaReservaNoBeds24 | null> {
   if (!uuidValido(reservaId)) return null;
   const [r] = await db.select({ id: reservas.id, imovelId: reservas.imovelId, beds24Id: reservas.beds24Id, estado: reservas.estado }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org), eq(reservas.fonte, "site")));
   if (!r) return null;
@@ -112,6 +99,7 @@ export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: strin
     .where(and(eq(op.organizacaoId, org), eq(op.reservaId, r.id)))
     .orderBy(desc(op.iniciadoEm), desc(op.id))
     .limit(OPERACOES_NA_FICHA);
+  const { tarefas, atencoes } = await tarefasDasOtas(db, org, agora, env, { reservaIds: [r.id] });
   return {
     desligada: motivosDesligada(env, { pausada: config.pausado !== null, imovelLigado: ligacaoDoImovel(config, r.imovelId) !== null, comAcompanhamento: Boolean(a) }),
     beds24Id: r.beds24Id,
@@ -121,6 +109,8 @@ export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: strin
     operacoes,
     simular: simulacaoReservasBeds24Permitida(env),
     pedido: r.estado === "pedido" ? "segurado" : vencido ? "vencido" : null,
+    tarefas,
+    atencoes,
   };
 }
 

@@ -1545,7 +1545,6 @@ export type ContagensPagamento = {
   comAviso: number;
   aoVivo: number;
   semCalculo: number;
-  pagasAbertas: number;
   /** Criação do pagamento sem resposta do Mercado Pago há mais que a carência (busca pela referência falhando). */
   criacaoPresa: number;
   /** Cartões em análise no Mercado Pago há mais de um dia (M8.2b). */
@@ -1618,7 +1617,6 @@ export async function avisosDePagamento(
     comAviso: 0,
     aoVivo: 0,
     semCalculo: 0,
-    pagasAbertas: 0,
     criacaoPresa: 0,
     cartaoEmAnalise: 0,
     recusasCartao24h: 0,
@@ -1704,13 +1702,6 @@ export async function avisosDePagamento(
     const com = new Set(comMotor.map((l) => l.reservaId));
     // Só a reserva que o motor calcula (confirmada, ou cancelada com valor retido): a cancelada com devolução não tem cálculo.
     contagens.semCalculo = pagas.filter((p) => !com.has(p.reservaId) && p.situacao === "aprovado" && calculada(p.reservaId)).length;
-    // Pagas pelo site com a estadia ainda por vir ou em curso: as OTAs não sabem delas até o M8.3 (o envio não fecha datas de reservas).
-    const hoje = hojeISO("America/Sao_Paulo", agora);
-    const [abertas] = await db
-      .select({ n: sql<number>`count(distinct ${reservas.id})::int` })
-      .from(reservas)
-      .where(and(inArray(reservas.id, ids), eq(reservas.estado, "confirmada"), sql`${reservas.checkout} > ${hoje}`));
-    contagens.pagasAbertas = abertas?.n ?? 0;
   }
 
   // Cartão (M8.2b): o disjuntor de recusas e os sinais de alguém testando cartões ou de chaves trocadas.
@@ -1794,8 +1785,8 @@ export async function avisosDePagamento(
   if (contagens.liberacaoVencida) alertas.push({ nivel: "info", texto: `${contagens.liberacaoVencida} pagamento(s) do site com a liberação prevista vencida e sem confirmação do Mercado Pago: confira e, se o dinheiro caiu, registre a liberação na reserva.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
   if (contagens.semCalculo) alertas.push({ nivel: "atencao", texto: `${contagens.semCalculo} reserva(s) paga(s) pelo site com dinheiro recebido sem cálculo no financeiro: confira o contrato na data da entrada.`, link: LINK_PAGAMENTOS });
   if (contagens.comAviso) alertas.push({ nivel: "atencao", texto: `${contagens.comAviso} pagamento(s) do site com aviso: confira na lista.`, link: `${LINK_PAGAMENTOS}?atencao=1` });
-  // Sempre, mesmo com o envio ao Beds24 ligado: o envio fecha só os bloqueios do SCL, nunca as datas das reservas (até o M8.3).
-  if (contagens.pagasAbertas) alertas.push({ nivel: "info", texto: `${contagens.pagasAbertas} reserva(s) do site paga(s): feche as datas nas OTAs (no Beds24, como bloqueio).`, link: "/painel/reservas" });
+  // As datas a fechar nas OTAs da reserva paga saíram daqui no M8.3b: são de `tarefasDasOtas` (beds24/reservas-site-tarefas.ts),
+  // para quem edita reservas, com a marca "Datas fechadas nas OTAs".
   return { alertas, contagens };
 }
 
@@ -1817,9 +1808,9 @@ const somarDiasISO = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:0
  * Avisos do cancelamento pela política para o Início da operação (quem tem `reserva:editar`; da empresa toda, fora dos
  * avisos do financeiro, e sem valores):
  * - um por pedido de cancelamento esperando a equipe, com a idade e a entrada (o pedido nunca se perde pela demora);
- * - reservas do site canceladas com a estadia por vir e as datas ainda não reabertas nas OTAs (o envio ao Beds24 não
- *   reabre datas de reservas; o M8.3 grava a marca sozinho);
  * - cancelamentos com mensagem ao hóspede pendente (a decisão, ou a devolução feita).
+ * As datas a reabrir nas OTAs da reserva cancelada saíram daqui no M8.3b: são de `tarefasDasOtas`
+ * (beds24/reservas-site-tarefas.ts), que também diz como (no Beds24, mudar para Cancelado, sem apagar).
  */
 export async function avisosDeCancelamento(db: Db, organizacaoId: string, agora: Date = new Date(), o: { mensagensComValor?: boolean } = {}): Promise<AvisoPagamento[]> {
   const hoje = hojeISO("America/Sao_Paulo", agora);
@@ -1841,19 +1832,11 @@ export async function avisosDeCancelamento(db: Db, organizacaoId: string, agora:
     });
   }
   const canceladas = await db
-    .select({ c: cancelamentosReserva, checkout: reservas.checkout, codigo: reservas.codigo })
+    .select({ c: cancelamentosReserva, codigo: reservas.codigo })
     .from(cancelamentosReserva)
     .innerJoin(reservas, eq(reservas.id, cancelamentosReserva.reservaId))
     .where(and(eq(cancelamentosReserva.organizacaoId, organizacaoId), eq(cancelamentosReserva.situacao, "cancelada")))
     .orderBy(asc(reservas.codigo));
-  const abertas = canceladas.filter((x) => x.checkout > hoje && !x.c.otaLiberadaEm);
-  // Sempre, mesmo com o envio ao Beds24 ligado: o envio fecha só os bloqueios do SCL, nunca reabre as datas das reservas (até o M8.3).
-  if (abertas.length)
-    alertas.push({
-      nivel: "info",
-      texto: `${abertas.length} reserva(s) do site cancelada(s) (${codigosDasCanceladas(abertas)}): reabra as datas nas OTAs (no Beds24, apague o bloqueio).`,
-      link: linkDasCanceladas(abertas),
-    });
   // Mensagem ao hóspede pendente: a decisão (desde o cancelamento) ou a devolução feita (desde ela).
   const devs = canceladas.length
     ? await db

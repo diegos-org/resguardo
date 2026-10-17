@@ -96,7 +96,7 @@ export const RESULTADOS_DA_CONTESTACAO = {
   sem_efeito: "Disputa encerrada sem efeito: os lançamentos previstos dela foram desfeitos no mês corrente.",
   aviso_conferido: "Aviso conferido: a disputa continua encerrada.",
   reaberta: "A disputa foi reaberta: a rodada seguinte está no quadro e segue o fluxo inteiro.",
-  cancelada: "Reserva cancelada sem devolução pelo sistema: o valor fica retido até o resultado da disputa. Reabra as datas nas OTAs.",
+  cancelada: "Reserva cancelada sem devolução pelo sistema: o valor fica retido até o resultado da disputa. Nas OTAs, siga o aviso do Início (no Beds24, mude para Cancelado; não apague).",
 } as const;
 export type ResultadoDaContestacao = keyof typeof RESULTADOS_DA_CONTESTACAO;
 

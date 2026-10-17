@@ -63,9 +63,17 @@ vi.mock("@/pagamentos/acoes-cancelamento", () => ({
   marcarOtaLiberadaAcao: vi.fn(),
   marcarHospedeAvisadoAcao: vi.fn(),
 }));
+// A pergunta do BotaoConfirmar fica no atributo (o componente de verdade só a mostra no clique).
+vi.mock("@/components/BotaoConfirmar", () => ({
+  BotaoConfirmar: ({ pergunta, children, ...props }: { pergunta: string | (() => string); children?: React.ReactNode }) => (
+    <button type="submit" data-pergunta={typeof pergunta === "string" ? pergunta : ""} {...props}>
+      {children}
+    </button>
+  ),
+}));
 // M8.3a: o bloco "No Beds24" (só leitura; "Simular" sem rede).
 vi.mock("@/beds24/reservas-site-painel", () => ({ fichaReservaNoBeds24: m.noBeds24 }));
-vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn() }));
+vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn(), marcarDatasFechadasNasOtasAcao: vi.fn(), marcarDatasReabertasNasOtasAcao: vi.fn() }));
 import Page from "./page";
 
 const reserva = {
@@ -512,8 +520,45 @@ it("M8.2d (D26): a operação, em cada caso da alteração — aumento aplicado,
   }
 });
 
+/** Um cancelamento pela política já decidido (a devolução integral), sem a marca das OTAs. */
+const cancelada = {
+  id: "c1",
+  situacao: "cancelada",
+  pedidoRecebidoEm: new Date("2026-10-01T15:30:00Z"),
+  pedidoRegistradoOriginalEm: null,
+  motivoMomento: "",
+  canal: "whatsapp",
+  pedidoPor: "Equipe Fictícia",
+  quemCancela: "hospede",
+  motivoEmpresa: null,
+  motivoExcecao: null,
+  politicaVersao: 1,
+  integralAte: "2026-10-26",
+  arrependimentoAte: "2026-10-08",
+  arrependimentoAteEntrada: true,
+  entradaEm: new Date("2026-10-12T18:00:00Z"),
+  calculado: "integral",
+  direito: "integral",
+  base: "prazo",
+  motivoDecisao: "",
+  nota: "",
+  valorPago: 182400,
+  valorADevolver: 182400,
+  canceladaEm: new Date("2026-10-01T16:00:00Z"),
+  canceladaPor: "Equipe Fictícia",
+  resultadoLancadoEm: new Date("2026-10-01T16:00:00Z"),
+  espelhado: false,
+  caixaLancadoEm: null,
+  ota: null,
+  descontos: [],
+  avisados: { pedido: null, decisao: null, devolucao: null },
+  descartados: [],
+  mensagens: { recebido: null, decidido: null, devolvida: null },
+};
+
 describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
-  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null };
+  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [] };
+  const tarefa = (caso: string, texto: string, marca: string | null = null) => ({ reservaId: "r1", codigo: "SCL-TESTE1", caso, estado: "manual", checkin: "2026-10-12", checkout: "2026-10-15", desde: new Date(0), alteracaoIds: [], texto, marca });
   beforeEach(() => {
     m.reserva.mockResolvedValue({ ...reserva, fonte: "site" });
     m.noBeds24.mockResolvedValue(ficha);
@@ -522,7 +567,7 @@ describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
   it.each(["admin", "operacao"])("%s vê o bloco da reserva do site e o Simular (reserva:editar)", async (papel) => {
     m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: [] });
     const h = await html();
-    expect(m.noBeds24).toHaveBeenCalledWith({}, "org", "r1", process.env);
+    expect(m.noBeds24).toHaveBeenCalledWith({}, "org", "r1", process.env, expect.any(Date));
     expect(h).toContain('aria-label="Reserva no Beds24"');
     expect(h).toContain(">Simular</button>");
   });
@@ -532,6 +577,41 @@ describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
     expect(await html({ beds24: "simulada_imovel_desligado" })).toContain("Simulação gravada");
     expect(await html({ beds24: "nada_marketplace" })).toContain("Nada seria enviado ao Beds24: o contrato é de marketplace");
     expect(await html({ beds24: "<b>forjada</b>" })).not.toContain("forjada");
+  });
+
+  it("M8.3b: a tarefa das OTAs da reserva com o botão da marca, e o texto dela no cancelamento e na alteração pagos pelo site", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.noBeds24.mockResolvedValue({ ...ficha, tarefas: [tarefa("paga", "Feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.", "datas_fechadas")] });
+    const h = await html();
+    expect(h).toContain("Feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.");
+    expect(h).toContain(">Datas fechadas nas OTAs</button>");
+    // O resultado da marca e a recusa (o texto do domínio, em `?erro=`).
+    expect(await html({ beds24: "ota_fechada" })).toContain("Datas marcadas como fechadas nas OTAs.");
+    expect(await html({ erro: "Esta reserva não tem datas a fechar à mão nas OTAs agora." })).toContain("Esta reserva não tem datas a fechar à mão nas OTAs agora.");
+    // A cancelada e a alterada pela política: o texto da tarefa (o mesmo do Início) no quadro do pagamento.
+    m.cancelamento.mockResolvedValue(cancelada);
+    m.reserva.mockResolvedValue({ ...reserva, fonte: "site", estado: "cancelada" });
+    m.noBeds24.mockResolvedValue({ ...ficha, tarefas: [tarefa("cancelada_bloqueio", "Mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague).")] });
+    const fichaCancelada = await html();
+    expect(fichaCancelada).toContain("Mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague).");
+    expect(fichaCancelada).not.toContain("Mude o bloqueio para Cancelado no Beds24 (não apague).");
+    m.reserva.mockResolvedValue({ ...reserva, fonte: "site", checkout: "2026-10-16" });
+    m.cancelamento.mockResolvedValue(null);
+    m.alteracoes.mockResolvedValue([alteracao({ antes: { checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 4, valor: 182400 }, depois: { checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 235200 } })]);
+    m.noBeds24.mockResolvedValue({ ...ficha, tarefas: [tarefa("alterada_bloqueio", "Mude as datas do bloqueio para 12/10 a 16/10 (não apague nem crie outro).")] });
+    expect(await html()).toContain("Mude as datas do bloqueio para 12/10 a 16/10 (não apague nem crie outro).");
+  });
+
+  it("M8.3b: a confirmada à mão (sem pagamento pelo site) marcada como fechada nas OTAs: o \"Cancelar reserva\" de sempre diz o que fazer depois", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.pagamentos.mockResolvedValue([]);
+    m.noBeds24.mockResolvedValue({ ...ficha, acompanhamento: { situacao: "manual", motivo: null, quarto: null, conferidaEm: null, lido: null, lidoEm: null, otaFechadaEm: new Date("2026-10-02T12:00:00Z"), otaFechadaAMao: true } });
+    expect(await html()).toContain(
+      'data-pergunta="Cancelar a reserva SCL-TESTE1? O financeiro dela será estornado. As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha."',
+    );
+    // Sem a marca, a pergunta de sempre.
+    m.noBeds24.mockResolvedValue(ficha);
+    expect(await html()).toContain('data-pergunta="Cancelar a reserva SCL-TESTE1? O financeiro dela será estornado."');
   });
 
   it("reserva de outra fonte (Beds24, planilha, manual): sem o bloco e sem ler nada dele", async () => {

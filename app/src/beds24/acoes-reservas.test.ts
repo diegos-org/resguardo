@@ -1,7 +1,8 @@
 /**
- * Ações do painel das reservas do site no Beds24 (M8.3a, desenho 8; seção 10, teste 12): deny-by-default. "Simular" pede
- * `reserva:editar`; pausar, retomar, ligar e desligar um imóvel e conferir os escopos pedem `configuracao:editar` (hoje, só
- * o admin). A empresa vem só da sessão. Domínio simulado: aqui só a ordem sessão → permissão → validação → domínio.
+ * Ações do painel das reservas do site no Beds24 (M8.3a, desenho 8; seção 10, testes 12 e 16): deny-by-default. "Simular" e
+ * as marcas manuais das OTAs (M8.3b) pedem `reserva:editar`; pausar, retomar, ligar e desligar um imóvel e conferir os escopos
+ * pedem `configuracao:editar` (hoje, só o admin). A empresa vem só da sessão. Domínio simulado: aqui só a ordem sessão →
+ * permissão → validação → domínio.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AcessoNegado } from "@/acesso/politica";
@@ -18,6 +19,8 @@ const m = vi.hoisted(() => ({
   ligar: vi.fn(),
   desligar: vi.fn(),
   escopos: vi.fn(),
+  fechadas: vi.fn(),
+  reabertas: vi.fn(),
 }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({ banco: true }) }));
@@ -32,10 +35,13 @@ vi.mock("./reservas-site-config", async (original) => ({
   desligarImovelReservasBeds24: m.desligar,
 }));
 vi.mock("./reservas-site-painel", () => ({ conferirEscoposReservasBeds24: m.escopos }));
+vi.mock("./reservas-site-tarefas", async (original) => ({ ...(await original<typeof import("./reservas-site-tarefas")>()), marcarDatasFechadasNasOtas: m.fechadas, marcarDatasReabertasNasOtas: m.reabertas }));
 import {
   conferirEscoposReservasBeds24Acao,
   desligarImovelReservasBeds24Acao,
   ligarImovelReservasBeds24Acao,
+  marcarDatasFechadasNasOtasAcao,
+  marcarDatasReabertasNasOtasAcao,
   pausarReservasBeds24Acao,
   retomarReservasBeds24Acao,
   simularReservaBeds24Acao,
@@ -59,6 +65,8 @@ beforeEach(() => {
   m.simular.mockResolvedValue({ ok: true, operacaoId: "op", repetida: false, imovelDesligado: "espera_ligar", tipo: "criar", pedido: {} });
   for (const f of [m.pausar, m.retomar, m.ligar, m.desligar]) f.mockResolvedValue({ ok: true });
   m.escopos.mockResolvedValue({ lidos: false, motivo: "fora_da_producao" });
+  m.fechadas.mockResolvedValue({ ok: true });
+  m.reabertas.mockResolvedValue({ ok: true });
 });
 
 describe("Simular (reserva:editar)", () => {
@@ -82,6 +90,46 @@ describe("Simular (reserva:editar)", () => {
   it("id inválido volta à lista sem chamar o domínio", async () => {
     await expect(simularReservaBeds24Acao(form({ reservaId: "x" }))).rejects.toThrow("REDIRECT /painel/reservas");
     expect(m.simular).not.toHaveBeenCalled();
+  });
+});
+
+describe("as marcas manuais das OTAs na ficha (M8.3b, reserva:editar)", () => {
+  const marcas = [
+    ["Datas fechadas nas OTAs", marcarDatasFechadasNasOtasAcao, m.fechadas, "ota_fechada"],
+    ["Datas reabertas nas OTAs", marcarDatasReabertasNasOtasAcao, m.reabertas, "ota_reaberta"],
+  ] as const;
+
+  it.each(["admin", "operacao"])("%s marca e volta à ficha com o resultado; a empresa vem da sessão (a do formulário é ignorada)", async (papel) => {
+    sessao(papel);
+    for (const [, acao, dominio, chave] of marcas) {
+      await expect(acao(form({ reservaId: ID }))).rejects.toThrow(`REDIRECT /painel/reservas/${ID}?beds24=${chave}`);
+      expect(dominio).toHaveBeenCalledWith({ banco: true }, expect.objectContaining({ organizacaoId: "org", papel }), ID, process.env, expect.any(Date));
+    }
+    expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");
+  });
+
+  it("a recusa do domínio volta à ficha com o texto em ?erro=", async () => {
+    const erro = "Esta reserva não tem datas a fechar à mão nas OTAs agora.";
+    for (const [, acao, dominio] of marcas) {
+      dominio.mockResolvedValue({ ok: false, erro });
+      await expect(acao(form({ reservaId: ID }))).rejects.toThrow(`REDIRECT /painel/reservas/${ID}?erro=${encodeURIComponent(erro)}`);
+    }
+  });
+
+  it.each(["proprietario", "limpeza", "hospede"])("%s é recusado antes de ler o formulário", async (papel) => {
+    sessao(papel);
+    for (const [, acao, dominio] of marcas) {
+      await expect(acao(form({ reservaId: ID }))).rejects.toBeInstanceOf(AcessoNegado);
+      expect(dominio).not.toHaveBeenCalled();
+    }
+    expect(m.revalidar).not.toHaveBeenCalled();
+  });
+
+  it("id inválido volta à lista sem chamar o domínio", async () => {
+    for (const [, acao, dominio] of marcas) {
+      await expect(acao(form({ reservaId: "x" }))).rejects.toThrow("REDIRECT /painel/reservas");
+      expect(dominio).not.toHaveBeenCalled();
+    }
   });
 });
 
