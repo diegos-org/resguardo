@@ -425,16 +425,17 @@ export async function abrirIntencao(db: Db, org: string, reservaId: string, o: O
 // ---------------------------------------------------------------- fase 2 da criação (desenho 3.6, 4.1 e 3.8)
 
 /** A recusa do Beds24 que para a volta inteira: o limite de uso (429) ou a credencial sem permissão (401, 403). */
-type ParadaPelaRecusa = Extract<MotivoDaParadaBeds24, "limite" | "sem_permissao">;
+export type ParadaPelaRecusa = Extract<MotivoDaParadaBeds24, "limite" | "sem_permissao">;
 
 /**
  * A parada que uma recusa do Beds24 antes do POST pede, no token ou numa leitura (desenho 9: a volta para no primeiro 429,
  * 401 ou 403; os créditos são divididos com a importação e o envio, e cada operação seguinte pediria de novo e contaria uma
  * falha): o 429 é o limite de uso; o 401, o 403 e as outras recusas 4xx, a credencial — como no POST (`gravarReservas`:
  * `http_401`), a renovação recusada vem com o status dela, e chega também pela primeira leitura da volta (o token é pedido
- * dentro dela). Sem status (rede, tempo) ou com 5xx, não houve recusa: nada para.
+ * dentro dela). Sem status (rede, tempo) ou com 5xx, não houve recusa: nada para. A mesma regra na rotina (a leitura dos
+ * escopos do começo da volta e a conferência contínua, `cron-reservas.ts`).
  */
-function paradaPelaRecusa(status: number | undefined): ParadaPelaRecusa | undefined {
+export function paradaPelaRecusa(status: number | undefined): ParadaPelaRecusa | undefined {
   if (status === 429) return "limite";
   if (status !== undefined && status >= 400 && status < 500) return "sem_permissao";
   return undefined;
@@ -635,9 +636,10 @@ const gravarResposta = (db: Db, operacao: OperacaoEmEnvio, resposta: RespostaGra
  * O id que não voltou numa leitura limpa só conclui "apagada no Beds24" com a credencial guardada no acompanhamento igual à
  * de agora e o quarto acessível em BRL (lido na hora, como a importação faz antes do laço): a troca de token para outra conta,
  * ou o acesso tirado ao imóvel, faz todos os ids sumirem, e "apagada" mandaria a equipe conferir datas de reservas que
- * existem. Uma regra para a fase 2 e para a saída da operação em curso (`releituraPorId`).
+ * existem. Uma regra para a fase 2, para a saída da operação em curso (`releituraPorId`) e para a conferência contínua
+ * (`reservas-site-conferencia.ts`, com o quarto e a credencial guardados no acompanhamento).
  */
-const podeConcluirApagada = (quartos: readonly QuartoBeds24[], operacao: Pick<OperacaoEmEnvio, "propertyId" | "quarto" | "credencialGuardada">, env: NodeJS.ProcessEnv) =>
+export const podeConcluirApagada = (quartos: readonly QuartoBeds24[], operacao: Pick<OperacaoEmEnvio, "propertyId" | "quarto" | "credencialGuardada">, env: NodeJS.ProcessEnv) =>
   quartoAcessivelEmBrl(quartos, operacao.propertyId, operacao.quarto) === "ok" && operacao.credencialGuardada === impressaoCredencialBeds24(env);
 
 /**
@@ -2111,6 +2113,21 @@ function operacoesASair(db: Db, org: string) {
     .innerJoin(acomp, and(eq(acomp.organizacaoId, org), eq(acomp.reservaId, op.reservaId)))
     .where(and(eq(op.organizacaoId, org), eq(op.modo, "real"), inArray(op.tipo, [...ACOES] as AcaoBeds24[]), or(inArray(op.situacao, ["incerta", "feita"]), and(eq(op.situacao, "enviando"), isNotNull(op.enviadoEm), vencidaNoBanco)), ne(acomp.situacao, "aguardando_equipe")))
     .orderBy(asc(op.iniciadoEm), asc(op.id));
+}
+
+/**
+ * Há o que o passo 1 resolve (`resolverOperacoesEmCurso`)? Com a chave desligada ou a pausa (o passo 0 da rotina, desenho 2.4
+ * e 9), a rotina só entra para isso, e sem nada a resolver sai sem trava, sem leitura do Beds24 e sem linha nova. As mesmas
+ * condições do passo 1: a `enviando` vencida sem POST (`devolverVencidasSemPost`), a vencida com POST e sem o id
+ * (`passarEnviandoVencidasAIncerta`) e as que a saída lê (`operacoesASair`). Só leitura do SCL, sem trava.
+ */
+export async function haOperacaoEmCursoASair(db: Db, org: string): Promise<boolean> {
+  const [vencida] = await db
+    .select({ id: op.id })
+    .from(op)
+    .where(and(eq(op.organizacaoId, org), eq(op.situacao, "enviando"), vencidaNoBanco, or(and(eq(op.modo, "real"), inArray(op.tipo, [...ACOES] as AcaoBeds24[]), isNull(op.enviadoEm)), and(isNotNull(op.enviadoEm), isNull(op.beds24Id)))))
+    .limit(1);
+  return Boolean(vencida) || (await operacoesASair(db, org).limit(1)).length > 0;
 }
 
 /**

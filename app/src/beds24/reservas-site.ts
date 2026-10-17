@@ -16,7 +16,7 @@ import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { beds24ReservasOperacoes, beds24ReservasSite, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { assinaturaAtualDoScl, type DecisaoAdocao, diferencaNaMarca, diferencaNoBeds24, type DiferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, origemPodeSerDoScl, regraDeAdocao, registroNossoBeds24, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
+import { assinaturaAtualDoScl, casoDeEmailBeds24, type DecisaoAdocao, diferencaNaMarca, diferencaNoBeds24, type DiferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, type MotivoAcompanhamentoBeds24, origemPodeSerDoScl, regraDeAdocao, registroNossoBeds24, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
 import { ErroBeds24, type FiltroReservas, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
 import { JANELA_RESERVA_EM_ANDAMENTO_MINUTOS } from "./trava";
 
@@ -295,13 +295,16 @@ export async function conferirNaImportacao(tx: Db, org: string, reservaId: strin
   // Beds24 difere do `esperado` por definição. Se ele já está como o SCL quer agora (a equipe seguiu o texto da reserva),
   // a diferença das datas não é divergência. Diferente também do que o SCL quer agora, a mudança veio de fora e segue o alarme.
   const comoOSclQuer = atual !== null && atual !== a.assinaturaEsperada && !diferencaNoBeds24({ quarto, chegada: r.checkin, saida: r.checkout, hospedes: r.hospedes, situacao: r.estado === "cancelada" ? "cancelada" : "confirmada" }, lido);
+  // M8.3c (desenho 6.5): a transição para a divergência (apagada, mudada ou cancelada no Beds24, ou a marca ilegível) é um
+  // caso de e-mail à equipe: `avisada_em` volta a vazio, e a rotina manda depois do commit (nunca daqui, dentro da transação).
+  const avisar = (motivo: MotivoAcompanhamentoBeds24) => (a.situacao !== "divergente" || a.motivo !== motivo) && casoDeEmailBeds24("divergente", motivo, null) ? { avisadaEm: null } : {};
   if (dif && !comoOSclQuer) {
-    await gravar({ situacao: "divergente", motivo: dif.motivo, ...(dif.soPessoas ? {} : { otaFechadaEm: null, otaFechadaPor: null }) });
+    await gravar({ situacao: "divergente", motivo: dif.motivo, ...avisar(dif.motivo), ...(dif.soPessoas ? {} : { otaFechadaEm: null, otaFechadaPor: null }) });
     return { resultado: "divergente", motivo: dif.motivo };
   }
   // Só a marca não bate: as datas, a situação e o quarto estão como o SCL quer, e a marca das datas fechadas fica.
   if (marca) {
-    await gravar({ situacao: "divergente", motivo: marca });
+    await gravar({ situacao: "divergente", motivo: marca, ...avisar(marca) });
     return { resultado: "divergente", motivo: marca };
   }
   await gravar({});

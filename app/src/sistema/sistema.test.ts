@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ConfiguracaoQueParaAsReservas } from "@/beds24/reservas-site-rotina";
 import { criarContrato } from "@/contratos/repositorio";
 import { execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprietarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
@@ -81,8 +82,22 @@ describe("Beds24 em Serviços (M8.3a): as duas chaves pelas funções, independe
     expect(beds24({ BEDS24_API_KEY: "k", BEDS24_ESCRITA: "ligada" })).toContain("envio para o Beds24 LIGADO");
   });
 
-  it("a rotina das reservas do site aparece como planejada, do M8.3c", () => {
-    expect(AUTOMACOES.find((a) => a.id === "reservas-beds24")).toMatchObject({ situacao: "planejada", item: "M8.3c", nome: "Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)", quando: expect.stringContaining("BEDS24_ESCRITA_RESERVAS=ligada") });
+  // Muda junto (M8.3c): a rotina chegou (a rota e o horário da seção 9 do desenho), e a linha passa de planejada a ativa.
+  it("a rotina das reservas do site aparece como ativa, do M8.3c", () => {
+    expect(AUTOMACOES.find((a) => a.id === "reservas-beds24")).toMatchObject({ situacao: "ativa", item: "M8.3c", nome: "Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)", quando: expect.stringContaining("BEDS24_ESCRITA_RESERVAS=ligada") });
+  });
+
+  it("M8.3c: com a chave das reservas pronta, o motivo de configuração entra como 'envio de reservas parado'; sem a chave pronta, não", () => {
+    const linha = (e: Record<string, string>, paradaDasReservas: ConfiguracaoQueParaAsReservas | null) =>
+      situacaoServicos(e as unknown as NodeJS.ProcessEnv, null, null, { paradaDasReservas }).find((x) => x.nome === "Beds24")!.detalhe;
+    const pronto = { ...PRODUCAO, BEDS24_ESCRITA_RESERVAS: "ligada" };
+    expect(linha(pronto, { motivo: "sem_ensaio", para: "criacoes" })).toContain(
+      "envio de reservas parado: falta um ensaio conferido com a credencial atual; as reservas novas não são criadas, e as mudanças e os cancelamentos das já criadas seguem",
+    );
+    expect(linha(pronto, { motivo: "escopo_excessivo", para: "tudo" })).toContain("envio de reservas parado: a credencial tem permissões além das do convite; nada é escrito");
+    expect(linha(pronto, null)).not.toContain("envio de reservas parado");
+    // Numa prévia, a chave não fica pronta: o motivo nunca aparece ali (quem chama nem o lê).
+    expect(linha({ ...pronto, VERCEL_ENV: "preview" }, { motivo: "sem_ensaio", para: "criacoes" })).not.toContain("envio de reservas parado");
   });
 });
 

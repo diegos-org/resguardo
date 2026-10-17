@@ -29,13 +29,49 @@ const aviso = (r: ResultadoSync, s: string) => { r.totalDivergencias++; if (r.di
 /**
  * Um id que volta mais de uma vez numa consulta (legível ou em formato inválido; na leitura principal, ou em qualquer lote da
  * releitura por id) deixa a resposta ambígua: não dá para saber qual cópia vale. Nada é aplicado. O "?" e o id torto de um
- * registro ilegível não contam: não casam com id nenhum. `vistos` junta os lotes de uma mesma consulta.
+ * registro ilegível não contam: não casam com id nenhum. `vistos` junta os lotes de uma mesma consulta. A mesma proteção na
+ * importação e na conferência contínua das reservas do site (M8.3c, desenho 4.5).
  */
-function semIdsRepetidos(l: Lido<ReservaBeds24>, vistos = new Set<string>()) {
+export function semIdsRepetidos(l: Lido<ReservaBeds24>, vistos = new Set<string>()) {
   for (const id of [...l.itens.map(b => b.idExterno), ...l.divergencias.map(d => d.id).filter(id => referencia(id) === id)]) {
     if (vistos.has(id)) throw new ErroBeds24("Consulta com IDs de reserva repetidos. Confira a origem antes de importar; nenhuma mudança foi aplicada.", "formato");
     vistos.add(id);
   }
+}
+
+/** O que a releitura por id trouxe (`relerPorIds`). */
+export type ReleituraPorIds = {
+  /** Os registros legíveis dos ids pedidos. */
+  legiveis: ReservaBeds24[];
+  /** Os ids pedidos que voltaram em formato inválido, na ordem: o registro existe, só não deu para ler (nunca "não voltou"). */
+  ilegiveis: string[];
+  /** Registros de um id fora do lote pedido, legíveis ou não, ou sem id legível: a resposta não é a do pedido. */
+  semDono: number;
+};
+
+/**
+ * A releitura por id, em lotes de 50, sem filtro de chegada (desde 1900: sem ele, só as futuras) e com os info items. Uma
+ * regra, um lugar (M8.3c, desenho 4.5): a importação relê os ids conhecidos que saíram do filtro, e a conferência contínua
+ * relê as reservas do site de hora em hora. Um id que volta duas vezes, nesta releitura ou já visto antes na mesma consulta
+ * (`vistos`), para tudo (`semIdsRepetidos` lança). Quem chama decide o que o id que não voltou quer dizer: com qualquer
+ * registro sem dono, nenhum conta como "não voltou" (apagado), porque o registro sem dono pode ser ele.
+ */
+export async function relerPorIds(leitor: LeitorBeds24, ids: readonly string[], vistos: Set<string>): Promise<ReleituraPorIds> {
+  const r: ReleituraPorIds = { legiveis: [], ilegiveis: [], semDono: 0 };
+  for (let i = 0; i < ids.length; i += 50) {
+    const lote = ids.slice(i, i + 50);
+    const l = await leitor.reservas({ ids: lote, chegadaDe: "1900-01-01", incluirInfo: true });
+    semIdsRepetidos(l, vistos);
+    for (const b of l.itens) {
+      if (lote.includes(b.idExterno)) r.legiveis.push(b);
+      else r.semDono++;
+    }
+    for (const d of l.divergencias) {
+      if (!lote.includes(d.id)) r.semDono++;
+      else if (!r.ilegiveis.includes(d.id)) r.ilegiveis.push(d.id);
+    }
+  }
+  return r;
 }
 
 export function mensagemSeguraBeds24(e: unknown): string {
@@ -111,22 +147,14 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       // ser de qualquer id pedido, inclusive de outro lote. Um id que já voltou legível na leitura do período não é pedido de
       // novo: se ele volta na releitura, é o mesmo id duas vezes (a importação para, como numa leitura só).
       const vistosNaReleitura = new Set<string>(porId.keys());
-      let semDono = 0;
-      for (let i = 0; i < faltantes.length; i += 50) {
-        const ids = faltantes.slice(i, i + 50);
-        const l = await leitor.reservas({ ids, chegadaDe: "1900-01-01", incluirInfo: true });
-        semIdsRepetidos(l, vistosNaReleitura);
-        for (const b of l.itens) {
-          if (ids.includes(b.idExterno)) porId.set(b.idExterno, b);
-          else semDono++;
-        }
-        for (const d of l.divergencias) {
-          if (!ids.includes(d.id)) { semDono++; continue; }
-          if (ilegiveis.has(d.id)) continue;
-          ilegiveis.add(d.id);
-          aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
-        }
+      const releitura = await relerPorIds(leitor, faltantes, vistosNaReleitura);
+      for (const b of releitura.legiveis) porId.set(b.idExterno, b);
+      for (const id of releitura.ilegiveis) {
+        if (ilegiveis.has(id)) continue;
+        ilegiveis.add(id);
+        aviso(res, `Reserva ${referencia(id)}: formato inválido; confira o registro no Beds24.`);
       }
+      const semDono = releitura.semDono;
       // Com qualquer registro sem dono, em qualquer lote, a releitura toda fica sem conclusão: nenhum id que não voltou conta
       // como "não voltou" (apagado), com um aviso só.
       const semConclusao = new Set<string>();

@@ -134,6 +134,20 @@ export function motivoDeConfiguracaoDasReservas(e: EstadoDaConfiguracaoDasReserv
 }
 
 /**
+ * O motivo de configuração em linguagem simples, sem código nem valor (a linha "envio de reservas parado: <motivo>" do
+ * Sistema e o resumo da rotina; desenho 2.4). Uma regra, um lugar: o Início e Integrações mostram o mesmo texto.
+ */
+export function textoDaConfiguracaoDasReservas(c: ConfiguracaoQueParaAsReservas): string {
+  const motivo =
+    c.motivo === "sem_credencial" ? "falta o refresh token de escrita (BEDS24_REFRESH_TOKEN)"
+    : c.motivo === "escopo_excessivo" ? "a credencial tem permissões além das do convite"
+    : c.motivo === "escopo_fora_de_ordem" ? (c.para === "tudo" ? "as permissões da credencial atual não foram lidas nas últimas 26 horas (ou a leitura falhou)" : "faltam permissões do convite na credencial, ou elas não deram para ler")
+    : c.motivo === "sem_ensaio" ? "falta um ensaio conferido com a credencial atual"
+    : "uma reserva voltou do Beds24 sem a marca do SCL";
+  return `${motivo}; ${c.para === "tudo" ? "nada é escrito" : "as reservas novas não são criadas, e as mudanças e os cancelamentos das já criadas seguem"}`;
+}
+
+/**
  * Existe acompanhamento com o motivo `marca_ilegivel` que conta (desenho 4.4): fora de `manual` e `encerrada`, de reserva com
  * a saída a partir de hoje (São Paulo). O antigo, de estadia que já terminou, não para as criações para sempre (a volta o
  * encerra; desenho 9).

@@ -4,6 +4,7 @@
  * serviço não foi testado nesta abertura (não afirmar que funciona sem ter conferido).
  */
 import { credencialDeEscritaForaDaProducao, escritaBeds24Ligada, escritaBeds24Pronta, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta } from "@/beds24/http";
+import { type ConfiguracaoQueParaAsReservas, textoDaConfiguracaoDasReservas } from "@/beds24/reservas-site-rotina";
 import { dataHoraNoFuso } from "@/lib/datas";
 import { ambienteDoSentry, situacaoDoSentry } from "@/observabilidade/sentry";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
@@ -36,9 +37,11 @@ export const TEXTO_CREDENCIAL_ESCRITA_FORA_DA_PRODUCAO =
  * As duas chaves do Beds24, cada uma pela sua função (nunca a variável direto): o envio de calendário e preços
  * (`BEDS24_ESCRITA`, M3.7) e as reservas do site (`BEDS24_ESCRITA_RESERVAS`, M8.3), independentes nos dois sentidos. O
  * calendário só diz LIGADO pela régua de `escritorDoAmbiente` (`escritaBeds24Pronta`: a chave e a credencial); a chave
- * ligada sem credencial não envia nada, e a linha diz isso.
+ * ligada sem credencial não envia nada, e a linha diz isso. M8.3c (desenho 2.4): com a chave das reservas pronta, o motivo de
+ * configuração que para a escrita (`motivoDeConfiguracaoDasReservas`, lido por quem chama) entra como "envio de reservas
+ * parado: <motivo>".
  */
-function chavesBeds24(env: NodeJS.ProcessEnv): string {
+function chavesBeds24(env: NodeJS.ProcessEnv, paradaDasReservas: ConfiguracaoQueParaAsReservas | null): string {
   const calendario = escritaBeds24Pronta(env)
     ? "envio para o Beds24 LIGADO (só para os imóveis marcados em Configurações → Calendário e preços)"
     : escritaBeds24Ligada(env)
@@ -49,7 +52,8 @@ function chavesBeds24(env: NodeJS.ProcessEnv): string {
     : escritaReservasBeds24Ligada(env)
       ? "reservas do site no Beds24: chave ligada, mas a escrita não sai daqui (só no deploy de produção, com o refresh token)"
       : "reservas do site no Beds24: chave desligada (BEDS24_ESCRITA_RESERVAS)";
-  return [calendario, reservas, ...(credencialDeEscritaForaDaProducao(env) ? [TEXTO_CREDENCIAL_ESCRITA_FORA_DA_PRODUCAO] : [])].join(" · ");
+  const parada = escritaReservasBeds24Pronta(env) && paradaDasReservas ? [`envio de reservas parado: ${textoDaConfiguracaoDasReservas(paradaDasReservas)}`] : [];
+  return [calendario, reservas, ...parada, ...(credencialDeEscritaForaDaProducao(env) ? [TEXTO_CREDENCIAL_ESCRITA_FORA_DA_PRODUCAO] : [])].join(" · ");
 }
 
 export const producaoSemChaves = (mp: SituacaoMercadoPago, env: NodeJS.ProcessEnv) =>
@@ -105,8 +109,11 @@ export function servicoSentry(env: NodeJS.ProcessEnv): Servico {
   }
 }
 
-/** `mercadoPago`: a situação já lida (`situacaoDoMercadoPago`); sem ela, a linha diz só que não foi conferida. */
-export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null, mercadoPago: SituacaoMercadoPago | null = null): Servico[] {
+/**
+ * `mercadoPago`: a situação já lida (`situacaoDoMercadoPago`); sem ela, a linha diz só que não foi conferida.
+ * `paradaDasReservas` (M8.3c): o motivo de configuração que para a escrita das reservas do site, já lido por quem chama.
+ */
+export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null, mercadoPago: SituacaoMercadoPago | null = null, o: { paradaDasReservas?: ConfiguracaoQueParaAsReservas | null } = {}): Servico[] {
   const tem = (...chaves: string[]) => chaves.every((c) => Boolean(env[c]));
   const banco = env.DATABASE_URL ?? "";
   const bancoLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(banco);
@@ -140,7 +147,7 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
       nome: "Beds24",
       paraQue: "Reservas, calendário e preços das OTAs",
       situacao: beds24 ? "configurado" : "nao_configurado",
-      detalhe: `${beds24 ? "Credencial configurada, conexão não testada" : "Falta BEDS24_REFRESH_TOKEN (ou BEDS24_API_KEY para token direto)"} · ${chavesBeds24(env)}`,
+      detalhe: `${beds24 ? "Credencial configurada, conexão não testada" : "Falta BEDS24_REFRESH_TOKEN (ou BEDS24_API_KEY para token direto)"} · ${chavesBeds24(env, o.paradaDasReservas ?? null)}`,
     },
     { nome: "WhatsApp (Meta)", paraQue: "Atendimento e mensagens", situacao: "planejado", detalhe: "Chega no M10 (depende da verificação no Meta)" },
     mercadoPago
