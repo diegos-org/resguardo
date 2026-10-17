@@ -19,6 +19,8 @@ import {
   alteracoesReserva,
   auditoria,
   beds24Calendario,
+  beds24ReservasOperacoes,
+  beds24ReservasSite,
   cancelamentosReserva,
   contestacoesPagamento,
   cotacoes,
@@ -191,7 +193,8 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
  * `valores` (token, documento, id do aparelho, e-mails, nome do titular…) e devolve os que apareceram — o esperado é
  * nenhum. `nomes` (M8.2c): o nome do hóspede, procurado nas mesmas tabelas, menos a auditoria da reserva que nasce no
  * M8.1 (`reserva.importar` guarda os dados dela, nome inclusive, fora das tabelas do pagamento). M8.2e: também as
- * disputas do pagamento e a linha do tempo delas.
+ * disputas do pagamento e a linha do tempo delas. M8.3: também o acompanhamento das reservas do site no Beds24 e as
+ * operações (o pedido, as leituras e o erro nunca levam nome, e-mail, telefone, documento nem valor).
  */
 export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: string[] } = {}): Promise<string[]> {
   const semAuditoria = [
@@ -210,6 +213,9 @@ export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: s
     // M8.2e: as disputas (ids do caso, códigos, valores, datas e notas validadas) e a linha do tempo delas.
     await db.select().from(contestacoesPagamento),
     await db.select().from(eventosContestacao),
+    // M8.3: o acompanhamento das reservas do site no Beds24 e as operações (quarto, datas, pessoas, situação, códigos).
+    await db.select().from(beds24ReservasSite),
+    await db.select().from(beds24ReservasOperacoes),
   ];
   const registros = await db.select().from(auditoria);
   const tudo = JSON.stringify([semAuditoria, registros]);

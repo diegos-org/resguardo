@@ -4,7 +4,7 @@ import { execucoesAutomacao, imoveis, organizacoes, proprietarioImoveis, proprie
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { salvarRecebimento } from "@/imoveis/recebimento";
-import { AUTOMACOES, registrarExecucao, ultimasExecucoes } from "./automacoes";
+import { AUTOMACOES, execucaoNaoRodou, naoRodou, registrarExecucao, ultimasExecucoes } from "./automacoes";
 import { regrasEmVigor } from "./regras";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
 import { NOME_MERCADO_PAGO, NOME_SENTRY, servicoMercadoPago, situacaoServicos } from "./servicos";
@@ -41,6 +41,48 @@ describe("serviços", () => {
     expect(s[0].situacao).toBe("falha");
     expect(s.find((x) => x.nome === "Beds24")?.detalhe).toContain("LIGADO");
     expect(situacaoServicos({} as NodeJS.ProcessEnv, null)[0].situacao).toBe("nao_configurado");
+  });
+});
+
+describe("Beds24 em Serviços (M8.3a): as duas chaves pelas funções, independentes, e o aviso de credencial fora da produção", () => {
+  const beds24 = (e: Record<string, string>) => situacaoServicos(e as unknown as NodeJS.ProcessEnv, null).find((x) => x.nome === "Beds24")!.detalhe;
+  const PRODUCAO = { VERCEL_ENV: "production", NODE_ENV: "production", BEDS24_REFRESH_TOKEN: "refresh-ficticio" };
+
+  it("só a chave do calendário: o calendário ligado e as reservas desligadas", () => {
+    const d = beds24({ ...PRODUCAO, BEDS24_ESCRITA: "ligada" });
+    expect(d).toContain("envio para o Beds24 LIGADO");
+    expect(d).toContain("reservas do site no Beds24: chave desligada (BEDS24_ESCRITA_RESERVAS)");
+  });
+
+  it("só a chave das reservas: as reservas prontas no deploy de produção e o calendário desligado; o valor \"Ligada\" não liga", () => {
+    const d = beds24({ ...PRODUCAO, BEDS24_ESCRITA_RESERVAS: "ligada" });
+    expect(d).toContain("envio para o Beds24 desligado (BEDS24_ESCRITA)");
+    expect(d).toContain("reservas do site no Beds24: chave LIGADA e pronta neste deploy");
+    expect(d).not.toContain("Credencial de escrita presente fora da produção");
+    expect(beds24({ ...PRODUCAO, BEDS24_ESCRITA_RESERVAS: "Ligada" })).toContain("reservas do site no Beds24: chave desligada");
+  });
+
+  it("a chave das reservas numa prévia (ou nos testes) não fica pronta; o refresh token ali dá o aviso, sem mostrar o valor", () => {
+    const d = beds24({ ...PRODUCAO, VERCEL_ENV: "preview", BEDS24_ESCRITA_RESERVAS: "ligada" });
+    expect(d).toContain("chave ligada, mas a escrita não sai daqui");
+    expect(d).toContain("Credencial de escrita presente fora da produção");
+    expect(d).not.toContain("refresh-ficticio");
+    expect(beds24({ NODE_ENV: "test", BEDS24_API_KEY: "token-direto" })).not.toContain("Credencial de escrita presente fora da produção");
+    // Sem credencial nenhuma, as chaves aparecem do mesmo jeito.
+    expect(beds24({ BEDS24_ESCRITA_RESERVAS: "ligada" })).toContain("Falta BEDS24_REFRESH_TOKEN");
+    expect(beds24({ BEDS24_ESCRITA_RESERVAS: "ligada" })).toContain("reservas do site no Beds24: chave ligada");
+  });
+
+  it("a chave do calendário ligada sem credencial: não diz LIGADO (nada é enviado); com o token direto, o calendário envia", () => {
+    const d = beds24({ BEDS24_ESCRITA: "ligada" });
+    expect(d).toContain("Falta BEDS24_REFRESH_TOKEN");
+    expect(d).toContain("envio para o Beds24: chave ligada, mas sem credencial: nada é enviado (BEDS24_ESCRITA)");
+    expect(d).not.toContain("LIGADO");
+    expect(beds24({ BEDS24_API_KEY: "k", BEDS24_ESCRITA: "ligada" })).toContain("envio para o Beds24 LIGADO");
+  });
+
+  it("a rotina das reservas do site aparece como planejada, do M8.3c", () => {
+    expect(AUTOMACOES.find((a) => a.id === "reservas-beds24")).toMatchObject({ situacao: "planejada", item: "M8.3c", nome: "Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)", quando: expect.stringContaining("BEDS24_ESCRITA_RESERVAS=ligada") });
   });
 });
 
@@ -123,6 +165,16 @@ describe("automações e regras (com banco)", () => {
     const u = await ultimasExecucoes(db);
     expect(u.get("recalculo-deploy")).toMatchObject({ ok: false, resumo: "Falhou: banco caiu" });
     expect(AUTOMACOES.find((a) => a.id === "recalculo-deploy")?.situacao).toBe("ativa");
+  });
+
+  it("'não rodou' (M8.3a): fica com ok falso e o resumo 'Não rodou: <causa>', sem lançar erro; nunca como sucesso", async () => {
+    const agora = () => new Date("2026-10-16T09:15:00Z");
+    expect(await registrarExecucao(db, "sync-beds24", async () => naoRodou("envio de reserva do site ao Beds24 em andamento"), agora)).toBe("Não rodou: envio de reserva do site ao Beds24 em andamento");
+    const e = (await ultimasExecucoes(db)).get("sync-beds24");
+    expect(e).toMatchObject({ ok: false, resumo: "Não rodou: envio de reserva do site ao Beds24 em andamento", terminadoEm: agora() });
+    expect(execucaoNaoRodou(e!)).toBe(true);
+    expect(execucaoNaoRodou({ ok: false, resumo: "Falhou: banco caiu" })).toBe(false);
+    expect(execucaoNaoRodou({ ok: true, resumo: "Não rodou: texto" })).toBe(false);
   });
 
   it("a rotina de 10 em 10 minutos não esconde a última execução das que rodam raramente (M8.2a)", async () => {

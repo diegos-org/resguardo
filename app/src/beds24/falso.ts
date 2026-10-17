@@ -2,15 +2,25 @@
  * Beds24 FALSO para testes e desenvolvimento: guarda registros no formato da API e passa
  * pela mesma normalização do cliente real. Nunca usa rede. A escrita de calendário aplica
  * as faixas ao calendário em memória, para a releitura refletir o que foi "gravado".
+ * M8.3a (só leitura): os info items só voltam quando a leitura os pede (`incluirInfo`), os
+ * filtros novos (quarto, chegada exata, busca por texto) e os escopos da credencial
+ * (GET /authentication/details) com a resposta configurável. A escrita de reservas é do M8.3c.
  */
-import { normalizarCalendario, normalizarQuartos, normalizarReserva } from "./normalizar";
-import type { DiaCalendario, EnvioCalendario, EscritorBeds24, FiltroCalendario, FiltroReservas, LeitorBeds24, Lido, QuartoBeds24, ReservaBeds24, ResultadoEscrita } from "./tipos";
+import { normalizarCalendario, normalizarCredencial, normalizarQuartos, normalizarReserva } from "./normalizar";
+import type { CredencialBeds24, DiaCalendario, EnvioCalendario, EscritorBeds24, FiltroCalendario, FiltroReservas, LeitorBeds24, LeitorCredencialBeds24, Lido, QuartoBeds24, ReservaBeds24, ResultadoEscrita } from "./tipos";
 
 type Obj = Record<string, unknown>;
 const somarDias = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
-export class Beds24Falso implements LeitorBeds24, EscritorBeds24 {
+/** A resposta de uma credencial feita com exatamente os escopos do convite (desenho 7, D10). */
+export const ESCOPOS_ESPERADOS_FALSO = ["read:bookings", "write:bookings", "read:bookings-personal", "read:bookings-financial", "read:properties", "read:inventory", "write:inventory"];
+
+export class Beds24Falso implements LeitorBeds24, LeitorCredencialBeds24, EscritorBeds24 {
   bookings: Obj[] = [];
+  /** Corpo de GET /authentication/details, como a API mandaria (o formato real está "a confirmar"); passa pela mesma normalização. */
+  detalhesCredencial: unknown = { validToken: true, token: { scopes: ESCOPOS_ESPERADOS_FALSO } };
+  /** Os filtros de cada leitura de reservas, na ordem (para conferir o que foi pedido). */
+  filtrosLidos: FiltroReservas[] = [];
   calendarios: Obj[] = [];
   properties: Obj[] = [];
   /** Para simular falhas do serviço. */
@@ -32,19 +42,30 @@ export class Beds24Falso implements LeitorBeds24, EscritorBeds24 {
 
   async reservas(f: FiltroReservas): Promise<Lido<ReservaBeds24>> {
     this.checar();
+    this.filtrosLidos.push({ ...f });
+    const pesquisa = f.pesquisa?.trim().toLowerCase();
     const filtrados = this.bookings.filter((b) => {
       const chegada = String(b.arrival ?? "");
-      if (f.chegadaDe && chegada < f.chegadaDe) return false;
-      if (f.chegadaAte && chegada > f.chegadaAte) return false;
+      if (f.chegadaExata !== undefined) {
+        if (chegada !== f.chegadaExata) return false;
+      } else {
+        if (f.chegadaDe && chegada < f.chegadaDe) return false;
+        if (f.chegadaAte && chegada > f.chegadaAte) return false;
+      }
       if (f.saidaDe && String(b.departure ?? "") < f.saidaDe) return false;
       if (f.ids?.length && !f.ids.includes(String(b.id))) return false;
       if (f.modificadasDesde && String(b.modifiedTime ?? "") < f.modificadasDesde) return false;
       if (f.propertyIds?.length && !f.propertyIds.includes(String(b.propertyId))) return false;
+      if (f.quarto !== undefined && String(b.roomId) !== f.quarto) return false;
+      // Aproximação da busca do Beds24: nome, e-mail, notas e ids (os info items não entram na busca).
+      if (pesquisa && ![b.firstName, b.lastName, b.email, b.notes, b.id, b.apiReference].some((v) => String(v ?? "").toLowerCase().includes(pesquisa))) return false;
       return true;
     });
     const itens: ReservaBeds24[] = [];
     const divergencias = [];
-    for (const b of filtrados) {
+    for (const registro of filtrados) {
+      // Os info items só vêm quando a leitura pede (includeInfoItems=true), como na API.
+      const b = f.incluirInfo ? registro : Object.fromEntries(Object.entries(registro).filter(([k]) => k !== "infoItems"));
       const n = normalizarReserva(b);
       if (n.ok) itens.push(n.r);
       else divergencias.push(n.d);
@@ -61,6 +82,11 @@ export class Beds24Falso implements LeitorBeds24, EscritorBeds24 {
   async quartos(): Promise<Lido<QuartoBeds24>> {
     this.checar();
     return { ...normalizarQuartos(this.properties), lidoEm: this.agora().toISOString() };
+  }
+
+  async credencial(): Promise<CredencialBeds24> {
+    this.checar();
+    return { ...normalizarCredencial(this.detalhesCredencial), lidoEm: this.agora().toISOString() };
   }
 
   /** Aplica cada faixa dia a dia sobre o calendário do quarto (campo ausente = não altera). */

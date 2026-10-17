@@ -22,6 +22,8 @@ import { Horarios } from "@/components/reservas/Horarios";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas";
 import { Recebimentos } from "@/components/reservas/Recebimentos";
+import { ReservaNoBeds24 } from "@/components/reservas/ReservaNoBeds24";
+import { fichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
 import { dataBr, dataHoraNoFuso, diaHoraNoFuso, hojeISO } from "@/lib/datas";
 import { alteracaoDoPortador, alteracoesDaReserva } from "@/pagamentos/alteracao-painel";
 import { textoDoResultadoDaAlteracao } from "@/pagamentos/alteracao-tela";
@@ -41,7 +43,7 @@ const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c))
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
   const sessao = await exigirSessaoPainel();
   const { id } = await params;
-  const { salvo, erro, cancelamento: resultadoCancelamento, alteracao: resultadoAlteracao, contestacao: resultadoContestacao } = await searchParams;
+  const { salvo, erro, cancelamento: resultadoCancelamento, alteracao: resultadoAlteracao, contestacao: resultadoContestacao, beds24: resultadoBeds24 } = await searchParams;
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
@@ -114,6 +116,8 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     r.estado === "confirmada" &&
     (!momentos || agora.getTime() < momentos.entradaEm.getTime()) &&
     (disputasEquipe ?? disputasOperacao).some((d) => d.seguraValor && pagamentosSite.some((p) => p.id === d.pagamentoId && (p.desfecho === "reserva" || p.desfecho === "alteracao")));
+  // M8.3a: a reserva do site no Beds24 (só leitura, só para a equipe; "Simular" com reserva:editar, sem rede).
+  const noBeds24 = r.fonte === "site" && sessao.papel !== "proprietario" && podeFazer(sessao.papel, "reserva:ler") ? await fichaReservaNoBeds24(db, sessao.organizacaoId, r.id, process.env) : null;
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
 
@@ -269,6 +273,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           ) : null
         }
       />
+      {noBeds24 && <ReservaNoBeds24 reservaId={r.id} ficha={noBeds24} editar={editarReserva} resultado={typeof resultadoBeds24 === "string" ? resultadoBeds24 : undefined} />}
       <PaginasLegaisAceitas aceites={aceitesSite} />
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>

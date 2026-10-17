@@ -1,8 +1,9 @@
 /**
  * Cliente HTTP do Beds24 API v2. Leitura: GET. A única escrita é `escreverCalendario`
  * (POST /inventory/rooms/calendar — preço, mínimo/máximo e bloqueio por noite, M3.7), e só
- * sai do ambiente quando `BEDS24_ESCRITA=ligada` (`escritorDoAmbiente`). Reservas nunca
- * são criadas ou alteradas aqui (M8.3, com autorização explícita).
+ * sai do ambiente quando `BEDS24_ESCRITA=ligada` (`escritorDoAmbiente`). Reservas ainda não
+ * são criadas nem alteradas aqui: a escrita de reservas é o M8.3c, atrás da chave própria
+ * (`escritaReservasBeds24Pronta`); o M8.3a só lê (info items e GET /authentication/details).
  *
  * BEDS24_REFRESH_TOKEN gera e renova o token de acesso. BEDS24_API_KEY continua
  * aceitando token direto (long life somente leitura), nunca convite/refresh token.
@@ -12,9 +13,10 @@
  * nomes de campos, filtro de canceladas e paginação.
  */
 import { createHash } from "node:crypto";
+import { deployDeProducao } from "@/sistema/ambiente";
 import { AutenticacaoBeds24, buscarBeds24, type CorpoBeds24 } from "./autenticacao";
-import { normalizarCalendario, normalizarQuartos, normalizarReserva } from "./normalizar";
-import { type DiaCalendario, type EnvioCalendario, ErroBeds24, type EscritorBeds24, type FiltroCalendario, type FiltroReservas, type LeitorBeds24, type Lido, type QuartoBeds24, type ReservaBeds24, type ResultadoEscrita } from "./tipos";
+import { normalizarCalendario, normalizarCredencial, normalizarQuartos, normalizarReserva } from "./normalizar";
+import { type CredencialBeds24, type DiaCalendario, type EnvioCalendario, ErroBeds24, type EscritorBeds24, type FiltroCalendario, type FiltroReservas, type LeitorBeds24, type LeitorCredencialBeds24, type Lido, type QuartoBeds24, type ReservaBeds24, type ResultadoEscrita } from "./tipos";
 
 type Parametros = Record<string, string | string[] | undefined>;
 type Opcoes = { token?: string; refreshToken?: string; fetchImpl?: typeof fetch; baseUrl?: string; timeoutMs?: number; maxPaginas?: number; agora?: () => Date };
@@ -22,7 +24,7 @@ type Opcoes = { token?: string; refreshToken?: string; fetchImpl?: typeof fetch;
 /** Centavos → reais com duas casas, como a API espera (nunca aritmética binária solta no JSON). */
 export const centavosParaReaisApi = (c: number) => Number((c / 100).toFixed(2));
 
-export class ClienteBeds24Http implements LeitorBeds24, EscritorBeds24 {
+export class ClienteBeds24Http implements LeitorBeds24, LeitorCredencialBeds24, EscritorBeds24 {
   private readonly fetchImpl: typeof fetch;
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
@@ -91,13 +93,17 @@ export class ClienteBeds24Http implements LeitorBeds24, EscritorBeds24 {
   async reservas(f: FiltroReservas): Promise<Lido<ReservaBeds24>> {
     const lidoEm = this.agora().toISOString();
     const brutos = await this.todas("/bookings", {
-      arrivalFrom: f.chegadaDe,
-      arrivalTo: f.chegadaAte,
+      // Chegada exata (M8.3): os dois limites explícitos, porque sem filtro de chegada só vêm as reservas futuras.
+      arrivalFrom: f.chegadaExata ?? f.chegadaDe,
+      arrivalTo: f.chegadaExata ?? f.chegadaAte,
       departureFrom: f.saidaDe,
       id: f.ids,
       status: ["confirmed", "new", "request", "inquiry", "black", "cancelled"],
       modifiedFrom: f.modificadasDesde,
       propertyId: f.propertyIds,
+      roomId: f.quarto,
+      searchString: f.pesquisa,
+      includeInfoItems: f.incluirInfo ? "true" : undefined,
     });
     const itens: ReservaBeds24[] = [];
     const divergencias = [];
@@ -129,6 +135,15 @@ export class ClienteBeds24Http implements LeitorBeds24, EscritorBeds24 {
     const lidoEm = this.agora().toISOString();
     const brutos = await this.todas("/properties", { includeAllRooms: "true" });
     return { ...normalizarQuartos(brutos), lidoEm };
+  }
+
+  /**
+   * GET /authentication/details (M8.3, prontidão): só leitura. O corpo não é uma lista (`data`), por isso não passa por
+   * `get`; formato torto ou desconhecido sai como "não deu para ler" (`escopos` null), nunca como erro mudo.
+   */
+  async credencial(): Promise<CredencialBeds24> {
+    const lidoEm = this.agora().toISOString();
+    return { ...normalizarCredencial(await this.chamar("/authentication/details", {})), lidoEm };
   }
 
   /**
@@ -212,6 +227,53 @@ export const impressaoCredencialBeds24 = (env: NodeJS.ProcessEnv = process.env):
   if (!valor) return "";
   return `${refreshToken ? "refresh" : "token"}:${createHash("sha256").update(valor).digest("hex").slice(0, 16)}`;
 };
+
+/**
+ * Chave da escrita de RESERVAS no Beds24 (M8.3): só o valor exato "ligada", e independente da chave do calendário
+ * (`BEDS24_ESCRITA`) nos dois sentidos. O `env` vem sempre de quem chama (sem `process.env` como padrão).
+ */
+export const escritaReservasBeds24Ligada = (env: NodeJS.ProcessEnv): boolean => env.BEDS24_ESCRITA_RESERVAS?.trim() === "ligada";
+
+/**
+ * A escrita de reservas realmente pode sair (M8.3, desenho 2.2) — a trava de ambiente, uma função só, que nunca
+ * reaproveita `escritaBeds24Ligada`/`escritaBeds24Pronta`. As quatro condições juntas:
+ * 1. o deploy de produção da Vercel (`deployDeProducao`: exatamente VERCEL_ENV=production);
+ * 2. NODE_ENV=production (o `next dev` e o Vitest ficam fora mesmo com VERCEL_ENV simulado);
+ * 3. a chave `BEDS24_ESCRITA_RESERVAS=ligada`;
+ * 4. o refresh token (`BEDS24_REFRESH_TOKEN`): o token direto (`BEDS24_API_KEY`) só lê e nunca habilita.
+ * Depois dela vêm as condições do painel (pausa, prontidão e imóvel ligado), em `reservas-site-config.ts`.
+ */
+export const escritaReservasBeds24Pronta = (env: NodeJS.ProcessEnv): boolean =>
+  ambienteDeEscritaDeReservas(env) && escritaReservasBeds24Ligada(env) && Boolean(env.BEDS24_REFRESH_TOKEN?.trim());
+
+/**
+ * O único lugar onde a escrita de reservas pode sair (condições 1 e 2 da trava): o deploy de produção da Vercel rodando
+ * como produção. Prévia, `vercel dev`, computador e testes ficam fora, mesmo com VERCEL_ENV simulado.
+ */
+export const ambienteDeEscritaDeReservas = (env: NodeJS.ProcessEnv): boolean => deployDeProducao(env) && env.NODE_ENV === "production";
+
+/**
+ * Credencial que pode escrever (o refresh token) num lugar onde a escrita de reservas nunca sai (prévia, `vercel dev`,
+ * computador, testes): Sistema e Integrações avisam, porque o token novo deve ficar só em Production (desenho 7).
+ */
+export const credencialDeEscritaForaDaProducao = (env: NodeJS.ProcessEnv): boolean =>
+  Boolean(env.BEDS24_REFRESH_TOKEN?.trim()) && !ambienteDeEscritaDeReservas(env);
+
+/**
+ * O botão "Simular" da ficha (desenho 2.4 e 8): só fora do deploy de produção ou com a chave das reservas desligada. Lá,
+ * com a chave ligada, quem decide é a rotina (M8.3c); a simulação nunca usa a rede, em lugar nenhum.
+ */
+export const simulacaoReservasBeds24Permitida = (env: NodeJS.ProcessEnv): boolean => !ambienteDeEscritaDeReservas(env) || !escritaReservasBeds24Ligada(env);
+
+/**
+ * Leitor dos escopos da credencial (prontidão, GET /authentication/details), só leitura e só com a escrita de reservas
+ * pronta (`escritaReservasBeds24Pronta`: o deploy de produção, a chave e o refresh token). Nas prévias, no computador e
+ * nos testes devolve null: a prontidão diz que não leu, e nenhuma chamada sai.
+ */
+export function leitorDeCredencialDoAmbiente(env: NodeJS.ProcessEnv): LeitorCredencialBeds24 | null {
+  if (!escritaReservasBeds24Pronta(env)) return null;
+  return new ClienteBeds24Http({ refreshToken: env.BEDS24_REFRESH_TOKEN!.trim(), maxPaginas: 1, timeoutMs: 15_000 });
+}
 
 /** A escrita realmente sai: sinal "ligada" E credencial — a régua única de `escritorDoAmbiente`, que o portal também lê. */
 export const escritaBeds24Pronta = (env: NodeJS.ProcessEnv = process.env) => escritaBeds24Ligada(env) && credencialBeds24Presente(env);

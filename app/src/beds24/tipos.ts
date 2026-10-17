@@ -2,7 +2,8 @@
  * Beds24 (M3.2/M3.7) — tipos INTERNOS, já normalizados. O resto do sistema só enxerga isto;
  * o formato da API fica isolado em `http.ts`. A única escrita é a do calendário (preço,
  * mínimo/máximo e bloqueio por noite — M3.7), atrás de `BEDS24_ESCRITA=ligada`. Criar
- * reserva no Beds24 continua sendo o M8.3, com autorização explícita.
+ * reserva no Beds24 é o M8.3, atrás de uma chave própria (`BEDS24_ESCRITA_RESERVAS=ligada`,
+ * `escritaReservasBeds24Pronta`); o M8.3a só lê (a marca do SCL e os escopos da credencial).
  */
 export type EstadoBeds24 = "confirmada" | "pendente" | "cancelada" | "bloqueio" | "consulta" | "pedido";
 export type CanalBeds24 = "airbnb" | "booking" | "direta" | "outro";
@@ -26,6 +27,14 @@ export type ReservaBeds24 = {
   codigoCanal: string;
   modificadoEm: string | null;
   reservadaEm?: string | null;
+  /**
+   * M8.3: o código da reserva do SCL (SCL-XXXXXX) que marca o registro como uma reserva paga pelo site criada pelo
+   * sistema: o info item `SCL` ou, como reforço, o código solto no nome ou nas notas. null = sem marca legível (inclusive
+   * quando a leitura não pediu os info items, ou quando há mais de um código e não dá para saber qual vale).
+   */
+  referenciaScl: string | null;
+  /** M8.3: registro do ensaio do SCL (info item `SCL-ENSAIO`): nunca vira reserva nem bloqueio. */
+  ensaio: boolean;
 };
 
 export type DiaCalendario = {
@@ -48,7 +57,25 @@ export type Divergencia = { origem: "reserva" | "calendario" | "quarto"; id: str
 
 export type Lido<T> = { itens: T[]; divergencias: Divergencia[]; lidoEm: string };
 
-export type FiltroReservas = { chegadaDe?: string; chegadaAte?: string; saidaDe?: string; ids?: string[]; modificadasDesde?: string; propertyIds?: string[] };
+export type FiltroReservas = {
+  chegadaDe?: string;
+  chegadaAte?: string;
+  saidaDe?: string;
+  ids?: string[];
+  modificadasDesde?: string;
+  propertyIds?: string[];
+  /** M8.3: só as reservas deste quarto (`roomId`). */
+  quarto?: string;
+  /**
+   * M8.3: só as reservas com entrada neste dia (`arrivalFrom` = `arrivalTo`, explícitos: sem filtro de chegada, o Beds24
+   * só devolve as reservas futuras). Vale no lugar de `chegadaDe`/`chegadaAte`.
+   */
+  chegadaExata?: string;
+  /** M8.3: busca por texto do Beds24 (`searchString`), para achar a marca no nome. */
+  pesquisa?: string;
+  /** M8.3: pede os info items (`includeInfoItems=true`), onde mora a marca do SCL. Sem isto, `referenciaScl` só sai do nome ou das notas. */
+  incluirInfo?: boolean;
+};
 export type FiltroCalendario = { roomIds: string[]; inicio: string; fim: string };
 
 /** Contrato de leitura. Implementações: HTTP (real) e falsa (testes/desenvolvimento). */
@@ -56,6 +83,27 @@ export interface LeitorBeds24 {
   reservas(f: FiltroReservas): Promise<Lido<ReservaBeds24>>;
   calendario(f: FiltroCalendario): Promise<Lido<DiaCalendario>>;
   quartos(): Promise<Lido<QuartoBeds24>>;
+}
+
+/**
+ * O que a credencial pode fazer (M8.3, prontidão; GET /authentication/details), só leitura. O formato dos escopos na
+ * resposta ainda está "a confirmar" com o Beds24: o que não estiver no formato "nível:recurso" conhecido vai para
+ * `ilegiveis` e nunca conta como em ordem.
+ */
+export type CredencialBeds24 = {
+  /** Escopos lidos, em minúsculas (ex.: "read:bookings", "write:inventory"); null = a resposta não trouxe uma lista que dê para ler. */
+  escopos: string[] | null;
+  /** Itens da lista fora do formato conhecido (texto curto, só para mostrar na tela). */
+  ilegiveis: string[];
+  lidoEm: string;
+};
+
+/**
+ * Leitura dos escopos da credencial (M8.3). Contrato à parte de `LeitorBeds24`: só a prontidão das reservas precisa dele.
+ * Implementações: HTTP (real) e falsa.
+ */
+export interface LeitorCredencialBeds24 {
+  credencial(): Promise<CredencialBeds24>;
 }
 
 /** Valores de `override` do calendário Beds24 que o SCL sabe ler e escrever. */

@@ -505,6 +505,13 @@
       "when": 1792074778842,
       "tag": "0071_m7_17_frase_do_imovel",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792166990366,
+      "tag": "0072_m8_3_reservas_site_beds24",
+      "breakpoints": true
     }
   ]
 }

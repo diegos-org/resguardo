@@ -9,7 +9,7 @@ import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { dataHoraNoFuso, hojeISO } from "@/lib/datas";
 import { situacaoDoMercadoPago } from "@/pagamentos/integracao";
 import { NOMES_ORIGEM } from "@/reservas/regras";
-import { AUTOMACOES, ultimasExecucoes } from "@/sistema/automacoes";
+import { AUTOMACOES, execucaoNaoRodou, ultimasExecucoes } from "@/sistema/automacoes";
 import { regrasEmVigor } from "@/sistema/regras";
 import { type SituacaoServico, situacaoServicos } from "@/sistema/servicos";
 
@@ -107,7 +107,8 @@ export default async function Sistema() {
                       ) : !e ? (
                         "ainda não rodou"
                       ) : e.ok === false ? (
-                        <span className={styles.etiqueta} style={{ background: SELO.falha.cor }}>
+                        // "Não rodou" (ex.: outra execução ocupava o Beds24) é aviso, não falha; nunca aparece como sucesso.
+                        <span className={styles.etiqueta} style={{ background: execucaoNaoRodou(e) ? SELO.nao_configurado.cor : SELO.falha.cor }}>
                           {e.resumo}
                         </span>
                       ) : (

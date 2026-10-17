@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
 import { type AnyPgColumn, boolean, check, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import type {
+  EsperadoBeds24,
+  LidoBeds24,
+  ModoOperacaoBeds24,
+  MotivoAcompanhamentoBeds24,
+  PedidoBeds24,
+  SituacaoAcompanhamentoBeds24,
+  SituacaoOperacaoBeds24,
+  TipoOperacaoBeds24,
+} from "@/beds24/reservas-site-regras";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import type { CodigoDevolucao, ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
 import type {
@@ -2262,3 +2272,100 @@ export const pagamentosAvisosDia = pgTable("pagamentos_avisos_dia", {
   assinaturasRecusadas: integer("assinaturas_recusadas").notNull().default(0),
   ultimoValidoEm: timestamp("ultimo_valido_em", { withTimezone: true }),
 });
+
+// ---------------------------------------------------------------------------
+// Reserva paga do site no Beds24 (M8.3, desenho em requisitos/product/RESERVA-SITE-BEDS24.md): o acompanhamento de cada
+// reserva do site e a fila/histórico das operações. Listas fechadas em beds24/reservas-site-regras.ts; colunas de texto
+// sem CHECK, como as do M8.2. Nenhum dado pessoal nem valor: só códigos, ids do Beds24, quarto, datas, número de pessoas,
+// situação e a impressão da credencial (nunca a credencial). O id final do Beds24 mora num lugar só,
+// `reservas.beds24_id`; até a fase 3 ele fica na operação.
+// ---------------------------------------------------------------------------
+
+/**
+ * Acompanhamento: uma linha por reserva do site que o M8.3 acompanha. Nasce pela rotina (chave pronta e imóvel ligado),
+ * pela marca manual ou por "Deixar à mão". `versao` sobe a cada intenção nova (chaves `<tipo>:<reservaId>:<versao>`).
+ */
+export const beds24ReservasSite = pgTable(
+  "beds24_reservas_site",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** O quarto onde a reserva foi (ou vai ser) criada: atualizar e cancelar vão sempre a ele. Vazio antes da primeira intenção. */
+    propertyId: text("property_id"),
+    roomId: text("room_id"),
+    /** `impressaoCredencialBeds24` da criação, nunca a credencial em si. */
+    credencial: text("credencial").notNull().default(""),
+    /** `reservas.codigo` (ex.: SCL-7K2QXM), a marca gravada no Beds24. */
+    referencia: text("referencia").notNull(),
+    situacao: text("situacao").$type<SituacaoAcompanhamentoBeds24>().notNull().default("pendente"),
+    motivo: text("motivo").$type<MotivoAcompanhamentoBeds24>(),
+    versao: integer("versao").notNull().default(0),
+    /** O que o SCL quer no Beds24, e a assinatura dele (a régua compara a de agora com esta). */
+    esperado: jsonb("esperado").$type<EsperadoBeds24>(),
+    assinaturaEsperada: text("assinatura_esperada"),
+    /** A última leitura do Beds24 (só uma leitura mais nova sobrescreve); serve para detectar divergência, nunca para decidir o envio. */
+    lido: jsonb("lido").$type<LidoBeds24>(),
+    lidoEm: timestamp("lido_em", { withTimezone: true }),
+    /** A última conferência que bateu. */
+    conferidaEm: timestamp("conferida_em", { withTimezone: true }),
+    /** Marca do aviso "reserva paga": `por` nulo = o sistema; preenchido = a marca manual (D8). */
+    otaFechadaEm: timestamp("ota_fechada_em", { withTimezone: true }),
+    otaFechadaPor: uuid("ota_fechada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Falhas antes do POST e o atraso até a próxima. */
+    tentativas: integer("tentativas").notNull().default(0),
+    proximaTentativaEm: timestamp("proxima_tentativa_em", { withTimezone: true }),
+    /** Contador próprio da incerteza: "Tentar de novo" não zera. */
+    buscasSemConclusao: integer("buscas_sem_conclusao").notNull().default(0),
+    avisadaEm: timestamp("avisada_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("beds24_reservas_site_reserva").on(t.organizacaoId, t.reservaId)],
+);
+
+/**
+ * Uma operação (criar, atualizar, cancelar, vincular ou ensaio; real ou simulação). A chave dá a idempotência; no
+ * máximo uma operação ativa (pendente, enviando, incerta) por reserva. `iniciado_em` vem do relógio do banco; `enviado_em`
+ * é gravado logo antes do POST e `beds24_id` logo depois da resposta, antes da fase 3. `erro` é sempre uma mensagem segura.
+ */
+export const beds24ReservasOperacoes = pgTable(
+  "beds24_reservas_operacoes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    /** Nulo no ensaio. */
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    /** Nulo na simulação e no ensaio. Chave estrangeira com nome próprio (abaixo): o automático passaria de 63 caracteres. */
+    acompanhamentoId: uuid("acompanhamento_id"),
+    tipo: text("tipo").$type<TipoOperacaoBeds24>().notNull(),
+    chave: text("chave").notNull(),
+    modo: text("modo").$type<ModoOperacaoBeds24>().notNull(),
+    situacao: text("situacao").$type<SituacaoOperacaoBeds24>().notNull().default("pendente"),
+    /** Resumo do que foi ou seria enviado: quarto, datas, pessoas, situação e referência. */
+    pedido: jsonb("pedido").$type<PedidoBeds24>(),
+    /** Ids das alterações `aplicada` sem a marca das OTAs, lidos na fase 1 (só esses são marcados depois). */
+    alteracoes: jsonb("alteracoes").$type<string[]>().notNull().default([]),
+    /** Leituras do Beds24 antes e depois, nos mesmos campos. */
+    antes: jsonb("antes").$type<LidoBeds24>(),
+    depois: jsonb("depois").$type<LidoBeds24>(),
+    beds24Id: text("beds24_id"),
+    credencial: text("credencial").notNull().default(""),
+    /** null = a rotina. */
+    autorId: uuid("autor_id").references(() => usuarios.id, { onDelete: "set null" }),
+    tentativas: integer("tentativas").notNull().default(0),
+    iniciadoEm: timestamp("iniciado_em", { withTimezone: true }).notNull().defaultNow(),
+    enviadoEm: timestamp("enviado_em", { withTimezone: true }),
+    respondidoEm: timestamp("respondido_em", { withTimezone: true }),
+    terminadoEm: timestamp("terminado_em", { withTimezone: true }),
+    erro: text("erro").notNull().default(""),
+  },
+  (t) => [
+    uniqueIndex("beds24_reservas_operacoes_chave").on(t.organizacaoId, t.chave),
+    uniqueIndex("beds24_reservas_operacoes_uma_ativa").on(t.reservaId).where(sql`${t.situacao} in ('pendente', 'enviando', 'incerta')`),
+    index("beds24_reservas_operacoes_situacao").on(t.organizacaoId, t.situacao, t.iniciadoEm),
+    index("beds24_reservas_operacoes_beds24").on(t.organizacaoId, t.beds24Id).where(sql`${t.beds24Id} is not null`),
+    foreignKey({ columns: [t.acompanhamentoId], foreignColumns: [beds24ReservasSite.id], name: "beds24_reservas_operacoes_acompanhamento_fk" }),
+  ],
+);

@@ -53,6 +53,9 @@ describe("normalização", () => {
         codigoCanal: "HMFAKE123",
         modificadoEm: "2026-09-20T10:00:00Z",
         reservadaEm: null,
+        // M8.3a: sem info item nem código no nome/notas, sem marca do SCL; não é ensaio.
+        referenciaScl: null,
+        ensaio: false,
       },
     });
   });
@@ -224,7 +227,8 @@ describe("cliente HTTP (rede simulada)", () => {
     const { f, chamadas } = fetchFalso([json([{ success: true }, { success: false, errors: [{ action: "update", field: "price1", message: "Preço inválido" }] }], 201)]);
     const c = new ClienteBeds24Http({ token: "k", fetchImpl: f });
     const metodos = Object.getOwnPropertyNames(Object.getPrototypeOf(c)).filter((m) => !m.startsWith("constructor"));
-    expect(metodos.sort()).toEqual(["calendario", "chamar", "escreverCalendario", "get", "quartos", "reservas", "todas"]);
+    // M8.3a: `credencial` é leitura (GET /authentication/details); a escrita continua sendo só o calendário.
+    expect(metodos.sort()).toEqual(["calendario", "chamar", "credencial", "escreverCalendario", "get", "quartos", "reservas", "todas"]);
     const r = await c.escreverCalendario([
       { roomId: "200", faixas: [{ from: "2026-10-01", to: "2026-10-03", preco: 45050, minimo: 2, maximo: 27 }, { from: "2026-10-04", to: "2026-10-04", bloqueio: "blackout" }] },
       { roomId: "201", faixas: [{ from: "2026-10-01", to: "2026-10-01", preco: 100 }] },

@@ -8,13 +8,16 @@ import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
 import { paraDadosReserva } from "./converter";
-import { ErroBeds24, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
-import { envioEmAndamento, tentarTravaBeds24 } from "./trava";
+import { avisoDaConferencia, avisoDeRegistroIlegivel, avisoDeReleituraSemConclusao, conferirNaImportacao, desvioNaImportacao, passarEnviandoVencidasAIncerta, prepararDesvioNaImportacao, type RegistroConhecido } from "./reservas-site";
+import { ErroBeds24, type LeitorBeds24, type Lido, type ReservaBeds24 } from "./tipos";
+import { CAUSA_EM_ANDAMENTO, escritaBeds24EmAndamento, MENSAGEM_ENVIO_EM_ANDAMENTO, MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE, tentarTravaBeds24 } from "./trava";
 
 export type ResultadoSync = {
   ok: boolean; situacao: "ok" | "parcial" | "erro" | "ocupada" | "desligada";
   criadas: number; atualizadas: number; iguais: number; bloqueios: number; diasCalendario: number;
   totalDivergencias: number; divergencias: string[]; mensagem: string;
+  /** Só na "ocupada": a causa em poucas palavras (a rotina diária registra "não rodou: <causa>"). */
+  causa?: string;
   /** Na situação "erro": o tipo da falha, para o aviso da rotina automática ao Sentry (M0.9). */
   falha?: FalhaBeds24;
 };
@@ -22,6 +25,18 @@ const resultado = (): ResultadoSync => ({ ok: true, situacao: "ok", criadas: 0, 
 const referencia = (s: string) => /^[A-Za-z0-9._:-]{1,64}$/.test(s) ? s : "não identificado";
 const somarDias = (data: string, n: number) => new Date(Date.parse(`${data}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const aviso = (r: ResultadoSync, s: string) => { r.totalDivergencias++; if (r.divergencias.length < 100) r.divergencias.push(s.slice(0, 300)); };
+
+/**
+ * Um id que volta mais de uma vez numa consulta (legível ou em formato inválido; na leitura principal, ou em qualquer lote da
+ * releitura por id) deixa a resposta ambígua: não dá para saber qual cópia vale. Nada é aplicado. O "?" e o id torto de um
+ * registro ilegível não contam: não casam com id nenhum. `vistos` junta os lotes de uma mesma consulta.
+ */
+function semIdsRepetidos(l: Lido<ReservaBeds24>, vistos = new Set<string>()) {
+  for (const id of [...l.itens.map(b => b.idExterno), ...l.divergencias.map(d => d.id).filter(id => referencia(id) === id)]) {
+    if (vistos.has(id)) throw new ErroBeds24("Consulta com IDs de reserva repetidos. Confira a origem antes de importar; nenhuma mudança foi aplicada.", "formato");
+    vistos.add(id);
+  }
+}
 
 export function mensagemSeguraBeds24(e: unknown): string {
   return e instanceof ErroBeds24 ? e.message : "Não foi possível confirmar o resultado. Confira o histórico de importações antes de tentar novamente.";
@@ -53,12 +68,17 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
   try {
     r = await db.transaction(async tx => {
       await tx.execute(sql`set local lock_timeout = '15s'`);
-      // Mesma trava do envio de calendário: importação e envio nunca rodam ao mesmo tempo. Um envio entre a
-      // escrita externa e o registro final (fase sem trava) também faz a importação esperar.
-      if (!(await tentarTravaBeds24(tx, org))) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Já há uma sincronização ou um envio de calendário em andamento. Aguarde e atualize a página." };
-      if (await envioEmAndamento(tx, org, agora)) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Há um envio de calendário e preços em andamento. Aguarde alguns minutos e tente de novo." };
+      // Mesma trava do envio de calendário e do envio de reservas do site: importação e envios nunca rodam ao mesmo tempo.
+      // Um envio entre a escrita externa e o registro final (fase sem trava) também faz a importação esperar; a mensagem
+      // diz qual (calendário ou reserva do site).
+      if (!(await tentarTravaBeds24(tx, org))) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: "Já há uma sincronização, um envio de calendário ou um envio de reserva do site em andamento. Aguarde e atualize a página.", causa: CAUSA_EM_ANDAMENTO.trava };
+      const emAndamento = await escritaBeds24EmAndamento(tx, org, { agora });
+      if (emAndamento) return { ...resultado(), ok: false, situacao: "ocupada" as const, mensagem: emAndamento === "reserva" ? MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE : MENSAGEM_ENVIO_EM_ANDAMENTO, causa: CAUSA_EM_ANDAMENTO[emAndamento] };
       const c = await lerConfigBeds24(tx, org);
       if (o.automatica && !c.automatica) return { ...resultado(), situacao: "desligada" as const, mensagem: "Sincronização automática desligada no painel." };
+      // Já com a trava (e sem envio em andamento): a reserva do site com o POST tentado e sem resposta há mais de 6 min fica
+      // incerta (M8.3, desenho 3.6), e a importação nunca cria por cima dela (desvio "e", abaixo).
+      await passarEnviandoVencidasAIncerta(tx, org);
       const mapas = (await listarMapeamentosBeds24(tx, org)).filter(m => m.ativo);
       if (!mapas.length) throw new ErroBeds24("Vincule pelo menos um quarto do Beds24 a um imóvel ativo do SCL antes de importar.", "configuracao");
       if (mapas.some(m => !/^\d+$/.test(m.propertyId) || !/^\d+$/.test(m.roomId))) throw new ErroBeds24("Confira os vínculos: informe propertyId e roomId numéricos para cada imóvel. Vínculo sem quarto não é usado na importação.", "configuracao");
@@ -70,10 +90,14 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
         if (q.moeda !== "BRL") throw new ErroBeds24(`A moeda do imóvel ${m.codigo} precisa estar confirmada como BRL no Beds24 antes da importação financeira.`, "configuracao");
       }
       const res = resultado();
-      const lote = await leitor.reservas({ saidaDe: c.desde, propertyIds: [...new Set(mapas.map(m => m.propertyId))] });
+      // Com os info items (M8.3, desenho 5.4): é onde mora a marca do SCL nas reservas pagas do site e no ensaio.
+      const lote = await leitor.reservas({ saidaDe: c.desde, propertyIds: [...new Set(mapas.map(m => m.propertyId))], incluirInfo: true });
+      semIdsRepetidos(lote);
       const porId = new Map(lote.itens.map(b => [b.idExterno, b]));
-      if (porId.size !== lote.itens.length) throw new ErroBeds24("Consulta com IDs de reserva repetidos. Confira a origem antes de importar; nenhuma mudança foi aplicada.", "formato");
       for (const d of lote.divergencias) aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
+      // Ids que voltaram em formato inválido (aqui e na releitura): o registro existe, só não deu para ler. Nunca contam
+      // como "não voltou" (apagado): avisar em vez de supor.
+      const ilegiveis = new Set(lote.divergencias.map(d => d.id));
 
       // Reconsulta IDs já importados que saíram do filtro (mudança de datas, quarto
       // ou cancelamento). Ausência nunca cancela reserva nem libera um bloqueio.
@@ -83,11 +107,48 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       const conhecidos = [...new Set([...antigas.map(a => a.beds24Id || a.idFonte), ...antigosBloqueios.map(a => a.idFonte)])];
       if (conhecidos.length > 2000 || lote.itens.length > 2000) throw new ErroBeds24("Consulta acima de 2.000 reservas: é necessário ampliar o processamento antes de importar este volume.", "formato");
       const faltantes = conhecidos.filter(id => !porId.has(id));
+      // Registro de um id fora do pedido do lote, legível ou não, ou sem id legível: a resposta não é a do pedido, e ele pode
+      // ser de qualquer id pedido, inclusive de outro lote. Um id que já voltou legível na leitura do período não é pedido de
+      // novo: se ele volta na releitura, é o mesmo id duas vezes (a importação para, como numa leitura só).
+      const vistosNaReleitura = new Set<string>(porId.keys());
+      let semDono = 0;
       for (let i = 0; i < faltantes.length; i += 50) {
         const ids = faltantes.slice(i, i + 50);
-        const l = await leitor.reservas({ ids, chegadaDe: "1900-01-01" });
-        for (const b of l.itens) if (ids.includes(b.idExterno)) porId.set(b.idExterno, b);
-        for (const id of ids) if (!porId.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
+        const l = await leitor.reservas({ ids, chegadaDe: "1900-01-01", incluirInfo: true });
+        semIdsRepetidos(l, vistosNaReleitura);
+        for (const b of l.itens) {
+          if (ids.includes(b.idExterno)) porId.set(b.idExterno, b);
+          else semDono++;
+        }
+        for (const d of l.divergencias) {
+          if (!ids.includes(d.id)) { semDono++; continue; }
+          if (ilegiveis.has(d.id)) continue;
+          ilegiveis.add(d.id);
+          aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
+        }
+      }
+      // Com qualquer registro sem dono, em qualquer lote, a releitura toda fica sem conclusão: nenhum id que não voltou conta
+      // como "não voltou" (apagado), com um aviso só.
+      const semConclusao = new Set<string>();
+      if (semDono) {
+        for (const id of faltantes) if (!porId.has(id) && !ilegiveis.has(id)) semConclusao.add(id);
+        aviso(res, `Releitura por id: ${semDono} registro(s) voltaram com um id que não foi pedido ou que não deu para ler; os registros que não voltaram legíveis ficam como estavam. Confira os registros no Beds24.`);
+      }
+      for (const id of faltantes) if (!porId.has(id) && !ilegiveis.has(id) && !semConclusao.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
+      // O que cada id conhecido é no SCL (a reserva vale sobre o bloqueio com o mesmo id): o desvio deixa o registro conhecido
+      // com a marca seguir o caminho normal (5.2 c e d).
+      const tipoConhecido = new Map<string, RegistroConhecido>([...antigosBloqueios.map(a => [a.idFonte, "bloqueio"] as const), ...antigas.map(a => [a.beds24Id || a.idFonte, "reserva"] as const)]);
+      // Reserva paga do site (M8.3, desenho 5.2): o que o desvio consulta, lido uma vez. O id dela que não voltou numa releitura
+      // limpa é conferido como apagado no Beds24 (a reserva do SCL continua como estava). O que voltou ilegível, em qualquer
+      // leitura desta importação (mesmo que outra leitura o traga legível), e o que não voltou numa releitura sem conclusão
+      // não são conferidos: nada muda no acompanhamento (situação, leitura e marcas das OTAs), só o aviso. Com qualquer
+      // registro ilegível ou sem dono, a adoção também não conclui (pode ser outra cópia com a marca).
+      const desvio = await prepararDesvioNaImportacao(tx, org, porId.values(), tipoConhecido, agora, { ilegiveis, leituraComIlegivel: ilegiveis.size > 0 || semDono > 0 });
+      for (const id of faltantes) {
+        const ligada = porId.has(id) ? undefined : desvio.ligadas.get(id);
+        if (!ligada) continue;
+        const a = ilegiveis.has(id) ? avisoDeRegistroIlegivel(ligada.codigo, id) : semConclusao.has(id) ? avisoDeReleituraSemConclusao(ligada.codigo, id) : avisoDaConferencia(await conferirNaImportacao(tx, org, ligada.id, null, agora), ligada.codigo, id);
+        if (a) aviso(res, a);
       }
       const inicio = hojeISO("America/Sao_Paulo", agora);
       const fim = somarDias(inicio, c.diasCalendario);
@@ -96,6 +157,13 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
 
       for (const b of porId.values()) {
         if (Date.now() > limite) throw new ErroBeds24("A importação excedeu o tempo disponível e foi desfeita. Reduza o período ou solicite processamento em lotes.", "tempo");
+        // Antes da conferência de vínculo e do ramo de bloqueio: a reserva do site (e o ensaio) nunca passa por
+        // `sincronizarReserva`, mesmo com o vínculo do imóvel trocado depois da criação.
+        const d = await desvioNaImportacao(tx, org, b, desvio);
+        if (d.desviado) {
+          if (d.aviso) aviso(res, d.aviso);
+          continue;
+        }
         const m = mapas.find(m => m.propertyId === b.propertyId && m.roomId === b.roomId);
         if (!m) { aviso(res, `Reserva ${referencia(b.idExterno)}: quarto sem vínculo ativo e exato no SCL. Nenhuma alteração aplicada a esse registro.`); continue; }
         await aplicarRegistro(tx, org, b, m.imovelId, res, o.autorId ?? null, exec.id);
