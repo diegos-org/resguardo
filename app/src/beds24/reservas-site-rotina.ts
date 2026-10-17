@@ -1,5 +1,5 @@
 /**
- * Reserva paga do site no Beds24 (M8.3c): o estado da rotina por organização (`beds24_reservas_rotina`, migração 0073) e o
+ * Reserva paga do site no Beds24 (M8.3c): o estado da rotina por organização (`beds24_reservas_rotina`, migração 0074) e o
  * motivo de configuração que para a escrita (desenho 2.4 e 7), uma função para o trabalhador, o Início, Integrações e o
  * Sistema.
  * - O estado é operacional, não configuração editável: a última leitura dos escopos (só nomes de escopo e a impressão da

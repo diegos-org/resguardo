@@ -11,12 +11,13 @@ import styles from "./painel.module.css";
 /** Dito só ao leitor de tela, entre "Menu" e o nome da seção atual (na tela, um "·"). */
 export const ROTULO_SECAO_ATUAL = ", você está em ";
 
-export function Menu({ papel }: { papel: Papel }) {
+/** `ocultar` (M10.1a): seções que a sessão não abre além das da permissão do papel (ex.: "mensagens", pela configuração). */
+export function Menu({ papel, ocultar = [] }: { papel: Papel; ocultar?: readonly string[] }) {
   const atual = usePathname();
   const filtros = manterFiltros(useSearchParams());
   const idLista = useId();
   const gaveta = useRef<HTMLDetailsElement>(null);
-  const itens = [{ slug: "", titulo: "Início" }, ...secoesPara(papel)].map((item) => {
+  const itens = [{ slug: "", titulo: "Início" }, ...secoesPara(papel, ocultar)].map((item) => {
     const href = item.slug ? `/painel/${item.slug}` : "/painel";
     // Subpáginas (ex.: /painel/configuracoes/regras) marcam a seção de cima.
     const ativo = atual === href || (item.slug !== "" && atual.startsWith(`${href}/`));

@@ -11,8 +11,10 @@ import { eventosPagamento, pagamentosAvisosDia, type ResultadoEventoPagamento } 
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
+import { GUARDAR_EVENTOS_DIAS } from "@/lib/retencao";
 
-export const GUARDAR_EVENTOS_DIAS = 90;
+// O prazo mora em lib/retencao.ts (o mesmo dos avisos do WhatsApp, M10.1a); reexportado para quem já importava daqui.
+export { GUARDAR_EVENTOS_DIAS };
 const FUSO = "America/Sao_Paulo";
 
 const codigo = (v: unknown) => (typeof v === "string" && /^[a-z0-9_.]{1,60}$/i.test(v.trim()) ? v.trim().toLowerCase() : "");

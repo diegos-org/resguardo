@@ -1,5 +1,5 @@
 /**
- * Reserva paga do site no Beds24 (M8.3c): o estado da rotina (`beds24_reservas_rotina`, migração 0073) e o motivo de
+ * Reserva paga do site no Beds24 (M8.3c): o estado da rotina (`beds24_reservas_rotina`, migração 0074) e o motivo de
  * configuração que para a escrita (desenho 2.4 e 7; seção 10, teste 36). PGlite, sem rede: o `env` é sempre
  * explícito e nenhum leitor do Beds24 é criado.
  */

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), redirect: vi.fn(), reservasBeds24: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), redirect: vi.fn(), reservasBeds24: vi.fn(), wa: vi.fn(), propsWa: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({
@@ -25,8 +25,41 @@ vi.mock("@/beds24/acoes-reservas", () => ({
   cancelarEnsaioReservasBeds24Acao: vi.fn(),
   conferirEnsaioReservasBeds24Acao: vi.fn(),
 }));
+// M10.1a: a situação do WhatsApp (a mesma função de Sistema), as ações dos dois formulários e o quadro, de verdade, com
+// as propriedades que recebe anotadas (nunca o ambiente).
+vi.mock("@/whatsapp/integracao", async (original) => ({ ...(await original<typeof import("@/whatsapp/integracao")>()), situacaoDoWhatsapp: m.wa }));
+vi.mock("@/whatsapp/acoes", () => ({ salvarIdsWhatsappAcao: vi.fn(), salvarQuemVeConversasAcao: vi.fn() }));
+vi.mock("@/components/configuracoes/WhatsappIntegracao", async (original) => {
+  const o = await original<typeof import("@/components/configuracoes/WhatsappIntegracao")>();
+  return { WhatsappIntegracao: (p: Parameters<typeof o.WhatsappIntegracao>[0]) => (m.propsWa(p), o.WhatsappIntegracao(p)) };
+});
 import type { PainelReservasBeds24 } from "@/beds24/reservas-site-painel";
+import { servicoWhatsapp } from "@/sistema/servicos";
+import type { SituacaoWhatsapp } from "@/whatsapp/integracao";
 import Page from "./page";
+
+const WHATSAPP: SituacaoWhatsapp = {
+  recebimentoLigado: true,
+  token: "ok",
+  segredoConfigurado: true,
+  config: { wabaId: "200000000000002", numeroId: "100000000000001", quemVeConversas: "so_admin" },
+  conta: {
+    situacao: "conectada",
+    ultimoEvento: "PARTNER_ADDED",
+    motivo: null,
+    iniciadoPor: null,
+    situacaoEm: new Date("2026-10-17T12:00:00Z"),
+    conectadoEm: new Date("2026-10-17T12:00:00Z"),
+    prazo24h: null,
+    sincronizacaoContatos: "nao_pedida",
+    contatosRecebidosEm: null,
+    sincronizacaoHistorico: "nao_pedida",
+    progressoHistorico: null,
+  },
+  avisos: { hoje: { assinaturas_recusadas: 1, ilegiveis: 0, outra_conta: 0, desconhecidos: 0, ignorados: 0 }, ultimoValidoEm: new Date("2026-10-17T13:00:00Z") },
+  eventosDaConta: [],
+  enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/whatsapp",
+};
 
 const PAINEL: PainelReservasBeds24 = {
   chave: { ligada: false, ambienteDeProducao: false, pronta: false },
@@ -62,6 +95,7 @@ beforeEach(() => {
     enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/pagamentos/mercadopago",
   });
   m.reservasBeds24.mockResolvedValue(PAINEL);
+  m.wa.mockResolvedValue(WHATSAPP);
   vi.stubEnv("VERCEL_ENV", "preview");
   // A sessão pode ter a credencial real (e as chaves) do Beds24 no ambiente: cada teste parte sem elas.
   for (const v of ["BEDS24_REFRESH_TOKEN", "BEDS24_API_KEY", "BEDS24_ESCRITA", "BEDS24_ESCRITA_RESERVAS"]) vi.stubEnv(v, undefined);
@@ -73,6 +107,8 @@ it.each(["operacao", "proprietario", "limpeza"])("%s não abre Integrações", a
   m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: [] });
   await expect(Page()).rejects.toThrow("NEXT_REDIRECT");
   expect(m.mp).not.toHaveBeenCalled();
+  // M10.1a: nem a situação do WhatsApp (os ids da Meta) é lida.
+  expect(m.wa).not.toHaveBeenCalled();
 });
 
 it("Mercado Pago pela mesma função de Sistema: linha na tabela com as variáveis, o quadro com o endereço e a nota da prévia, sem chave", async () => {
@@ -207,4 +243,42 @@ it("M8.3c: o ensaio — o formulário só com os imóveis do vínculo, desabilit
   m.reservasBeds24.mockResolvedValue({ ...PAINEL, ensaioAtual: { ...base, fase: "terminado", situacao: "conflito", beds24Id: null, podeCancelar: false, erro: "As noites do ensaio não estão livres no Beds24 (outra reserva, um bloqueio ou sem unidade livre): nada foi enviado. Escolha outras datas.", terminadoEm: new Date("2026-10-16T14:10:00Z") } });
   h = renderToStaticMarkup(await Page());
   expect(h).toContain("terminado em 16/10/2026 às 11:10): não concluído. As noites do ensaio não estão livres no Beds24");
+});
+
+describe("M10.1a: WhatsApp em Integrações", () => {
+  const TOKEN = "senha-de-verificacao-ficticia-com-mais-de-32-letras";
+  const SEGREDO = "segredo-do-app-ficticio-de-teste";
+  beforeEach(() => {
+    vi.stubEnv("WHATSAPP_VERIFY_TOKEN", TOKEN);
+    vi.stubEnv("WHATSAPP_APP_SECRET", SEGREDO);
+    vi.stubEnv("WHATSAPP_RECEBIMENTO", "ligada");
+  });
+
+  it("a situação pela mesma função de Sistema; a linha da tabela é a de Sistema, com as variáveis; o quadro com o endereço e os formulários; nunca o token nem o segredo", async () => {
+    const h = renderToStaticMarkup(await Page());
+    expect(m.wa).toHaveBeenCalledTimes(1);
+    expect(m.wa).toHaveBeenCalledWith(expect.anything(), "org", process.env, expect.any(Date));
+    // A mesma linha de Sistema (servicoWhatsapp), na tabela, e o que vai na Vercel.
+    expect(h).toContain(`<td>WhatsApp (Meta)</td><td>Caixa de entrada do WhatsApp (recebimento)</td><td>${servicoWhatsapp(WHATSAPP).detalhe}</td>`);
+    expect(h).toContain("WHATSAPP_VERIFY_TOKEN (pelo menos 32 caracteres, gerado só para isso) e WHATSAPP_APP_SECRET: só no ambiente Production da Vercel");
+    expect(h).toContain("WHATSAPP_RECEBIMENTO=ligada, que só o Diego liga");
+    expect(h).toContain('aria-label="WhatsApp"');
+    expect(h).toContain("https://scl-reconstrucao.vercel.app/api/whatsapp");
+    expect(h).toContain('aria-label="Identificação na Meta"');
+    expect(h).toContain('aria-label="Quem vê as conversas"');
+    expect(h).not.toContain(TOKEN);
+    expect(h).not.toContain(SEGREDO);
+  });
+
+  it("o quadro recebe só a situação e se é prévia (nunca o ambiente); na prévia, o aviso de usar só ids fictícios", async () => {
+    let h = renderToStaticMarkup(await Page());
+    expect(m.propsWa).toHaveBeenLastCalledWith({ w: WHATSAPP, naPrevia: true });
+    expect(Object.keys(m.propsWa.mock.lastCall![0]).sort()).toEqual(["naPrevia", "w"]);
+    expect(h).toContain("Esta é uma prévia de teste: o endereço do WhatsApp só funciona na produção.");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("NODE_ENV", "production");
+    h = renderToStaticMarkup(await Page());
+    expect(m.propsWa).toHaveBeenLastCalledWith({ w: WHATSAPP, naPrevia: false });
+    expect(h).not.toContain("Esta é uma prévia de teste");
+  });
 });

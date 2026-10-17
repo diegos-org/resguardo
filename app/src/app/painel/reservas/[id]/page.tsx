@@ -34,6 +34,9 @@ import { lerContestacoesDaEquipe, lerContestacoesDaOperacao, textoDoResultadoDaC
 import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebimentos";
 import { aceitesDaReserva } from "@/site/aceites";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
+import { ConversaWhatsapp } from "@/components/reservas/ConversaWhatsapp";
+import { podeVerConversas } from "@/whatsapp/acesso";
+import { conversasDaReserva } from "@/whatsapp/conversas";
 
 // M8.2d: a diferença de uma alteração também é valor (o histórico da reserva nunca leva o valor a quem não lê o financeiro).
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento", "diferenca"];
@@ -130,6 +133,9 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     : "";
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
+  // M10.1a: a conversa do WhatsApp ligada a esta reserva, só para quem vê as conversas (a configuração "Quem vê as
+  // conversas", padrão só o admin): sem acesso, nada é consultado e o bloco não aparece.
+  const conversas = (await podeVerConversas(db, sessao)) ? await conversasDaReserva(db, sessao, r.id, agora) : null;
 
   const linhas: [string, string][] = [
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
@@ -287,6 +293,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
       />
       {noBeds24 && <ReservaNoBeds24 reservaId={r.id} ficha={noBeds24} editar={editarReserva} resultado={typeof resultadoBeds24 === "string" ? resultadoBeds24 : undefined} />}
       <PaginasLegaisAceitas aceites={aceitesSite} />
+      <ConversaWhatsapp conversas={conversas} />
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>
           <p style={{ margin: 0 }}>

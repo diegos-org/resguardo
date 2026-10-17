@@ -46,6 +46,9 @@ vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/acesso/auth", () => ({ signOut: vi.fn() }));
 vi.mock("@/configuracoes/empresa", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/empresa")>()), nomeDaEmpresa: m.empresa }));
 vi.mock("@/db/client", async (orig) => ({ ...(await orig<typeof import("@/db/client")>()), getDb: vi.fn(() => ({})) }));
+// M10.1a: o layout pergunta a `whatsapp/acesso.ts` se a sessão vê as conversas (o item "Mensagens" do menu); com o banco
+// simulado vazio, a resposta vem pronta.
+vi.mock("@/whatsapp/acesso", () => ({ podeVerConversas: async () => true }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NAO_ENCONTRADA");

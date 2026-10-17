@@ -18,6 +18,7 @@ const m = vi.hoisted(() => ({
     beds24Envio: vi.fn(),
     beds24Reservas: vi.fn(),
     rotinaDoSite: vi.fn(),
+    whatsapp: vi.fn(),
   },
 }));
 vi.mock("@sentry/nextjs", () => ({ captureException: m.captureException, flush: m.flush }));
@@ -31,6 +32,7 @@ vi.mock("@/beds24/cron", () => ({ executarCronBeds24: m.rotinas.beds24 }));
 vi.mock("@/beds24/cron-envio", () => ({ executarCronEnvioBeds24: m.rotinas.beds24Envio }));
 vi.mock("@/beds24/cron-reservas", () => ({ executarCronReservasBeds24: m.rotinas.beds24Reservas }));
 vi.mock("@/pagamentos/rotina", () => ({ rotinaDoSite: m.rotinas.rotinaDoSite }));
+vi.mock("@/whatsapp/cron", () => ({ rotinaWhatsapp: m.rotinas.whatsapp }));
 vi.mock("@/pagamentos/oferta", () => ({ provedorDeConferencia: async () => ({ ok: false, motivo: "so_nas_previas", texto: "" }) }));
 // Como a de verdade: roda a função e deixa o erro subir.
 vi.mock("@/sistema/automacoes", () => ({ registrarExecucao: async (_db: unknown, _nome: string, fn: () => Promise<string>) => fn() }));
@@ -45,6 +47,7 @@ import { GET as fechamento } from "./fechamento/route";
 import { GET as mensagens } from "./mensagens/route";
 import { GET as repasses } from "./repasses/route";
 import { GET as repassesEmails } from "./repasses-emails/route";
+import { GET as whatsapp } from "./whatsapp/route";
 
 const pedido = () => new Request("https://example.com/api/cron/x", { headers: { authorization: "Bearer cron-teste" } });
 const NOME = "Maria Fictícia Teste";
@@ -108,6 +111,28 @@ describe("rotinas automáticas: o erro vai para o Sentry com o nome da rotina (M
     expect(textoDoAviso(erro)).not.toContain(NOME);
     expect(textoDoAviso(erro)).not.toContain("SEGREDO");
     expect(contexto).toEqual({ tags: { rotina: "pedidos-site" } });
+  });
+
+  it("whatsapp (M10.1a): como os pedidos do site, o texto fixo vai para Sistema e o erro original segue como causa, sem a mensagem", async () => {
+    m.rotinas.whatsapp.mockRejectedValue(Object.assign(new Error(`Failed query: params: ${NOME}`), { code: "57P01" }));
+    const r = await whatsapp(pedido());
+    expect(r.status).toBe(500);
+    expect(await r.json()).toEqual({ ok: false });
+    const [erro, contexto] = avisado();
+    expect(contexto).toEqual({ tags: { rotina: "whatsapp" } });
+    expect(erro.message).toBe("1 rotina interrompida no meio (detalhe na página Sistema)");
+    expect((erro.cause as Error).message).toBe(`${MENSAGEM_OMITIDA}; código 57P01`);
+    expect(textoDoAviso(erro)).not.toContain(NOME);
+    expect(m.flush).toHaveBeenCalledWith(2000);
+  });
+
+  it("whatsapp (M10.1a): o e-mail da conta que falhou chega só com a contagem", async () => {
+    m.rotinas.whatsapp.mockRejectedValue(new ErroDeRotina(`0 aviso(s) antigo(s) apagado(s); 0 e-mail(s) da conta enviado(s); 1 falhou(aram) ${NOME}`, { email_nao_enviado: 1 }));
+    expect((await whatsapp(pedido())).status).toBe(500);
+    const [erro, contexto] = avisado();
+    expect(contexto).toEqual({ tags: { rotina: "whatsapp" } });
+    expect(erro.message).toBe("1 e-mail(s) não enviado(s) (detalhe na página Sistema)");
+    expect(textoDoAviso(erro)).not.toContain(NOME);
   });
 
   it("deu certo: nada vai para o Sentry", async () => {

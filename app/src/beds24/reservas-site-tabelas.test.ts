@@ -1,6 +1,6 @@
 /**
  * As duas tabelas do M8.3 (migração 0072, desenho 3.2): os únicos e o índice parcial que o banco garante sozinho, e a
- * varredura `semDadosPessoais`, que passa a cobrir as duas. M8.3c (migração 0073): a resposta e o detalhe das operações, o
+ * varredura `semDadosPessoais`, que passa a cobrir as duas. M8.3c (migração 0074): a resposta e o detalhe das operações, o
  * índice do último 403 ou 401, o estado da rotina (uma linha por organização) e a varredura também no resumo das rotinas e
  * nos e-mails. PGlite, sem rede.
  */
@@ -81,7 +81,7 @@ describe("tabelas das reservas do site no Beds24 (migração 0072)", () => {
   });
 });
 
-describe("as colunas e a tabela da escrita (migração 0073, M8.3c)", () => {
+describe("as colunas e a tabela da escrita (migração 0074, M8.3c)", () => {
   it("a operação nasce sem resposta e com o detalhe vazio; a resposta e o detalhe gravados voltam como foram", async () => {
     const [o] = await operacao().returning();
     expect(o).toMatchObject({ resposta: null, detalhe: {} });

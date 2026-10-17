@@ -1,5 +1,5 @@
 {
-  "id": "7f3a4fd8-6092-4e9b-b8b8-b601025eeade",
+  "id": "ee36e458-7823-4f9e-932a-cecafee141cf",
   "prevId": "dfd43dd4-39a9-4d4f-b3a4-d76203aedd96",
   "version": "7",
   "dialect": "postgresql",
@@ -2648,19 +2648,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "''"
-        },
-        "resposta": {
-          "name": "resposta",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "detalhe": {
-          "name": "detalhe",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
         }
       },
       "indexes": {
@@ -2749,34 +2736,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "beds24_reservas_operacoes_resposta": {
-          "name": "beds24_reservas_operacoes_resposta",
-          "columns": [
-            {
-              "expression": "organizacao_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "resposta",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "respondido_em",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"beds24_reservas_operacoes\".\"resposta\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -2825,77 +2784,6 @@
           "tableTo": "beds24_reservas_site",
           "columnsFrom": [
             "acompanhamento_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.beds24_reservas_rotina": {
-      "name": "beds24_reservas_rotina",
-      "schema": "",
-      "columns": {
-        "organizacao_id": {
-          "name": "organizacao_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "escopos": {
-          "name": "escopos",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "escopos_credencial": {
-          "name": "escopos_credencial",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "escopos_lidos_em": {
-          "name": "escopos_lidos_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "conferencia_em": {
-          "name": "conferencia_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "releitura_em": {
-          "name": "releitura_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "atualizado_em": {
-          "name": "atualizado_em",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "beds24_reservas_rotina_organizacao_id_organizacoes_id_fk": {
-          "name": "beds24_reservas_rotina_organizacao_id_organizacoes_id_fk",
-          "tableFrom": "beds24_reservas_rotina",
-          "tableTo": "organizacoes",
-          "columnsFrom": [
-            "organizacao_id"
           ],
           "columnsTo": [
             "id"
@@ -11996,6 +11884,868 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.whatsapp_avisos_dia": {
+      "name": "whatsapp_avisos_dia",
+      "schema": "",
+      "columns": {
+        "dia": {
+          "name": "dia",
+          "type": "date",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "assinaturas_recusadas": {
+          "name": "assinaturas_recusadas",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "ilegiveis": {
+          "name": "ilegiveis",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "outra_conta": {
+          "name": "outra_conta",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "desconhecidos": {
+          "name": "desconhecidos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "ignorados": {
+          "name": "ignorados",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "ultimo_valido_em": {
+          "name": "ultimo_valido_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.whatsapp_conta": {
+      "name": "whatsapp_conta",
+      "schema": "",
+      "columns": {
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "situacao": {
+          "name": "situacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'nao_conectada'"
+        },
+        "ultimo_evento": {
+          "name": "ultimo_evento",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "motivo": {
+          "name": "motivo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "iniciado_por": {
+          "name": "iniciado_por",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "situacao_em": {
+          "name": "situacao_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conectado_em": {
+          "name": "conectado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sincronizacao_contatos": {
+          "name": "sincronizacao_contatos",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'nao_pedida'"
+        },
+        "contatos_recebidos_em": {
+          "name": "contatos_recebidos_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sincronizacao_historico": {
+          "name": "sincronizacao_historico",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'nao_pedida'"
+        },
+        "progresso_historico": {
+          "name": "progresso_historico",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "atualizado_em": {
+          "name": "atualizado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "whatsapp_conta_organizacao_id_organizacoes_id_fk": {
+          "name": "whatsapp_conta_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "whatsapp_conta",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "whatsapp_conta_progresso": {
+          "name": "whatsapp_conta_progresso",
+          "value": "\"whatsapp_conta\".\"progresso_historico\" is null or (\"whatsapp_conta\".\"progresso_historico\" between 0 and 100)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.whatsapp_contatos": {
+      "name": "whatsapp_contatos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wa_id": {
+          "name": "wa_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bsuid": {
+          "name": "bsuid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "nome_perfil": {
+          "name": "nome_perfil",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "nome_agenda": {
+          "name": "nome_agenda",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "nome_agenda_em": {
+          "name": "nome_agenda_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ultima_mensagem_em": {
+          "name": "ultima_mensagem_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ultima_recebida_em": {
+          "name": "ultima_recebida_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ultima_enviada_em": {
+          "name": "ultima_enviada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lida_ate": {
+          "name": "lida_ate",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conflito_identidade": {
+          "name": "conflito_identidade",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "reserva_id": {
+          "name": "reserva_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cotacao_id": {
+          "name": "cotacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pedido_contato_id": {
+          "name": "pedido_contato_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cadastro_marketplace_id": {
+          "name": "cadastro_marketplace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "proprietario_id": {
+          "name": "proprietario_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vinculo_confirmado_por": {
+          "name": "vinculo_confirmado_por",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vinculo_confirmado_em": {
+          "name": "vinculo_confirmado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "atualizado_em": {
+          "name": "atualizado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "whatsapp_contatos_wa_id": {
+          "name": "whatsapp_contatos_wa_id",
+          "columns": [
+            {
+              "expression": "organizacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "wa_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"whatsapp_contatos\".\"wa_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "whatsapp_contatos_bsuid": {
+          "name": "whatsapp_contatos_bsuid",
+          "columns": [
+            {
+              "expression": "organizacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bsuid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"whatsapp_contatos\".\"bsuid\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "whatsapp_contatos_ultima": {
+          "name": "whatsapp_contatos_ultima",
+          "columns": [
+            {
+              "expression": "organizacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ultima_mensagem_em",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "whatsapp_contatos_reserva": {
+          "name": "whatsapp_contatos_reserva",
+          "columns": [
+            {
+              "expression": "reserva_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"whatsapp_contatos\".\"reserva_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "whatsapp_contatos_cotacao": {
+          "name": "whatsapp_contatos_cotacao",
+          "columns": [
+            {
+              "expression": "cotacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"whatsapp_contatos\".\"cotacao_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "whatsapp_contatos_organizacao_id_organizacoes_id_fk": {
+          "name": "whatsapp_contatos_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "whatsapp_contatos",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "whatsapp_contatos_reserva_id_reservas_id_fk": {
+          "name": "whatsapp_contatos_reserva_id_reservas_id_fk",
+          "tableFrom": "whatsapp_contatos",
+          "tableTo": "reservas",
+          "columnsFrom": [
+            "reserva_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "whatsapp_contatos_cotacao_id_cotacoes_id_fk": {
+          "name": "whatsapp_contatos_cotacao_id_cotacoes_id_fk",
+          "tableFrom": "whatsapp_contatos",
+          "tableTo": "cotacoes",
+          "columnsFrom": [
+            "cotacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "whatsapp_contatos_proprietario_id_proprietarios_id_fk": {
+          "name": "whatsapp_contatos_proprietario_id_proprietarios_id_fk",
+          "tableFrom": "whatsapp_contatos",
+          "tableTo": "proprietarios",
+          "columnsFrom": [
+            "proprietario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "whatsapp_contatos_vinculo_confirmado_por_usuarios_id_fk": {
+          "name": "whatsapp_contatos_vinculo_confirmado_por_usuarios_id_fk",
+          "tableFrom": "whatsapp_contatos",
+          "tableTo": "usuarios",
+          "columnsFrom": [
+            "vinculo_confirmado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "whatsapp_contatos_pedido_contato_fk": {
+          "name": "whatsapp_contatos_pedido_contato_fk",
+          "tableFrom": "whatsapp_contatos",
+          "tableTo": "pedidos_contato_proprietario",
+          "columnsFrom": [
+            "pedido_contato_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "whatsapp_contatos_cadastro_fk": {
+          "name": "whatsapp_contatos_cadastro_fk",
+          "tableFrom": "whatsapp_contatos",
+          "tableTo": "cadastros_marketplace",
+          "columnsFrom": [
+            "cadastro_marketplace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "whatsapp_contatos_identidade": {
+          "name": "whatsapp_contatos_identidade",
+          "value": "\"whatsapp_contatos\".\"wa_id\" is not null or \"whatsapp_contatos\".\"bsuid\" is not null"
+        },
+        "whatsapp_contatos_wa_id_digitos": {
+          "name": "whatsapp_contatos_wa_id_digitos",
+          "value": "\"whatsapp_contatos\".\"wa_id\" is null or \"whatsapp_contatos\".\"wa_id\" ~ '^[0-9]{6,20}$'"
+        },
+        "whatsapp_contatos_um_vinculo": {
+          "name": "whatsapp_contatos_um_vinculo",
+          "value": "num_nonnulls(\"whatsapp_contatos\".\"reserva_id\", \"whatsapp_contatos\".\"cotacao_id\", \"whatsapp_contatos\".\"pedido_contato_id\", \"whatsapp_contatos\".\"cadastro_marketplace_id\", \"whatsapp_contatos\".\"proprietario_id\") <= 1 and ((num_nonnulls(\"whatsapp_contatos\".\"reserva_id\", \"whatsapp_contatos\".\"cotacao_id\", \"whatsapp_contatos\".\"pedido_contato_id\", \"whatsapp_contatos\".\"cadastro_marketplace_id\", \"whatsapp_contatos\".\"proprietario_id\") = 1) = (\"whatsapp_contatos\".\"vinculo_confirmado_em\" is not null))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.whatsapp_eventos": {
+      "name": "whatsapp_eventos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campo": {
+          "name": "campo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "motivo": {
+          "name": "motivo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chave": {
+          "name": "chave",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "itens": {
+          "name": "itens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "resultado": {
+          "name": "resultado",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ocorrido_em": {
+          "name": "ocorrido_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recebido_em": {
+          "name": "recebido_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "avisar_por_email": {
+          "name": "avisar_por_email",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "email_aviso_em": {
+          "name": "email_aviso_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_resultado": {
+          "name": "email_resultado",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "whatsapp_eventos_chave": {
+          "name": "whatsapp_eventos_chave",
+          "columns": [
+            {
+              "expression": "organizacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "chave",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"whatsapp_eventos\".\"chave\" <> ''",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "whatsapp_eventos_recebido": {
+          "name": "whatsapp_eventos_recebido",
+          "columns": [
+            {
+              "expression": "recebido_em",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "whatsapp_eventos_organizacao_id_organizacoes_id_fk": {
+          "name": "whatsapp_eventos_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "whatsapp_eventos",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.whatsapp_mensagens": {
+      "name": "whatsapp_mensagens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organizacao_id": {
+          "name": "organizacao_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contato_id": {
+          "name": "contato_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wamid": {
+          "name": "wamid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "direcao": {
+          "name": "direcao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origem": {
+          "name": "origem",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "texto": {
+          "name": "texto",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "anexo_mime": {
+          "name": "anexo_mime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resposta_a": {
+          "name": "resposta_a",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enviada_em": {
+          "name": "enviada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recebida_em": {
+          "name": "recebida_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "editada_em": {
+          "name": "editada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "apagada_em": {
+          "name": "apagada_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reacao": {
+          "name": "reacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reacao_em": {
+          "name": "reacao_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "situacao": {
+          "name": "situacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "whatsapp_mensagens_wamid": {
+          "name": "whatsapp_mensagens_wamid",
+          "columns": [
+            {
+              "expression": "organizacao_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "wamid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "whatsapp_mensagens_contato": {
+          "name": "whatsapp_mensagens_contato",
+          "columns": [
+            {
+              "expression": "contato_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "enviada_em",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "whatsapp_mensagens_organizacao_id_organizacoes_id_fk": {
+          "name": "whatsapp_mensagens_organizacao_id_organizacoes_id_fk",
+          "tableFrom": "whatsapp_mensagens",
+          "tableTo": "organizacoes",
+          "columnsFrom": [
+            "organizacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "whatsapp_mensagens_contato_id_whatsapp_contatos_id_fk": {
+          "name": "whatsapp_mensagens_contato_id_whatsapp_contatos_id_fk",
+          "tableFrom": "whatsapp_mensagens",
+          "tableTo": "whatsapp_contatos",
+          "columnsFrom": [
+            "contato_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "whatsapp_mensagens_apagada_sem_texto": {
+          "name": "whatsapp_mensagens_apagada_sem_texto",
+          "value": "\"whatsapp_mensagens\".\"apagada_em\" is null or \"whatsapp_mensagens\".\"texto\" = ''"
+        },
+        "whatsapp_mensagens_wamid_tamanho": {
+          "name": "whatsapp_mensagens_wamid_tamanho",
+          "value": "char_length(\"whatsapp_mensagens\".\"wamid\") between 1 and 256"
+        }
+      },
       "isRLSEnabled": false
     }
   },

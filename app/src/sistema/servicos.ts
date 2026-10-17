@@ -10,6 +10,7 @@ import { ambienteDoSentry, situacaoDoSentry } from "@/observabilidade/sentry";
 import { ambienteMercadoPago } from "@/pagamentos/ambiente";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
 import { deployDeProducao } from "@/sistema/ambiente";
+import type { SituacaoWhatsapp } from "@/whatsapp/integracao";
 
 export type SituacaoServico = "ok" | "configurado" | "falha" | "nao_configurado" | "planejado";
 
@@ -17,6 +18,7 @@ export type Servico = { nome: string; paraQue: string; situacao: SituacaoServico
 
 export const NOME_MERCADO_PAGO = "Pagamentos (Mercado Pago)";
 export const NOME_SENTRY = "Avisos de erro (Sentry)";
+export const NOME_WHATSAPP = "WhatsApp (Meta)";
 
 const quando = (d: Date) => dataHoraNoFuso(d);
 
@@ -109,11 +111,43 @@ export function servicoSentry(env: NodeJS.ProcessEnv): Servico {
   }
 }
 
+const PARA_QUE_WHATSAPP = "Caixa de entrada do WhatsApp (recebimento)";
+
 /**
- * `mercadoPago`: a situação já lida (`situacaoDoMercadoPago`); sem ela, a linha diz só que não foi conferida.
- * `paradaDasReservas` (M8.3c): o motivo de configuração que para a escrita das reservas do site, já lido por quem chama.
+ * A linha do WhatsApp (M10.1a; Integrações e Sistema), lida de `situacaoDoWhatsapp` — a mesma função nos dois lugares.
+ * "Configurado" só com tudo o que o recebimento precisa: a senha de verificação com 32 caracteres ou mais, a chave
+ * secreta do app, a chave `WHATSAPP_RECEBIMENTO` ligada e os dois ids da Meta (WABA e número). O detalhe diz o que falta
+ * e o último aviso válido; nunca um valor (nem das variáveis, nem os ids).
  */
-export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null, mercadoPago: SituacaoMercadoPago | null = null, o: { paradaDasReservas?: ConfiguracaoQueParaAsReservas | null } = {}): Servico[] {
+export function servicoWhatsapp(w: SituacaoWhatsapp): Servico {
+  const falta = [
+    ...(w.token === "falta" ? ["falta a senha de verificação (WHATSAPP_VERIFY_TOKEN)"] : w.token === "curto" ? ["senha de verificação curta demais (mínimo 32 caracteres)"] : []),
+    ...(w.segredoConfigurado ? [] : ["falta a chave secreta do app (WHATSAPP_APP_SECRET)"]),
+    ...(w.recebimentoLigado ? [] : ["recebimento desligado (WHATSAPP_RECEBIMENTO)"]),
+    ...(w.config.wabaId ? [] : ["falta o id da conta (WABA) em Integrações"]),
+    ...(w.config.numeroId ? [] : ["falta o id do número em Integrações"]),
+  ];
+  const ultimo = w.avisos.ultimoValidoEm ? `último aviso válido em ${quando(w.avisos.ultimoValidoEm)}` : "nenhum aviso válido recebido ainda";
+  return {
+    nome: NOME_WHATSAPP,
+    paraQue: PARA_QUE_WHATSAPP,
+    situacao: falta.length ? "nao_configurado" : "configurado",
+    detalhe: [falta.length ? falta.join(" · ") : "Recebimento ligado e configurado; a conexão com a Meta não é testada nesta abertura", ultimo].join(" · "),
+  };
+}
+
+/**
+ * `mercadoPago` e `whatsapp`: as situações já lidas (`situacaoDoMercadoPago`, `situacaoDoWhatsapp`); sem elas, a linha
+ * diz só que não foi conferida. `paradaDasReservas` (M8.3c): o motivo de configuração que para a escrita das reservas do
+ * site, já lido por quem chama.
+ */
+export function situacaoServicos(
+  env: NodeJS.ProcessEnv,
+  bancoOk: boolean | null,
+  mercadoPago: SituacaoMercadoPago | null = null,
+  whatsapp: SituacaoWhatsapp | null = null,
+  o: { paradaDasReservas?: ConfiguracaoQueParaAsReservas | null } = {},
+): Servico[] {
   const tem = (...chaves: string[]) => chaves.every((c) => Boolean(env[c]));
   const banco = env.DATABASE_URL ?? "";
   const bancoLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(banco);
@@ -149,7 +183,8 @@ export function situacaoServicos(env: NodeJS.ProcessEnv, bancoOk: boolean | null
       situacao: beds24 ? "configurado" : "nao_configurado",
       detalhe: `${beds24 ? "Credencial configurada, conexão não testada" : "Falta BEDS24_REFRESH_TOKEN (ou BEDS24_API_KEY para token direto)"} · ${chavesBeds24(env, o.paradaDasReservas ?? null)}`,
     },
-    { nome: "WhatsApp (Meta)", paraQue: "Atendimento e mensagens", situacao: "planejado", detalhe: "Chega no M10 (depende da verificação no Meta)" },
+    // M10.1a: a linha fixa "planejado" saiu; a situação vem de `situacaoDoWhatsapp`.
+    whatsapp ? servicoWhatsapp(whatsapp) : { nome: NOME_WHATSAPP, paraQue: PARA_QUE_WHATSAPP, situacao: "nao_configurado", detalhe: "Situação não conferida nesta abertura" },
     mercadoPago
       ? servicoMercadoPago(mercadoPago, env)
       : { nome: NOME_MERCADO_PAGO, paraQue: "Pagamento da reserva direta no site (Pix, em teste)", situacao: "nao_configurado", detalhe: "Situação não conferida nesta abertura" },

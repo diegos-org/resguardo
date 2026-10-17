@@ -1,5 +1,5 @@
 -- M8.3c (reserva paga do site no Beds24, escrita real; desenho em requisitos/product/RESERVA-SITE-BEDS24.md, 3.8, 4.5 e 7).
--- Idempotente como a 0067 a 0072: o banco das prévias é compartilhado e as migrações entram por hash, então rodar estas
+-- Idempotente como a 0067 a 0073: o banco das prévias é compartilhado e as migrações entram por hash, então rodar estas
 -- instruções de novo não pode falhar nem mudar nada. Acrescenta às operações a classificação da resposta do Beds24
 -- (`resposta`, lista fechada RESPOSTAS_BEDS24; nula antes do POST) e os detalhes seguros de forma fechada (`detalhe`: o id
 -- sugerido, as duplicadas, o bloqueio achado, o que o ensaio observou), e cria o estado da rotina por organização

@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, getTableName, type Table } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas, whatsappConta } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarCategoria } from "@/despesas/categorias";
@@ -381,5 +381,76 @@ describe("Início: as tarefas das OTAs (M8.3b, seção 10, teste 14)", () => {
     const admin = await carregarDashboard(db, c.org, { ...base, verFinanceiro: true, verPagamentos: true, verCancelamentos: true });
     expect(admin.alertas.filter((a) => a.texto.includes("reserva(s) do site paga(s)"))).toHaveLength(1);
     expect(otas(await carregarDashboard(db, org, { ...base, verCancelamentos: true }))).toEqual([]);
+  });
+});
+
+/**
+ * As tabelas que o dashboard lê pelo `select().from(...)` (um espião em volta do banco de teste), para provar que ele
+ * nunca consulta as conversas do WhatsApp: a contagem vem pronta de quem chama (`contarConversasSemResposta`).
+ */
+function espiarTabelas(alvo: Db): { banco: Db; tabelas: string[] } {
+  const tabelas: string[] = [];
+  const nome = (t: unknown) => {
+    try {
+      return getTableName(t as Table) ?? "?";
+    } catch {
+      return "?";
+    }
+  };
+  const comFrom = <T extends object>(construtor: T): T =>
+    new Proxy(construtor, {
+      get(t, p, r) {
+        const v = Reflect.get(t, p, r);
+        if (p === "from" && typeof v === "function") return (tabela: unknown, ...resto: unknown[]) => (tabelas.push(nome(tabela)), v.call(t, tabela, ...resto));
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+  const banco = new Proxy(alvo, {
+    get(t, p, r) {
+      const v = Reflect.get(t, p, r);
+      if ((p === "select" || p === "selectDistinct" || p === "selectDistinctOn") && typeof v === "function") return (...a: unknown[]) => comFrom(v.apply(t, a));
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  });
+  return { banco, tabelas };
+}
+
+describe("WhatsApp no Início (M10.1a)", () => {
+  const base = async () => ({ imoveis: await listarImoveis(db, org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-17", verFinanceiro: false, agora: new Date("2026-10-17T15:00:00Z") });
+  const doWhatsapp = (d: Dashboard) => d.alertas.filter((a) => a.texto.includes("WhatsApp"));
+
+  it("o número de conversas sem resposta vira o aviso com o texto exato e o link do filtro; 0 ou ausente, nada; o dashboard não consulta as conversas", async () => {
+    const { banco, tabelas } = espiarTabelas(db);
+    expect(doWhatsapp(await carregarDashboard(banco, org, { ...(await base()), conversasSemResposta: 2 }))).toEqual([
+      { nivel: "info", texto: "2 conversa(s) do WhatsApp sem resposta.", link: "/painel/mensagens?filtro=sem_resposta" },
+    ]);
+    expect(doWhatsapp(await carregarDashboard(banco, org, { ...(await base()), conversasSemResposta: 0 }))).toEqual([]);
+    expect(doWhatsapp(await carregarDashboard(banco, org, await base()))).toEqual([]);
+    // A espia vê as consultas do dashboard (as reservas, ao menos) e nenhuma às conversas ou às mensagens.
+    expect(tabelas).toContain("reservas");
+    expect(tabelas.filter((t) => t.startsWith("whatsapp_"))).toEqual([]);
+  });
+
+  it("a conta desconectada, aguardando reconexão ou suspensa avisa quem edita as configurações, com o texto exato, sem dado nenhum; conectada ou não conectada, nada", async () => {
+    const { banco, tabelas } = espiarTabelas(db);
+    const conta = async (situacao: "conectada" | "desconectada" | "aguardando_reconexao" | "suspensa") => {
+      await db.insert(whatsappConta).values({ organizacaoId: org, situacao, motivo: situacao === "desconectada" ? "PRIMARY_INACTIVITY" : null, situacaoEm: new Date("2026-10-17T12:00:00Z") }).onConflictDoUpdate({ target: whatsappConta.organizacaoId, set: { situacao } });
+      return doWhatsapp(await carregarDashboard(banco, org, { ...(await base()), verContaWhatsapp: true }));
+    };
+    // Antes do primeiro aviso: não conectado, sem aviso no Início (Integrações e a caixa de entrada mostram).
+    expect(doWhatsapp(await carregarDashboard(banco, org, { ...(await base()), verContaWhatsapp: true }))).toEqual([]);
+    const link = "/painel/configuracoes/integracoes";
+    expect(await conta("desconectada")).toEqual([{ nivel: "atencao", texto: "A conexão do WhatsApp com o sistema caiu: as mensagens novas não chegam ao painel.", link }]);
+    expect(await conta("aguardando_reconexao")).toEqual([{ nivel: "atencao", texto: "O WhatsApp está aguardando reconexão (troca de aparelho ou reinstalação).", link }]);
+    expect(await conta("suspensa")).toEqual([{ nivel: "atencao", texto: "A Meta suspendeu ou vai suspender a conta do WhatsApp.", link }]);
+    expect(await conta("conectada")).toEqual([]);
+    // Sem `verContaWhatsapp` (a operação), nada, e a conta nem é lida.
+    await conta("desconectada");
+    const lidas = tabelas.length;
+    expect(doWhatsapp(await carregarDashboard(banco, org, await base()))).toEqual([]);
+    expect(tabelas.slice(lidas)).not.toContain("whatsapp_conta");
+    // Só a situação da conta é lida; as conversas, nunca.
+    expect(tabelas).toContain("whatsapp_conta");
+    expect(tabelas.filter((t) => t.startsWith("whatsapp_") && t !== "whatsapp_conta")).toEqual([]);
   });
 });

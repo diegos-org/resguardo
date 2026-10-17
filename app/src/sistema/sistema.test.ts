@@ -8,7 +8,8 @@ import { salvarRecebimento } from "@/imoveis/recebimento";
 import { AUTOMACOES, execucaoNaoRodou, naoRodou, registrarExecucao, ultimasExecucoes } from "./automacoes";
 import { regrasEmVigor } from "./regras";
 import type { SituacaoMercadoPago } from "@/pagamentos/integracao";
-import { NOME_MERCADO_PAGO, NOME_SENTRY, servicoMercadoPago, situacaoServicos } from "./servicos";
+import type { SituacaoWhatsapp } from "@/whatsapp/integracao";
+import { NOME_MERCADO_PAGO, NOME_SENTRY, NOME_WHATSAPP, servicoMercadoPago, servicoWhatsapp, situacaoServicos } from "./servicos";
 
 describe("serviços", () => {
   it("refresh token configura Beds24 sem afirmar conexão testada nem expor o valor", () => {
@@ -34,7 +35,8 @@ describe("serviços", () => {
     expect(por["Beds24"].situacao).toBe("configurado");
     expect(por["E-mail do sistema (Resend)"].situacao).toBe("nao_configurado");
     expect(por["Beds24"].detalhe).toContain("desligado");
-    expect(por["WhatsApp (Meta)"].situacao).toBe("planejado");
+    // M10.1a: a linha fixa "planejado" saiu; sem a situação lida (`situacaoDoWhatsapp`), diz que não foi conferida.
+    expect(por["WhatsApp (Meta)"]).toMatchObject({ situacao: "nao_configurado", detalhe: "Situação não conferida nesta abertura" });
   });
 
   it("banco fora do ar e escrita no Beds24 ligada aparecem", () => {
@@ -89,7 +91,7 @@ describe("Beds24 em Serviços (M8.3a): as duas chaves pelas funções, independe
 
   it("M8.3c: com a chave das reservas pronta, o motivo de configuração entra como 'envio de reservas parado'; sem a chave pronta, não", () => {
     const linha = (e: Record<string, string>, paradaDasReservas: ConfiguracaoQueParaAsReservas | null) =>
-      situacaoServicos(e as unknown as NodeJS.ProcessEnv, null, null, { paradaDasReservas }).find((x) => x.nome === "Beds24")!.detalhe;
+      situacaoServicos(e as unknown as NodeJS.ProcessEnv, null, null, null, { paradaDasReservas }).find((x) => x.nome === "Beds24")!.detalhe;
     const pronto = { ...PRODUCAO, BEDS24_ESCRITA_RESERVAS: "ligada" };
     expect(linha(pronto, { motivo: "sem_ensaio", para: "criacoes" })).toContain(
       "envio de reservas parado: falta um ensaio conferido com a credencial atual; as reservas novas não são criadas, e as mudanças e os cancelamentos das já criadas seguem",
@@ -159,6 +161,64 @@ describe("Mercado Pago em Serviços e Integrações (M8.2a): a mesma situação 
   it("situacaoServicos usa a situação lida; sem ela, diz que não foi conferida (nunca 'planejado')", () => {
     expect(situacaoServicos(vazio, null, mp()).find((x) => x.nome === NOME_MERCADO_PAGO)?.situacao).toBe("ok");
     expect(situacaoServicos(vazio, null).find((x) => x.nome === NOME_MERCADO_PAGO)).toMatchObject({ situacao: "nao_configurado", detalhe: "Situação não conferida nesta abertura" });
+  });
+});
+
+describe("WhatsApp em Serviços e Integrações (M10.1a): a mesma situação de situacaoDoWhatsapp", () => {
+  const w = (o: Partial<SituacaoWhatsapp> = {}, config: Partial<SituacaoWhatsapp["config"]> = {}): SituacaoWhatsapp => ({
+    recebimentoLigado: true,
+    token: "ok",
+    segredoConfigurado: true,
+    config: { wabaId: "200000000000002", numeroId: "100000000000001", quemVeConversas: "so_admin", ...config },
+    conta: {
+      situacao: "nao_conectada",
+      ultimoEvento: null,
+      motivo: null,
+      iniciadoPor: null,
+      situacaoEm: null,
+      conectadoEm: null,
+      prazo24h: null,
+      sincronizacaoContatos: "nao_pedida",
+      contatosRecebidosEm: null,
+      sincronizacaoHistorico: "nao_pedida",
+      progressoHistorico: null,
+    },
+    avisos: { hoje: { assinaturas_recusadas: 0, ilegiveis: 0, outra_conta: 0, desconhecidos: 0, ignorados: 0 }, ultimoValidoEm: new Date("2026-10-17T13:00:00Z") },
+    eventosDaConta: [],
+    enderecoWebhook: "https://scl-reconstrucao.vercel.app/api/whatsapp",
+    ...o,
+  });
+
+  it("configurado só com a senha de verificação longa, a chave secreta, o recebimento ligado e os dois ids; o detalhe diz o último aviso válido", () => {
+    expect(servicoWhatsapp(w())).toMatchObject({ nome: NOME_WHATSAPP, paraQue: "Caixa de entrada do WhatsApp (recebimento)", situacao: "configurado" });
+    expect(servicoWhatsapp(w()).detalhe).toContain("último aviso válido em 17/10/2026 às 10:00");
+    expect(servicoWhatsapp(w({ avisos: { ...w().avisos, ultimoValidoEm: null } })).detalhe).toContain("nenhum aviso válido recebido ainda");
+    expect(situacaoServicos({} as NodeJS.ProcessEnv, null, null, w()).find((x) => x.nome === NOME_WHATSAPP)?.situacao).toBe("configurado");
+  });
+
+  it.each<[string, Partial<SituacaoWhatsapp>, Partial<SituacaoWhatsapp["config"]>, string]>([
+    ["sem a senha de verificação", { token: "falta" }, {}, "falta a senha de verificação (WHATSAPP_VERIFY_TOKEN)"],
+    ["com a senha curta (menos de 32 caracteres)", { token: "curto" }, {}, "senha de verificação curta demais (mínimo 32 caracteres)"],
+    ["sem a chave secreta do app", { segredoConfigurado: false }, {}, "falta a chave secreta do app (WHATSAPP_APP_SECRET)"],
+    ["com o recebimento desligado", { recebimentoLigado: false }, {}, "recebimento desligado (WHATSAPP_RECEBIMENTO)"],
+    ["sem o id da conta (WABA)", {}, { wabaId: null }, "falta o id da conta (WABA) em Integrações"],
+    ["sem o id do número", {}, { numeroId: null }, "falta o id do número em Integrações"],
+  ])("%s: falta configurar, e o detalhe diz o que falta, sem nenhum valor", (_caso, o, config, falta) => {
+    const s = servicoWhatsapp(w(o, config));
+    expect(s.situacao).toBe("nao_configurado");
+    expect(s.detalhe).toContain(falta);
+    expect(JSON.stringify(s)).not.toMatch(/200000000000002|100000000000001/);
+  });
+
+  it("tudo faltando: cada falta aparece, uma vez", () => {
+    const s = servicoWhatsapp(w({ token: "falta", segredoConfigurado: false, recebimentoLigado: false }, { wabaId: null, numeroId: null }));
+    expect(s.detalhe.split(" · ").slice(0, 5)).toEqual([
+      "falta a senha de verificação (WHATSAPP_VERIFY_TOKEN)",
+      "falta a chave secreta do app (WHATSAPP_APP_SECRET)",
+      "recebimento desligado (WHATSAPP_RECEBIMENTO)",
+      "falta o id da conta (WABA) em Integrações",
+      "falta o id do número em Integrações",
+    ]);
   });
 });
 
