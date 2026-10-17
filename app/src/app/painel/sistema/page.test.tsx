@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), execute: vi.fn(), redirect: vi.fn(), execucoes: vi.fn(), wa: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), mp: vi.fn(), execute: vi.fn(), redirect: vi.fn(), execucoes: vi.fn(), estadoReservas: vi.fn(), wa: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
@@ -10,6 +10,8 @@ vi.mock("@/sistema/automacoes", async (original) => ({ ...(await original<typeof
 vi.mock("@/sistema/regras", () => ({ regrasEmVigor: async () => [] }));
 vi.mock("@/configuracoes/regras-financeiras", () => ({ lerRegrasFinanceiras: async () => ({ base: "bruto" }) }));
 vi.mock("@/pagamentos/integracao", () => ({ situacaoDoMercadoPago: m.mp }));
+// M8.3c: o estado que decide o motivo de configuração das reservas do site (o banco é falso aqui); a regra é a de verdade.
+vi.mock("@/beds24/reservas-site-rotina", async (original) => ({ ...(await original<typeof import("@/beds24/reservas-site-rotina")>()), estadoDaConfiguracaoDasReservas: m.estadoReservas }));
 // M10.1a: a linha do WhatsApp, pela mesma função de Integrações.
 vi.mock("@/whatsapp/integracao", () => ({ situacaoDoWhatsapp: m.wa }));
 import type { SituacaoWhatsapp } from "@/whatsapp/integracao";
@@ -88,7 +90,8 @@ it("rotina que não rodou (M8.3a): o resumo com o selo de aviso, não o de falha
   expect(h).toContain('style="background:var(--scl-erro-fundo)">Falhou: Credencial Beds24 não configurada.</span>');
 });
 
-it("M8.3a: as duas chaves do Beds24 pelas funções, o aviso de credencial de escrita fora da produção e a rotina das reservas como planejada (M8.3c)", async () => {
+// Muda junto (M8.3c): a rotina das reservas do site chegou e aparece como ativa (antes, planejada, com "chega no M8.3c").
+it("M8.3a: as duas chaves do Beds24 pelas funções, o aviso de credencial de escrita fora da produção e a rotina das reservas como ativa (M8.3c)", async () => {
   vi.stubEnv("VERCEL_ENV", "preview");
   vi.stubEnv("BEDS24_REFRESH_TOKEN", "refresh-secreto-ficticio");
   vi.stubEnv("BEDS24_ESCRITA", "ligada");
@@ -97,8 +100,23 @@ it("M8.3a: as duas chaves do Beds24 pelas funções, o aviso de credencial de es
   expect(h).toContain("reservas do site no Beds24: chave desligada (BEDS24_ESCRITA_RESERVAS)");
   expect(h).toContain("Credencial de escrita presente fora da produção");
   expect(h).not.toContain("refresh-secreto-ficticio");
-  expect(h).toContain("Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)");
-  expect(h).toContain("M8.3c");
+  expect(h).toContain("Reservas pagas do site no Beds24 (criar, atualizar, cancelar e conferir)</td><td>A cada 10 minutos, fora das janelas da importação e do envio diários, só no deploy de produção; escreve só com BEDS24_ESCRITA_RESERVAS=ligada e a configuração pronta; também na ficha</td><td>—</td><td>ainda não rodou</td>");
+  expect(h).not.toContain("chega no M8.3c");
+  // Fora do deploy de produção, o motivo de configuração das reservas nem é lido.
+  expect(m.estadoReservas).not.toHaveBeenCalled();
+});
+
+it("M8.3c: com a chave das reservas pronta no deploy de produção, a linha do Beds24 diz por que o envio está parado", async () => {
+  for (const [k, v] of Object.entries({ VERCEL_ENV: "production", NODE_ENV: "production", BEDS24_ESCRITA_RESERVAS: "ligada", BEDS24_REFRESH_TOKEN: "refresh-secreto-ficticio" })) vi.stubEnv(k, v);
+  m.estadoReservas.mockImplementation(async (_db: unknown, _org: string, _env: NodeJS.ProcessEnv, agora: Date) => ({
+    refreshToken: true, credencial: "refresh:ficticia", rotina: { escopos: { situacao: "em_ordem", excessivos: [], faltando: [], ilegiveis: [] }, escoposCredencial: "refresh:ficticia", escoposLidosEm: agora }, leituraFalhou: false, agora, ensaioValido: false, marcaIlegivel: false,
+  }));
+  const h = renderToStaticMarkup(await Page());
+  expect(m.estadoReservas).toHaveBeenCalledOnce();
+  expect(m.estadoReservas.mock.calls[0][1]).toBe("org");
+  expect(h).toContain("reservas do site no Beds24: chave LIGADA e pronta neste deploy");
+  expect(h).toContain("envio de reservas parado: falta um ensaio conferido com a credencial atual; as reservas novas não são criadas");
+  expect(h).not.toContain("refresh-secreto-ficticio");
 });
 
 it("M10.1a: a linha do WhatsApp pela mesma função de Integrações (situacaoDoWhatsapp, com o ambiente e a organização da sessão), dizendo o que falta, sem valor nenhum", async () => {

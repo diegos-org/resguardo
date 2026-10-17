@@ -31,6 +31,7 @@ const m = vi.hoisted(() => ({
   agenda: vi.fn(),
   rotinaDoSite: vi.fn(),
   enviarCalendario: vi.fn(),
+  haOperacaoEmCurso: vi.fn(),
   leitor: null as unknown as Beds24Falso,
 }));
 vi.mock("@/db/client", () => ({ getDb: () => m.db }));
@@ -48,10 +49,17 @@ vi.mock("@/pagamentos/rotina", () => ({ rotinaDoSite: m.rotinaDoSite }));
 vi.mock("@/pagamentos/oferta", () => ({ provedorDeConferencia: async () => ({ ok: false, motivo: "so_nas_previas", texto: "" }) }));
 vi.mock("@/calendario/envio", async (orig) => ({ ...(await orig<typeof import("@/calendario/envio")>()), enviarCalendarioBeds24: m.enviarCalendario }));
 vi.mock("@/beds24/http", async (orig) => ({ ...(await orig<typeof import("@/beds24/http")>()), leitorParaSincronizacao: () => m.leitor, escritorDoAmbiente: () => new Beds24Falso() }));
+// M8.3c: o primeiro passo da rotina das reservas do site, espiado (por padrão, o de verdade).
+vi.mock("@/beds24/reservas-site-envio", async (orig) => {
+  const o = await orig<typeof import("@/beds24/reservas-site-envio")>();
+  m.haOperacaoEmCurso.mockImplementation(o.haOperacaoEmCursoASair);
+  return { ...o, haOperacaoEmCursoASair: m.haOperacaoEmCurso };
+});
 
 import { GET as agenda } from "./agenda/route";
 import { GET as beds24 } from "./beds24/route";
 import { GET as beds24Envio } from "./beds24-envio/route";
+import { GET as beds24Reservas } from "./beds24-reservas/route";
 import { GET as cotacoes } from "./cotacoes/route";
 import { GET as fechamento } from "./fechamento/route";
 import { GET as mensagens } from "./mensagens/route";
@@ -216,6 +224,22 @@ describe("rotinas automáticas: o nome fica em Sistema e não vai ao Sentry (M0.
     expect(await resumoLocal("sync-beds24")).toContain("configure BEDS24_ORGANIZACAO_ID");
     const { evento } = avisoEnviado();
     expect(valores(evento)).toEqual(expect.arrayContaining(["1 falha de configuração ou de vínculo (detalhe na página Sistema)"]));
+  });
+
+  it("reservas do site no Beds24 (M8.3c): um erro inesperado na volta fica com o texto fixo em Sistema, e o Sentry recebe só o tipo", async () => {
+    // O deploy de produção com a chave das reservas e um refresh token fictício: no Vitest, as fábricas não criam cliente
+    // nenhum (o processo não é o de produção), e a rotina vai ao passo 0, só de leitura.
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BEDS24_ESCRITA_RESERVAS", "ligada");
+    vi.stubEnv("BEDS24_REFRESH_TOKEN", "refresh-ficticio");
+    m.haOperacaoEmCurso.mockRejectedValueOnce(new Error(`falha inesperada ao ler a reserva de ${NOME}`));
+    expect((await beds24Reservas(pedido())).status).toBe(500);
+    expect(m.haOperacaoEmCurso).toHaveBeenCalledOnce();
+    expect(await resumoLocal("reservas-beds24")).toBe("Falhou: A volta das reservas do site no Beds24 parou no meio; roda de novo em 10 minutos.");
+    const { evento, texto } = avisoEnviado();
+    expect(evento.tags).toMatchObject({ rotina: "reservas-beds24" });
+    expect(valores(evento)).toEqual(expect.arrayContaining(["1 rotina interrompida no meio (detalhe na página Sistema)"]));
+    expect(texto).not.toContain(NOME);
   });
 
   it("envio ao Beds24: o código do imóvel no resultado do envio", async () => {

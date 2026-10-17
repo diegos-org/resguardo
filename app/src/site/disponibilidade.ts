@@ -57,8 +57,11 @@ type NoiteLida = { observacao: { observadoEm: Date } | null; enviado: { enviadoE
 export const limiteDaLeitura = (regras: Pick<RegrasCalendario, "site">, agora: Date) => agora.getTime() - regras.site.validadeLeituraHoras * 3_600_000;
 export const leituraAtual = (l: NoiteLida | undefined, limite: number) =>
   !!l?.observacao && l.observacao.observadoEm.getTime() >= limite && (!l.enviado || l.observacao.observadoEm.getTime() >= l.enviado.enviadoEm.getTime());
-/** Leitura que fecha a noite: blackout (mesmo sem unidades informadas) ou nenhuma unidade livre. */
-export const fechadaNaLeitura = (o: Pick<ObservacaoPlano, "bloqueio" | "livres">) => o.bloqueio === "blackout" || o.livres === 0;
+/**
+ * Leitura que fecha a noite: blackout (mesmo sem unidades informadas) ou nenhuma unidade livre — inclusive negativa, o
+ * overbooking do Beds24 (M8.3c, desenho 4.4: antes, o negativo virava divergência na leitura).
+ */
+export const fechadaNaLeitura = (o: Pick<ObservacaoPlano, "bloqueio" | "livres">) => o.bloqueio === "blackout" || (o.livres !== null && o.livres <= 0);
 /** Noite certamente ocupada: reserva ou bloqueio no SCL, ou leitura atual que fecha a noite. Sem leitura atual, só o SCL decide. */
 export const noiteOcupada = (l: Pick<LinhaPlano, "livresSeguidas" | "observacao" | "enviado">, limite: number) =>
   l.livresSeguidas === 0 || (leituraAtual(l, limite) && fechadaNaLeitura(l.observacao!));

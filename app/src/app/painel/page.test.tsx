@@ -63,6 +63,15 @@ it("M8.2c e M8.3b: quem edita reservas recebe os avisos do cancelamento e as tar
   await html();
   expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verCancelamentos: false }));
 });
+it("M8.3c (bloco G): o link da linha \"Envio de reservas parado\" para Integrações só para quem edita as configurações", async () => {
+  m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  await html();
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verConfiguracao: true }));
+  m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+  await html();
+  expect(m.dashboard).toHaveBeenLastCalledWith({}, "org", expect.objectContaining({ verConfiguracao: false, verCancelamentos: true }));
+});
+
 
 it("M8.2d e M8.3b: a alteração segurada e as tarefas das OTAs aparecem com o link da ficha, sem valores", async () => {
   m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });

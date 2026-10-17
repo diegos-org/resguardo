@@ -3,18 +3,26 @@
  * em linguagem simples, o id no Beds24, o quarto, a última conferência e o que foi lido, o histórico curto das operações e,
  * quando o ambiente deixa, o botão "Simular" (nada vai ao Beds24). M8.3b: o que fazer à mão nas OTAs para esta reserva (o
  * mesmo texto do Início, de `tarefasDasOtas`) e as marcas "Datas fechadas nas OTAs" (D8) e "Datas reabertas nas OTAs" (a
- * confirmada à mão, cancelada), com `BotaoConfirmar`. O domínio devolve códigos e os textos das tarefas; os rótulos ficam
- * aqui. Só o painel importa este componente: nada do hóspede nem do portal cita o Beds24.
+ * confirmada à mão, cancelada), com `BotaoConfirmar`. M8.3c (bloco G; plano 1.15): os botões do envio — "Conferir agora",
+ * "Tentar de novo", "Deixar à mão", "Reenviar o que está no SCL" (`reserva:editar`) e "Não existe, pode criar", "Vincular o
+ * id" e "Passar ao sistema" (também `configuracao:editar`: a operação não os vê) —, só os que valem para a reserva agora (a
+ * regra do domínio, `botoesDaFichaBeds24`), com o resultado em `?beds24=`; e a frase "o sistema faz isso sozinho" (6.2) quando
+ * cabe. O domínio devolve códigos e os textos das tarefas; os rótulos ficam aqui. Só o painel importa este componente: nada
+ * do hóspede nem do portal cita o Beds24.
  */
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
 import { dataBr, dataHoraNoFuso, diaMesBr } from "@/lib/datas";
-import { marcarDatasFechadasNasOtasAcao, marcarDatasReabertasNasOtasAcao, simularReservaBeds24Acao } from "@/beds24/acoes-reservas";
+import {
+  conferirAgoraBeds24Acao, deixarAMaoBeds24Acao, marcarDatasFechadasNasOtasAcao, marcarDatasReabertasNasOtasAcao, naoExisteNoBeds24Acao, passarAoSistemaBeds24Acao, reenviarAoBeds24Acao, simularReservaBeds24Acao,
+  tentarDeNovoBeds24Acao, vincularIdDoBeds24Acao,
+} from "@/beds24/acoes-reservas";
+import type { ResultadoDoBotaoBeds24 } from "@/beds24/reservas-site-botoes";
 import type { MotivoDesligadaBeds24 } from "@/beds24/reservas-site-config";
 import type { FichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
 import type { MotivoSemSimulacao } from "@/beds24/reservas-site-simulacao";
-import type { MotivoAcompanhamentoBeds24, SituacaoAcompanhamentoBeds24, SituacaoOperacaoBeds24, TipoOperacaoBeds24 } from "@/beds24/reservas-site-regras";
-import type { AtencaoOta, TarefaOta } from "@/beds24/reservas-site-tarefas";
+import { BOTOES_DE_CONFIGURACAO_BEDS24, type BotaoDaFichaBeds24, type MotivoAcompanhamentoBeds24, type SituacaoAcompanhamentoBeds24, type SituacaoOperacaoBeds24, type TipoOperacaoBeds24 } from "@/beds24/reservas-site-regras";
+import { type AtencaoOta, fraseDoEnvioAutomatico, type TarefaOta } from "@/beds24/reservas-site-tarefas";
 import type { EstadoBeds24 } from "@/beds24/tipos";
 
 const quando = (d: Date) => dataHoraNoFuso(d);
@@ -138,6 +146,32 @@ const MARCAS: Record<string, string> = {
 };
 
 /**
+ * O resultado dos botões do envio (M8.3c, `?beds24=`), com o estilo: `sucesso` quando resolveu, senão aviso (avisar em vez
+ * de supor). Chave desconhecida = nada.
+ */
+const BOTOES: Record<ResultadoDoBotaoBeds24, { texto: string; ok: boolean }> = {
+  conferido: { ok: true, texto: "Conferido no Beds24: a reserva está como no SCL." },
+  diferente: { ok: false, texto: "Conferido no Beds24: a reserva está diferente lá. Veja o que foi lido abaixo." },
+  equipe: { ok: false, texto: "Conferido no Beds24: a reserva continua esperando a equipe. Veja a situação abaixo." },
+  overbooking: { ok: false, texto: "O Beds24 ainda informa overbooking nas noites desta reserva: resolva com o hóspede ou com o canal." },
+  lido: { ok: false, texto: "A leitura do Beds24 ficou gravada (veja o que foi lido abaixo); a situação continua a mesma." },
+  sem_conclusao: { ok: false, texto: "A leitura do Beds24 não concluiu: nada mudou. Tente de novo em alguns minutos." },
+  aguarde: { ok: false, texto: "Ainda não deu 5 minutos desde o envio: o Beds24 ainda pode gravar. Confira de novo daqui a pouco." },
+  nova_tentativa: { ok: true, texto: "O sistema envia esta reserva de novo ao Beds24 em até 10 minutos." },
+  descartado: { ok: false, texto: "A reserva mudou no meio (outra ação ou a rotina): nada foi gravado. Confira a situação abaixo." },
+  na_fila: { ok: true, texto: "Na fila: o sistema envia ao Beds24 em até 10 minutos, com a conferência antes." },
+  a_mao: { ok: true, texto: "Deixada à mão: o sistema não escreve mais esta reserva no Beds24. Siga as tarefas abaixo e os avisos do Início." },
+  vinculado: { ok: true, texto: "Vinculado e conferido: a reserva está ligada ao registro do Beds24, e as datas foram marcadas como fechadas nas OTAs." },
+  vinculado_diferente: { ok: false, texto: "Vinculado, mas o registro do Beds24 está diferente da reserva: veja o que foi lido abaixo." },
+  vinculado_sem_marca: { ok: false, texto: "Vinculado sem a marca (a credencial não lê a marca): o sistema não marcou as datas nas OTAs. Confira à mão." },
+};
+
+/** O texto do resultado de um botão do envio (`?beds24=`); chave desconhecida = null. */
+export function textoDoBotao(chave: string | undefined): { texto: string; ok: boolean } | null {
+  return chave && Object.hasOwn(BOTOES, chave) ? BOTOES[chave as ResultadoDoBotaoBeds24] : null;
+}
+
+/**
  * O pedido com as datas seguradas nunca vai ao Beds24 e as datas dele não são fechadas nas OTAs (D9); o pedido vencido sem
  * pagamento nunca teve nada fechado. As outras reservas seguem as tarefas das OTAs.
  */
@@ -156,11 +190,113 @@ const ATENCAO: Record<AtencaoOta, string> = {
   ja_no_beds24: "A reserva está ligada a um registro do Beds24 que o sistema não criou: confira o registro antes de mexer à mão.",
 };
 
-/** O texto de cada tarefa na ficha: o manual (6.2) ou o que o sistema está fazendo. */
-function textoNaFicha(t: TarefaOta): string {
+/** O texto de cada tarefa na ficha: o manual (6.2) ou o que o sistema está fazendo, com a frase da 6.2 na atrasada (quando cabe). */
+function textoNaFicha(t: TarefaOta, automatico: boolean): string {
   if (t.estado === "sendo_enviada") return "O sistema está enviando esta reserva ao Beds24: não feche nem mude as datas à mão.";
-  if (t.estado === "atrasada") return "O envio desta reserva ao Beds24 está atrasado (mais de 30 minutos): confira o histórico abaixo antes de mexer à mão.";
+  if (t.estado === "atrasada") {
+    const frase = fraseDoEnvioAutomatico(automatico, { estado: "atrasada" });
+    return `O envio desta reserva ao Beds24 está atrasado (mais de 30 minutos): confira o histórico abaixo antes de mexer à mão.${frase ? ` ${frase}` : ""}`;
+  }
   return t.texto;
+}
+
+/** Um botão do envio que não pede confirmação (só lê, ou só enfileira de novo o que a equipe já tinha mandado). */
+function Simples({ acao, reservaId, rotulo, nome }: { acao: (form: FormData) => Promise<void>; reservaId: string; rotulo: string; nome: string }) {
+  return (
+    <form action={acao} style={{ display: "inline" }}>
+      <input type="hidden" name="reservaId" value={reservaId} />
+      <button type="submit" className={styles.botao} aria-label={nome}>
+        {rotulo}
+      </button>
+    </form>
+  );
+}
+
+/** Um botão do envio com `BotaoConfirmar` (desenho 8). */
+function Confirmado({ acao, reservaId, rotulo, pergunta }: { acao: (form: FormData) => Promise<void>; reservaId: string; rotulo: string; pergunta: string }) {
+  return (
+    <form action={acao} style={{ display: "inline" }}>
+      <input type="hidden" name="reservaId" value={reservaId} />
+      <BotaoConfirmar pergunta={pergunta} className={styles.botao}>
+        {rotulo}
+      </BotaoConfirmar>
+    </form>
+  );
+}
+
+/**
+ * Os botões do envio que valem para a reserva agora (`ficha.acoes.botoes`, a regra do domínio), só com a permissão de cada um:
+ * `reserva:editar` para todos e `configuracao:editar` também para "Não existe, pode criar", "Vincular" e "Passar ao sistema"
+ * (o servidor recusa do mesmo jeito). "Tentar de novo" e "Conferir agora" não pedem confirmação (desenho 8).
+ */
+function BotoesDoEnvio({ reservaId, ficha, editar, configurar }: { reservaId: string; ficha: FichaReservaNoBeds24; editar: boolean; configurar: boolean }) {
+  const { acoes } = ficha;
+  const pode = (b: BotaoDaFichaBeds24) => editar && acoes.botoes.includes(b) && (!BOTOES_DE_CONFIGURACAO_BEDS24.includes(b) || configurar);
+  const algum = acoes.botoes.some(pode);
+  if (!algum) return null;
+  return (
+    <div aria-label="Envio ao Beds24" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {pode("conferir_agora") && <Simples acao={conferirAgoraBeds24Acao} reservaId={reservaId} rotulo="Conferir agora" nome="Conferir agora no Beds24" />}
+        {pode("tentar_de_novo") && <Simples acao={tentarDeNovoBeds24Acao} reservaId={reservaId} rotulo="Tentar de novo" nome="Tentar de novo o envio ao Beds24" />}
+        {pode("reenviar") && (
+          <Confirmado
+            acao={reenviarAoBeds24Acao}
+            reservaId={reservaId}
+            rotulo="Reenviar o que está no SCL"
+            pergunta="Reenviar ao Beds24 as datas e as pessoas que estão no SCL? O que foi mudado lá por fora é substituído; antes, o sistema confere se as noites novas estão livres. O envio sai em até 10 minutos."
+          />
+        )}
+        {pode("nao_existe") && (
+          <Confirmado
+            acao={naoExisteNoBeds24Acao}
+            reservaId={reservaId}
+            rotulo="Não existe, pode criar"
+            pergunta="Confirmar que esta reserva NÃO está no Beds24 (você conferiu lá, pelo quarto e pelas datas)? O sistema a cria de novo em até 10 minutos; se ela existir lá, fica duplicada."
+          />
+        )}
+        {pode("passar_ao_sistema") && (
+          <Confirmado
+            acao={passarAoSistemaBeds24Acao}
+            reservaId={reservaId}
+            rotulo="Passar ao sistema"
+            pergunta="Passar esta reserva ao sistema? Ele confere no Beds24 que não há bloqueio nem outra reserva nas noites e cria a reserva lá em até 10 minutos. Se você fechou as datas à mão como bloqueio, desfaça antes (mude para Cancelado, sem apagar)."
+          />
+        )}
+        {pode("deixar_a_mao") && (
+          <Confirmado
+            acao={deixarAMaoBeds24Acao}
+            reservaId={reservaId}
+            rotulo="Deixar à mão"
+            pergunta="Deixar esta reserva à mão? Depois disso o sistema nunca mais a escreve no Beds24: a equipe fecha, muda e reabre as datas à mão, pelos avisos do Início."
+          />
+        )}
+      </div>
+      {acoes.duplicadas.length > 0 && <p style={{ margin: 0 }}>Registros com a marca desta reserva no Beds24: {acoes.duplicadas.join(", ")}. Cancele no Beds24 os que sobram (não apague) e use Conferir agora.</p>}
+      {pode("vincular") && (
+        <form action={vincularIdDoBeds24Acao} className={styles.form} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+          <input type="hidden" name="reservaId" value={reservaId} />
+          <label>
+            Já existe no Beds24: o id da reserva lá
+            <input name="beds24Id" required maxLength={64} pattern="[A-Za-z0-9._:\-]{1,64}" defaultValue={acoes.candidato ?? ""} />
+          </label>
+          {acoes.vincularSemMarca && (
+            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input type="checkbox" name="semMarca" value="sim" />
+              Vincular sem a marca (a credencial não lê a marca: confira no Beds24 que é esta reserva)
+            </label>
+          )}
+          <BotaoConfirmar
+            pergunta="Vincular esta reserva ao registro informado do Beds24? O sistema relê o registro e confere a situação, o quarto, as datas e a marca antes de ligar."
+            className={styles.botao}
+          >
+            Vincular o id
+          </BotaoConfirmar>
+        </form>
+      )}
+      {acoes.candidato && pode("vincular") && <p style={{ margin: 0, color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>O id sugerido ({acoes.candidato}) é o registro sem marca nas mesmas datas e quarto: confira no Beds24 antes de vincular.</p>}
+    </div>
+  );
 }
 
 /** O botão da marca manual da tarefa (reserva:editar), com a pergunta do `BotaoConfirmar`. */
@@ -190,16 +326,21 @@ function Marca({ reservaId, t }: { reservaId: string; t: TarefaOta }) {
 type Props = {
   reservaId: string;
   ficha: FichaReservaNoBeds24;
-  /** `reserva:editar`: o botão "Simular" (quando o ambiente deixa) e as marcas manuais das OTAs. */
+  /** `reserva:editar`: o botão "Simular" (quando o ambiente deixa), as marcas manuais das OTAs e os botões do envio. */
   editar: boolean;
-  /** A chave do resultado do "Simular" ou de uma marca (`?beds24=`). */
+  /** M8.3c: `configuracao:editar` (hoje, só o admin): também "Não existe, pode criar", "Vincular" e "Passar ao sistema". */
+  configurar?: boolean;
+  /** A chave do resultado do "Simular", de uma marca ou de um botão do envio (`?beds24=`). */
   resultado?: string;
 };
 
-export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) {
+export function ReservaNoBeds24({ reservaId, ficha, editar, configurar = false, resultado }: Props) {
   const a = ficha.acompanhamento;
   const texto = textoDaSimulacao(resultado);
   const marcada = resultado && Object.hasOwn(MARCAS, resultado) ? MARCAS[resultado] : null;
+  const doBotao = textoDoBotao(resultado);
+  // A frase da 6.2 também nas atenções de falha, recusa e incerteza do envio (plano, P5), com o envio automático ligado.
+  const fraseDaAtencao = fraseDoEnvioAutomatico(ficha.acoes.automatico, { motivo: a?.motivo ?? null });
   const fechar = ficha.tarefas.some((t) => t.caso === "paga" || t.caso === "d3");
   const linhas: [string, string][] = a
     ? [
@@ -234,6 +375,11 @@ export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) 
           {marcada}
         </p>
       )}
+      {doBotao && (
+        <p role="status" className={doBotao.ok ? styles.sucesso : styles.alerta}>
+          {doBotao.texto}
+        </p>
+      )}
       <p style={{ margin: 0 }}>
         Envio automático ao Beds24:{" "}
         {ficha.desligada.length ? (
@@ -250,16 +396,18 @@ export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) 
           {ficha.atencoes.map((x) => (
             <p key={x.tipo} role="note" className={styles.alerta} style={{ margin: 0 }}>
               {ATENCAO[x.tipo]}
+              {x.tipo === "aguardando_equipe" && fraseDaAtencao ? ` ${fraseDaAtencao}` : ""}
             </p>
           ))}
           {ficha.tarefas.map((t) => (
             <div key={t.caso}>
-              {textoNaFicha(t)} {editar && <Marca reservaId={reservaId} t={t} />}
+              {textoNaFicha(t, ficha.acoes.automatico)} {editar && <Marca reservaId={reservaId} t={t} />}
             </div>
           ))}
           {!ficha.atencoes.length && !ficha.tarefas.length && <p style={{ margin: 0 }}>{NADA_A_FAZER}</p>}
         </div>
       )}
+      {!ficha.pedido && <BotoesDoEnvio reservaId={reservaId} ficha={ficha} editar={editar} configurar={configurar} />}
       <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
         {linhas.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>

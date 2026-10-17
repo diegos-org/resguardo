@@ -53,6 +53,8 @@ export default async function PainelInicio({ searchParams }: PageProps<"/painel"
     verCancelamentos: podeFazer(sessao.papel, "reserva:editar"),
     contaDeTesteMercadoPago: verFinanceiro ? await contaDeTesteParaInicio() : null,
     env: process.env,
+    // M8.3c: a linha "Envio de reservas parado" leva a Integrações só para quem edita as configurações.
+    verConfiguracao: podeFazer(sessao.papel, "configuracao:editar"),
     // M10.1a: a contagem decide o acesso sozinha (0 para quem não vê as conversas, sem consultar); o dashboard só mostra
     // o número. A situação da conta do WhatsApp, só para quem edita as configurações.
     conversasSemResposta: await contarConversasSemResposta(db, sessao),

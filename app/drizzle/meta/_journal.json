@@ -519,6 +519,13 @@
       "when": 1792228454366,
       "tag": "0073_m10_1a_whatsapp",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1792256950071,
+      "tag": "0074_m8_3c_escrita_reservas_beds24",
+      "breakpoints": true
     }
   ]
 }

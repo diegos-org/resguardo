@@ -317,6 +317,9 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     if (!observacao) avisos.push("Sem leitura do Beds24 para esta noite.");
     else {
       if ((reservas > 0 || bloqueioScl) && observacao.livres !== null && observacao.livres > 0) avisos.push("Beds24 informou unidades livres, mas há reserva ou bloqueio no SCL: conferir.");
+      // Overbooking (M8.3c, desenho 4.4): o Beds24 informa unidades negativas quando há mais reservas que unidades. Vale com
+      // ou sem reserva no SCL (a do SCL pode ser uma das que se sobrepõem): é o aviso de "0 unidades" levado ao negativo.
+      if (observacao.livres !== null && observacao.livres < 0) avisos.push("Beds24 informa unidades negativas (overbooking): há mais reservas que unidades nesta noite; resolva no Beds24 com o hóspede ou com o canal.");
       if (observacao.bloqueio === "blackout" && !bloqueioScl && enviado?.bloqueio !== "blackout") avisos.push("Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");
       else if (observacao.livres === 0 && reservas === 0 && !bloqueioScl && !bloqueioExternoNaNoite(data) && observacao.bloqueio !== "blackout") avisos.push("Beds24 informa 0 unidades sem reserva ou bloqueio no SCL: confira a importação antes de vender.");
     }

@@ -1,21 +1,25 @@
 // @vitest-environment jsdom
 /**
  * Os botões da seção "Reservas do site no Beds24" (M8.3a): toda mudança passa pelo `BotaoConfirmar` (cancelar a pergunta
- * não chama o servidor) e a resposta do servidor aparece; a prontidão mostra os escopos lidos, ou por que não leu.
+ * não chama o servidor) e a resposta do servidor aparece; a prontidão mostra os escopos lidos, ou por que não leu. M8.3c: o
+ * ensaio (criar com o imóvel e as datas na pergunta, cancelar e conferir com o id da operação).
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const m = vi.hoisted(() => ({ pausar: vi.fn(), retomar: vi.fn(), ligar: vi.fn(), desligar: vi.fn(), escopos: vi.fn() }));
+const m = vi.hoisted(() => ({ pausar: vi.fn(), retomar: vi.fn(), ligar: vi.fn(), desligar: vi.fn(), escopos: vi.fn(), criarEnsaio: vi.fn(), cancelarEnsaio: vi.fn(), conferirEnsaio: vi.fn() }));
 vi.mock("@/beds24/acoes-reservas", () => ({
   pausarReservasBeds24Acao: m.pausar,
   retomarReservasBeds24Acao: m.retomar,
   ligarImovelReservasBeds24Acao: m.ligar,
   desligarImovelReservasBeds24Acao: m.desligar,
   conferirEscoposReservasBeds24Acao: m.escopos,
+  criarEnsaioReservasBeds24Acao: m.criarEnsaio,
+  cancelarEnsaioReservasBeds24Acao: m.cancelarEnsaio,
+  conferirEnsaioReservasBeds24Acao: m.conferirEnsaio,
 }));
 import { avaliarEscoposBeds24, ESCOPOS_OBRIGATORIOS_BEDS24 } from "@/beds24/reservas-site-regras";
-import { AcaoReservasBeds24, ConferirEscoposBeds24 } from "./AcaoReservasBeds24";
+import { AcaoReservasBeds24, ConferirEscoposBeds24, CriarEnsaioBeds24 } from "./AcaoReservasBeds24";
 
 let confirmar: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
@@ -71,4 +75,40 @@ it.each([
   confirmar.mockReturnValue(true);
   fireEvent.click(screen.getByRole("button", { name: "Conferir os escopos" }));
   await waitFor(() => expect(screen.getByRole("status").textContent).toContain(texto));
+});
+
+it("M8.3c: Criar o ensaio pergunta com o imóvel e as datas escolhidos; sem o sim, nada vai ao servidor; desabilitado, nem pergunta", async () => {
+  m.criarEnsaio.mockResolvedValue({ ok: false, mensagem: "Há um ensaio criado e não resolvido: cancele ou confira esse ensaio antes de criar outro." });
+  const { container, unmount } = render(<CriarEnsaioBeds24 imoveis={[{ id: "im-1", codigo: "103" }, { id: "im-2", codigo: "204" }]} hoje="2026-10-17" />);
+  fireEvent.change(screen.getByLabelText("Imóvel"), { target: { value: "im-1" } });
+  fireEvent.change(container.querySelector('input[name="chegada"]')!, { target: { value: "2026-11-03" } });
+  fireEvent.change(container.querySelector('input[name="saida"]')!, { target: { value: "2026-11-04" } });
+  confirmar.mockReturnValue(false);
+  fireEvent.click(screen.getByRole("button", { name: "Criar o ensaio" }));
+  expect(confirmar).toHaveBeenCalledWith(expect.stringContaining("Criar o ensaio no imóvel 103, de 03/11/2026 a 04/11/2026?"));
+  expect(m.criarEnsaio).not.toHaveBeenCalled();
+  confirmar.mockReturnValue(true);
+  fireEvent.click(screen.getByRole("button", { name: "Criar o ensaio" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Há um ensaio criado e não resolvido"));
+  const enviado = m.criarEnsaio.mock.calls[0][1] as FormData;
+  expect([enviado.get("imovelId"), enviado.get("chegada"), enviado.get("saida")]).toEqual(["im-1", "2026-11-03", "2026-11-04"]);
+  unmount();
+  confirmar.mockClear();
+  render(<CriarEnsaioBeds24 imoveis={[{ id: "im-1", codigo: "103" }]} hoje="2026-10-17" desabilitado />);
+  expect((screen.getByRole("button", { name: "Criar o ensaio" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it("M8.3c: Cancelar e Conferir o ensaio mandam o id da operação e mostram a resposta", async () => {
+  m.cancelarEnsaio.mockResolvedValue({ ok: true, mensagem: "Ensaio conferido e cancelado: agora dá para ligar um imóvel." });
+  m.conferirEnsaio.mockResolvedValue({ ok: false, mensagem: "A reserva de teste está no Beds24 e não foi cancelada." });
+  confirmar.mockReturnValue(true);
+  const { unmount } = render(<AcaoReservasBeds24 acao="cancelar_ensaio" operacaoId="op-1" rotulo="Cancelar o ensaio" pergunta="Cancelar o ensaio?" />);
+  fireEvent.click(screen.getByRole("button", { name: "Cancelar o ensaio" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("agora dá para ligar"));
+  expect((m.cancelarEnsaio.mock.calls[0][1] as FormData).get("operacaoId")).toBe("op-1");
+  unmount();
+  render(<AcaoReservasBeds24 acao="conferir_ensaio" operacaoId="op-1" rotulo="Conferir o ensaio" pergunta="Conferir o ensaio?" />);
+  fireEvent.click(screen.getByRole("button", { name: "Conferir o ensaio" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("não foi cancelada"));
+  expect((m.conferirEnsaio.mock.calls[0][1] as FormData).get("operacaoId")).toBe("op-1");
 });

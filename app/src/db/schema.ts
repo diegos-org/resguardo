@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import { type AnyPgColumn, boolean, check, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {
+  DetalheOperacaoBeds24,
+  EscoposLidosBeds24,
   EsperadoBeds24,
   LidoBeds24,
   ModoOperacaoBeds24,
@@ -10,6 +12,7 @@ import type {
   SituacaoOperacaoBeds24,
   TipoOperacaoBeds24,
 } from "@/beds24/reservas-site-regras";
+import type { RespostaBeds24 } from "@/beds24/tipos";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import type { CodigoDevolucao, ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
 import type {
@@ -2373,15 +2376,44 @@ export const beds24ReservasOperacoes = pgTable(
     respondidoEm: timestamp("respondido_em", { withTimezone: true }),
     terminadoEm: timestamp("terminado_em", { withTimezone: true }),
     erro: text("erro").notNull().default(""),
+    /**
+     * M8.3c (migração 0074): a classificação da resposta do Beds24 ao POST (desenho 3.8; lista fechada `RESPOSTAS_BEDS24`),
+     * que decide a saída da incerteza na volta seguinte. Nula antes do POST. O `erro` é o texto fixo dela, nunca o do Beds24.
+     */
+    resposta: text("resposta").$type<RespostaBeds24>(),
+    /** M8.3c: detalhes seguros de forma fechada (`DetalheOperacaoBeds24`: o id sugerido, as duplicadas, o bloqueio achado, o que o ensaio observou). */
+    detalhe: jsonb("detalhe").$type<DetalheOperacaoBeds24>().notNull().default({}),
   },
   (t) => [
     uniqueIndex("beds24_reservas_operacoes_chave").on(t.organizacaoId, t.chave),
     uniqueIndex("beds24_reservas_operacoes_uma_ativa").on(t.reservaId).where(sql`${t.situacao} in ('pendente', 'enviando', 'incerta')`),
     index("beds24_reservas_operacoes_situacao").on(t.organizacaoId, t.situacao, t.iniciadoEm),
     index("beds24_reservas_operacoes_beds24").on(t.organizacaoId, t.beds24Id).where(sql`${t.beds24Id} is not null`),
+    // M8.3c: o último 403 ou 401 de reservas em Integrações (`ultimaRecusaDeReservas`), também do ensaio, sem acompanhamento.
+    index("beds24_reservas_operacoes_resposta").on(t.organizacaoId, t.resposta, t.respondidoEm).where(sql`${t.resposta} is not null`),
     foreignKey({ columns: [t.acompanhamentoId], foreignColumns: [beds24ReservasSite.id], name: "beds24_reservas_operacoes_acompanhamento_fk" }),
   ],
 );
+
+/**
+ * O estado da rotina das reservas do site no Beds24 por organização (M8.3c, migração 0074; desenho 4.5, 7 e 9). Não é
+ * configuração editável (essa é a `reservas_beds24`, com auditoria): é estado operacional, escrito pela rotina e pelo botão
+ * de Integrações — a última leitura dos escopos (só nomes de escopo e a impressão da credencial, nunca a credencial) e as
+ * marcas de tempo da conferência contínua. Nenhum dado pessoal nem valor.
+ */
+export const beds24ReservasRotina = pgTable("beds24_reservas_rotina", {
+  organizacaoId: uuid("organizacao_id").primaryKey().references(() => organizacoes.id),
+  /** A avaliação dos escopos lida em GET /authentication/details (`EscoposLidosBeds24`); null = nunca lida. */
+  escopos: jsonb("escopos").$type<EscoposLidosBeds24>(),
+  /** `impressaoCredencialBeds24` da credencial que leu os escopos: outra credencial = sem leitura válida. */
+  escoposCredencial: text("escopos_credencial").notNull().default(""),
+  escoposLidosEm: timestamp("escopos_lidos_em", { withTimezone: true }),
+  /** A última leitura por `modifiedFrom` que concluiu (4.5): a próxima lê desde 15 min antes. */
+  conferenciaEm: timestamp("conferencia_em", { withTimezone: true }),
+  /** A última releitura por id que concluiu (de hora em hora). */
+  releituraEm: timestamp("releitura_em", { withTimezone: true }),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------------------------------------------------------------------------
 // M10.1a: WhatsApp (recebimento; desenho em requisitos/product/WHATSAPP.md). Não guarda mídia, url, id de mídia, sha256,

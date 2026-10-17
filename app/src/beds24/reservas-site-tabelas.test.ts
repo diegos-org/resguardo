@@ -1,10 +1,13 @@
 /**
  * As duas tabelas do M8.3 (migração 0072, desenho 3.2): os únicos e o índice parcial que o banco garante sozinho, e a
- * varredura `semDadosPessoais`, que passa a cobrir as duas. PGlite, sem rede.
+ * varredura `semDadosPessoais`, que passa a cobrir as duas. M8.3c (migração 0074): a resposta e o detalhe das operações, o
+ * índice do último 403 ou 401, o estado da rotina (uma linha por organização) e a varredura também no resumo das rotinas e
+ * nos e-mails. PGlite, sem rede.
  */
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { beds24ReservasOperacoes, beds24ReservasSite, imoveis, organizacoes, reservas } from "@/db/schema";
+import { beds24ReservasOperacoes, beds24ReservasRotina, beds24ReservasSite, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
+import { CorreioMemoria } from "@/email/correio";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { semDadosPessoais } from "@/pagamentos/testes";
@@ -75,5 +78,42 @@ describe("tabelas das reservas do site no Beds24 (migração 0072)", () => {
     await db.update(beds24ReservasSite).set({ lido: { quarto: "canario.site@example.com", chegada: "2026-12-20", saida: "2026-12-27", hospedes: 4, situacao: "confirmada" } });
     await db.update(beds24ReservasOperacoes).set({ erro: "canario.operacao@example.com" });
     expect(await semDadosPessoais(db, ["canario.site@example.com", "canario.operacao@example.com"])).toEqual(["canario.site@example.com", "canario.operacao@example.com"]);
+  });
+});
+
+describe("as colunas e a tabela da escrita (migração 0074, M8.3c)", () => {
+  it("a operação nasce sem resposta e com o detalhe vazio; a resposta e o detalhe gravados voltam como foram", async () => {
+    const [o] = await operacao().returning();
+    expect(o).toMatchObject({ resposta: null, detalhe: {} });
+    await db.update(beds24ReservasOperacoes).set({ resposta: "sem_id", detalhe: { candidato: "98765", bloqueio: { inicio: "2026-12-20", fim: "2026-12-22" } } }).where(eq(beds24ReservasOperacoes.id, o.id));
+    const [l] = await db.select().from(beds24ReservasOperacoes).where(eq(beds24ReservasOperacoes.id, o.id));
+    expect(l).toMatchObject({ resposta: "sem_id", detalhe: { candidato: "98765", bloqueio: { inicio: "2026-12-20", fim: "2026-12-22" } } });
+  });
+
+  it("o índice do último 403 ou 401 existe com o nome da migração; o estado da rotina é uma linha por organização", async () => {
+    const r = await db.execute(sql`select indexname from pg_indexes where tablename in ('beds24_reservas_operacoes', 'beds24_reservas_rotina') order by indexname`);
+    const nomes = (r as unknown as { rows: { indexname: string }[] }).rows.map((x) => x.indexname);
+    expect(nomes).toEqual(expect.arrayContaining(["beds24_reservas_operacoes_resposta", "beds24_reservas_rotina_pkey"]));
+    await db.insert(beds24ReservasRotina).values({ organizacaoId: org });
+    expect(await codigoDoErro(db.insert(beds24ReservasRotina).values({ organizacaoId: org }))).toBe("23505");
+    const [linha] = await db.select().from(beds24ReservasRotina).where(eq(beds24ReservasRotina.organizacaoId, org));
+    expect(linha).toMatchObject({ escopos: null, escoposCredencial: "", escoposLidosEm: null, conferenciaEm: null, releituraEm: null });
+  });
+
+  it("semDadosPessoais cobre a resposta e o detalhe, o estado da rotina, o resumo das rotinas e os e-mails (o canário aparece; sem ele, nada)", async () => {
+    const canarios = ["canario.detalhe@example.com", "canario.rotina@example.com", "canario.resumo@example.com", "canario.email@example.com"];
+    const [o] = await operacao({ detalhe: { candidato: "98765" } }).returning();
+    await db.insert(beds24ReservasRotina).values({ organizacaoId: org, escoposCredencial: "refresh:0123456789abcdef" });
+    await db.insert(execucoesAutomacao).values({ nome: "reservas-beds24", ok: true, resumo: "1 criada, 0 avisos" });
+    const correio = new CorreioMemoria();
+    await correio.enviar({ para: "equipe@example.com", assunto: "Reserva SCL-7K2QXM no Beds24", texto: "As noites de 20/12 a 27/12 da reserva SCL-7K2QXM estão ocupadas." });
+    expect(await semDadosPessoais(db, canarios, { correio })).toEqual([]);
+    await db.update(beds24ReservasOperacoes).set({ detalhe: { candidato: canarios[0] } as never }).where(eq(beds24ReservasOperacoes.id, o.id));
+    await db.update(beds24ReservasRotina).set({ escoposCredencial: canarios[1] }).where(eq(beds24ReservasRotina.organizacaoId, org));
+    await db.insert(execucoesAutomacao).values({ nome: "reservas-beds24", ok: true, resumo: canarios[2] });
+    await correio.enviar({ para: "equipe@example.com", assunto: "Aviso", texto: `Contato ${canarios[3]}` });
+    expect(await semDadosPessoais(db, canarios, { correio })).toEqual(canarios);
+    // Sem o correio, os e-mails não entram (quem chama passa o dele).
+    expect(await semDadosPessoais(db, canarios)).toEqual(canarios.slice(0, 3));
   });
 });

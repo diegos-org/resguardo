@@ -112,6 +112,42 @@ describe("as marcas das OTAs no histórico da reserva (M8.2c, M8.2d e M8.3b)", (
   });
 });
 
+describe("histórico da reserva do site no Beds24 (M8.3c)", () => {
+  it("a escrita do sistema e os botões da ficha aparecem como frase, com os campos em português", () => {
+    const de = (acao: string, mudancas: LinhaHistorico["mudancas"], autor: string | null = "Pessoa Fictícia"): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao, autor });
+    render(
+      <HistoricoAlteracoes
+        linhas={[
+          de("beds24.reserva.criar", { beds24Id: [null, "900001"] }, null),
+          de("beds24.reserva.conferir", { situacaoNoBeds24: ["divergente", "conferida"], motivoNoBeds24: ["cancelada_no_beds24", null], otaFechadaPeloSistema: [false, true] }),
+          de("beds24.reserva.tentar_de_novo", { situacaoNoBeds24: ["conflito", "pendente"], operacao: ["conflito", "pendente"] }),
+          de("beds24.reserva.deixar_a_mao", { situacaoNoBeds24: ["aguardando_equipe", "manual"], operacoesSuperadas: [null, 1] }),
+          de("beds24.reserva.reenviar", { situacaoNoBeds24: ["divergente", "pendente"] }),
+          de("beds24.reserva.nao_existe", { operacao: ["incerta", "falhou"] }),
+          de("beds24.reserva.passar_ao_sistema", { situacaoNoBeds24: ["manual", "pendente"] }),
+          de("beds24.reserva.atualizar", {}, null),
+          de("beds24.reserva.cancelar", {}, null),
+          de("beds24.reserva.encerrar", {}, null),
+        ]}
+      />,
+    );
+    const frases = [...document.querySelectorAll("section > ul > li")].map((li) => (li.textContent ?? "").split(" · ")[0]);
+    expect(frases).toEqual([
+      "Sistema criou a reserva no Beds24",
+      "Pessoa Fictícia conferiu a reserva no Beds24",
+      "Pessoa Fictícia pediu de novo o envio ao Beds24",
+      "Pessoa Fictícia deixou a reserva à mão no Beds24",
+      "Pessoa Fictícia reenviou ao Beds24 o que está no SCL",
+      "Pessoa Fictícia confirmou que a reserva não existe no Beds24",
+      "Pessoa Fictícia passou a reserva ao sistema no Beds24",
+      "Sistema atualizou a reserva no Beds24",
+      "Sistema cancelou a reserva no Beds24",
+      "Sistema encerrou o acompanhamento no Beds24",
+    ]);
+    expect(document.body.textContent).not.toMatch(/beds24\.reserva|motivoNoBeds24|otaFechadaPeloSistema|operacoesSuperadas/);
+  });
+});
+
 describe("histórico do WhatsApp (M10.1a)", () => {
   const de = (acao: string, mudancas: LinhaHistorico["mudancas"], autor: string | null = "Diego"): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao, autor });
 

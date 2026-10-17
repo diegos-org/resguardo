@@ -12,7 +12,9 @@ import { ErroBeds24, type LeitorBeds24 } from "./tipos";
 const CODIGO = "SCL-7K2QXM";
 const ESPERADO: EsperadoBeds24 = { quarto: "123456", chegada: "2026-12-20", saida: "2026-12-27", hospedes: 4, situacao: "confirmada" };
 const ALVO = { referencia: CODIGO, quarto: ESPERADO.quarto, chegada: ESPERADO.chegada };
-const registro = (o: Record<string, unknown> = {}) => ({ id: 98765, propertyId: 100, roomId: 123456, status: "confirmed", arrival: "2026-12-20", departure: "2026-12-27", numAdult: 4, infoItems: [{ code: INFO_MARCA_SCL, text: CODIGO }], ...o });
+// M8.3c: a reserva criada pelo SCL volta com a origem pela API (`apiSource`, como a do falso): sem ela, num canal desconhecido,
+// a adoção passa a recusar (desenho 3.5; `origemPodeSerDoScl`). Antes, o registro não levava origem nenhuma.
+const registro = (o: Record<string, unknown> = {}) => ({ id: 98765, propertyId: 100, roomId: 123456, status: "confirmed", arrival: "2026-12-20", departure: "2026-12-27", numAdult: 4, apiSource: "API", infoItems: [{ code: INFO_MARCA_SCL, text: CODIGO }], ...o });
 const lida = (o: Record<string, unknown> = {}) => {
   const n = normalizarReserva(registro(o));
   if (!n.ok) throw new Error(n.d.motivo);
@@ -43,6 +45,24 @@ describe("procurarReservaDoSite (M8.3a, teste 10): filtros", () => {
     ]);
     if (!b.funcionou) throw new Error(b.erro);
     expect(b.comMarca.map((r) => r.idExterno).sort()).toEqual(["7", "98765"]);
+  });
+
+  it("M8.3c: a marca ambígua (dois códigos no info item, ou o info item SCL com texto inválido) não conclui, em qualquer leitura", async () => {
+    const ambiguas = [
+      registro({ id: 2, infoItems: [{ code: INFO_MARCA_SCL, text: CODIGO }, { code: INFO_MARCA_SCL, text: "SCL-ABCDEF" }] }),
+      registro({ id: 3, infoItems: [{ code: INFO_MARCA_SCL, text: "ilegível" }] }),
+      registro({ id: 4, infoItems: [], firstName: CODIGO, notes: "SCL-ABCDEF" }),
+    ];
+    for (const b of ambiguas) {
+      expect(await procurarReservaDoSite(falso(registro(), b), ALVO)).toMatchObject({ funcionou: false, erro: expect.stringContaining("marca do SCL ambígua") });
+    }
+    // Também na releitura por id e na pesquisa por texto (outro quarto e outra chegada: só ela traz o registro ambíguo).
+    const f = falso(registro(), registro({ id: 7, roomId: 999, arrival: "2026-12-01", infoItems: [{ code: INFO_MARCA_SCL, text: "?" }] }));
+    expect(await procurarReservaDoSite(f, { ...ALVO, idsConhecidos: ["7"] })).toMatchObject({ funcionou: false, erro: expect.stringContaining("marca do SCL ambígua") });
+    expect(f.filtrosLidos.at(-1)).toEqual({ ids: ["7"], chegadaDe: "1900-01-01", incluirInfo: true });
+    const t = falso(registro(), registro({ id: 8, roomId: 999, arrival: "2026-12-01", infoItems: [], lastName: CODIGO, notes: "SCL-ABCDEF" }));
+    expect(await procurarReservaDoSite(t, { ...ALVO, marcaNoNome: true })).toMatchObject({ funcionou: false, erro: expect.stringContaining("marca do SCL ambígua") });
+    expect(t.filtrosLidos.at(-1)).toEqual({ pesquisa: CODIGO, chegadaDe: "1900-01-01", incluirInfo: true });
   });
 
   it("o ensaio nunca entra; a marca de outra reserva também não", async () => {
@@ -84,6 +104,10 @@ describe("regras de adoção (M8.3a, teste 10)", () => {
   it("exatamente um registro com a marca, confirmed ou new, no quarto guardado e com as datas do esperado: adota", () => {
     expect(regraDeAdocao([lida()], esperado)).toMatchObject({ adotar: true, registro: { idExterno: "98765" } });
     expect(regraDeAdocao([lida({ status: "new" })], esperado)).toMatchObject({ adotar: true });
+    // M8.3c: a marca só no nome ou nas notas, ou num registro de canal, não adota (o código anotado numa reserva de OTA).
+    expect(regraDeAdocao([lida({ infoItems: [], notes: `Ver ${CODIGO}` })], esperado)).toEqual({ adotar: false, motivo: "marca_em_registro_inesperado", id: "98765" });
+    expect(regraDeAdocao([lida({ channel: "Airbnb" })], esperado)).toEqual({ adotar: false, motivo: "marca_em_registro_inesperado", id: "98765" });
+    expect(regraDeAdocao([lida({ apiSource: undefined })], esperado)).toEqual({ adotar: false, motivo: "marca_em_registro_inesperado", id: "98765" });
   });
 
   it("hóspede já na casa: a chegada explícita acha o registro de entrada passada, e ele é adotado", async () => {

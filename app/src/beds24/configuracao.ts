@@ -4,7 +4,7 @@ import { idsExternos, imoveis, organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
 import { dataValida } from "@/reservas/regras";
-import { ErroBeds24 } from "./tipos";
+import { ErroBeds24, type QuartoBeds24 } from "./tipos";
 
 export type ConfigBeds24 = { automatica: boolean; desde: string; diasCalendario: number };
 
@@ -36,4 +36,15 @@ export function listarMapeamentosBeds24(db: Db, org: string) {
   return db.select({ id: idsExternos.id, imovelId: imoveis.id, codigo: imoveis.codigo, ativo: imoveis.ativo, propertyId: idsExternos.idExterno, roomId: idsExternos.detalhe })
     .from(idsExternos).innerJoin(imoveis, and(eq(imoveis.id, idsExternos.imovelId), eq(imoveis.organizacaoId, org)))
     .where(and(eq(idsExternos.organizacaoId, org), eq(idsExternos.canal, "beds24"))).orderBy(asc(imoveis.codigo));
+}
+
+/**
+ * O quarto do vínculo na leitura dos quartos do Beds24 (`leitor.quartos()`): acessível à credencial e com a moeda BRL
+ * confirmada. Uma regra, um lugar (M8.3c): a importação (que para com o aviso) e o envio das reservas do site (que deixa a
+ * reserva `pendente`/`sem_vinculo`) leem daqui.
+ */
+export function quartoAcessivelEmBrl(quartos: readonly QuartoBeds24[], propertyId: string, roomId: string): "ok" | "inacessivel" | "moeda" {
+  const q = quartos.find(q => q.propertyId === propertyId && q.roomId === roomId);
+  if (!q) return "inacessivel";
+  return q.moeda === "BRL" ? "ok" : "moeda";
 }

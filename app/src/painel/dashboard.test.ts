@@ -382,6 +382,20 @@ describe("Início: as tarefas das OTAs (M8.3b, seção 10, teste 14)", () => {
     expect(admin.alertas.filter((a) => a.texto.includes("reserva(s) do site paga(s)"))).toHaveLength(1);
     expect(otas(await carregarDashboard(db, org, { ...base, verCancelamentos: true }))).toEqual([]);
   });
+
+  it("M8.3c (bloco G): a linha \"Envio de reservas parado\" com a chave ligada no deploy de produção, e o link para Integrações só com verConfiguracao", async () => {
+    const c = await montarCenario(db);
+    const base = { imoveis: await listarImoveis(db, c.org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: false, agora: minutos(90), verCancelamentos: true };
+    // A chave ligada no deploy de produção sem o refresh token de escrita (valores fictícios; nada vai ao Beds24).
+    const env = { VERCEL_ENV: "production", NODE_ENV: "production", BEDS24_ESCRITA_RESERVAS: "ligada" } as NodeJS.ProcessEnv;
+    const parado = (d: Dashboard) => d.alertas.filter((a) => a.texto.startsWith("Envio de reservas parado"));
+    const texto = "Envio de reservas parado: falta o refresh token de escrita (BEDS24_REFRESH_TOKEN); nada é escrito.";
+    expect(parado(await carregarDashboard(db, c.org, { ...base, env, verConfiguracao: true }))).toEqual([{ nivel: "atencao", texto, link: "/painel/configuracoes/integracoes" }]);
+    expect(parado(await carregarDashboard(db, c.org, { ...base, env }))).toEqual([{ nivel: "atencao", texto }]);
+    // Sem o ambiente (ou fora da produção), nada é enviado de propósito: sem a linha.
+    expect(parado(await carregarDashboard(db, c.org, { ...base, verConfiguracao: true }))).toEqual([]);
+    expect(parado(await carregarDashboard(db, c.org, { ...base, env: { ...env, VERCEL_ENV: "preview" }, verConfiguracao: true }))).toEqual([]);
+  });
 });
 
 /**

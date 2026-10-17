@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { sql } from "drizzle-orm";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
+import { escritaReservasBeds24Pronta } from "@/beds24/http";
+import { estadoDaConfiguracaoDasReservas, motivoDeConfiguracaoDasReservas } from "@/beds24/reservas-site-rotina";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
@@ -35,7 +37,7 @@ export default async function Sistema() {
   } catch {
     bancoOk = false;
   }
-  const [execucoes, regras, financeiras, mercadoPago, whatsapp] = await Promise.all([
+  const [execucoes, regras, financeiras, mercadoPago, whatsapp, paradaDasReservas] = await Promise.all([
     ultimasExecucoes(db),
     regrasEmVigor(db, sessao.organizacaoId, hojeISO()),
     lerRegrasFinanceiras(db, sessao.organizacaoId),
@@ -43,8 +45,12 @@ export default async function Sistema() {
     bancoOk ? situacaoDoMercadoPago(db) : Promise.resolve(null),
     // M10.1a: a mesma função que Integrações lê, com a mesma proteção do banco.
     bancoOk ? situacaoDoWhatsapp(db, sessao.organizacaoId, process.env, new Date()) : Promise.resolve(null),
+    // M8.3c (desenho 2.4): com a chave das reservas pronta, o motivo que para a escrita, pela função única (só leitura do banco).
+    bancoOk && escritaReservasBeds24Pronta(process.env)
+      ? estadoDaConfiguracaoDasReservas(db, sessao.organizacaoId, process.env, new Date()).then(motivoDeConfiguracaoDasReservas)
+      : Promise.resolve(null),
   ]);
-  const servicos = situacaoServicos(process.env, bancoOk, mercadoPago, whatsapp);
+  const servicos = situacaoServicos(process.env, bancoOk, mercadoPago, whatsapp, { paradaDasReservas });
 
   return (
     <>

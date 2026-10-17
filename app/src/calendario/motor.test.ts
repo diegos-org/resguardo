@@ -279,6 +279,19 @@ describe("bloqueios e conferência com o Beds24", () => {
     expect(porData(linhas, "2026-10-07").avisos).toContain("Beds24 tem bloqueio (blackout) sem bloqueio no SCL: o SCL não reabre o que não fechou; confira.");
     expect(porData(linhas, "2026-10-08").avisos).toContain("Beds24 informa 0 unidades sem reserva ou bloqueio no SCL: confira a importação antes de vender.");
   });
+  it("M8.3c: unidades negativas no Beds24 (overbooking) dão o aviso próprio, com ou sem reserva no SCL", () => {
+    const overbooking = "Beds24 informa unidades negativas (overbooking): há mais reservas que unidades nesta noite; resolva no Beds24 com o hóspede ou com o canal.";
+    const linhas = planejarCalendario(entrada({
+      reservas: [{ checkin: "2026-10-03", checkout: "2026-10-04", estado: "confirmada" }],
+      observacoes: [obs("2026-10-02", { livres: -1 }), obs("2026-10-03", { livres: -2 }), obs("2026-10-04", { livres: 0 })],
+    }));
+    expect(porData(linhas, "2026-10-02").avisos).toContain(overbooking);
+    expect(porData(linhas, "2026-10-02").avisos.join(" ")).not.toContain("0 unidades");
+    expect(porData(linhas, "2026-10-03").avisos).toContain(overbooking);
+    // O zero continua com o aviso de antes, e não com o do overbooking.
+    expect(porData(linhas, "2026-10-04").avisos).not.toContain(overbooking);
+    expect(porData(linhas, "2026-10-04").avisos).toContain("Beds24 informa 0 unidades sem reserva ou bloqueio no SCL: confira a importação antes de vender.");
+  });
   it("reabertura do bloqueio do SCL só quando a leitura atual ainda mostra o blackout; restrição externa ou falta de leitura não são apagadas", () => {
     const enviadoEm = new Date("2026-09-30T10:00:00Z");
     const enviado = (data: string) => ({ data, preco: 45000, minimo: 1, maximo: 27, bloqueio: "blackout", confirmado: true, enviadoEm });

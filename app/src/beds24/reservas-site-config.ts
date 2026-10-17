@@ -4,10 +4,12 @@
  * (M3.7): cada escrita liga e desliga sem depender da outra.
  * - `pausado`: o freio geral, que vale na hora (tirar a variável da Vercel só vale depois de uma publicação nova), com
  *   quem pausou e quando. Pausado, nada é escrito; as operações em curso só são resolvidas com leitura.
+ * - `retomado` (M8.3c, desenho 6.1): quem tirou a pausa e quando. A carência do aviso "feche à mão" conta também desde aí:
+ *   logo depois de "Retomar", o sistema ainda vai enviar o que ficou parado.
  * - `imoveis`: os imóveis ligados (D6), com a data e quem ligou. Começa vazio. Desligado, só a criação para.
- * - `ensaio`: o último ensaio conferido (a impressão da credencial, a data e a operação). O ensaio em si é do M8.3c.
- *   Ligar um imóvel exige um ensaio conferido com a credencial ATUAL: trocar o token deixa as criações paradas até um
- *   ensaio novo.
+ * - `ensaio`: o último ensaio conferido (a impressão da credencial, a data e a operação), gravado depois de "Cancelar o
+ *   ensaio" (M8.3c, `reservas-site-ensaio.ts`). Ligar um imóvel exige um ensaio conferido com a credencial ATUAL: trocar o
+ *   token deixa as criações paradas até um ensaio novo.
  * Deny-by-default: um valor torto conta como o lado seguro (imóvel desligado, sem ensaio; a pausa torta conta como
  * pausada). Toda mudança exige `configuracao:editar` e fica na auditoria (`configuracao.reservas_beds24`). Aqui também o
  * "desligada" calculado de cada reserva (`motivosDesligada`: o ambiente e a configuração), que a ficha e as tarefas das
@@ -33,13 +35,16 @@ export type EnsaioReservasBeds24 = {
   em: string;
   operacaoId: string;
 };
+/** M8.3c (desenho 6.1): a última retomada depois de uma pausa, para a carência das tarefas das OTAs. */
+export type RetomadaReservasBeds24 = { em: string; por: string | null };
 export type ConfigReservasBeds24 = {
   pausado: PausaReservasBeds24 | null;
+  retomado: RetomadaReservasBeds24 | null;
   imoveis: ImovelLigadoBeds24[];
   ensaio: EnsaioReservasBeds24 | null;
 };
 
-export const CONFIG_RESERVAS_BEDS24_PADRAO: ConfigReservasBeds24 = { pausado: null, imoveis: [], ensaio: null };
+export const CONFIG_RESERVAS_BEDS24_PADRAO: ConfigReservasBeds24 = { pausado: null, retomado: null, imoveis: [], ensaio: null };
 
 type Obj = Record<string, unknown>;
 const ehObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -57,6 +62,9 @@ export function configReservasBeds24(c: Obj | null): ConfigReservasBeds24 {
   const pausado: PausaReservasBeds24 | null = c.pausado === null || c.pausado === undefined
     ? null
     : { em: ehObj(c.pausado) ? instante(c.pausado.em) : null, por: ehObj(c.pausado) && uuidValido(c.pausado.por) ? c.pausado.por : null };
+  // A retomada sem a data legível não conta (a carência volta a contar só do fato e da ligação: o aviso aparece antes, nunca depois).
+  const retomadoEm = ehObj(c.retomado) ? instante(c.retomado.em) : null;
+  const retomado: RetomadaReservasBeds24 | null = ehObj(c.retomado) && retomadoEm ? { em: retomadoEm, por: uuidValido(c.retomado.por) ? c.retomado.por : null } : null;
   const lista: ImovelLigadoBeds24[] = [];
   for (const i of Array.isArray(c.imoveis) ? c.imoveis : []) {
     if (!ehObj(i) || !uuidValido(i.imovelId) || lista.some((x) => x.imovelId === i.imovelId)) continue;
@@ -67,7 +75,7 @@ export function configReservasBeds24(c: Obj | null): ConfigReservasBeds24 {
   const e = c.ensaio;
   const em = ehObj(e) ? instante(e.em) : null;
   const ensaio = ehObj(e) && typeof e.credencial === "string" && e.credencial && em && uuidValido(e.operacaoId) ? { credencial: e.credencial, em, operacaoId: e.operacaoId } : null;
-  return { pausado, imoveis: lista, ensaio };
+  return { pausado, retomado, imoveis: lista, ensaio };
 }
 
 /** A única leitura da configuração das reservas no Beds24. */
@@ -101,6 +109,14 @@ export function motivosDesligada(env: NodeJS.ProcessEnv, o: { pausada: boolean; 
   return m;
 }
 
+/**
+ * O envio automático vale para as reservas deste imóvel (M8.3c, desenho 6.2): a chave pronta no deploy de produção, sem a
+ * pausa e o imóvel ligado — `motivosDesligada` vazio, sem contar a linha de acompanhamento (a rotina a cria). Só aí o aviso
+ * diz "o sistema faz isso sozinho"; a ficha e o Início leem daqui.
+ */
+export const envioAutomaticoLigado = (env: NodeJS.ProcessEnv, c: ConfigReservasBeds24, imovelId: string): boolean =>
+  motivosDesligada(env, { pausada: c.pausado !== null, imovelLigado: ligacaoDoImovel(c, imovelId) !== null, comAcompanhamento: true }).length === 0;
+
 /** O último ensaio conferido vale para a credencial de agora (impressão igual e não vazia). */
 export const ensaioValeParaCredencial = (c: ConfigReservasBeds24, credencialAtual: string): boolean => Boolean(credencialAtual) && c.ensaio?.credencial === credencialAtual;
 
@@ -129,8 +145,12 @@ export function pausarReservasBeds24(db: Db, sessao: Sessao, agora: Date = new D
   return mudar(db, sessao, async (c) => (c.pausado ? c : { ...c, pausado: { em: agora.toISOString(), por: sessao.usuarioId } }));
 }
 
-export function retomarReservasBeds24(db: Db, sessao: Sessao) {
-  return mudar(db, sessao, async (c) => ({ ...c, pausado: null }));
+/**
+ * Retoma depois da pausa e guarda quem retomou e quando (`retomado`, M8.3c: a carência de 6.1 conta também daí). Sem pausa,
+ * nada muda: a hora da retomada só vale quando houve o que retomar.
+ */
+export function retomarReservasBeds24(db: Db, sessao: Sessao, agora: Date = new Date()) {
+  return mudar(db, sessao, async (c) => (c.pausado ? { ...c, pausado: null, retomado: { em: agora.toISOString(), por: sessao.usuarioId } } : c));
 }
 
 /**

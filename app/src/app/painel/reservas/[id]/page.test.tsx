@@ -75,12 +75,24 @@ vi.mock("@/components/BotaoConfirmar", () => ({
 }));
 // M8.3a: o bloco "No Beds24" (só leitura; "Simular" sem rede).
 vi.mock("@/beds24/reservas-site-painel", () => ({ fichaReservaNoBeds24: m.noBeds24 }));
-vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn(), marcarDatasFechadasNasOtasAcao: vi.fn(), marcarDatasReabertasNasOtasAcao: vi.fn() }));
+vi.mock("@/beds24/acoes-reservas", () => ({
+  simularReservaBeds24Acao: vi.fn(),
+  marcarDatasFechadasNasOtasAcao: vi.fn(),
+  marcarDatasReabertasNasOtasAcao: vi.fn(),
+  // M8.3c (bloco G): os botões do envio.
+  conferirAgoraBeds24Acao: vi.fn(),
+  tentarDeNovoBeds24Acao: vi.fn(),
+  deixarAMaoBeds24Acao: vi.fn(),
+  reenviarAoBeds24Acao: vi.fn(),
+  naoExisteNoBeds24Acao: vi.fn(),
+  vincularIdDoBeds24Acao: vi.fn(),
+  passarAoSistemaBeds24Acao: vi.fn(),
+}));
 // M10.1a: o bloco "Conversa no WhatsApp". Quem vê as conversas é decidido de verdade (`whatsapp/acesso.ts`), com a
 // configuração "Quem vê as conversas" simulada; as conversas da reserva também.
 vi.mock("@/whatsapp/configuracao", async (original) => ({ ...(await original<typeof import("@/whatsapp/configuracao")>()), lerConfigWhatsapp: m.configWhatsapp }));
 vi.mock("@/whatsapp/conversas", async (original) => ({ ...(await original<typeof import("@/whatsapp/conversas")>()), conversasDaReserva: m.conversas }));
-import Page from "./page";
+import Page, { maxDuration } from "./page";
 
 const reserva = {
   id: "r1",
@@ -565,7 +577,8 @@ const cancelada = {
 };
 
 describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
-  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [] };
+  // Muda junto (M8.3c, bloco G): a ficha ganhou `acoes` (os botões do envio que valem agora); aqui, nenhum.
+  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [], acoes: { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false } };
   const tarefa = (caso: string, texto: string, marca: string | null = null) => ({ reservaId: "r1", codigo: "SCL-TESTE1", caso, estado: "manual", checkin: "2026-10-12", checkout: "2026-10-15", desde: new Date(0), alteracaoIds: [], texto, marca });
   beforeEach(() => {
     m.reserva.mockResolvedValue({ ...reserva, fonte: "site" });
@@ -637,6 +650,26 @@ describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("M8.3c (bloco G): os botões do envio pela permissão da sessão (a operação nunca vê os de configuração), o resultado em ?beds24= e a recusa em ?erro=", async () => {
+    m.noBeds24.mockResolvedValue({ ...ficha, desligada: [], acoes: { ...ficha.acoes, botoes: ["conferir_agora", "deixar_a_mao", "nao_existe", "vincular"], candidato: "900001" } });
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    const admin = await html();
+    for (const b of [">Conferir agora</button>", ">Deixar à mão</button>", ">Não existe, pode criar</button>", ">Vincular o id</button>"]) expect(admin).toContain(b);
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    const operacao = await html();
+    expect(operacao).toContain(">Conferir agora</button>");
+    expect(operacao).toContain(">Deixar à mão</button>");
+    expect(operacao).not.toContain(">Não existe, pode criar</button>");
+    expect(operacao).not.toContain(">Vincular o id</button>");
+    expect(operacao).not.toContain('name="beds24Id"');
+    expect(await html({ beds24: "na_fila" })).toContain("Na fila: o sistema envia ao Beds24 em até 10 minutos");
+    expect(await html({ erro: "Ainda não deu 5 minutos desde o envio." })).toContain("Ainda não deu 5 minutos desde o envio.");
+  });
+
+  it("M8.3c (bloco G): a ficha tem a duração dos botões que leem o Beds24 (300 s, como Integrações)", () => {
+    expect(maxDuration).toBe(300);
   });
 
   it("reserva de outra fonte (Beds24, planilha, manual): sem o bloco e sem ler nada dele", async () => {

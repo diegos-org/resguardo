@@ -89,13 +89,14 @@ describe("autenticação Beds24 com refresh token (sem rede)", () => {
 
   it("para no segundo 401, sem loop de renovação", async () => {
     const { cliente, fetchImpl } = preparar([acesso(), json({}, 401), acesso("novo"), json({}, 401)]);
-    await expect(cliente.quartos()).rejects.toMatchObject({ tipo: "http", message: "Beds24 respondeu HTTP 401." });
+    // O status vai no erro (M8.3c): o 429, o 401 e o 403 de uma leitura param a volta do envio de reservas.
+    await expect(cliente.quartos()).rejects.toMatchObject({ tipo: "http", message: "Beds24 respondeu HTTP 401.", status: 401 });
     expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
   it.each([403, 429, 500])("HTTP %s não dispara renovação/repetição", async (status) => {
     const { cliente, fetchImpl } = preparar([acesso(), json({}, status)]);
-    await expect(cliente.quartos()).rejects.toMatchObject({ tipo: "http" });
+    await expect(cliente.quartos()).rejects.toMatchObject({ tipo: "http", status });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 

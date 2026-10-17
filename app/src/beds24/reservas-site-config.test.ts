@@ -1,7 +1,8 @@
 /**
  * Configuração das reservas do site no Beds24 (M8.3a, desenho 2.3; seção 10, teste 5): a pausa geral, os imóveis
  * ligados (D6) e o registro do último ensaio conferido. Ligar um imóvel exige um ensaio conferido com a credencial
- * atual; tudo exige `configuracao:editar` e fica na auditoria. PGlite, sem rede.
+ * atual; tudo exige `configuracao:editar` e fica na auditoria. M8.3c (desenho 6.1): a hora da retomada (`retomado`), para a
+ * carência. PGlite, sem rede.
  */
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -59,7 +60,8 @@ const auditorias = () => db.select().from(auditoria).where(and(eq(auditoria.orga
 describe("configuração reservas_beds24 (M8.3a, teste 5)", () => {
   it("começa sem pausa, sem imóvel ligado (D6) e sem ensaio", async () => {
     expect(await lerConfigReservasBeds24(db, org)).toEqual(CONFIG_RESERVAS_BEDS24_PADRAO);
-    expect(CONFIG_RESERVAS_BEDS24_PADRAO).toEqual({ pausado: null, imoveis: [], ensaio: null });
+    // M8.3c: a configuração ganhou `retomado` (a hora do "Retomar", desenho 6.1), que nasce vazio como a pausa.
+    expect(CONFIG_RESERVAS_BEDS24_PADRAO).toEqual({ pausado: null, retomado: null, imoveis: [], ensaio: null });
   });
 
   it("ligar um imóvel exige ensaio conferido com a credencial atual; trocar o token exige ensaio novo", async () => {
@@ -127,6 +129,21 @@ describe("configuração reservas_beds24 (M8.3a, teste 5)", () => {
     expect((await lerConfigReservasBeds24(db, org)).pausado).toBeNull();
   });
 
+  it("retomar guarda quem retomou e quando (a carência de 6.1 conta também daí); sem pausa, retomar não muda nada", async () => {
+    const depois = new Date("2026-10-16T14:00:00.000Z");
+    expect(await retomarReservasBeds24(db, admin, AGORA)).toEqual({ ok: true });
+    expect((await lerConfigReservasBeds24(db, org)).retomado).toBeNull();
+    await pausarReservasBeds24(db, admin, AGORA);
+    expect(await retomarReservasBeds24(db, admin, depois)).toEqual({ ok: true });
+    expect(await lerConfigReservasBeds24(db, org)).toMatchObject({ pausado: null, retomado: { em: depois.toISOString(), por: admin.usuarioId } });
+    // Retomar de novo, já sem pausa, não troca a hora da retomada.
+    await retomarReservasBeds24(db, admin, new Date("2026-10-16T15:00:00.000Z"));
+    expect((await lerConfigReservasBeds24(db, org)).retomado?.em).toBe(depois.toISOString());
+    // Pausar outra vez mantém a última retomada (a carência só conta dela depois do próximo "Retomar").
+    await pausarReservasBeds24(db, admin, new Date("2026-10-16T16:00:00.000Z"));
+    expect((await lerConfigReservasBeds24(db, org)).retomado?.em).toBe(depois.toISOString());
+  });
+
   it("cada mudança fica na auditoria, com quem fez", async () => {
     await pausarReservasBeds24(db, admin, AGORA);
     await registrarEnsaioReservasBeds24(db, admin, await ensaioConferido(CREDENCIAL));
@@ -137,7 +154,8 @@ describe("configuração reservas_beds24 (M8.3a, teste 5)", () => {
     expect(a.every((x) => x.usuarioId === admin.usuarioId)).toBe(true);
     // A primeira gravação (a pausa) cria a linha: registra também a lista de imóveis, que nasce vazia.
     const chaves = a.map((x) => Object.keys(x.mudancas as object).sort().join(","));
-    expect(chaves.sort()).toEqual(["ensaio", "imoveis", "imoveis,pausado", "pausado"]);
+    // M8.3c: o retomar grava também `retomado` (quem e quando, para a carência de 6.1); antes, só `pausado`.
+    expect(chaves.sort()).toEqual(["ensaio", "imoveis", "imoveis,pausado", "pausado,retomado"]);
   });
 
   it("exige configuracao:editar: o papel operação (e outra organização) é recusado e nada é gravado", async () => {
@@ -152,7 +170,12 @@ describe("configuração reservas_beds24 (M8.3a, teste 5)", () => {
   });
 
   it("valor gravado torto fica do lado seguro: imóvel desligado, sem ensaio; pausa torta conta como pausada", async () => {
-    expect(configReservasBeds24({ pausado: true, imoveis: [{ imovelId: "x", ligadoEm: "ontem" }, { imovelId: im, ligadoEm: "sem data" }, "lixo"], ensaio: { credencial: "", em: "2026-10-16", operacaoId: "x" } })).toEqual({ pausado: { em: null, por: null }, imoveis: [], ensaio: null });
+    // M8.3c: `retomado: null` na comparação exata (o campo novo; torto ou ausente, nada).
+    expect(configReservasBeds24({ pausado: true, imoveis: [{ imovelId: "x", ligadoEm: "ontem" }, { imovelId: im, ligadoEm: "sem data" }, "lixo"], ensaio: { credencial: "", em: "2026-10-16", operacaoId: "x" } })).toEqual({ pausado: { em: null, por: null }, retomado: null, imoveis: [], ensaio: null });
+    // A retomada sem data legível não conta (a carência não é estendida por um palpite); com a data, quem retomou só se for um id válido.
+    expect(configReservasBeds24({ retomado: { em: "ontem", por: admin.usuarioId } }).retomado).toBeNull();
+    expect(configReservasBeds24({ retomado: true }).retomado).toBeNull();
+    expect(configReservasBeds24({ retomado: { em: "2026-10-16T12:00:00Z", por: "x" } }).retomado).toEqual({ em: "2026-10-16T12:00:00.000Z", por: null });
     expect(configReservasBeds24({ imoveis: [{ imovelId: im, ligadoEm: "2026-10-16T12:00:00Z" }, { imovelId: im, ligadoEm: "2026-10-18T12:00:00Z" }] }).imoveis).toEqual([{ imovelId: im, ligadoEm: "2026-10-16T12:00:00.000Z", ligadoPor: null }]);
     await db.transaction((tx) => gravarConfig(tx, org, "reservas_beds24", { pausado: "sim" }, null));
     expect((await lerConfigReservasBeds24(db, org)).pausado).toEqual({ em: null, por: null });

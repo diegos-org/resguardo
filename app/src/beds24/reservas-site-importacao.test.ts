@@ -553,6 +553,28 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
     expect(await db.select().from(bloqueios).where(eq(bloqueios.organizacaoId, org))).toHaveLength(1);
   });
 
+  it("M8.3c (desenho 5.2, \"Para o M8.3c\"): a marca ambígua é desviada com aviso, nunca importada; o registro já conhecido e o bloqueio seguem", async () => {
+    const aviso = (id: number) => `Registro ${id}: marca do SCL ambígua (dois códigos, ou o código ilegível): nada foi importado; confira no Beds24.`;
+    // Dois info items SCL diferentes, o info item SCL com texto que não é código, e dois códigos nas notas.
+    leitor.bookings = [
+      booking({ infoItems: [{ code: INFO_MARCA_SCL, text: CODIGO }, { code: INFO_MARCA_SCL, text: "SCL-ABCDEF" }] }),
+      booking({ id: 556, arrival: "2030-11-10", departure: "2030-11-12", infoItems: [{ code: INFO_MARCA_SCL, text: "ilegível" }] }),
+      booking({ id: 557, arrival: "2030-12-10", departure: "2030-12-12", notes: `SCL-ABCDEF e ${CODIGO}` }),
+    ];
+    const r = await rodar();
+    expect(r).toMatchObject({ criadas: 0, bloqueios: 0 });
+    expect(r.divergencias).toEqual(expect.arrayContaining([aviso(555), aviso(556), aviso(557)]));
+    expect(await linhas()).toHaveLength(0);
+    // Antes (M8.3a), sem marca legível e fora de uma criação não resolvida, o registro era importado como "sem marca".
+    leitor.bookings = [booking({ id: 558, arrival: "2030-12-20", departure: "2030-12-22" })];
+    expect(await rodar()).toMatchObject({ criadas: 1 });
+    // O registro já conhecido (importado antes) segue e é atualizado; o bloqueio com dois códigos no nome segue o caminho dos bloqueios.
+    leitor.bookings = [booking({ id: 558, arrival: "2030-12-20", departure: "2030-12-23", notes: `SCL-ABCDEF e ${CODIGO}` }), booking({ id: 559, status: "black", arrival: "2030-12-01", departure: "2030-12-03", lastName: `Fechado SCL-ABCDEF ${CODIGO}` })];
+    const segue = await rodar();
+    expect(segue).toMatchObject({ criadas: 0, atualizadas: 1, bloqueios: 1 });
+    expect(segue.divergencias.join(" ")).not.toContain("ambígua");
+  });
+
   describe("o registro com o código que o SCL já conhece segue o caminho normal (c e d não o prendem)", () => {
     const bloqueiosDaOrg = () => db.select().from(bloqueios).where(eq(bloqueios.organizacaoId, org));
     const remocoes = async () => (await historicoDe(db, org, "imovel", im)).filter(h => h.acao === "bloqueio.remover");

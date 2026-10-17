@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
     repassesEmails: vi.fn(),
     beds24: vi.fn(),
     beds24Envio: vi.fn(),
+    beds24Reservas: vi.fn(),
     rotinaDoSite: vi.fn(),
     whatsapp: vi.fn(),
   },
@@ -29,6 +30,7 @@ vi.mock("@/mensagens/cron", () => ({ mensagensDeTodas: m.rotinas.mensagens }));
 vi.mock("@/repasses/cron", () => ({ repassesDeTodas: m.rotinas.repasses, emailsDeRepassesDeTodas: m.rotinas.repassesEmails }));
 vi.mock("@/beds24/cron", () => ({ executarCronBeds24: m.rotinas.beds24 }));
 vi.mock("@/beds24/cron-envio", () => ({ executarCronEnvioBeds24: m.rotinas.beds24Envio }));
+vi.mock("@/beds24/cron-reservas", () => ({ executarCronReservasBeds24: m.rotinas.beds24Reservas }));
 vi.mock("@/pagamentos/rotina", () => ({ rotinaDoSite: m.rotinas.rotinaDoSite }));
 vi.mock("@/whatsapp/cron", () => ({ rotinaWhatsapp: m.rotinas.whatsapp }));
 vi.mock("@/pagamentos/oferta", () => ({ provedorDeConferencia: async () => ({ ok: false, motivo: "so_nas_previas", texto: "" }) }));
@@ -39,6 +41,7 @@ import { ErroDeRotina, MENSAGEM_OMITIDA } from "@/observabilidade/erro-de-rotina
 import { GET as agenda } from "./agenda/route";
 import { GET as beds24 } from "./beds24/route";
 import { GET as beds24Envio } from "./beds24-envio/route";
+import { GET as beds24Reservas } from "./beds24-reservas/route";
 import { GET as cotacoes } from "./cotacoes/route";
 import { GET as fechamento } from "./fechamento/route";
 import { GET as mensagens } from "./mensagens/route";
@@ -68,6 +71,7 @@ describe("rotinas automáticas: o erro vai para o Sentry com o nome da rotina (M
     ["agenda", agenda, m.rotinas.agenda, "agenda-diaria"],
     ["beds24", beds24, m.rotinas.beds24, "sync-beds24"],
     ["beds24-envio", beds24Envio, m.rotinas.beds24Envio, "envio-beds24"],
+    ["beds24-reservas", beds24Reservas, m.rotinas.beds24Reservas, "reservas-beds24"],
     ["fechamento", fechamento, m.rotinas.fechamento, "fechamento-email"],
     ["mensagens", mensagens, m.rotinas.mensagens, "mensagens-hospede"],
     ["repasses", repasses, m.rotinas.repasses, "repasses-periodicos"],

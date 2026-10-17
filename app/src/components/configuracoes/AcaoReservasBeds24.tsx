@@ -2,12 +2,16 @@
 
 /**
  * Os botões da seção "Reservas do site no Beds24" em Integrações (M8.3a): pausar e retomar, ligar e desligar um imóvel
- * (D6) e conferir os escopos da credencial (só leitura). Todos com `BotaoConfirmar`; quem decide é o servidor
- * (`configuracao:editar`; ligar exige um ensaio conferido com a credencial atual).
+ * (D6) e conferir os escopos da credencial (só leitura no Beds24). M8.3c (desenho 8 e D7): o ensaio — "Criar o ensaio" (o
+ * imóvel e as datas), "Cancelar o ensaio" e "Conferir o ensaio". Todos com `BotaoConfirmar`; quem decide é o servidor
+ * (`configuracao:editar`; ligar exige um ensaio conferido com a credencial atual; o ensaio só roda no deploy de produção).
  */
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import {
+  cancelarEnsaioReservasBeds24Acao,
+  conferirEnsaioReservasBeds24Acao,
   conferirEscoposReservasBeds24Acao,
+  criarEnsaioReservasBeds24Acao,
   desligarImovelReservasBeds24Acao,
   type EstadoEscoposReservasBeds24,
   type EstadoReservasBeds24,
@@ -18,18 +22,27 @@ import {
 import type { EscoposDaCredencial } from "@/beds24/reservas-site-painel";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
+import { dataBr } from "@/lib/datas";
 
-const ACOES = { pausar: pausarReservasBeds24Acao, retomar: retomarReservasBeds24Acao, ligar: ligarImovelReservasBeds24Acao, desligar: desligarImovelReservasBeds24Acao } as const;
+const ACOES = {
+  pausar: pausarReservasBeds24Acao,
+  retomar: retomarReservasBeds24Acao,
+  ligar: ligarImovelReservasBeds24Acao,
+  desligar: desligarImovelReservasBeds24Acao,
+  cancelar_ensaio: cancelarEnsaioReservasBeds24Acao,
+  conferir_ensaio: conferirEnsaioReservasBeds24Acao,
+} as const;
 const inicial: EstadoReservasBeds24 = {};
 
-/** Um botão de configuração (pausa ou imóvel), com a pergunta de confirmação e a resposta do servidor. */
-export function AcaoReservasBeds24({ acao, rotulo, pergunta, imovelId, desabilitado }: { acao: keyof typeof ACOES; rotulo: string; pergunta: string; imovelId?: string; desabilitado?: boolean }) {
+/** Um botão de configuração (pausa, imóvel ou o ensaio em curso), com a pergunta de confirmação e a resposta do servidor. */
+export function AcaoReservasBeds24({ acao, rotulo, pergunta, imovelId, operacaoId, desabilitado }: { acao: keyof typeof ACOES; rotulo: string; pergunta: string; imovelId?: string; operacaoId?: string; desabilitado?: boolean }) {
   const [estado, enviar, pendente] = useActionState(ACOES[acao], inicial);
   return (
     <form action={enviar} style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
       {imovelId && <input type="hidden" name="imovelId" value={imovelId} />}
+      {operacaoId && <input type="hidden" name="operacaoId" value={operacaoId} />}
       <BotaoConfirmar className={styles.botao} pergunta={pergunta} disabled={pendente || desabilitado}>
-        {pendente ? "Salvando…" : rotulo}
+        {pendente ? (acao.endsWith("_ensaio") ? "Aguarde… (fala com o Beds24)" : "Salvando…") : rotulo}
       </BotaoConfirmar>
       {estado.mensagem && (
         <span role="status" aria-live="polite" className={estado.ok === false ? styles.erro : undefined} style={{ fontSize: "0.875rem" }}>
@@ -62,14 +75,14 @@ function textoDosEscopos(r: EscoposDaCredencial): string {
   return `${SITUACAO_ESCOPOS[r.avaliacao.situacao]} Lidos: ${lista}${tortos}${demais}${faltam}.`;
 }
 
-/** Prontidão: conferir os escopos da credencial (só leitura; nada é gravado). */
+/** Prontidão: conferir os escopos da credencial (só leitura no Beds24; a leitura fica guardada no SCL, M8.3c). */
 export function ConferirEscoposBeds24() {
   const [estado, enviar, pendente] = useActionState(conferirEscoposReservasBeds24Acao, {} as EstadoEscoposReservasBeds24);
   return (
     <form action={enviar} style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
       <BotaoConfirmar
         className={styles.botao}
-        pergunta="Conferir os escopos da credencial no Beds24? É só leitura: nada é gravado lá nem aqui. Fora do deploy de produção, nada é lido."
+        pergunta="Conferir os escopos da credencial no Beds24? É só leitura: nada muda lá; aqui, o sistema guarda o que leu. Fora do deploy de produção, nada é lido."
         disabled={pendente}
       >
         {pendente ? "Conferindo…" : "Conferir os escopos"}
@@ -77,6 +90,58 @@ export function ConferirEscoposBeds24() {
       {(estado.mensagem || estado.resultado) && (
         <span role="status" aria-live="polite" style={{ fontSize: "0.875rem" }}>
           {estado.mensagem ?? textoDosEscopos(estado.resultado!)}
+        </span>
+      )}
+    </form>
+  );
+}
+
+/**
+ * "Criar o ensaio" (M8.3c, D7): o imóvel (só os ativos com o vínculo único com um quarto do Beds24) e as datas, sem procura,
+ * que Diego escolhe. A pergunta de confirmação é montada na hora do clique, com o imóvel e as datas do formulário.
+ */
+export function CriarEnsaioBeds24({ imoveis, hoje, desabilitado }: { imoveis: { id: string; codigo: string }[]; hoje: string; desabilitado?: boolean }) {
+  const [estado, enviar, pendente] = useActionState(criarEnsaioReservasBeds24Acao, inicial);
+  const formulario = useRef<HTMLFormElement>(null);
+  const pergunta = () => {
+    const f = formulario.current ? new FormData(formulario.current) : null;
+    const codigo = imoveis.find((i) => i.id === f?.get("imovelId"))?.codigo ?? "escolhido";
+    const chegada = String(f?.get("chegada") ?? "");
+    const saida = String(f?.get("saida") ?? "");
+    const datas = chegada && saida ? `, de ${dataBr(chegada)} a ${dataBr(saida)}` : "";
+    return `Criar o ensaio no imóvel ${codigo}${datas}? O sistema cria no Beds24 uma reserva de teste (1 pessoa, sem hóspede nem valor), e essas datas ficam fechadas nas OTAs até você cancelar o ensaio.`;
+  };
+  return (
+    <form ref={formulario} action={enviar} className={styles.form}>
+      <label>
+        Imóvel
+        <select name="imovelId" required defaultValue="" disabled={desabilitado}>
+          <option value="" disabled>
+            Escolha o imóvel
+          </option>
+          {imoveis.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.codigo}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Entrada
+        <input type="date" name="chegada" required min={hoje} disabled={desabilitado} />
+      </label>
+      <label>
+        Saída
+        <input type="date" name="saida" required min={hoje} disabled={desabilitado} />
+      </label>
+      <div className={styles.acoes}>
+        <BotaoConfirmar className={styles.botao} pergunta={pergunta} disabled={pendente || desabilitado}>
+          {pendente ? "Criando… aguarde" : "Criar o ensaio"}
+        </BotaoConfirmar>
+      </div>
+      {estado.mensagem && (
+        <span role="status" aria-live="polite" className={estado.ok === false ? styles.erro : undefined} style={{ fontSize: "0.875rem" }}>
+          {estado.mensagem}
         </span>
       )}
     </form>

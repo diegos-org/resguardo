@@ -38,6 +38,12 @@ import { ConversaWhatsapp } from "@/components/reservas/ConversaWhatsapp";
 import { podeVerConversas } from "@/whatsapp/acesso";
 import { conversasDaReserva } from "@/whatsapp/conversas";
 
+/**
+ * M8.3c (bloco G; plano 1.15): "Conferir agora", "Vincular" e "Passar ao sistema" leem o Beds24 (a fase da leitura tem até
+ * 120 s, e o limite interno do botão é de 240 s): a mesma duração de Integrações.
+ */
+export const maxDuration = 300;
+
 // M8.2d: a diferença de uma alteração também é valor (o histórico da reserva nunca leva o valor a quem não lê o financeiro).
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento", "diferenca"];
 const horaSP = (d: Date) => diaHoraNoFuso(d);
@@ -291,7 +297,16 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
           ) : null
         }
       />
-      {noBeds24 && <ReservaNoBeds24 reservaId={r.id} ficha={noBeds24} editar={editarReserva} resultado={typeof resultadoBeds24 === "string" ? resultadoBeds24 : undefined} />}
+      {noBeds24 && (
+        <ReservaNoBeds24
+          reservaId={r.id}
+          ficha={noBeds24}
+          editar={editarReserva}
+          // M8.3c: "Não existe, pode criar", "Vincular" e "Passar ao sistema" pedem também a configuração (a operação não os vê).
+          configurar={podeFazer(sessao.papel, "configuracao:editar")}
+          resultado={typeof resultadoBeds24 === "string" ? resultadoBeds24 : undefined}
+        />
+      )}
       <PaginasLegaisAceitas aceites={aceitesSite} />
       <ConversaWhatsapp conversas={conversas} />
       {emConferencia && (

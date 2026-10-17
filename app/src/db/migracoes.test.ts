@@ -458,4 +458,48 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     expect(await aplicarMigracoesPendentes(executar, ate0073)).toBe(1);
     expect(await linhas()).toEqual(gravadas);
   }, 120_000);
+
+  it("a 0074 (M8.3c, escrita das reservas do site no Beds24) aplica sobre operações da 0072 sem mudar nada nelas, cria o estado da rotina vazio e é idempotente", async () => {
+    const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
+    const m0074 = todas[74];
+    expect(m0074.sql.join("\n")).toContain('"beds24_reservas_rotina"');
+    // Só até a 0074 (as seguintes terão o próprio teste); a 0073 é a do WhatsApp (M10.1a), com o teste acima.
+    const ate0074 = todas.slice(0, 75);
+    expect(await aplicarMigracoesPendentes(executar, todas.slice(0, 74))).toBe(74);
+    const { rows: [{ id: org }] } = await db.query<{ id: string }>("insert into organizacoes (nome) values ('Org') returning id");
+    const { rows: [{ id: im }] } = await db.query<{ id: string }>("insert into imoveis (organizacao_id, codigo, nome) values ($1, '403', 'Studio Fictício') returning id", [org]);
+    const { rows: [{ id: reserva }] } = await db.query<{ id: string }>("insert into reservas (organizacao_id, imovel_id, codigo, origem, checkin, checkout, fonte) values ($1, $2, 'SCL-7K2QXM', 'site', '2026-12-20', '2026-12-27', 'site') returning id", [org, im]);
+    // Uma operação de antes (da 0072), uma simulação já terminada.
+    await db.query("insert into beds24_reservas_operacoes (organizacao_id, reserva_id, tipo, chave, modo, situacao, erro) values ($1, $2, 'criar', 'simulacao:r:criar:abc:primeira', 'simulacao', 'simulada', '')", [org, reserva]);
+
+    expect(await aplicarMigracoesPendentes(executar, ate0074)).toBe(1);
+    // A linha de antes ganha a resposta nula e o detalhe vazio; nada nasce na rotina.
+    expect((await db.query("select situacao, resposta, detalhe from beds24_reservas_operacoes")).rows).toEqual([{ situacao: "simulada", resposta: null, detalhe: {} }]);
+    expect((await db.query<{ n: number }>("select count(*)::int as n from beds24_reservas_rotina")).rows[0].n).toBe(0);
+    const colunas = async () =>
+      (await db.query<{ c: string }>("select table_name || '.' || column_name || ':' || data_type || ':' || is_nullable as c from information_schema.columns where table_schema = 'public' and (table_name = 'beds24_reservas_rotina' or (table_name = 'beds24_reservas_operacoes' and column_name in ('resposta', 'detalhe'))) order by 1")).rows.map((r) => r.c);
+    const restricoes = async () => (await db.query<{ n: string }>("select conname as n from pg_constraint where conname like 'beds24_reservas_%' order by 1")).rows.map((r) => r.n);
+    const indices = async () => (await db.query<{ n: string }>("select indexname as n from pg_indexes where tablename like 'beds24_reservas_%' order by 1")).rows.map((r) => r.n);
+    const antes = { colunas: await colunas(), restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas() };
+    expect(antes.colunas).toEqual(expect.arrayContaining([
+      "beds24_reservas_operacoes.resposta:text:YES", "beds24_reservas_operacoes.detalhe:jsonb:NO",
+      "beds24_reservas_rotina.organizacao_id:uuid:NO", "beds24_reservas_rotina.escopos:jsonb:YES", "beds24_reservas_rotina.escopos_credencial:text:NO",
+      "beds24_reservas_rotina.conferencia_em:timestamp with time zone:YES", "beds24_reservas_rotina.releitura_em:timestamp with time zone:YES",
+    ]));
+    expect(antes.restricoes).toEqual(expect.arrayContaining(["beds24_reservas_rotina_organizacao_id_organizacoes_id_fk", "beds24_reservas_rotina_pkey"]));
+    expect(antes.restricoes.every((n) => n.length <= 63)).toBe(true);
+    expect(antes.indices).toEqual(expect.arrayContaining(["beds24_reservas_operacoes_resposta", "beds24_reservas_rotina_pkey"]));
+    // Uma linha por organização, presa à organização.
+    await db.query("insert into beds24_reservas_rotina (organizacao_id) values ($1)", [org]);
+    await expect(db.query("insert into beds24_reservas_rotina (organizacao_id) values ($1)", [org])).rejects.toThrow();
+    await expect(db.query("insert into beds24_reservas_rotina (organizacao_id) values (gen_random_uuid())")).rejects.toThrow();
+    await db.query("update beds24_reservas_operacoes set resposta = 'tempo', detalhe = '{\"candidato\":\"98765\"}'::jsonb");
+    // As instruções de novo (banco compartilhado das prévias): nada muda, nem as linhas já gravadas.
+    for (const instrucao of m0074.sql) await db.exec(instrucao);
+    expect({ colunas: await colunas(), restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas() }).toEqual(antes);
+    expect((await db.query("select resposta, detalhe from beds24_reservas_operacoes")).rows).toEqual([{ resposta: "tempo", detalhe: { candidato: "98765" } }]);
+    expect((await db.query<{ n: number }>("select count(*)::int as n from beds24_reservas_rotina")).rows[0].n).toBe(1);
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0074.hash]);
+    expect(await aplicarMigracoesPendentes(executar, ate0074)).toBe(1);
+  }, 120_000);
 });
