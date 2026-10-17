@@ -110,7 +110,9 @@ export type ResultadoAdocao =
   /** A reserva não é do site, não tem acompanhamento, ou ele está `manual` ou `encerrada`: o SCL não criou nada para adotar. */
   | { adotada: false; motivo: "sem_acompanhamento" }
   /** O id já é de outra reserva do SCL (`reservas.beds24_id` é único por organização). */
-  | { adotada: false; motivo: "id_de_outra_reserva"; id: string };
+  | { adotada: false; motivo: "id_de_outra_reserva"; id: string }
+  /** Tudo casaria, mas a leitura trouxe registro ilegível ou sem dono (pode ser outra cópia com a marca): nada adotado. */
+  | { adotada: false; motivo: "leitura_inconclusiva" };
 
 const semAdocao = (d: Exclude<DecisaoAdocao, { adotar: true }>): ResultadoAdocao =>
   d.motivo === "duplicada" ? { adotada: false, motivo: "duplicada", ids: d.ids } : d.motivo === "marca_em_registro_inesperado" ? { adotada: false, motivo: d.motivo, id: d.id } : { adotada: false, motivo: "nenhum" };
@@ -120,10 +122,11 @@ const semAdocao = (d: Exclude<DecisaoAdocao, { adotar: true }>): ResultadoAdocao
  * busca da incerteza), pelas regras de adoção: grava o fato externo — `reservas.beds24_id` e, na operação de criação em
  * curso, o mesmo id com a situação `feita` (a conferência segue sem POST) — e a auditoria. Um id já ligado a ela que não é
  * o do registro (na reserva ou numa operação) faz dos dois uma duplicata. Não mexe na situação do acompanhamento nem nas
- * marcas das OTAs: isso é da conferência. Quem chama tem a trava `beds24:<org>`. A mesma função na importação e no
- * trabalhador (M8.3c).
+ * marcas das OTAs: isso é da conferência. Com `leituraInconclusiva` (a leitura trouxe registro ilegível ou sem dono, que
+ * pode ser outra cópia com a marca), nada é adotado, mas os outros motivos vêm antes. Quem chama tem a trava `beds24:<org>`.
+ * A mesma função na importação e no trabalhador (M8.3c).
  */
-export async function adotarReservaCriada(tx: Db, org: string, reservaId: string, comMarca: readonly ReservaBeds24[], o: { autorId?: string | null } = {}): Promise<ResultadoAdocao> {
+export async function adotarReservaCriada(tx: Db, org: string, reservaId: string, comMarca: readonly ReservaBeds24[], o: { autorId?: string | null; leituraInconclusiva?: boolean } = {}): Promise<ResultadoAdocao> {
   const t = await travarReservaDoSite(tx, org, reservaId, "update");
   if (!t?.acompanhamento || t.acompanhamento.situacao === "manual" || t.acompanhamento.situacao === "encerrada") return { adotada: false, motivo: "sem_acompanhamento" };
   const { reserva: r, acompanhamento: a } = t;
@@ -136,6 +139,10 @@ export async function adotarReservaCriada(tx: Db, org: string, reservaId: string
   if (r.beds24Id !== id) {
     const [outra] = await tx.select({ id: reservas.id }).from(reservas).where(and(eq(reservas.organizacaoId, org), eq(reservas.beds24Id, id), ne(reservas.id, r.id))).limit(1);
     if (outra) return { adotada: false, motivo: "id_de_outra_reserva", id };
+  }
+  // Só aqui, com tudo casando: os avisos mais certos (sem acompanhamento, duplicada, id de outra reserva) vêm antes.
+  if (o.leituraInconclusiva) return { adotada: false, motivo: "leitura_inconclusiva" };
+  if (r.beds24Id !== id) {
     await tx.update(reservas).set({ beds24Id: id }).where(eq(reservas.id, r.id));
     await registrarAuditoria(tx, { organizacaoId: org, usuarioId: o.autorId ?? null, acao: "beds24.reserva.adotar", entidade: "reserva", entidadeId: r.id, mudancas: { beds24Id: [r.beds24Id, id] } });
   }
@@ -241,6 +248,14 @@ export function avisoDeRegistroIlegivel(codigo: string, beds24Id: string): strin
   return `Reserva ${codigo} (paga pelo site): o registro ${idSeguro(beds24Id)} voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`;
 }
 
+/**
+ * O registro ligado a uma reserva do site não voltou numa releitura por id que trouxe registro sem dono (um id que não foi
+ * pedido, ou um registro ilegível): ele pode ser o que voltou. A conferência não conclui e nada muda (nunca "apagada").
+ */
+export function avisoDeReleituraSemConclusao(codigo: string, beds24Id: string): string {
+  return `Reserva ${codigo} (paga pelo site): o registro ${idSeguro(beds24Id)} não voltou na releitura do Beds24, e a resposta trouxe registro que não foi pedido ou que não deu para ler; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`;
+}
+
 // ---------------------------------------------------------------- desvio no laço da importação (desenho 5.2)
 
 /**
@@ -283,6 +298,8 @@ export type ContextoDoDesvio = {
    * com a marca, então a adoção não conclui (como na busca, `procurarReservaDoSite`).
    */
   leituraComIlegivel: boolean;
+  /** Ids que voltaram em formato inválido em alguma leitura desta importação: o ligado a uma reserva do site não é conferido. */
+  ilegiveis: ReadonlySet<string>;
 };
 
 /**
@@ -291,7 +308,7 @@ export type ContextoDoDesvio = {
  * idade), uma operação `incerta`, um POST tentado sem o id, ou o acompanhamento `aguardando_equipe` com motivo `incerta`,
  * de reserva ainda sem `beds24_id`.
  */
-export async function prepararDesvioNaImportacao(tx: Db, org: string, registros: Iterable<ReservaBeds24>, conhecidos: ReadonlyMap<string, RegistroConhecido>, agora: Date, o: { leituraComIlegivel: boolean }): Promise<ContextoDoDesvio> {
+export async function prepararDesvioNaImportacao(tx: Db, org: string, registros: Iterable<ReservaBeds24>, conhecidos: ReadonlyMap<string, RegistroConhecido>, agora: Date, o: { leituraComIlegivel: boolean; ilegiveis: ReadonlySet<string> }): Promise<ContextoDoDesvio> {
   const marcados = new Map<string, ReservaBeds24[]>();
   for (const b of registros) if (b.referenciaScl && !b.ensaio) marcados.set(b.referenciaScl, [...(marcados.get(b.referenciaScl) ?? []), b]);
   const ligadas = new Map<string, ReservaLigada>();
@@ -331,7 +348,7 @@ export async function prepararDesvioNaImportacao(tx: Db, org: string, registros:
     .innerJoin(reservas, eq(reservas.id, beds24ReservasSite.reservaId))
     .where(and(eq(beds24ReservasSite.organizacaoId, org), eq(reservas.fonte, "site"), isNull(reservas.beds24Id), eq(beds24ReservasSite.situacao, "aguardando_equipe"), eq(beds24ReservasSite.motivo, "incerta")));
   for (const a of incertas) somar(a.referencia, a.roomId ?? a.esperado?.quarto, [a.esperado, { chegada: a.checkin, saida: a.checkout }]);
-  return { agora, marcados, ligadas, ensaios, porCodigo, naoResolvidas, conhecidos, duplicadasAvisadas: new Set(), leituraComIlegivel: o.leituraComIlegivel };
+  return { agora, marcados, ligadas, ensaios, porCodigo, naoResolvidas, conhecidos, duplicadasAvisadas: new Set(), leituraComIlegivel: o.leituraComIlegivel, ilegiveis: o.ilegiveis };
 }
 
 /** `desviado`: o registro não segue para o vínculo, o bloqueio nem `sincronizarReserva`; `aviso` vai ao resultado da importação. */
@@ -357,8 +374,8 @@ function conhecidoSegue(b: ReservaBeds24, conhecidos: ReadonlyMap<string, Regist
  * - a. o ensaio do SCL (pela marca `SCL-ENSAIO` ou pelo id gravado no ensaio) pula, com aviso; nunca cria;
  * - b. o registro ligado a uma reserva do site (`reservas.beds24_id` ou o id numa operação dela) vai a
  *   `conferirNaImportacao`, nunca a `sincronizarReserva` — inclusive um `black` (a reserva paga nunca é cancelada por ele);
- * - c. a marca casada pelas regras de adoção chama `adotarReservaCriada` e depois confere; com um registro ilegível na
- *   leitura, a adoção não conclui (pode ser outra cópia com a marca): pula, com aviso;
+ * - c. a marca casada pelas regras de adoção chama `adotarReservaCriada` e depois confere; com um registro ilegível ou sem
+ *   dono na leitura, a adoção não conclui (pode ser outra cópia com a marca): pula, com aviso;
  * - d. a marca sem reserva correspondente, duplicada ou num registro que não bate vira aviso; nada é criado;
  * - e. sem marca legível, no mesmo quarto e com noites sobrepostas a uma criação não resolvida: pula, com aviso.
  * O SCL nunca cria um `black`: um bloqueio com o código no nome (a equipe fechando as datas à mão) segue o caminho dos
@@ -374,6 +391,8 @@ export async function desvioNaImportacao(tx: Db, org: string, b: ReservaBeds24, 
   const ligada = ctx.ligadas.get(b.idExterno);
   if (ligada) {
     if (ligada.beds24Id && ligada.beds24Id !== b.idExterno) return desviado(avisoDuplicada(ctx, ligada.codigo, id));
+    // Ilegível numa leitura e legível noutra: qual vale? A conferência não conclui.
+    if (ctx.ilegiveis.has(b.idExterno)) return desviado(avisoDeRegistroIlegivel(ligada.codigo, b.idExterno));
     return desviado(avisoDaConferencia(await conferirNaImportacao(tx, org, ligada.id, b, ctx.agora), ligada.codigo, b.idExterno));
   }
 
@@ -381,8 +400,7 @@ export async function desvioNaImportacao(tx: Db, org: string, b: ReservaBeds24, 
   if (ref && b.estado !== "bloqueio" && !conhecidoSegue(b, ctx.conhecidos)) {
     const r = ctx.porCodigo.get(ref);
     if (!r) return desviado(`Registro ${id}: marcado pelo SCL (${ref}) sem reserva correspondente. Nada foi importado.`);
-    if (ctx.leituraComIlegivel) return desviado(`Registro ${id}: marcado com ${ref}, mas a leitura do Beds24 trouxe registro em formato inválido (pode ser outra cópia): a adoção não concluiu. Nada foi importado; confira no Beds24.`);
-    const ad = await adotarReservaCriada(tx, org, r.id, ctx.marcados.get(ref) ?? [b]);
+    const ad = await adotarReservaCriada(tx, org, r.id, ctx.marcados.get(ref) ?? [b], { leituraInconclusiva: ctx.leituraComIlegivel });
     if (ad.adotada) {
       if (ad.beds24Id !== b.idExterno) return desviado(avisoDuplicada(ctx, ref, id));
       return desviado(avisoDaConferencia(await conferirNaImportacao(tx, org, r.id, b, ctx.agora), ref, b.idExterno));
@@ -390,6 +408,7 @@ export async function desvioNaImportacao(tx: Db, org: string, b: ReservaBeds24, 
     if (ad.motivo === "duplicada") return desviado(avisoDuplicada(ctx, ref, id));
     if (ad.motivo === "sem_acompanhamento") return desviado(`Registro ${id}: marcado com ${ref}, reserva do site que o sistema não enviou ao Beds24. Nada foi importado; confira no Beds24.`);
     if (ad.motivo === "id_de_outra_reserva") return desviado(`Registro ${id}: marcado com ${ref}, mas o id já é de outra reserva do SCL. Nada foi importado; confira no Beds24.`);
+    if (ad.motivo === "leitura_inconclusiva") return desviado(`Registro ${id}: marcado com ${ref}, mas a leitura do Beds24 trouxe registro que não deu para ler ou que não foi pedido (pode ser outra cópia): a adoção não concluiu. Nada foi importado; confira no Beds24.`);
     return desviado(`Registro ${id}: a marca ${ref} está num registro que não bate com a reserva do site (quarto, datas ou situação). Nada foi importado; confira no Beds24.`);
   }
 

@@ -8,7 +8,7 @@ import { registrarRemocaoDeBloqueio } from "@/reservas/bloqueios";
 import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
 import { paraDadosReserva } from "./converter";
-import { avisoDaConferencia, avisoDeRegistroIlegivel, conferirNaImportacao, desvioNaImportacao, passarEnviandoVencidasAIncerta, prepararDesvioNaImportacao, type RegistroConhecido } from "./reservas-site";
+import { avisoDaConferencia, avisoDeRegistroIlegivel, avisoDeReleituraSemConclusao, conferirNaImportacao, desvioNaImportacao, passarEnviandoVencidasAIncerta, prepararDesvioNaImportacao, type RegistroConhecido } from "./reservas-site";
 import { ErroBeds24, type LeitorBeds24, type Lido, type ReservaBeds24 } from "./tipos";
 import { CAUSA_EM_ANDAMENTO, escritaBeds24EmAndamento, MENSAGEM_ENVIO_EM_ANDAMENTO, MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE, tentarTravaBeds24 } from "./trava";
 
@@ -108,8 +108,9 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       if (conhecidos.length > 2000 || lote.itens.length > 2000) throw new ErroBeds24("Consulta acima de 2.000 reservas: é necessário ampliar o processamento antes de importar este volume.", "formato");
       const faltantes = conhecidos.filter(id => !porId.has(id));
       // Registro de um id fora do pedido do lote, legível ou não, ou sem id legível: a resposta não é a do pedido, e ele pode
-      // ser de qualquer id pedido, inclusive de outro lote.
-      const vistosNaReleitura = new Set<string>();
+      // ser de qualquer id pedido, inclusive de outro lote. Um id que já voltou legível na leitura do período não é pedido de
+      // novo: se ele volta na releitura, é o mesmo id duas vezes (a importação para, como numa leitura só).
+      const vistosNaReleitura = new Set<string>(porId.keys());
       let semDono = 0;
       for (let i = 0; i < faltantes.length; i += 50) {
         const ids = faltantes.slice(i, i + 50);
@@ -126,24 +127,27 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
           aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
         }
       }
-      // Com qualquer registro sem dono, em qualquer lote, a releitura toda fica sem conclusão: nenhum id que não voltou legível
-      // conta como "não voltou" (apagado), com um aviso só.
+      // Com qualquer registro sem dono, em qualquer lote, a releitura toda fica sem conclusão: nenhum id que não voltou conta
+      // como "não voltou" (apagado), com um aviso só.
+      const semConclusao = new Set<string>();
       if (semDono) {
-        for (const id of faltantes) if (!porId.has(id)) ilegiveis.add(id);
+        for (const id of faltantes) if (!porId.has(id) && !ilegiveis.has(id)) semConclusao.add(id);
         aviso(res, `Releitura por id: ${semDono} registro(s) voltaram com um id que não foi pedido ou que não deu para ler; os registros que não voltaram legíveis ficam como estavam. Confira os registros no Beds24.`);
       }
-      for (const id of faltantes) if (!porId.has(id) && !ilegiveis.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
+      for (const id of faltantes) if (!porId.has(id) && !ilegiveis.has(id) && !semConclusao.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
       // O que cada id conhecido é no SCL (a reserva vale sobre o bloqueio com o mesmo id): o desvio deixa o registro conhecido
       // com a marca seguir o caminho normal (5.2 c e d).
       const tipoConhecido = new Map<string, RegistroConhecido>([...antigosBloqueios.map(a => [a.idFonte, "bloqueio"] as const), ...antigas.map(a => [a.beds24Id || a.idFonte, "reserva"] as const)]);
-      // Reserva paga do site (M8.3, desenho 5.2): o que o desvio consulta, lido uma vez. O id dela que não voltou na releitura
-      // é conferido como apagado no Beds24 (a reserva do SCL continua como estava). O que voltou ilegível não é apagado: a
-      // conferência não conclui e nada muda no acompanhamento (situação, leitura e marcas das OTAs), só o aviso.
-      const desvio = await prepararDesvioNaImportacao(tx, org, porId.values(), tipoConhecido, agora, { leituraComIlegivel: ilegiveis.size > 0 });
+      // Reserva paga do site (M8.3, desenho 5.2): o que o desvio consulta, lido uma vez. O id dela que não voltou numa releitura
+      // limpa é conferido como apagado no Beds24 (a reserva do SCL continua como estava). O que voltou ilegível, em qualquer
+      // leitura desta importação (mesmo que outra leitura o traga legível), e o que não voltou numa releitura sem conclusão
+      // não são conferidos: nada muda no acompanhamento (situação, leitura e marcas das OTAs), só o aviso. Com qualquer
+      // registro ilegível ou sem dono, a adoção também não conclui (pode ser outra cópia com a marca).
+      const desvio = await prepararDesvioNaImportacao(tx, org, porId.values(), tipoConhecido, agora, { ilegiveis, leituraComIlegivel: ilegiveis.size > 0 || semDono > 0 });
       for (const id of faltantes) {
         const ligada = porId.has(id) ? undefined : desvio.ligadas.get(id);
         if (!ligada) continue;
-        const a = ilegiveis.has(id) ? avisoDeRegistroIlegivel(ligada.codigo, id) : avisoDaConferencia(await conferirNaImportacao(tx, org, ligada.id, null, agora), ligada.codigo, id);
+        const a = ilegiveis.has(id) ? avisoDeRegistroIlegivel(ligada.codigo, id) : semConclusao.has(id) ? avisoDeReleituraSemConclusao(ligada.codigo, id) : avisoDaConferencia(await conferirNaImportacao(tx, org, ligada.id, null, agora), ligada.codigo, id);
         if (a) aviso(res, a);
       }
       const inicio = hojeISO("America/Sao_Paulo", agora);

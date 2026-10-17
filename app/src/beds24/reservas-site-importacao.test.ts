@@ -231,20 +231,21 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
     try {
       const res = await rodar();
       expect(res.divergencias.join(" ")).toContain("Releitura por id: 1 registro(s) voltaram com um id que não foi pedido ou que não deu para ler");
-      expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
+      expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 não voltou na releitura do Beds24, e a resposta trouxe registro que não foi pedido ou que não deu para ler; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
       expect(res.divergencias.join(" ")).not.toMatch(/não voltou na leitura do Beds24|não retornou na consulta/);
       expect(await acompanhamentoDe(r.id)).toEqual(a);
       expect(await reserva(r.id)).toEqual(r);
     } finally {
       leitor.reservas = original;
     }
-    // Um registro legível de um id que não foi pedido: a resposta também não conclui nada sobre o 555.
+    // Um registro legível de um id que não foi pedido (fora do período lido, então só a releitura o traz): a resposta também
+    // não conclui nada sobre o 555.
     leitor.reservas = async (f) => (f.ids?.length ? original({ ...f, ids: ["777"] }) : original(f));
-    leitor.bookings = [booking({ id: 777, infoItems: [] })];
+    leitor.bookings = [booking({ id: 777, arrival: "2026-08-01", departure: "2026-08-03", infoItems: [] })];
     try {
       const res = await rodar();
       expect(res.divergencias.join(" ")).toContain("Releitura por id: 1 registro(s) voltaram com um id que não foi pedido ou que não deu para ler");
-      expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
+      expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 não voltou na releitura do Beds24, e a resposta trouxe registro que não foi pedido ou que não deu para ler; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
       expect(await acompanhamentoDe(r.id)).toEqual(a);
     } finally {
       leitor.reservas = original;
@@ -270,7 +271,7 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
         const res = await rodar();
         expect(leitor.filtrosLidos.length).toBeGreaterThan(0);
         expect(res.divergencias.join(" ")).toContain("Releitura por id: 1 registro(s) voltaram com um id que não foi pedido ou que não deu para ler; os registros que não voltaram legíveis ficam como estavam.");
-        expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
+        expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 não voltou na releitura do Beds24, e a resposta trouxe registro que não foi pedido ou que não deu para ler; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
         expect(res.divergencias.join(" ")).not.toMatch(/não voltou na leitura do Beds24|não retornou na consulta/);
         expect(await acompanhamentoDe(r.id)).toEqual(a);
         expect(await reserva(r.id)).toEqual(r);
@@ -426,7 +427,7 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
     leitor.bookings = [booking(comMarca()), booking({ id: 556, departure: "2030-10-10", ...comMarca() })];
     const res = await rodar();
     expect(res).toMatchObject({ ok: true, criadas: 0, atualizadas: 0 });
-    expect(res.divergencias).toContain(`Registro 555: marcado com ${CODIGO}, mas a leitura do Beds24 trouxe registro em formato inválido (pode ser outra cópia): a adoção não concluiu. Nada foi importado; confira no Beds24.`);
+    expect(res.divergencias).toContain(`Registro 555: marcado com ${CODIGO}, mas a leitura do Beds24 trouxe registro que não deu para ler ou que não foi pedido (pode ser outra cópia): a adoção não concluiu. Nada foi importado; confira no Beds24.`);
     expect(await linhas()).toHaveLength(1);
     expect(await reserva(r.id)).toEqual(r);
     expect(await operacoesDe(r.id)).toEqual([o]);
@@ -436,6 +437,84 @@ describe("importação com a reserva paga do site (M8.3a, teste 6)", () => {
     leitor.bookings = [booking(comMarca())];
     await rodar();
     expect(await reserva(r.id)).toEqual({ ...r, beds24Id: "555" });
+  });
+
+  it("um registro sem dono na releitura também barra a adoção, mesmo com todos os ids pedidos de volta (ilegível, ou outra cópia com a marca)", async () => {
+    const r = await reservaDoSite();
+    const a = await acompanhar(r.id, { situacao: "em_envio", otaFechadaEm: null });
+    const [o] = await operacao(r.id, a.id, { situacao: "incerta", enviadoEm: minutosAtras(20), iniciadoEm: minutosAtras(20) });
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-01-01", fim: "2026-01-02", fonte: "beds24", idFonte: "900" });
+    const lido = (b: Record<string, unknown>) => {
+      const n = normalizarReserva(booking(b));
+      if (!n.ok) throw new Error("registro de teste ilegível");
+      return n.r;
+    };
+    leitor.bookings = [booking(comMarca())];
+    const original = leitor.reservas.bind(leitor);
+    for (const sobra of [{ itens: [], divergencias: [{ origem: "reserva" as const, id: "?", motivo: "sem id" }] }, { itens: [lido({ id: 556, ...comMarca() })], divergencias: [] }]) {
+      leitor.reservas = async (f) => (f.ids?.length ? { itens: [lido({ id: 900, status: "black", arrival: "2026-01-01", departure: "2026-01-02" }), ...sobra.itens], divergencias: sobra.divergencias, lidoEm: agora.toISOString() } : original(f));
+      try {
+        const res = await rodar();
+        expect(res.divergencias).toContain(`Registro 555: marcado com ${CODIGO}, mas a leitura do Beds24 trouxe registro que não deu para ler ou que não foi pedido (pode ser outra cópia): a adoção não concluiu. Nada foi importado; confira no Beds24.`);
+      } finally {
+        leitor.reservas = original;
+      }
+      expect(await reserva(r.id)).toEqual(r);
+      expect(await operacoesDe(r.id)).toEqual([o]);
+      expect(await acompanhamentoDe(r.id)).toEqual(a);
+    }
+  });
+
+  it("um registro ilegível que não tem nada a ver não esconde os avisos mais certos: sem acompanhamento e duplicada continuam com o texto deles", async () => {
+    const r = await reservaDoSite();
+    leitor.bookings = [booking({ notes: `Reserva ${CODIGO}` }), booking({ id: 777, status: "weird" })];
+    const sem = await rodar();
+    expect(sem.divergencias).toContain(`Registro 555: marcado com ${CODIGO}, reserva do site que o sistema não enviou ao Beds24. Nada foi importado; confira no Beds24.`);
+    expect(sem.divergencias.join(" ")).not.toContain("a adoção não concluiu");
+    // Já ligada ao 555, outra cópia com a marca é duplicada, com ou sem registro ilegível na leitura.
+    await db.update(reservas).set({ beds24Id: "555" }).where(eq(reservas.id, r.id));
+    await acompanhar(r.id);
+    leitor.bookings = [nosso(), booking({ id: 556, ...comMarca() }), booking({ id: 777, status: "weird" })];
+    const dup = await rodar();
+    expect(dup.divergencias).toContain(`Registro 556: reserva duplicada no Beds24 para ${CODIGO}. Nada foi importado; confira no Beds24.`);
+    expect(dup.divergencias.join(" ")).not.toContain("a adoção não concluiu");
+  });
+
+  it("o ligado ilegível na leitura do período e legível na releitura não é conferido (qual cópia vale?); o mesmo id legível nas duas leituras para a importação", async () => {
+    const r = await reservaDoSite({ beds24Id: "555" });
+    const a = await acompanhar(r.id, { conferidaEm: null });
+    const lido = (b: Record<string, unknown>) => {
+      const n = normalizarReserva(booking(b));
+      if (!n.ok) throw new Error("registro de teste ilegível");
+      return n.r;
+    };
+    const original = leitor.reservas.bind(leitor);
+    // Ilegível no período; na releitura, legível (cancelado ou igual ao esperado): nada muda.
+    for (const copia of [{ status: "cancelled" }, {}]) {
+      leitor.bookings = [booking({ status: "weird" })];
+      leitor.reservas = async (f) => (f.ids?.length ? { itens: [lido({ ...comMarca(), ...copia })], divergencias: [], lidoEm: agora.toISOString() } : original(f));
+      try {
+        const res = await rodar();
+        expect(res.divergencias).toContain(`Reserva ${CODIGO} (paga pelo site): o registro 555 voltou do Beds24 em formato inválido; a conferência não concluiu e nada mudou. Confira o registro no Beds24.`);
+      } finally {
+        leitor.reservas = original;
+      }
+      expect(await acompanhamentoDe(r.id)).toEqual(a);
+      expect(await reserva(r.id)).toEqual(r);
+    }
+    // Legível no período e de novo, sem ser pedido, na releitura (por causa de outro id conhecido): as duas ordens dariam
+    // conclusões opostas; a importação para.
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-01-01", fim: "2026-01-02", fonte: "beds24", idFonte: "900" });
+    for (const [doPeriodo, daReleitura] of [[{}, { status: "cancelled" }], [{ status: "cancelled" }, {}]]) {
+      leitor.bookings = [nosso(doPeriodo)];
+      leitor.reservas = async (f) => (f.ids?.length ? { itens: [lido({ ...comMarca(), ...daReleitura })], divergencias: [], lidoEm: agora.toISOString() } : original(f));
+      try {
+        expect(await rodar()).toMatchObject({ ok: false, situacao: "erro", mensagem: expect.stringContaining("IDs de reserva repetidos") });
+      } finally {
+        leitor.reservas = original;
+      }
+      expect(await acompanhamentoDe(r.id)).toEqual(a);
+    }
   });
 
   it("marca sem correspondência, duplicada ou num registro que não bate vira aviso; nada é criado", async () => {
