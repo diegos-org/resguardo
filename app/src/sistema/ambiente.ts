@@ -11,6 +11,13 @@
  */
 export type AmbienteDoSistema = "producao" | "previa" | "desenvolvimento";
 
+/**
+ * Endereço do deploy de produção, num lugar só (M10.1a): os endereços de aviso que se colam no Mercado Pago
+ * (`pagamentos/integracao.ts`) e no app da Meta (`whatsapp/integracao.ts`) saem daqui. Na troca de domínio (M11.2) muda
+ * esta linha.
+ */
+export const ENDERECO_PRODUCAO = "https://scl-reconstrucao.vercel.app";
+
 /** As duas variáveis que decidem o ambiente (o `process.env` serve; no navegador, um objeto com as públicas equivalentes). */
 export type VariaveisDoAmbiente = { readonly VERCEL_ENV?: string; readonly NODE_ENV?: string };
 

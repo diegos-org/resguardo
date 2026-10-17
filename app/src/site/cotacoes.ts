@@ -6,7 +6,6 @@
  * pedido vence sozinho (rotina) e a equipe confirma ou cancela no painel; o pagamento online (M8.2) vai
  * usar este mesmo hold. Nada é escrito no Beds24 aqui (M8.3).
  */
-import { randomInt } from "node:crypto";
 import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
@@ -17,6 +16,7 @@ import { dataBr, diaHoraNoFuso } from "@/lib/datas";
 import { expirarAlteracoesVencidas } from "@/pagamentos/alteracao-prazo";
 import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, PRAZO_CARTAO_SEM_RESPOSTA_DIAS } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
+import { codigoCotacaoValido, gerarCodigoCotacao } from "./codigo-cotacao";
 import { consultarDisponibilidade, type Disponibilidade } from "./disponibilidade";
 import { type RegrasDaCasa, regrasDaCasa } from "./regras-da-casa";
 import type { PedidoConsulta } from "./site";
@@ -39,14 +39,9 @@ export const GUARDAR_COTACAO_SEM_PEDIDO_DIAS = 30;
  */
 export { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS };
 
-const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/1/I
-/** Código público da cotação, ex.: COT-7K2QXM9A. Não é credencial. */
-export function gerarCodigoCotacao(): string {
-  let s = "";
-  for (let i = 0; i < 8; i++) s += ALFABETO[randomInt(ALFABETO.length)];
-  return `COT-${s}`;
-}
-export const codigoCotacaoValido = (c: string) => /^COT-[A-HJ-NP-Z2-9]{8}$/.test(c);
+// Código público da cotação: puro, em ./codigo-cotacao (M10.1a: o vínculo do WhatsApp lê os códigos sem importar este
+// módulo, que grava cotações e reservas). Reexportado aqui para quem já importava daqui.
+export { codigoCotacaoValido, codigosDeCotacaoNoTexto, gerarCodigoCotacao } from "./codigo-cotacao";
 
 const MENSAGEM_ESTADO: Record<EstadoCotacao, string> = {
   aberta: "",

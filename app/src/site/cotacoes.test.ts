@@ -14,6 +14,7 @@ import { ErroProvedor } from "@/pagamentos/provedor";
 import { AGORA, type Cenario, EMAIL_HOSPEDE, minutos, montarCenario } from "@/pagamentos/testes";
 import {
   codigoCotacaoValido,
+  codigosDeCotacaoNoTexto,
   criarCotacao,
   ERRO_EMAIL_EM_ANDAMENTO,
   estenderHold,
@@ -393,5 +394,19 @@ describe("o mesmo e-mail com um cartão sem resposta (M8.2b)", () => {
     expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:40 (estendido pelo pagamento); depois disso o pedido vence sozinho.");
     await db.transaction((tx) => voltarHold(tx, c.org, s.cotacaoId, minutos(30), minutos(40), AGORA, null));
     expect((await c.reserva(s.reservaId)).observacoes).toBe("Pedido pelo site — cotação X. Datas seguradas até 01/10 às 12:30; depois disso o pedido vence sozinho.");
+  });
+});
+
+describe("códigos de cotação soltos num texto (M10.1a, sugestão de vínculo do WhatsApp)", () => {
+  it("acha o código gerado no meio do texto, sem repetição e na ordem; mesmo alfabeto de codigoCotacaoValido; grudado ou minúsculo não conta", async () => {
+    const c = (await cotar()).codigo;
+    expect(codigosDeCotacaoNoTexto(`Fiz a cotação ${c}, pode confirmar?`)).toEqual([c]);
+    expect(codigosDeCotacaoNoTexto("COT-7K3M9QX2 e COT-ABCDEFGH, de novo COT-7K3M9QX2.")).toEqual(["COT-7K3M9QX2", "COT-ABCDEFGH"]);
+    // Fora do alfabeto (0, O, 1, I), curto, longo ou grudado em letra ou número: nada. Quem chama passa em maiúsculas.
+    expect(codigosDeCotacaoNoTexto("COT-7K3M9QX0 COT-7K3M9QXO COT-7K3M9QX1 COT-7K3M9QXI COT-7K3M9QX COT-7K3M9QX22 XCOT-7K3M9QX2")).toEqual([]);
+    expect(codigosDeCotacaoNoTexto("cot-7k3m9qx2")).toEqual([]);
+    expect(codigosDeCotacaoNoTexto("cot-7k3m9qx2".toUpperCase())).toEqual(["COT-7K3M9QX2"]);
+    for (const t of codigosDeCotacaoNoTexto("COT-7K3M9QX2 COT-ABCDEFGH")) expect(codigoCotacaoValido(t)).toBe(true);
+    expect(codigosDeCotacaoNoTexto("")).toEqual([]);
   });
 });

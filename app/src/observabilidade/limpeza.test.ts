@@ -1,5 +1,6 @@
 import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";
 import { describe, expect, it } from "vitest";
+import { CANARIOS } from "@/whatsapp/testes";
 import { cnpjValido, cortarTexto, cpfValido, LIMITE_DO_TEXTO, limparEndereco, limparEvento, limparRastro, limparTexto, limparValor, luhnValido } from "./limpeza";
 
 /**
@@ -447,5 +448,60 @@ describe("partes do aviso com regra própria (M0.9)", () => {
     // Sem a forma de um digest do Next (11 dígitos, texto), passa pela limpeza como qualquer tag.
     expect(limparEvento({ type: undefined, tags: { digest: "21998765432" } } as ErrorEvent).tags).toEqual({ digest: "[telefone]" });
     expect(limparEvento({ type: undefined, tags: { digest: `para ${PESSOAIS.email}` } } as ErrorEvent).tags).toEqual({ digest: "para [e-mail]" });
+  });
+});
+
+describe("ids e telefones do WhatsApp (M10.1a): o wamid, o BSUID e o wa_id sem o nono dígito viram marcador", () => {
+  // Os canários fictícios do recebimento (whatsapp/testes.ts) e os exemplos públicos das páginas da Meta.
+  it.each([
+    [`falhou a mensagem ${CANARIOS.wamid} ao gravar`, "falhou a mensagem [id] ao gravar"],
+    // O base64 do wamid pode ter "+", "/" e "=": sai inteiro, também dentro de um endereço.
+    ["wamid.HBgLMTY1MDM4Nzk0MzkVAgAR/GBJDQ+jZCMzlE== repetido", "[id] repetido"],
+    ["GET /api/x/wamid.HBgLMTY1MDM4Nzk0MzkVAgARGBJDQjZC", "GET /api/x/[id]"],
+    [`conversa de ${CANARIOS.bsuid} em conflito`, "conversa de [id] em conflito"],
+    ["previous_user_id US.13491208655302741918, user_id US.ENT.11815799212886844830.", "previous_user_id [id], user_id [id]."],
+    [`wa_id ${CANARIOS.waIdBrSem9} sem o nono dígito`, "wa_id [telefone] sem o nono dígito"],
+    [`wa_id ${CANARIOS.waIdBr} com o nono dígito`, "wa_id [telefone] com o nono dígito"],
+    [`de ${CANARIOS.comMais} e ${CANARIOS.telefoneFormatado}`, "de [telefone] e [telefone]"],
+    [`cliente de fora +${CANARIOS.waIdEstrangeiro}`, "cliente de fora [telefone]"],
+    // O e-mail sai antes do BSUID: um BSUID colado num e-mail não deixa o resto do e-mail aparecer.
+    [`para ${CANARIOS.bsuid}@exemplo.com`, "para [e-mail]"],
+  ])("%s", (entrada, esperado) => {
+    expect(limparTexto(entrada)).toBe(esperado);
+    // Limpar de novo não muda nada.
+    expect(limparTexto(esperado)).toBe(esperado);
+  });
+
+  it("o id de rastreio do Sentry, o nome de arquivo da pilha e números técnicos não viram marcador", () => {
+    for (const texto of [
+      "trace 4bf92f3577b34da6a3ce929d0e0e4736 span 00f067aa0ba902b7",
+      "at gravarBlocos (/var/task/.next/server/chunks/ssr/src_whatsapp_gravar_ts.js:12:34)",
+      "at receberAviso (webpack-internal:///(rsc)/./src/whatsapp/receber.ts:40:7)",
+      "lote de 500 mensagens em 1234 ms",
+      // 12 dígitos começando com 55, mas sem a forma de celular (o terceiro dígito depois do DDD não é de 6 a 9).
+      "pedido 551210000000",
+    ]) {
+      expect(limparTexto(texto), texto).toBe(texto);
+    }
+  });
+
+  it("limite conhecido (registrado no desenho): um texto com a forma do BSUID, como \"AB.Componente\", também vira [id] (só perde detalhe)", () => {
+    expect(limparTexto("em AB.Componente")).toBe("em [id]");
+    // Duas letras e um nome curto (menos de 8 letras depois do ponto) ficam.
+    expect(limparTexto("em AB.Teste")).toBe("em AB.Teste");
+    // O wa_id estrangeiro como a Meta manda (só dígitos, sem "+") não tem forma de telefone brasileiro e passa: a garantia
+    // é nunca pô-lo num erro (estender o marcador mascararia qualquer número técnico de 11 dígitos).
+    expect(limparTexto(`wa_id ${CANARIOS.waIdEstrangeiro}`)).toBe(`wa_id ${CANARIOS.waIdEstrangeiro}`);
+  });
+
+  it("no aviso inteiro (mensagem, exceção e extra), nenhum canário do WhatsApp sai", () => {
+    const evento = {
+      type: undefined,
+      message: `erro com ${CANARIOS.wamid}`,
+      exception: { values: [{ type: "Error", value: `Failed query: select ... params: ${CANARIOS.waIdBr},${CANARIOS.bsuid}` }, { type: "Error", value: `chave ${CANARIOS.bsuid} e ${CANARIOS.waIdBrSem9}` }] },
+      extra: { detalhe: `de ${CANARIOS.comMais} (+${CANARIOS.waIdEstrangeiro})` },
+    } as unknown as ErrorEvent;
+    const tudo = JSON.stringify(limparEvento(evento));
+    for (const valor of [CANARIOS.wamid, CANARIOS.bsuid, CANARIOS.waIdBr, CANARIOS.waIdBrSem9, CANARIOS.comMais, CANARIOS.waIdEstrangeiro]) expect(tudo, valor).not.toContain(valor);
   });
 });

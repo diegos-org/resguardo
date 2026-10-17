@@ -6,10 +6,17 @@
  * Avisos: `assinar` (o cabeçalho `x-hub-signature-256` com o segredo de teste) e os construtores dos envelopes de cada
  * campo, no formato das páginas de referência da Meta, com a WABA, o número e o telefone da empresa fictícios dessas
  * páginas (`FICTICIOS`). Nenhum id real da Meta e nenhum telefone real entram aqui.
+ * Gravação: `organizacaoComWhatsapp` (organização com a configuração de teste), `entregarAviso` (leitura e gravação
+ * como a rota faz depois da assinatura) e `tabelasComTexto` (prova de que um dado não deixou rastro).
  */
 import { createHmac } from "node:crypto";
+import { eq, sql } from "drizzle-orm";
+import { gravarConfig } from "@/configuracoes/armazem";
+import { configuracoes, organizacoes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { semDadosPessoais } from "@/pagamentos/testes";
+import { lerAviso } from "./aviso";
+import { receberAviso } from "./receber";
 
 /** Fictícios; nada parecido com o número real da empresa. Só podem existir em `whatsapp_contatos` e `whatsapp_mensagens`. */
 export const CANARIOS = {
@@ -224,4 +231,40 @@ export function avisoDeConta(o: {
     waba: o.entrada ?? (o.wabaInfo === null ? FICTICIOS.waba : FICTICIOS.outraWaba),
     time: em === null ? undefined : em instanceof Date ? Math.floor(em.getTime() / 1000) : em,
   });
+}
+
+// ---------------------------------------------------------------- gravação (bloco D em diante)
+
+/**
+ * Uma organização nova com a configuração do WhatsApp de teste (padrão: a WABA e o número fictícios, "só o admin").
+ * `manterOutras` = false (padrão) apaga antes a configuração do WhatsApp das outras organizações do banco de teste: a
+ * WABA é de uma organização só, e a rota só aceita a conta que é de exatamente uma.
+ */
+export async function organizacaoComWhatsapp(db: Db, ids: { wabaId?: string | null; numeroId?: string | null } = {}, o: { manterOutras?: boolean } = {}): Promise<string> {
+  if (!o.manterOutras) await db.delete(configuracoes).where(eq(configuracoes.chave, "whatsapp"));
+  const [{ id }] = await db.insert(organizacoes).values({ nome: "Sua Casa Exemplo" }).returning({ id: organizacoes.id });
+  const valor = { wabaId: ids.wabaId === undefined ? FICTICIOS.waba : ids.wabaId, numeroId: ids.numeroId === undefined ? FICTICIOS.numero : ids.numeroId, quemVeConversas: "so_admin" };
+  await gravarConfig(db, id, "whatsapp", valor, null);
+  return id;
+}
+
+/** Lê e grava um aviso de teste como a rota faz depois da assinatura (`lerAviso` + `receberAviso`); ilegível lança. */
+export async function entregarAviso(db: Db, json: unknown, agora: Date): ReturnType<typeof receberAviso> {
+  const aviso = lerAviso(json);
+  if (aviso.ilegivel) throw new Error("aviso de teste ilegível");
+  return receberAviso(db, aviso, agora);
+}
+
+/**
+ * As tabelas do banco em que o texto aparece, em qualquer coluna (a linha inteira como texto): prova que um dado não
+ * deixou rastro em lugar nenhum, inclusive nas tabelas que guardam dado pessoal de propósito.
+ */
+export async function tabelasComTexto(db: Db, texto: string): Promise<string[]> {
+  const r = (await db.execute(sql`select table_name as nome from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by 1`)) as unknown as { rows: { nome: string }[] };
+  const achadas: string[] = [];
+  for (const { nome } of r.rows) {
+    const c = (await db.execute(sql`select count(*)::int as n from ${sql.identifier(nome)} t where t::text like ${`%${texto}%`}`)) as unknown as { rows: { n: number }[] };
+    if (c.rows[0].n > 0) achadas.push(nome);
+  }
+  return achadas;
 }

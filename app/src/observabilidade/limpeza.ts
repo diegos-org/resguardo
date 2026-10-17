@@ -7,11 +7,12 @@
  * O que sai: a pessoa (`user`, onde o Sentry poria o IP), cookies, cabeçalhos (menos o User-Agent), corpo e consulta
  * das requisições, os parâmetros de busca dos endereços e os rastros do console. O que é trocado por marcador, em
  * qualquer texto: e-mail, CPF, CNPJ, telefone, cartão, endereço IP, UUID (pode ser chave Pix aleatória; os ids do
- * sistema também são UUID e viram "[id]" do mesmo jeito: não dá para distinguir um do outro), código da cotação, código
- * do Pix copia e cola, segredos ("Bearer …", "access_token=…", tokens), credenciais dentro de endereços, os valores das
- * consultas ao banco e o valor que o Postgres repete na mensagem de um erro de conversão (um texto que chegou a uma
- * coluna de id, data, número ou lista de opções: 'invalid input syntax for type uuid: "…"'). Nos endereços, o código da cotação em /reservar/<código>, o token do convite em
- * /convite/<token> e qualquer pedaço longo com cara de token.
+ * sistema também são UUID e viram "[id]" do mesmo jeito: não dá para distinguir um do outro), os ids do WhatsApp que
+ * carregam o cliente (o `wamid` e o BSUID, M10.1a; também "[id]"), código da cotação, código do Pix copia e cola,
+ * segredos ("Bearer …", "access_token=…", tokens), credenciais dentro de endereços, os valores das consultas ao banco e
+ * o valor que o Postgres repete na mensagem de um erro de conversão (um texto que chegou a uma coluna de id, data,
+ * número ou lista de opções: 'invalid input syntax for type uuid: "…"'). Nos endereços, o código da cotação em
+ * /reservar/<código>, o token do convite em /convite/<token> e qualquer pedaço longo com cara de token.
  *
  * Números soltos, sem pontuação, só viram marcador quando têm a forma de um dado pessoal (ver `marcarNumeroSolto`). Um
  * nome não tem forma reconhecível: a proteção contra ele é não deixá-lo entrar (a pessoa, os corpos das requisições,
@@ -72,6 +73,11 @@ const RE_TELEFONE_FORMATADO = solto(
 const RE_TELEFONE_INTERNACIONAL = solto("\\+\\s?[1-9]\\d{0,2}(?:[\\s.-]?\\(?\\d{1,4}\\)?){2,6}");
 const RE_CARTAO_FORMATADO = solto("\\d{4}([ -])\\d{4}\\1\\d{4}\\1\\d{1,7}|\\d{4}[ -]\\d{6}[ -]\\d{5}");
 const RE_DIGITOS = solto("\\d{10,19}");
+// WhatsApp (M10.1a): o id da mensagem (`wamid.` + base64, que provavelmente traz o telefone) e o BSUID (`user_id`: duas
+// letras do país, ponto, "ENT." opcional e até 128 letras e dígitos; "US.13491208655302741918" tem 20 dígitos e passaria
+// pelo RE_DIGITOS). O BSUID pode pegar um texto como "AB.Componente": só perde detalhe, nunca expõe dado.
+const RE_WAMID = /wamid\.[A-Za-z0-9+/=_-]{8,}/g;
+const RE_BSUID = /(?<![A-Za-z0-9])[A-Z]{2}\.(?:ENT\.)?[A-Za-z0-9]{8,128}(?![A-Za-z0-9])/g;
 // Endereço IP (v4, e v6 completo ou abreviado com "::"; um horário como 12:00:00 não tem a forma de nenhum dos dois).
 const OCTETO = "(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
 const RE_IPV4 = new RegExp(`(?<![\\p{N}.])(?:${OCTETO}\\.){3}${OCTETO}(?![\\p{N}.])`, "gu");
@@ -152,6 +158,8 @@ export function luhnValido(numero: string): boolean {
 
 const celular = (d: string) => /^[1-9]{2}9\d{8}$/.test(d);
 const fixo = (d: string) => /^[1-9]{2}[2-5]\d{7}$/.test(d);
+// O celular antigo, sem o nono dígito (DDD + 8 dígitos começando de 6 a 9): o `wa_id` do WhatsApp às vezes vem assim.
+const celularSem9 = (d: string) => /^[1-9]{2}[6-9]\d{7}$/.test(d);
 
 /**
  * Número solto, sem pontuação: só vira marcador quando tem a forma de um dado pessoal (CPF ou CNPJ com os dígitos
@@ -164,6 +172,8 @@ function marcarNumeroSolto(d: string): string {
   if (tamanho === 11 && celular(d)) return MARCADORES.telefone;
   if (tamanho === 10 && fixo(d)) return MARCADORES.telefone;
   if ((tamanho === 12 || tamanho === 13) && d.startsWith("55") && (celular(d.slice(2)) || fixo(d.slice(2)))) return MARCADORES.telefone;
+  // M10.1a: o wa_id brasileiro sem o nono dígito (55 + DDD + 8 dígitos começando de 6 a 9).
+  if (tamanho === 12 && d.startsWith("55") && celularSem9(d.slice(2))) return MARCADORES.telefone;
   if (tamanho === 14 && cnpjValido(d)) return MARCADORES.cnpj;
   if (tamanho >= 13 && luhnValido(d)) return MARCADORES.cartao;
   return d;
@@ -182,6 +192,9 @@ function limparDados(texto: string): string {
     .replace(RE_VALOR_NO_MEIO_DO_ERRO_DO_POSTGRES, (_, antes: string, depois: string) => `${antes} "${MARCADORES.valor}" ${depois}`)
     .replace(RE_PIX_COPIA_E_COLA, MARCADORES.pix)
     .replace(RE_EMAIL, MARCADORES.email)
+    // Depois do e-mail (um BSUID colado num endereço de e-mail não esconde o resto do e-mail) e antes dos números soltos.
+    .replace(RE_WAMID, MARCADORES.id)
+    .replace(RE_BSUID, MARCADORES.id)
     .replace(RE_UUID, MARCADORES.id)
     .replace(RE_COTACAO, MARCADORES.codigoCotacao)
     .replace(RE_CNPJ_FORMATADO, MARCADORES.cnpj)
@@ -272,11 +285,12 @@ export function limparEndereco(endereco: string): string {
 }
 
 /**
- * Texto limpo: credenciais de endereço primeiro (antes do corte, ver `semCredenciaisDeEndereco`), endereços pela regra
- * dos endereços e o resto pela regra dos dados pessoais e segredos.
+ * Texto limpo: credenciais de endereço primeiro (antes do corte, ver `semCredenciaisDeEndereco`), o id da mensagem do
+ * WhatsApp, endereços pela regra dos endereços e o resto pela regra dos dados pessoais e segredos.
  */
 export function limparTexto(texto: string): string {
-  const cortado = cortarTexto(semCredenciaisDeEndereco(texto));
+  // O wamid sai antes dos endereços: o base64 dele pode ter "/", que a regra dos endereços cortaria no meio.
+  const cortado = cortarTexto(semCredenciaisDeEndereco(texto)).replace(RE_WAMID, MARCADORES.id);
   return limparDados(cortado.replace(RE_ENDERECO_NO_TEXTO, (endereco) => limparEndereco(endereco)));
 }
 
