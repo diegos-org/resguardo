@@ -98,6 +98,10 @@ describe("textos (M0.9): cada tipo de dado pessoal vira um marcador", () => {
 
   it("credenciais longas ou com aspas também saem de um endereço solto, e a busca segue rápida", () => {
     expect(limparEndereco(`postgresql://usuario:hunter2'${"x".repeat(300)}@banco.exemplo.com/scl`)).toBe("postgresql://[credenciais]@banco.exemplo.com/scl");
+    // Esquema de qualquer tamanho (a terceira revisão do Codex: com mais de 32 letras, as credenciais passavam inteiras).
+    const esquemaLongo = `a${"1".repeat(32)}`;
+    expect(limparTexto(`${esquemaLongo}://usuario:segredo@servidor`)).not.toContain("segredo");
+    expect(limparEndereco(`${esquemaLongo}://usuario:segredo@servidor/x`)).toBe(`${esquemaLongo}://[credenciais]@servidor/x`);
     for (const texto of ["a://".repeat(25_000), `postgresql://${"x".repeat(100_000)}`, `https://${"@".repeat(100_000)}`]) {
       const inicio = performance.now();
       limparTexto(texto);

@@ -101,10 +101,11 @@ const RE_VALOR_NO_MEIO_DO_ERRO_DO_POSTGRES = /\b(value|time zone) "[\s\S]*?" (is
 // Endereços dentro de um texto: com esquema (https://, postgresql://, webpack-internal://) ou um caminho solto que
 // começa por "/" (como "GET /reservar/COT-…").
 const RE_ENDERECO_NO_TEXTO = /[a-z][a-z0-9+.-]{0,31}:\/\/[^\s"'<>()]*|(?<![\p{L}\p{N}_.~/-])\/[^\s"'<>()]*/giu;
-// O trecho logo depois de "://" (usuário, senha e servidor), até a primeira barra, "?" ou "#": os únicos caracteres que
-// não podem estar numa senha sem codificação (parêntese, aspas, espaço e "@" podem; ver `semCredenciaisDeEndereco`).
-// A busca não volta atrás: o custo fica proporcional ao texto, seja qual for o tamanho do trecho.
-const RE_AUTORIDADE_NO_TEXTO = /([a-z][a-z0-9+.-]{0,31}:\/\/)([^/?#]*)/giu;
+// O trecho logo depois de qualquer "://" (usuário, senha e servidor), até a primeira barra, "?" ou "#": os únicos
+// caracteres que não podem estar numa senha sem codificação (parêntese, aspas, espaço e "@" podem; ver
+// `semCredenciaisDeEndereco`). Não olha o esquema antes de "://", que não tem tamanho máximo. A busca não volta atrás: o
+// custo fica proporcional ao texto, seja qual for o tamanho do trecho.
+const RE_AUTORIDADE_NO_TEXTO = /:\/\/([^/?#]*)/gu;
 
 const soDigitos = (s: string) => s.replace(/\D/g, "");
 
@@ -230,9 +231,9 @@ export function cortarTexto(texto: string): string {
  * que vem antes dela: sai a mais, nunca a menos.
  */
 export function semCredenciaisDeEndereco(texto: string): string {
-  return texto.replace(RE_AUTORIDADE_NO_TEXTO, (_inteiro, esquema: string, autoridade: string) => {
+  return texto.replace(RE_AUTORIDADE_NO_TEXTO, (inteiro, autoridade: string) => {
     const arroba = autoridade.lastIndexOf("@");
-    return arroba < 0 ? `${esquema}${autoridade}` : `${esquema}${MARCADORES.credenciais}${autoridade.slice(arroba)}`;
+    return arroba < 0 ? inteiro : `://${MARCADORES.credenciais}${autoridade.slice(arroba)}`;
   });
 }
 
