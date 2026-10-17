@@ -7,11 +7,11 @@
  * usar este mesmo hold. Nada é escrito no Beds24 aqui (M8.3).
  */
 import { randomInt } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
-import { cotacoes, type EstadoCotacao, imoveis, imoveisDetalhes, pagamentos, reservas } from "@/db/schema";
+import { cotacoes, type EstadoCotacao, imoveis, imoveisDetalhes, pagamentos, reservas, whatsappContatos } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { dataBr, diaHoraNoFuso } from "@/lib/datas";
 import { expirarAlteracoesVencidas } from "@/pagamentos/alteracao-prazo";
@@ -403,8 +403,9 @@ async function fecharHold(tx: Db, c: { id: string; organizacaoId: string; reserv
 /**
  * Fecha o ciclo dos holds (ver `fecharHold`). Sem `imovelId` (rotina), cada hold vence numa transação curta
  * própria, travando o imóvel primeiro (a ordem única: imóvel → reserva → cotação → pagamentos), e a rotina
- * também apaga cotações que nunca viraram pedido depois de 30 dias. Com `imovelId` (antes de segurar), roda na
- * transação de quem chama, que já travou o imóvel. `organizacaoId` null = todas as empresas (rotina).
+ * também apaga cotações que nunca viraram pedido depois de 30 dias (menos as vinculadas a uma conversa do WhatsApp,
+ * M10.1a). Com `imovelId` (antes de segurar), roda na transação de quem chama, que já travou o imóvel.
+ * `organizacaoId` null = todas as empresas (rotina).
  */
 export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null, agora = new Date(), imovelId?: string): Promise<ResumoExpiracao> {
   const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0, falhas: 0 };
@@ -455,6 +456,8 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
         inArray(cotacoes.estado, ["aberta", "desatualizada"]),
         isNull(cotacoes.reservaId),
         lt(cotacoes.criadaEm, new Date(agora.getTime() - GUARDAR_COTACAO_SEM_PEDIDO_DIAS * 86_400_000)),
+        // M10.1a: cotação vinculada a uma conversa do WhatsApp não é apagada (a FK não deixaria, e o vínculo é histórico).
+        notExists(db.select({ um: sql`1` }).from(whatsappContatos).where(eq(whatsappContatos.cotacaoId, cotacoes.id))),
       ),
     )
     .returning({ id: cotacoes.id });

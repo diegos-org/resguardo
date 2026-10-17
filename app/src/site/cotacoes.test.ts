@@ -4,7 +4,7 @@ import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/pr
 import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, lancamentos, organizacoes, reservas } from "@/db/schema";
+import { beds24Calendario, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, lancamentos, organizacoes, reservas, whatsappContatos } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
@@ -105,6 +105,22 @@ describe("cotação do site (M8.1)", () => {
     ]);
     expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 2, falhas: 0 });
     expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toHaveLength(2 + MAXIMO_COTACOES_ABERTAS_POR_IMOVEL);
+  });
+
+  it("M10.1a: a rotina não falha nem apaga cotação vinculada a uma conversa do WhatsApp; apaga a não vinculada com mais de 30 dias", async () => {
+    const velha = (codigo: string) => ({ organizacaoId: org, imovelId: im, codigo, estado: "aberta", checkin: "2026-11-01", checkout: "2026-11-02", hospedes: 1, noites: 1, situacao: "disponivel", diarias: 1, limpeza: 0, hospedeExtra: 0, valorCheio: 1, total: 1, criadaEm: new Date(agora.getTime() - 40 * 86_400_000), atualizadaEm: agora });
+    const [vinculada] = await db.insert(cotacoes).values(velha("COT-VINCULA2")).returning();
+    await db.insert(cotacoes).values(velha("COT-SOLTA234"));
+    // Conversa fictícia vinculada (à mão) à cotação velha: a chave estrangeira não deixaria apagar, e o vínculo é histórico.
+    await db.insert(whatsappContatos).values({ organizacaoId: org, waId: "16505551234", cotacaoId: vinculada.id, vinculoConfirmadoEm: agora });
+    expect(await expirarHoldsVencidos(db, org, agora)).toEqual({ expiradas: 0, convertidas: 0, canceladas: 0, removidas: 1, falhas: 0 });
+    expect((await db.select({ codigo: cotacoes.codigo }).from(cotacoes).where(eq(cotacoes.organizacaoId, org))).map((c) => c.codigo)).toEqual(["COT-VINCULA2"]);
+    // Pela rotina de todas as empresas também; desfeito o vínculo, a próxima volta apaga.
+    expect((await expirarHoldsVencidos(db, null, agora)).falhas).toBe(0);
+    expect(await db.select({ id: cotacoes.id }).from(cotacoes).where(eq(cotacoes.id, vinculada.id))).toHaveLength(1);
+    await db.update(whatsappContatos).set({ cotacaoId: null, vinculoConfirmadoEm: null }).where(eq(whatsappContatos.cotacaoId, vinculada.id));
+    expect((await expirarHoldsVencidos(db, org, agora)).removidas).toBe(1);
+    expect(await db.select().from(cotacoes).where(eq(cotacoes.organizacaoId, org))).toEqual([]);
   });
 
   it("reaproveitar exige a mesma situação; o teto vale mesmo com pedidos simultâneos", async () => {

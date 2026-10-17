@@ -28,6 +28,7 @@ import {
   disjuntoresCartao,
   eventosContestacao,
   eventosPagamento,
+  execucoesAutomacao,
   idsExternos,
   imoveis,
   imoveisDetalhes,
@@ -39,6 +40,9 @@ import {
   reservas,
   tentativasLogin,
   usuarios,
+  whatsappAvisosDia,
+  whatsappConta,
+  whatsappEventos,
 } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
@@ -194,7 +198,9 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
  * nenhum. `nomes` (M8.2c): o nome do hóspede, procurado nas mesmas tabelas, menos a auditoria da reserva que nasce no
  * M8.1 (`reserva.importar` guarda os dados dela, nome inclusive, fora das tabelas do pagamento). M8.2e: também as
  * disputas do pagamento e a linha do tempo delas. M8.3: também o acompanhamento das reservas do site no Beds24 e as
- * operações (o pedido, as leituras e o erro nunca levam nome, e-mail, telefone, documento nem valor).
+ * operações (o pedido, as leituras e o erro nunca levam nome, e-mail, telefone, documento nem valor). M10.1a: também os
+ * eventos, os contadores e a situação do WhatsApp (nunca as conversas e as mensagens, que guardam o dado de propósito) e o
+ * resumo das execuções das rotinas.
  */
 export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: string[] } = {}): Promise<string[]> {
   const semAuditoria = [
@@ -216,6 +222,13 @@ export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: s
     // M8.3: o acompanhamento das reservas do site no Beds24 e as operações (quarto, datas, pessoas, situação, códigos).
     await db.select().from(beds24ReservasSite),
     await db.select().from(beds24ReservasOperacoes),
+    // M10.1a: eventos, contadores e situação do WhatsApp, sem conteúdo. Não entram `whatsapp_contatos` nem
+    // `whatsapp_mensagens`: guardam telefone, nomes e texto de propósito (só com o acesso da caixa de entrada).
+    await db.select().from(whatsappEventos),
+    await db.select().from(whatsappAvisosDia),
+    await db.select().from(whatsappConta),
+    // M10.1a: o resumo das execuções das rotinas é "sem dados pessoais", e até aqui ninguém conferia.
+    await db.select().from(execucoesAutomacao),
   ];
   const registros = await db.select().from(auditoria);
   const tudo = JSON.stringify([semAuditoria, registros]);
