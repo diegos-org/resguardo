@@ -58,13 +58,13 @@ function resposta(r: ResultadoConfigReservasBeds24, ok: string): EstadoReservasB
   return r.ok ? { ok: true, mensagem: ok } : { ok: false, mensagem: r.erro };
 }
 
-/** Pausa geral: vale na hora e para tudo, inclusive o cancelamento. */
+/** Pausa geral das reservas do site: vale na hora e para todo o envio delas, inclusive o cancelamento (o calendário e os preços não). */
 export async function pausarReservasBeds24Acao(_anterior: EstadoReservasBeds24, _form: FormData): Promise<EstadoReservasBeds24> {
   void _anterior;
   void _form;
   const sessao = await sessaoDaConfiguracao();
   if (!sessao) return SEM_PERMISSAO;
-  return resposta(await pausarReservasBeds24(getDb(), sessao, new Date()), "Pausado: nada é escrito no Beds24 até você retomar.");
+  return resposta(await pausarReservasBeds24(getDb(), sessao, new Date()), "Pausado: nenhuma reserva do site é escrita no Beds24 até você retomar. O calendário e os preços não param com esta pausa.");
 }
 
 export async function retomarReservasBeds24Acao(_anterior: EstadoReservasBeds24, _form: FormData): Promise<EstadoReservasBeds24> {

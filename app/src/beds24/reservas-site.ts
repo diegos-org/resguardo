@@ -15,7 +15,7 @@ import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { beds24ReservasOperacoes, beds24ReservasSite, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { assinaturaAtualDoScl, type DecisaoAdocao, diferencaNoBeds24, type DiferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, regraDeAdocao, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
+import { assinaturaAtualDoScl, type DecisaoAdocao, diferencaNaMarca, diferencaNoBeds24, type DiferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, regraDeAdocao, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
 import { ErroBeds24, type FiltroReservas, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
 import { JANELA_RESERVA_EM_ANDAMENTO_MINUTOS } from "./trava";
 
@@ -38,9 +38,9 @@ export type AlvoDaBusca = {
 };
 
 /**
- * `funcionou` = todas as leituras responderam e nenhuma trouxe registro em formato inválido (um registro ilegível pode ser
- * o nosso: a busca não conclui). `comMarca` = os registros com a marca desta reserva, em todas as situações; o ensaio
- * nunca entra.
+ * `funcionou` = todas as leituras responderam, nenhuma trouxe registro em formato inválido (um registro ilegível pode ser
+ * o nosso: a busca não conclui) nem o mesmo id duas vezes, e o registro que voltou em mais de uma leitura voltou igual (senão,
+ * qual cópia vale?). `comMarca` = os registros com a marca desta reserva, em todas as situações; o ensaio nunca entra.
  */
 export type BuscaDaReservaDoSite = { funcionou: true; comMarca: ReservaBeds24[]; lidoEm: string } | { funcionou: false; erro: string };
 
@@ -60,7 +60,14 @@ export async function procurarReservaDoSite(leitor: LeitorBeds24, alvo: AlvoDaBu
     for (const f of leituras) {
       const l = await leitor.reservas(f);
       if (l.divergencias.length) return { funcionou: false, erro: "A leitura do Beds24 trouxe registro em formato inválido: a busca não conclui." };
-      for (const b of l.itens) if (!porId.has(b.idExterno)) porId.set(b.idExterno, b);
+      const nestaLeitura = new Set<string>();
+      for (const b of l.itens) {
+        if (nestaLeitura.has(b.idExterno)) return { funcionou: false, erro: "A leitura do Beds24 trouxe o mesmo registro duas vezes: a busca não conclui." };
+        nestaLeitura.add(b.idExterno);
+        const antes = porId.get(b.idExterno);
+        if (antes && !mesmoRegistro(antes, b)) return { funcionou: false, erro: "O mesmo registro do Beds24 voltou diferente em duas leituras: a busca não conclui." };
+        if (!antes) porId.set(b.idExterno, b);
+      }
       lidoEm = l.lidoEm;
     }
   } catch (e) {
@@ -68,6 +75,10 @@ export async function procurarReservaDoSite(leitor: LeitorBeds24, alvo: AlvoDaBu
   }
   return { funcionou: true, comMarca: [...porId.values()].filter((b) => !b.ensaio && b.referenciaScl === alvo.referencia), lidoEm };
 }
+
+/** O mesmo registro nos campos que a busca e a adoção olham: situação, quarto, datas, pessoas e marca. */
+const mesmoRegistro = (a: ReservaBeds24, b: ReservaBeds24) =>
+  a.estado === b.estado && a.propertyId === b.propertyId && a.roomId === b.roomId && a.checkin === b.checkin && a.checkout === b.checkout && a.hospedes === b.hospedes && a.referenciaScl === b.referenciaScl && a.ensaio === b.ensaio;
 
 // ---------------------------------------------------------------- travas (ordem única: beds24:<org> → imóvel → reserva)
 
@@ -146,13 +157,17 @@ export type ConferenciaNaImportacao =
   | { resultado: "igual"; conferida: boolean }
   /** Diferente, mas o acompanhamento ainda espera um envio (ou a equipe): só a leitura foi gravada. */
   | { resultado: "lido" }
-  | { resultado: "divergente"; motivo: DiferencaNoBeds24["motivo"] };
+  | { resultado: "divergente"; motivo: DiferencaNoBeds24["motivo"] | "marca_ilegivel" };
 
 /**
  * A importação confere a reserva do site com o registro ligado a ela (`registro` null = o id não voltou na leitura: apagado)
  * e nunca a muda: origem, valores, taxa, valor líquido, hóspede, e-mail, situação, `confirmadaEm`, `reservadaEm` e o motor
  * ficam intactos, mesmo com o vínculo do imóvel trocado. Grava `lido` e `lido_em` (só uma leitura mais nova sobrescreve).
- * - Igual ao `esperado`: `conferida_em` só sem operação ativa e com a assinatura do SCL de agora igual à do esperado.
+ * - Igual ao `esperado` e com a marca desta reserva: `conferida_em` só sem operação ativa e com a assinatura do SCL de agora
+ *   igual à do esperado.
+ * - Sem a marca, ou com o código de outra reserva (D11; desenho 3.4 e 4.4): nunca `conferida_em`. Quando o Beds24 deveria
+ *   estar igual, `divergente` com `marca_ilegivel` (sem marca legível; o painel passa a mostrar a marca como não legível) ou
+ *   `mudada_no_beds24` (outro código); com as datas, a situação e o quarto iguais, a marca das datas fechadas fica.
  * - Diferente: `divergente` com o motivo (mudada, cancelada ou apagada no Beds24) quando o Beds24 deveria estar igual — o
  *   acompanhamento `conferida` (ou já `divergente`), sem operação ativa e o Beds24 diferente também do que o SCL quer agora;
  *   com as datas, a situação ou o quarto mudados, a marca "datas fechadas" (`ota_fechada_em`) volta a vazio. Com um envio a
@@ -180,7 +195,8 @@ export async function conferirNaImportacao(tx: Db, org: string, reservaId: strin
   const quarto = a.roomId ?? a.esperado.quarto;
   const atual = assinaturaAtualDoScl(r, quarto);
   const dif = diferencaNoBeds24(a.esperado, lido);
-  if (!dif) {
+  const marca = registro ? diferencaNaMarca(registro, r.codigo) : null;
+  if (!dif && !marca) {
     const conferida = !ativa && a.assinaturaEsperada !== null && atual === a.assinaturaEsperada;
     await gravar(conferida ? { conferidaEm: agora } : {});
     return { resultado: "igual", conferida };
@@ -191,13 +207,19 @@ export async function conferirNaImportacao(tx: Db, org: string, reservaId: strin
   }
   // O SCL mudou depois do `esperado` e a operação ainda não nasceu (chave desligada, pausa, ou antes da próxima volta): o
   // Beds24 difere do `esperado` por definição. Se ele já está como o SCL quer agora (a equipe seguiu o texto da reserva),
-  // não há divergência: só a leitura. Diferente também do que o SCL quer agora, a mudança veio de fora e segue o alarme.
-  if (atual !== null && atual !== a.assinaturaEsperada && !diferencaNoBeds24({ quarto, chegada: r.checkin, saida: r.checkout, hospedes: r.hospedes, situacao: r.estado === "cancelada" ? "cancelada" : "confirmada" }, lido)) {
-    await gravar({});
-    return { resultado: "lido" };
+  // a diferença das datas não é divergência. Diferente também do que o SCL quer agora, a mudança veio de fora e segue o alarme.
+  const comoOSclQuer = atual !== null && atual !== a.assinaturaEsperada && !diferencaNoBeds24({ quarto, chegada: r.checkin, saida: r.checkout, hospedes: r.hospedes, situacao: r.estado === "cancelada" ? "cancelada" : "confirmada" }, lido);
+  if (dif && !comoOSclQuer) {
+    await gravar({ situacao: "divergente", motivo: dif.motivo, ...(dif.soPessoas ? {} : { otaFechadaEm: null, otaFechadaPor: null }) });
+    return { resultado: "divergente", motivo: dif.motivo };
   }
-  await gravar({ situacao: "divergente", motivo: dif.motivo, ...(dif.soPessoas ? {} : { otaFechadaEm: null, otaFechadaPor: null }) });
-  return { resultado: "divergente", motivo: dif.motivo };
+  // Só a marca não bate: as datas, a situação e o quarto estão como o SCL quer, e a marca das datas fechadas fica.
+  if (marca) {
+    await gravar({ situacao: "divergente", motivo: marca });
+    return { resultado: "divergente", motivo: marca };
+  }
+  await gravar({});
+  return { resultado: "lido" };
 }
 
 /** O aviso da conferência no resultado da importação (só o código SCL e o id do registro); null = nada a avisar. */
@@ -207,6 +229,7 @@ export function avisoDaConferencia(c: ConferenciaNaImportacao, codigo: string, b
   if (c.resultado !== "divergente") return null;
   if (c.motivo === "cancelada_no_beds24") return `Reserva ${codigo} (paga pelo site) foi cancelada no Beds24 (registro ${id}), mas continua confirmada no SCL: as datas podem estar abertas nas OTAs. O SCL não seguiu a mudança.`;
   if (c.motivo === "apagada_no_beds24") return `Reserva ${codigo} (paga pelo site): o registro ${id} não voltou na leitura do Beds24 (apagado?). Confira se as datas estão abertas nas OTAs; o SCL não mudou nada.`;
+  if (c.motivo === "marca_ilegivel") return `Reserva ${codigo} (paga pelo site): o registro ${id} voltou do Beds24 sem a marca do SCL (o código da reserva nos info items). Confira o registro e as regras automáticas que apagam info codes; o SCL não mudou nada.`;
   return `Reserva ${codigo} (paga pelo site) está diferente no Beds24 (registro ${id}): o SCL não seguiu a mudança; confira a reserva.`;
 }
 
@@ -255,6 +278,11 @@ export type ContextoDoDesvio = {
   conhecidos: ReadonlyMap<string, RegistroConhecido>;
   /** Códigos já avisados como duplicados (um aviso por código). */
   duplicadasAvisadas: Set<string>;
+  /**
+   * A leitura (o período ou a releitura por id) trouxe registro que não deu para ler ou atribuir: ele pode ser outra cópia
+   * com a marca, então a adoção não conclui (como na busca, `procurarReservaDoSite`).
+   */
+  leituraComIlegivel: boolean;
 };
 
 /**
@@ -263,7 +291,7 @@ export type ContextoDoDesvio = {
  * idade), uma operação `incerta`, um POST tentado sem o id, ou o acompanhamento `aguardando_equipe` com motivo `incerta`,
  * de reserva ainda sem `beds24_id`.
  */
-export async function prepararDesvioNaImportacao(tx: Db, org: string, registros: Iterable<ReservaBeds24>, conhecidos: ReadonlyMap<string, RegistroConhecido>, agora: Date): Promise<ContextoDoDesvio> {
+export async function prepararDesvioNaImportacao(tx: Db, org: string, registros: Iterable<ReservaBeds24>, conhecidos: ReadonlyMap<string, RegistroConhecido>, agora: Date, o: { leituraComIlegivel: boolean }): Promise<ContextoDoDesvio> {
   const marcados = new Map<string, ReservaBeds24[]>();
   for (const b of registros) if (b.referenciaScl && !b.ensaio) marcados.set(b.referenciaScl, [...(marcados.get(b.referenciaScl) ?? []), b]);
   const ligadas = new Map<string, ReservaLigada>();
@@ -303,7 +331,7 @@ export async function prepararDesvioNaImportacao(tx: Db, org: string, registros:
     .innerJoin(reservas, eq(reservas.id, beds24ReservasSite.reservaId))
     .where(and(eq(beds24ReservasSite.organizacaoId, org), eq(reservas.fonte, "site"), isNull(reservas.beds24Id), eq(beds24ReservasSite.situacao, "aguardando_equipe"), eq(beds24ReservasSite.motivo, "incerta")));
   for (const a of incertas) somar(a.referencia, a.roomId ?? a.esperado?.quarto, [a.esperado, { chegada: a.checkin, saida: a.checkout }]);
-  return { agora, marcados, ligadas, ensaios, porCodigo, naoResolvidas, conhecidos, duplicadasAvisadas: new Set() };
+  return { agora, marcados, ligadas, ensaios, porCodigo, naoResolvidas, conhecidos, duplicadasAvisadas: new Set(), leituraComIlegivel: o.leituraComIlegivel };
 }
 
 /** `desviado`: o registro não segue para o vínculo, o bloqueio nem `sincronizarReserva`; `aviso` vai ao resultado da importação. */
@@ -329,7 +357,8 @@ function conhecidoSegue(b: ReservaBeds24, conhecidos: ReadonlyMap<string, Regist
  * - a. o ensaio do SCL (pela marca `SCL-ENSAIO` ou pelo id gravado no ensaio) pula, com aviso; nunca cria;
  * - b. o registro ligado a uma reserva do site (`reservas.beds24_id` ou o id numa operação dela) vai a
  *   `conferirNaImportacao`, nunca a `sincronizarReserva` — inclusive um `black` (a reserva paga nunca é cancelada por ele);
- * - c. a marca casada pelas regras de adoção chama `adotarReservaCriada` e depois confere;
+ * - c. a marca casada pelas regras de adoção chama `adotarReservaCriada` e depois confere; com um registro ilegível na
+ *   leitura, a adoção não conclui (pode ser outra cópia com a marca): pula, com aviso;
  * - d. a marca sem reserva correspondente, duplicada ou num registro que não bate vira aviso; nada é criado;
  * - e. sem marca legível, no mesmo quarto e com noites sobrepostas a uma criação não resolvida: pula, com aviso.
  * O SCL nunca cria um `black`: um bloqueio com o código no nome (a equipe fechando as datas à mão) segue o caminho dos
@@ -352,6 +381,7 @@ export async function desvioNaImportacao(tx: Db, org: string, b: ReservaBeds24, 
   if (ref && b.estado !== "bloqueio" && !conhecidoSegue(b, ctx.conhecidos)) {
     const r = ctx.porCodigo.get(ref);
     if (!r) return desviado(`Registro ${id}: marcado pelo SCL (${ref}) sem reserva correspondente. Nada foi importado.`);
+    if (ctx.leituraComIlegivel) return desviado(`Registro ${id}: marcado com ${ref}, mas a leitura do Beds24 trouxe registro em formato inválido (pode ser outra cópia): a adoção não concluiu. Nada foi importado; confira no Beds24.`);
     const ad = await adotarReservaCriada(tx, org, r.id, ctx.marcados.get(ref) ?? [b]);
     if (ad.adotada) {
       if (ad.beds24Id !== b.idExterno) return desviado(avisoDuplicada(ctx, ref, id));

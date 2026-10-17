@@ -97,6 +97,7 @@ const SEM_SIMULACAO: Record<MotivoSemSimulacao, string> = {
   sem_vinculo: "o imóvel não tem um vínculo único e válido com um quarto do Beds24",
   fora_do_ambiente: "simular só vale fora do deploy de produção ou com a chave das reservas desligada",
   nao_encontrada: "reserva não encontrada",
+  envio_em_curso: "há um envio desta reserva ao Beds24 ainda sem confirmação (em curso ou incerto); a simulação só vale depois da conferência",
 };
 
 const SIMULADA = "Simulação gravada: o pedido no histórico abaixo é o que seria enviado ao Beds24. Nada foi enviado.";
@@ -168,7 +169,8 @@ export function ReservaNoBeds24({ reservaId, ficha, editar, resultado }: Props) 
     <section aria-label="Reserva no Beds24" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
       <h2 style={{ fontSize: "1.25rem" }}>No Beds24</h2>
       {texto && (
-        <p role="status" className={styles.sucesso}>
+        // Só a simulação gravada é sucesso; "Nada seria enviado" é um aviso (avisar em vez de supor).
+        <p role="status" className={resultado && Object.hasOwn(SIMULACAO, resultado) ? styles.sucesso : styles.alerta}>
           {texto}
         </p>
       )}

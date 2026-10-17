@@ -79,16 +79,21 @@ export function ReservasSiteBeds24({ p }: { p: PainelReservasBeds24 }) {
           <>
             <strong>Pausado</strong>
             {p.pausa.em ? ` desde ${quando(p.pausa.em)}` : ""}
-            {p.pausa.por ? ` por ${p.pausa.por}` : ""}: nada é escrito no Beds24, nem cancelamentos.
+            {p.pausa.por ? ` por ${p.pausa.por}` : ""}: nenhuma reserva do site é criada, mudada ou cancelada no Beds24. O envio de calendário e preços
+            não para com esta pausa: ele tem a própria chave (BEDS24_ESCRITA) e o próprio envio automático.
           </>
         ) : (
-          "Sem pausa. A pausa vale na hora (tirar a variável da Vercel só vale depois de uma publicação nova) e para tudo, inclusive os cancelamentos."
+          "Sem pausa. A pausa vale na hora (tirar a variável da Vercel só vale depois de uma publicação nova) e para todo o envio das reservas do site, inclusive os cancelamentos. Ela não para o envio de calendário e preços, que tem a própria chave (BEDS24_ESCRITA) e o próprio envio automático."
         )}
       </p>
       {p.pausa ? (
         <AcaoReservasBeds24 acao="retomar" rotulo="Retomar" pergunta="Retirar a pausa geral do envio das reservas do site ao Beds24?" />
       ) : (
-        <AcaoReservasBeds24 acao="pausar" rotulo="Pausar tudo" pergunta="Pausar o envio das reservas do site ao Beds24? Nada é escrito lá, nem cancelamentos, até você retomar." />
+        <AcaoReservasBeds24
+          acao="pausar"
+          rotulo="Pausar as reservas do site"
+          pergunta="Pausar o envio das reservas do site ao Beds24? Nenhuma reserva do site é criada, mudada ou cancelada lá até você retomar. O calendário e os preços não param com esta pausa."
+        />
       )}
       <h3>Imóveis ligados</h3>
       <p>

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { Beds24Falso } from "./falso";
 import { INFO_ENSAIO_SCL, INFO_MARCA_SCL, normalizarReserva } from "./normalizar";
 import { procurarReservaDoSite } from "./reservas-site";
-import { assinaturaAtualDoScl, assinaturaEsperado, diferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, regraDeAdocao } from "./reservas-site-regras";
+import { assinaturaAtualDoScl, assinaturaEsperado, diferencaNaMarca, diferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, regraDeAdocao } from "./reservas-site-regras";
 import { ErroBeds24, type LeitorBeds24 } from "./tipos";
 
 const CODIGO = "SCL-7K2QXM";
@@ -58,6 +58,24 @@ describe("procurarReservaDoSite (M8.3a, teste 10): filtros", () => {
     expect(await procurarReservaDoSite(segredo, ALVO)).toEqual({ funcionou: false, erro: "Não foi possível ler o Beds24." });
     expect(await procurarReservaDoSite(falso(registro(), registro({ id: 9, status: "?" })), ALVO)).toMatchObject({ funcionou: false, erro: expect.stringContaining("formato inválido") });
   });
+
+  it("a busca não conclui com o mesmo id duas vezes numa leitura, nem com o mesmo registro diferente em duas leituras (qual cópia vale?)", async () => {
+    // Nas duas ordens: a adoção dependeria de qual cópia veio antes.
+    for (const copias of [[registro(), registro({ status: "cancelled" })], [registro({ status: "cancelled" }), registro()]]) {
+      expect(await procurarReservaDoSite(falso(...copias), ALVO)).toMatchObject({ funcionou: false, erro: expect.stringContaining("o mesmo registro duas vezes") });
+    }
+    // Confirmada na leitura do quarto e cancelada na releitura por id.
+    const leitor = (porId: Record<string, unknown>): LeitorBeds24 => ({
+      reservas: async (f) => ({ itens: [lida(f.ids ? porId : {})], divergencias: [], lidoEm: "2026-12-22T12:00:00.000Z" }),
+      calendario: async () => ({ itens: [], divergencias: [], lidoEm: "" }),
+      quartos: async () => ({ itens: [], divergencias: [], lidoEm: "" }),
+    });
+    expect(await procurarReservaDoSite(leitor({ status: "cancelled" }), { ...ALVO, idsConhecidos: ["98765"] })).toMatchObject({ funcionou: false, erro: expect.stringContaining("voltou diferente em duas leituras") });
+    // O mesmo registro, igual nas duas leituras: conta uma vez.
+    const igual = await procurarReservaDoSite(leitor({}), { ...ALVO, idsConhecidos: ["98765"] });
+    if (!igual.funcionou) throw new Error(igual.erro);
+    expect(igual.comMarca.map((r) => r.idExterno)).toEqual(["98765"]);
+  });
 });
 
 describe("regras de adoção (M8.3a, teste 10)", () => {
@@ -106,6 +124,14 @@ describe("comparação com o esperado (desenho 4.3 e 5.2)", () => {
     const cancelado: EsperadoBeds24 = { ...ESPERADO, hospedes: null, situacao: "cancelada" };
     expect(diferencaNoBeds24(cancelado, { ...lido, situacao: "cancelada", hospedes: 1 })).toBeNull();
     expect(diferencaNoBeds24(cancelado, lido)).toEqual({ motivo: "mudada_no_beds24", soPessoas: false });
+  });
+
+  it("a marca do registro ligado: a desta reserva confere; sem marca legível, marca ilegível; outro código ou o ensaio, mudada (D11)", () => {
+    expect(diferencaNaMarca({ referenciaScl: "SCL-7K2QXM", ensaio: false }, "SCL-7K2QXM")).toBeNull();
+    expect(diferencaNaMarca({ referenciaScl: null, ensaio: false }, "SCL-7K2QXM")).toBe("marca_ilegivel");
+    expect(diferencaNaMarca({ referenciaScl: "SCL-ABCDEF", ensaio: false }, "SCL-7K2QXM")).toBe("mudada_no_beds24");
+    expect(diferencaNaMarca({ referenciaScl: null, ensaio: true }, "SCL-7K2QXM")).toBe("mudada_no_beds24");
+    expect(diferencaNaMarca({ referenciaScl: "SCL-7K2QXM", ensaio: true }, "SCL-7K2QXM")).toBe("mudada_no_beds24");
   });
 
   it("a assinatura do SCL de agora segue a régua (quarto guardado, datas, pessoas, situação); outra situação não compara", () => {

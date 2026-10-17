@@ -3,7 +3,7 @@
  * com o pedido montado só com o banco (sem nome, e-mail, telefone nem valor), nenhuma marca das OTAs e nenhum
  * acompanhamento. Só fora do deploy de produção ou com a chave das reservas desligada; `reserva:editar`. PGlite, sem rede.
  */
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { gravarConfig } from "@/configuracoes/armazem";
@@ -49,7 +49,7 @@ describe("Simular (M8.3a, teste 11)", () => {
     expect(chaveDoResultadoDaSimulacao(r)).toBe("simulada_imovel_desligado_anterior");
     const [op] = await operacoes(x.reservaId);
     const assinatura = assinaturaEsperado({ quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4, situacao: "confirmada" });
-    expect(op).toMatchObject({ tipo: "criar", modo: "simulacao", situacao: "simulada", chave: chaveSimulacaoBeds24(x.reservaId, "criar", assinatura), acompanhamentoId: null, autorId: admin.usuarioId, beds24Id: null, enviadoEm: null, credencial: "", pedido });
+    expect(op).toMatchObject({ tipo: "criar", modo: "simulacao", situacao: "simulada", chave: chaveSimulacaoBeds24(x.reservaId, "criar", assinatura, null), acompanhamentoId: null, autorId: admin.usuarioId, beds24Id: null, enviadoEm: null, credencial: "", pedido });
     // Nenhum acompanhamento (onde fica a marca "datas fechadas"), nenhum id do Beds24 na reserva.
     expect(await acompanhamentos()).toEqual([]);
     expect((await c.reserva(x.reservaId)).beds24Id).toBeNull();
@@ -70,6 +70,49 @@ describe("Simular (M8.3a, teste 11)", () => {
     expect(chaveDoResultadoDaSimulacao(b)).toBe("repetida_imovel_desligado_anterior");
   });
 
+  it("voltar a um estado já simulado (A→B→A) grava uma linha nova: \"repetida\" só quando a última simulação é a mesma intenção", async () => {
+    const x = await pagarEConfirmar(c);
+    const a1 = await simularSemRede(admin, x.reservaId);
+    await db.update(reservas).set({ hospedes: 3 }).where(eq(reservas.id, x.reservaId));
+    const b = await simularSemRede(admin, x.reservaId);
+    await db.update(reservas).set({ hospedes: 4 }).where(eq(reservas.id, x.reservaId));
+    const a2 = await simularSemRede(admin, x.reservaId);
+    expect(a2).toMatchObject({ ok: true, repetida: false, pedido: { hospedes: 4 } });
+    expect(a1.ok && b.ok && a2.ok && new Set([a1.operacaoId, b.operacaoId, a2.operacaoId]).size).toBe(3);
+    expect(chaveDoResultadoDaSimulacao(a2)).toBe("simulada_imovel_desligado_anterior");
+    // O histórico da ficha começa pela simulação de agora.
+    const ordem = await db.select({ id: beds24ReservasOperacoes.id, pedido: beds24ReservasOperacoes.pedido }).from(beds24ReservasOperacoes).where(eq(beds24ReservasOperacoes.reservaId, x.reservaId)).orderBy(desc(beds24ReservasOperacoes.iniciadoEm), desc(beds24ReservasOperacoes.id));
+    expect(ordem.map((o) => o.pedido?.hospedes)).toEqual([4, 3, 4]);
+    expect(a2.ok && ordem[0].id === a2.operacaoId).toBe(true);
+    // De novo, sem mudar nada: aí sim é a mesma da última.
+    expect(await simularSemRede(admin, x.reservaId)).toMatchObject({ ok: true, repetida: true, operacaoId: a2.ok ? a2.operacaoId : "" });
+    expect(await operacoes(x.reservaId)).toHaveLength(3);
+  });
+
+  it("com um envio real sem conclusão (em curso, incerto, ou o POST tentado sem o id), nada é simulado: nem \"criar\" de novo, nem \"nada a cancelar\"", async () => {
+    const x = await pagarEConfirmar(c);
+    const casos = [
+      { situacao: "enviando" as const, enviadoEm: null },
+      { situacao: "incerta" as const, enviadoEm: new Date("2026-10-01T12:00:00Z") },
+      { situacao: "pendente" as const, enviadoEm: new Date("2026-10-01T12:00:00Z") },
+    ];
+    for (const caso of casos) {
+      await db.delete(beds24ReservasOperacoes).where(eq(beds24ReservasOperacoes.organizacaoId, c.org));
+      await db.insert(beds24ReservasOperacoes).values({ organizacaoId: c.org, reservaId: x.reservaId, tipo: "criar", chave: `criar:${x.reservaId}:1`, modo: "real", situacao: caso.situacao, enviadoEm: caso.enviadoEm, pedido: { quarto: "20", chegada: "2026-10-12", saida: "2026-10-15", hospedes: 4, situacao: "confirmada", referencia: x.reservaCodigo } });
+      const r = await simularSemRede(admin, x.reservaId);
+      expect(r).toEqual({ ok: false, motivo: "envio_em_curso" });
+      expect(chaveDoResultadoDaSimulacao(r)).toBe("nada_envio_em_curso");
+      expect((await operacoes(x.reservaId)).filter((o) => o.modo === "simulacao")).toEqual([]);
+    }
+    // Uma criação real pendente, sem o POST tentado, não é incerteza: a simulação mostra o pedido.
+    await db.update(beds24ReservasOperacoes).set({ enviadoEm: null }).where(eq(beds24ReservasOperacoes.organizacaoId, c.org));
+    expect(await simularSemRede(admin, x.reservaId)).toMatchObject({ ok: true, tipo: "criar" });
+    // O acompanhamento em envio também para a simulação.
+    await db.delete(beds24ReservasOperacoes).where(eq(beds24ReservasOperacoes.organizacaoId, c.org));
+    await db.insert(beds24ReservasSite).values({ organizacaoId: c.org, reservaId: x.reservaId, imovelId: c.imovel, propertyId: "10", roomId: "20", referencia: x.reservaCodigo, situacao: "em_envio", versao: 1 });
+    expect(await simularSemRede(admin, x.reservaId)).toEqual({ ok: false, motivo: "envio_em_curso" });
+  });
+
   it("o mesmo estado simulado como criação e depois como atualização são duas intenções: a chave leva o tipo", async () => {
     const x = await pagarEConfirmar(c);
     const a = await simularSemRede(admin, x.reservaId);
@@ -85,8 +128,8 @@ describe("Simular (M8.3a, teste 11)", () => {
     expect(a.ok && b.ok && b.operacaoId !== a.operacaoId).toBe(true);
     const ops = await operacoes(x.reservaId);
     expect(ops.map((o) => [o.tipo, o.chave]).sort()).toEqual([
-      ["atualizar", chaveSimulacaoBeds24(x.reservaId, "atualizar", assinaturaEsperado(esperado))],
-      ["criar", chaveSimulacaoBeds24(x.reservaId, "criar", assinaturaEsperado(esperado))],
+      ["atualizar", chaveSimulacaoBeds24(x.reservaId, "atualizar", assinaturaEsperado(esperado), a.ok ? a.operacaoId : null)],
+      ["criar", chaveSimulacaoBeds24(x.reservaId, "criar", assinaturaEsperado(esperado), null)],
     ]);
     // De novo como atualização: aí sim é a mesma intenção.
     expect(await simularSemRede(admin, x.reservaId, env(), minutos(30))).toMatchObject({ ok: true, repetida: true, tipo: "atualizar" });

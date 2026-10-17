@@ -21,7 +21,7 @@ let confirmar: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.resetAllMocks();
   confirmar = vi.spyOn(window, "confirm");
-  m.pausar.mockResolvedValue({ ok: true, mensagem: "Pausado: nada é escrito no Beds24 até você retomar." });
+  m.pausar.mockResolvedValue({ ok: true, mensagem: "Pausado: nenhuma reserva do site é escrita no Beds24 até você retomar. O calendário e os preços não param com esta pausa." });
   m.ligar.mockResolvedValue({ ok: false, mensagem: "Faça o ensaio com a credencial atual antes de ligar um imóvel." });
 });
 afterEach(() => {
@@ -30,13 +30,13 @@ afterEach(() => {
 });
 
 it("pausar pede confirmação: sem o sim, nada vai ao servidor; com o sim, a resposta aparece", async () => {
-  render(<AcaoReservasBeds24 acao="pausar" rotulo="Pausar tudo" pergunta="Pausar o envio?" />);
+  render(<AcaoReservasBeds24 acao="pausar" rotulo="Pausar as reservas do site" pergunta="Pausar o envio?" />);
   confirmar.mockReturnValue(false);
-  fireEvent.click(screen.getByRole("button", { name: "Pausar tudo" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pausar as reservas do site" }));
   expect(confirmar).toHaveBeenCalledWith("Pausar o envio?");
   expect(m.pausar).not.toHaveBeenCalled();
   confirmar.mockReturnValue(true);
-  fireEvent.click(screen.getByRole("button", { name: "Pausar tudo" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pausar as reservas do site" }));
   await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Pausado"));
   expect(m.pausar).toHaveBeenCalledTimes(1);
 });

@@ -94,10 +94,12 @@ export const chaveOperacaoBeds24 = (tipo: Exclude<TipoOperacaoBeds24, "ensaio">,
 /** O ensaio não tem reserva: um uuid por ensaio. */
 export const chaveEnsaioBeds24 = (id: string) => `ensaio:${id}`;
 /**
- * A simulação repete a mesma linha enquanto a intenção for a mesma: o tipo e a assinatura. O mesmo estado simulado antes
- * como criação e depois como atualização são duas intenções (a linha guarda o tipo).
+ * A simulação repete a linha só quando a última simulação desta reserva é a mesma intenção: o tipo e a assinatura. O mesmo
+ * estado simulado antes como criação e depois como atualização são duas intenções (a linha guarda o tipo). A chave leva o id
+ * da simulação anterior (`primeira`, sem ela): voltar a um estado já simulado (A→B→A) grava uma linha nova, e dois cliques
+ * ao mesmo tempo continuam dando uma linha só.
  */
-export const chaveSimulacaoBeds24 = (reservaId: string, tipo: AcaoBeds24, assinatura: string) => `simulacao:${reservaId}:${tipo}:${assinatura}`;
+export const chaveSimulacaoBeds24 = (reservaId: string, tipo: AcaoBeds24, assinatura: string, anterior: string | null) => `simulacao:${reservaId}:${tipo}:${assinatura}:${anterior ?? "primeira"}`;
 
 // ---------------------------------------------------------------- a régua (desenho 2.1)
 
@@ -270,6 +272,16 @@ export function diferencaNoBeds24(esperado: EsperadoBeds24, lido: LidoBeds24 | n
   if (lido.situacao !== esperado.situacao || lido.quarto !== esperado.quarto || lido.chegada !== esperado.chegada || lido.saida !== esperado.saida) return { motivo: "mudada_no_beds24", soPessoas: false };
   if (esperado.situacao === "confirmada" && esperado.hospedes !== null && lido.hospedes !== esperado.hospedes) return { motivo: "mudada_no_beds24", soPessoas: true };
   return null;
+}
+
+/**
+ * A marca do SCL no registro ligado a uma reserva do site (D11; desenho 3.4 e 4.4): null = é a marca desta reserva. Sem marca
+ * legível (o info item apagado no Beds24, a credencial que não lê os info items, ou dois códigos): `marca_ilegivel`. Com o
+ * código de outra reserva, ou a marca do ensaio: `mudada_no_beds24` (marca alterada). Nos dois casos a conferência não bate.
+ */
+export function diferencaNaMarca(b: Pick<ReservaBeds24, "referenciaScl" | "ensaio">, codigo: string): "marca_ilegivel" | "mudada_no_beds24" | null {
+  if (!b.ensaio && b.referenciaScl === codigo) return null;
+  return !b.ensaio && b.referenciaScl === null ? "marca_ilegivel" : "mudada_no_beds24";
 }
 
 /** O que a criação esperava encontrar no Beds24: o quarto guardado (na criação, o do vínculo) e as datas do `esperado`. */

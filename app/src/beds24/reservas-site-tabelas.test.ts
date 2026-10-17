@@ -70,7 +70,7 @@ describe("tabelas das reservas do site no Beds24 (migração 0072)", () => {
 
   it("semDadosPessoais cobre as duas tabelas novas (o canário aparece; sem ele, nada)", async () => {
     const [a] = await db.insert(beds24ReservasSite).values({ organizacaoId: org, reservaId, imovelId: im, referencia: "SCL-7K2QXM" }).returning();
-    await operacao({ acompanhamentoId: a.id, chave: chaveSimulacaoBeds24(reservaId, "criar", "abc"), modo: "simulacao", situacao: "simulada", pedido: { quarto: "123456", chegada: "2026-12-20", saida: "2026-12-27", hospedes: 4, situacao: "confirmada", referencia: "SCL-7K2QXM" } });
+    await operacao({ acompanhamentoId: a.id, chave: chaveSimulacaoBeds24(reservaId, "criar", "abc", null), modo: "simulacao", situacao: "simulada", pedido: { quarto: "123456", chegada: "2026-12-20", saida: "2026-12-27", hospedes: 4, situacao: "confirmada", referencia: "SCL-7K2QXM" } });
     expect(await semDadosPessoais(db, ["canario.site@example.com", "canario.operacao@example.com"])).toEqual([]);
     await db.update(beds24ReservasSite).set({ lido: { quarto: "canario.site@example.com", chegada: "2026-12-20", saida: "2026-12-27", hospedes: 4, situacao: "confirmada" } });
     await db.update(beds24ReservasOperacoes).set({ erro: "canario.operacao@example.com" });

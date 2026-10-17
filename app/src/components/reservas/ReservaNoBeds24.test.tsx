@@ -96,6 +96,14 @@ describe("bloco No Beds24 da ficha", () => {
     expect(textoDaSimulacao("<script>")).toBeNull();
     expect(textoDaSimulacao(undefined)).toBeNull();
     expect(html(vazia, true, "simulada")).toContain('role="status"');
+    // Só a simulação gravada é sucesso; "Nada seria enviado" (cadastro faltando, envio em curso) é aviso.
+    for (const chave of ["simulada", "repetida_imovel_desligado"]) expect(html(vazia, true, chave)).toMatch(/class="[^"]*sucesso/);
+    for (const chave of ["nada_sem_contrato", "nada_nao_encontrada", "nada_envio_em_curso"]) {
+      const h = html(vazia, true, chave);
+      expect(h).toMatch(/class="[^"]*alerta/);
+      expect(h).not.toMatch(/class="[^"]*sucesso/);
+    }
+    expect(textoDaSimulacao("nada_envio_em_curso")).toContain("ainda sem confirmação");
   });
 
   it("toda situação e todo motivo do acompanhamento têm rótulo", () => {

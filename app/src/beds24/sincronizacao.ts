@@ -9,7 +9,7 @@ import { sincronizarReserva } from "@/reservas/repositorio";
 import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
 import { paraDadosReserva } from "./converter";
 import { avisoDaConferencia, avisoDeRegistroIlegivel, conferirNaImportacao, desvioNaImportacao, passarEnviandoVencidasAIncerta, prepararDesvioNaImportacao, type RegistroConhecido } from "./reservas-site";
-import { ErroBeds24, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
+import { ErroBeds24, type LeitorBeds24, type Lido, type ReservaBeds24 } from "./tipos";
 import { CAUSA_EM_ANDAMENTO, escritaBeds24EmAndamento, MENSAGEM_ENVIO_EM_ANDAMENTO, MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE, tentarTravaBeds24 } from "./trava";
 
 export type ResultadoSync = {
@@ -25,6 +25,18 @@ const resultado = (): ResultadoSync => ({ ok: true, situacao: "ok", criadas: 0, 
 const referencia = (s: string) => /^[A-Za-z0-9._:-]{1,64}$/.test(s) ? s : "não identificado";
 const somarDias = (data: string, n: number) => new Date(Date.parse(`${data}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const aviso = (r: ResultadoSync, s: string) => { r.totalDivergencias++; if (r.divergencias.length < 100) r.divergencias.push(s.slice(0, 300)); };
+
+/**
+ * Um id que volta mais de uma vez numa consulta (legível ou em formato inválido; na leitura principal, ou em qualquer lote da
+ * releitura por id) deixa a resposta ambígua: não dá para saber qual cópia vale. Nada é aplicado. O "?" e o id torto de um
+ * registro ilegível não contam: não casam com id nenhum. `vistos` junta os lotes de uma mesma consulta.
+ */
+function semIdsRepetidos(l: Lido<ReservaBeds24>, vistos = new Set<string>()) {
+  for (const id of [...l.itens.map(b => b.idExterno), ...l.divergencias.map(d => d.id).filter(id => referencia(id) === id)]) {
+    if (vistos.has(id)) throw new ErroBeds24("Consulta com IDs de reserva repetidos. Confira a origem antes de importar; nenhuma mudança foi aplicada.", "formato");
+    vistos.add(id);
+  }
+}
 
 export function mensagemSeguraBeds24(e: unknown): string {
   return e instanceof ErroBeds24 ? e.message : "Não foi possível confirmar o resultado. Confira o histórico de importações antes de tentar novamente.";
@@ -80,8 +92,8 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       const res = resultado();
       // Com os info items (M8.3, desenho 5.4): é onde mora a marca do SCL nas reservas pagas do site e no ensaio.
       const lote = await leitor.reservas({ saidaDe: c.desde, propertyIds: [...new Set(mapas.map(m => m.propertyId))], incluirInfo: true });
+      semIdsRepetidos(lote);
       const porId = new Map(lote.itens.map(b => [b.idExterno, b]));
-      if (porId.size !== lote.itens.length) throw new ErroBeds24("Consulta com IDs de reserva repetidos. Confira a origem antes de importar; nenhuma mudança foi aplicada.", "formato");
       for (const d of lote.divergencias) aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
       // Ids que voltaram em formato inválido (aqui e na releitura): o registro existe, só não deu para ler. Nunca contam
       // como "não voltou" (apagado): avisar em vez de supor.
@@ -95,38 +107,39 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       const conhecidos = [...new Set([...antigas.map(a => a.beds24Id || a.idFonte), ...antigosBloqueios.map(a => a.idFonte)])];
       if (conhecidos.length > 2000 || lote.itens.length > 2000) throw new ErroBeds24("Consulta acima de 2.000 reservas: é necessário ampliar o processamento antes de importar este volume.", "formato");
       const faltantes = conhecidos.filter(id => !porId.has(id));
+      // Registro de um id fora do pedido do lote, legível ou não, ou sem id legível: a resposta não é a do pedido, e ele pode
+      // ser de qualquer id pedido, inclusive de outro lote.
+      const vistosNaReleitura = new Set<string>();
+      let semDono = 0;
       for (let i = 0; i < faltantes.length; i += 50) {
         const ids = faltantes.slice(i, i + 50);
         const l = await leitor.reservas({ ids, chegadaDe: "1900-01-01", incluirInfo: true });
-        // Registro de um id fora do pedido, legível ou não: a resposta não é a do pedido, então não dá para concluir que
-        // um id pedido que não voltou foi apagado.
-        let semDono = 0;
+        semIdsRepetidos(l, vistosNaReleitura);
         for (const b of l.itens) {
           if (ids.includes(b.idExterno)) porId.set(b.idExterno, b);
           else semDono++;
         }
         for (const d of l.divergencias) {
-          if (!ids.includes(d.id) || porId.has(d.id) || ilegiveis.has(d.id)) continue;
+          if (!ids.includes(d.id)) { semDono++; continue; }
+          if (ilegiveis.has(d.id)) continue;
           ilegiveis.add(d.id);
           aviso(res, `Reserva ${referencia(d.id)}: formato inválido; confira o registro no Beds24.`);
         }
-        // Registro ilegível sem um id pedido (sem id, id inválido ou fora do pedido): pode ser qualquer um destes ids.
-        semDono += l.divergencias.filter(d => !ids.includes(d.id)).length;
-        // Com qualquer registro sem dono, nenhum id do lote que não voltou legível conta como "não voltou" (apagado): o lote
-        // todo fica sem conclusão, com um aviso só.
-        if (semDono) {
-          for (const id of ids) if (!porId.has(id)) ilegiveis.add(id);
-          aviso(res, `Releitura por id: ${semDono} registro(s) voltaram com um id que não foi pedido ou que não deu para ler; os registros deste lote que não voltaram legíveis ficam como estavam. Confira os registros no Beds24.`);
-        }
-        for (const id of ids) if (!porId.has(id) && !ilegiveis.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
       }
+      // Com qualquer registro sem dono, em qualquer lote, a releitura toda fica sem conclusão: nenhum id que não voltou legível
+      // conta como "não voltou" (apagado), com um aviso só.
+      if (semDono) {
+        for (const id of faltantes) if (!porId.has(id)) ilegiveis.add(id);
+        aviso(res, `Releitura por id: ${semDono} registro(s) voltaram com um id que não foi pedido ou que não deu para ler; os registros que não voltaram legíveis ficam como estavam. Confira os registros no Beds24.`);
+      }
+      for (const id of faltantes) if (!porId.has(id) && !ilegiveis.has(id)) aviso(res, `Reserva/bloqueio ${referencia(id)} não retornou na consulta. O registro anterior foi preservado.`);
       // O que cada id conhecido é no SCL (a reserva vale sobre o bloqueio com o mesmo id): o desvio deixa o registro conhecido
       // com a marca seguir o caminho normal (5.2 c e d).
       const tipoConhecido = new Map<string, RegistroConhecido>([...antigosBloqueios.map(a => [a.idFonte, "bloqueio"] as const), ...antigas.map(a => [a.beds24Id || a.idFonte, "reserva"] as const)]);
       // Reserva paga do site (M8.3, desenho 5.2): o que o desvio consulta, lido uma vez. O id dela que não voltou na releitura
       // é conferido como apagado no Beds24 (a reserva do SCL continua como estava). O que voltou ilegível não é apagado: a
       // conferência não conclui e nada muda no acompanhamento (situação, leitura e marcas das OTAs), só o aviso.
-      const desvio = await prepararDesvioNaImportacao(tx, org, porId.values(), tipoConhecido, agora);
+      const desvio = await prepararDesvioNaImportacao(tx, org, porId.values(), tipoConhecido, agora, { leituraComIlegivel: ilegiveis.size > 0 });
       for (const id of faltantes) {
         const ligada = porId.has(id) ? undefined : desvio.ligadas.get(id);
         if (!ligada) continue;

@@ -69,7 +69,8 @@ function infoItems(v: unknown): { code: string; text: string }[] {
 
 /**
  * Marca do SCL num registro (M8.3, desenho 3.5): o info item `SCL` com um código válido; sem ele, como reforço, o código
- * solto no nome ou nas notas. Mais de um código diferente na mesma fonte = null (avisar em vez de supor qual vale).
+ * solto no nome ou nas notas. Mais de um código diferente na mesma fonte = null, como sem marca: nunca escolhe um dos
+ * códigos. Separar "ambígua" de "sem marca", para desviar o ambíguo com aviso, fica para o M8.3c (desenho 5.2).
  */
 function marcaDoScl(b: Obj, itens: { code: string; text: string }[]): string | null {
   const unico = (xs: string[]) => {
