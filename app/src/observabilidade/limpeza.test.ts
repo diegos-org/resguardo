@@ -76,14 +76,33 @@ describe("textos (M0.9): cada tipo de dado pessoal vira um marcador", () => {
     expect(limparTexto("dsn https://chavepublica@o0.ingest.exemplo.io/1")).toBe("dsn https://[credenciais]@o0.ingest.exemplo.io/1");
   });
 
-  it("a senha do endereço sai inteira mesmo com parêntese, aspas ou @ no meio", () => {
+  it("a senha do endereço sai inteira mesmo com parêntese, aspas, espaço ou @ no meio, e seja qual for o tamanho", () => {
     expect(limparTexto("postgresql://usuario:hunter2)abc@banco.exemplo.com/scl")).toBe("postgresql://[credenciais]@banco.exemplo.com/scl");
     expect(limparTexto("postgresql://usuario:hunter2'abc@banco.exemplo.com/scl")).toBe("postgresql://[credenciais]@banco.exemplo.com/scl");
     expect(limparTexto('postgresql://usuario:abc"def@banco.exemplo.com/scl')).toBe("postgresql://[credenciais]@banco.exemplo.com/scl");
+    expect(limparTexto("postgresql://usuario:hunter2 abc@banco.exemplo.com/scl")).toBe("postgresql://[credenciais]@banco.exemplo.com/scl");
     expect(limparTexto("erro (postgresql://usuario:p@ss(1@banco.exemplo.com/scl)")).toBe("erro (postgresql://[credenciais]@banco.exemplo.com/scl)");
-    // A "@" depois do caminho, da consulta ou de um espaço não é credencial.
+    // Senha longa (a revisão do Codex mostrou o pedaço antes das aspas saindo quando a senha passava de 256 letras).
+    expect(limparTexto(`postgresql://usuario:hunter2'${"x".repeat(250)}@banco.exemplo.com/scl`)).toBe("postgresql://[credenciais]@banco.exemplo.com/scl");
+    expect(limparTexto(`postgresql://usuario:hunter2)${"x".repeat(10_000)}@banco.exemplo.com/scl`)).toBe("postgresql://[credenciais]@banco.exemplo.com/scl");
+    // O corte de um texto longo pode cair no meio da senha: as credenciais saem antes do corte.
+    const noLimite = `${"x ".repeat((LIMITE_DO_TEXTO - 40) / 2)}postgresql://usuario:segredoabc ${"y".repeat(100)}@banco.exemplo.com/scl`;
+    expect(noLimite.length).toBeGreaterThan(LIMITE_DO_TEXTO);
+    expect(limparTexto(noLimite)).not.toContain("segredo");
+    // A "@" depois do caminho ou da consulta não é credencial.
     expect(limparTexto("https://exemplo.com/a@b")).not.toContain("[credenciais]");
     expect(limparTexto("https://exemplo.com?x=1 fulano@exemplo.com")).toBe("https://exemplo.com [e-mail]");
+    // Endereço sem caminho e um e-mail adiante no mesmo trecho: sai a mais, nunca a menos.
+    expect(limparTexto("falha em https://exemplo.com para fulano@exemplo.com")).toBe("falha em https://[credenciais]@exemplo.com");
+  });
+
+  it("credenciais longas ou com aspas também saem de um endereço solto, e a busca segue rápida", () => {
+    expect(limparEndereco(`postgresql://usuario:hunter2'${"x".repeat(300)}@banco.exemplo.com/scl`)).toBe("postgresql://[credenciais]@banco.exemplo.com/scl");
+    for (const texto of ["a://".repeat(25_000), `postgresql://${"x".repeat(100_000)}`, `https://${"@".repeat(100_000)}`]) {
+      const inicio = performance.now();
+      limparTexto(texto);
+      expect(performance.now() - inicio, texto.slice(0, 12)).toBeLessThan(100);
+    }
   });
 
   it("os valores de uma consulta ao banco nunca saem (Drizzle e o detalhe do Postgres)", () => {

@@ -111,6 +111,8 @@ describe("resumoDaQueda", () => {
     const resumo = resumoDaQueda(new Error("falha em postgresql://usuario:hunter2)abc@banco.exemplo.com/scl"));
     expect(resumo).not.toContain("hunter2");
     expect(resumo).toBe("Error: falha em postgresql://[credenciais]@banco.exemplo.com/scl");
+    // Senha longa com aspas (a segunda revisão do Codex): nada dela sai.
+    expect(resumoDaQueda(new Error(`falha em postgresql://usuario:hunter2'${"x".repeat(250)}@banco.exemplo.com/scl`))).toBe("Error: falha em postgresql://[credenciais]@banco.exemplo.com/scl");
   });
 
   it("tira dados pessoais pela mesma limpeza dos avisos", () => {
