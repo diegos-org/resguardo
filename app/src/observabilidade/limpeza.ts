@@ -101,6 +101,11 @@ const RE_VALOR_NO_MEIO_DO_ERRO_DO_POSTGRES = /\b(value|time zone) "[\s\S]*?" (is
 // Endereços dentro de um texto: com esquema (https://, postgresql://, webpack-internal://) ou um caminho solto que
 // começa por "/" (como "GET /reservar/COT-…").
 const RE_ENDERECO_NO_TEXTO = /[a-z][a-z0-9+.-]{0,31}:\/\/[^\s"'<>()]*|(?<![\p{L}\p{N}_.~/-])\/[^\s"'<>()]*/giu;
+// O trecho logo depois de qualquer "://" (usuário, senha e servidor), até a primeira barra, "?" ou "#": os únicos
+// caracteres que não podem estar numa senha sem codificação (parêntese, aspas, espaço e "@" podem; ver
+// `semCredenciaisDeEndereco`). Não olha o esquema antes de "://", que não tem tamanho máximo. A busca não volta atrás: o
+// custo fica proporcional ao texto, seja qual for o tamanho do trecho.
+const RE_AUTORIDADE_NO_TEXTO = /:\/\/([^/?#]*)/gu;
 
 const soDigitos = (s: string) => s.replace(/\D/g, "");
 
@@ -218,6 +223,20 @@ export function cortarTexto(texto: string): string {
   return resto ? `${resto} ${MARCADORES.cortado}` : MARCADORES.cortado;
 }
 
+/**
+ * Credenciais de endereço (usuário:senha@) trocadas por marcador, em qualquer texto: tudo entre "://" e a última "@"
+ * antes da primeira barra, "?" ou "#". Roda antes da regra dos endereços e antes do corte dos textos longos: aquela regra
+ * para em parêntese, aspas e espaço, e o corte pode cair no meio da senha; nos dois casos, o pedaço da senha antes do
+ * ponto de parada sairia. Uma "@" mais adiante no mesmo trecho (um e-mail depois de um endereço sem caminho) leva junto o
+ * que vem antes dela: sai a mais, nunca a menos.
+ */
+export function semCredenciaisDeEndereco(texto: string): string {
+  return texto.replace(RE_AUTORIDADE_NO_TEXTO, (inteiro, autoridade: string) => {
+    const arroba = autoridade.lastIndexOf("@");
+    return arroba < 0 ? inteiro : `://${MARCADORES.credenciais}${autoridade.slice(arroba)}`;
+  });
+}
+
 /** Um pedaço do caminho de um endereço. `anterior` é o pedaço logo antes (para /reservar/<código> e /convite/<token>). */
 function limparSegmento(segmento: string, anterior: string | undefined): string {
   if (!segmento) return segmento;
@@ -238,7 +257,7 @@ function limparSegmento(segmento: string, anterior: string | undefined): string 
  */
 export function limparEndereco(endereco: string): string {
   const partes = /^([a-z][a-z0-9+.-]*:\/\/[^/?#]*)?([^?#]*)/i.exec(endereco);
-  const origem = (partes?.[1] ?? "").replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, `$1${MARCADORES.credenciais}@`);
+  const origem = semCredenciaisDeEndereco(partes?.[1] ?? "");
   if (origem.length > LIMITE_DO_TEXTO) return MARCADORES.cortado;
   let caminho = partes?.[2] ?? "";
   let cortado = false;
@@ -252,9 +271,13 @@ export function limparEndereco(endereco: string): string {
   return cortado ? `${limpo}/${MARCADORES.cortado}` : limpo;
 }
 
-/** Texto limpo: endereços pela regra dos endereços e o resto pela regra dos dados pessoais e segredos. */
+/**
+ * Texto limpo: credenciais de endereço primeiro (antes do corte, ver `semCredenciaisDeEndereco`), endereços pela regra
+ * dos endereços e o resto pela regra dos dados pessoais e segredos.
+ */
 export function limparTexto(texto: string): string {
-  return limparDados(cortarTexto(texto).replace(RE_ENDERECO_NO_TEXTO, (endereco) => limparEndereco(endereco)));
+  const cortado = cortarTexto(semCredenciaisDeEndereco(texto));
+  return limparDados(cortado.replace(RE_ENDERECO_NO_TEXTO, (endereco) => limparEndereco(endereco)));
 }
 
 // Nomes de campo cujo valor nunca sai, seja qual for (em extra, contexts, dados dos rastros).
