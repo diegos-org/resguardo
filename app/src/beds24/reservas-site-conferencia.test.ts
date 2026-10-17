@@ -17,7 +17,7 @@ import { lerConfigBeds24 } from "./configuracao";
 import { Beds24Falso, ESCOPOS_ESPERADOS_FALSO } from "./falso";
 import { impressaoCredencialBeds24 } from "./http";
 import { INFO_MARCA_SCL, normalizarReserva } from "./normalizar";
-import { avisarEquipeDasReservasNoBeds24, chaveDoEmailBeds24 } from "./reservas-site-avisos";
+import { avisarEquipeDasReservasNoBeds24, avisosDeReservasNoBeds24, chaveDoEmailBeds24 } from "./reservas-site-avisos";
 import { conferirContinuamente, FOLGA_DA_CONFERENCIA_MS } from "./reservas-site-conferencia";
 import { enviarReservasDoSite, type OpcoesDoEnvio } from "./reservas-site-envio";
 import { gravarEscoposLidos, lerEstadoRotina } from "./reservas-site-rotina";
@@ -110,6 +110,9 @@ describe("teste 31: a conferência contínua, com a importação desligada", () 
     const a = await acompanhamento(x.reservaId);
     expect(a).toMatchObject({ situacao: "divergente", motivo: "cancelada_no_beds24", otaFechadaEm: null, otaFechadaPor: null, avisadaEm: null, lido: { situacao: "cancelada" } });
     expect((await tarefasDasOtas(db, c.org, minutos(23), PRONTO)).atencoes).toEqual([{ reservaId: x.reservaId, codigo: x.reservaCodigo, tipo: "divergente" }]);
+    // No Início (bloco G), a linha da divergência pelo motivo, para a ficha.
+    const ficha = `/painel/reservas/${x.reservaId}`;
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(23), PRONTO)).filter((l) => l.link === ficha)).toEqual([{ nivel: "atencao", texto: `Reserva ${x.reservaCodigo} foi cancelada no Beds24 por fora: veja a ficha.`, link: ficha }]);
     expect(await lerEstadoRotina(db, c.org)).toMatchObject({ conferenciaEm: minutos(22), releituraEm: minutos(12) });
 
     // O e-mail sai depois, pela rotina (fora de qualquer transação), uma vez só.
@@ -136,6 +139,8 @@ describe("teste 31: a conferência contínua, com a importação desligada", () 
     const [auditada] = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, c.org), eq(auditoria.acao, "beds24.reserva.conferir")));
     expect(auditada).toMatchObject({ entidade: "reserva", entidadeId: x.reservaId, usuarioId: null, mudancas: { situacaoNoBeds24: ["divergente", "conferida"], motivoNoBeds24: ["cancelada_no_beds24", null], otaFechadaPeloSistema: [false, true] } });
     expect((await tarefasDasOtas(db, c.org, minutos(43), PRONTO)).atencoes).toEqual([]);
+    // E sai do Início (bloco G): nenhuma linha leva mais à ficha dela.
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(43), PRONTO)).filter((l) => l.link === `/painel/reservas/${x.reservaId}`)).toEqual([]);
   });
 
   it("apagada no Beds24: só a passada de hora em hora conclui apagada_no_beds24, com as datas fechadas limpas, a atenção e o e-mail com a chave", async () => {
@@ -155,6 +160,9 @@ describe("teste 31: a conferência contínua, com a importação desligada", () 
     const a = await acompanhamento(x.reservaId);
     expect(a).toMatchObject({ situacao: "divergente", motivo: "apagada_no_beds24", otaFechadaEm: null, lido: null, avisadaEm: null });
     expect((await tarefasDasOtas(db, c.org, minutos(73), PRONTO)).atencoes).toEqual([{ reservaId: x.reservaId, codigo: x.reservaCodigo, tipo: "divergente" }]);
+    // No Início (bloco G), a linha da apagada, para a ficha.
+    const ficha = `/painel/reservas/${x.reservaId}`;
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(73), PRONTO)).filter((l) => l.link === ficha)).toEqual([{ nivel: "atencao", texto: `Reserva ${x.reservaCodigo} não voltou na leitura do Beds24 (apagada?): veja a ficha.`, link: ficha }]);
     expect(await lerEstadoRotina(db, c.org)).toMatchObject({ conferenciaEm: minutos(72), releituraEm: minutos(72) });
 
     const correio = new CorreioMemoria();
@@ -169,9 +177,13 @@ describe("teste 31: a conferência contínua, com a importação desligada", () 
     falso.bookings = [];
     expect(await conferir(minutos(72), OUTRA)).toMatchObject({ conferidos: 1, avisos: 1, releitura: true });
     expect(await acompanhamento(x.reservaId)).toMatchObject({ situacao: "aguardando_equipe", motivo: "sem_permissao", otaFechadaEm: minutos(10), lido: { situacao: "confirmada" } });
-    // Não é um caso de e-mail (nada foi recusado no POST): a atenção do Início fica.
+    // Não é um caso de e-mail (nada foi recusado no POST): a atenção do Início fica (bloco G: com o motivo em palavras).
     const correio = new CorreioMemoria();
     expect(await avisarEquipeDasReservasNoBeds24(db, c.org, correio, minutos(73))).toMatchObject({ enviados: 0 });
+    const ficha = `/painel/reservas/${x.reservaId}`;
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(73), OUTRA)).filter((l) => l.link === ficha)).toEqual([
+      { nivel: "atencao", texto: `Reserva ${x.reservaCodigo} aguarda a equipe no Beds24 (a credencial não tem permissão de escrever ou ler a reserva): veja a ficha.`, link: ficha },
+    ]);
   });
 
   it("com o quarto sem acesso em BRL (a mesma credencial): aguardando_equipe/sem_permissao, sem concluir apagada", async () => {

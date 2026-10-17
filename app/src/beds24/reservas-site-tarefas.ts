@@ -4,9 +4,12 @@
  * dos avisos das OTAs no Início (paga, D3, cancelada, alterada) e do bloco "No Beds24" da ficha; as marcas manuais "Datas
  * fechadas nas OTAs" (D8, 6.4) e "Datas reabertas nas OTAs" (a D3 cancelada pelo "Cancelar reserva" comum) ficam aqui.
  *
- * Nada aqui escreve no Beds24 nem usa a rede: o envio é o M8.3c, atrás de `escritaReservasBeds24Pronta`. Nenhum valor nem
- * dado do hóspede: só o código SCL e as datas. Os funis do pagamento (`pagamentos/*`) nunca importam daqui (desenho 3.1);
- * os textos genéricos deles mandam seguir o aviso do Início.
+ * Nada aqui escreve no Beds24 nem usa a rede: o envio é o trabalhador do M8.3c (`reservas-site-envio.ts`, atrás de
+ * `escritaReservasBeds24Pronta`). Nenhum valor nem dado do hóspede: só o código SCL e as datas. Os funis do pagamento
+ * (`pagamentos/*`) nunca importam daqui (desenho 3.1); os textos genéricos deles mandam seguir o aviso do Início.
+ * M8.3c (bloco G): as linhas de atenção do Início saíram de `avisosDasTarefas` para `avisosDeReservasNoBeds24`
+ * (`reservas-site-avisos.ts`, desenho 6.5), que as junta com as tarefas daqui; a carência conta também desde o "Retomar" e a
+ * ligação do imóvel (`inicioDaCarencia`, plano 1.8); e a frase "o sistema faz isso sozinho" (6.2) mora aqui.
  */
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
@@ -16,14 +19,15 @@ import type { Db } from "@/db/types";
 import { diaMesBr, diaMesNoFuso, FUSO_PADRAO, hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { travarReservaDoSite } from "./reservas-site";
-import { lerConfigReservasBeds24, ligacaoDoImovel, type MotivoDesligadaBeds24, motivosDesligada } from "./reservas-site-config";
+import { type ConfigReservasBeds24, lerConfigReservasBeds24, ligacaoDoImovel, type MotivoDesligadaBeds24, motivosDesligada } from "./reservas-site-config";
 import { lerReservaParaBeds24 } from "./reservas-site-contexto";
 import { criadaPeloM83, detalheOperacaoBeds24, MOTIVOS_CONFIGURACAO_BEDS24, type MotivoAcompanhamentoBeds24, reservaDoSiteParaBeds24, type SituacaoAcompanhamentoBeds24, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
 import { tentarTravaBeds24 } from "./trava";
 
 /**
  * Depois disto, contado desde o fato (o pagamento que confirmou, o cancelamento ou a última alteração aplicada), o envio
- * automático conta como atrasado (desenho 6.1). Não há coluna da intenção: o relógio é o do fato, sem migração.
+ * automático conta como atrasado (desenho 6.1). Não há coluna da intenção: o relógio é o do fato, sem migração. M8.3c: ou
+ * desde o "Retomar" e a ligação do imóvel, se vieram depois (`inicioDaCarencia`).
  */
 export const CARENCIA_ENVIO_RESERVA_MINUTOS = 30;
 
@@ -52,7 +56,10 @@ export type TarefaOta = {
   /** As datas da reserva agora (o texto e a pergunta do botão). */
   checkin: string;
   checkout: string;
-  /** O fato que conta a carência. */
+  /**
+   * Desde quando a carência conta: o fato (o pagamento que confirmou, o cancelamento, a última alteração aplicada) ou, se
+   * vieram depois, o "Retomar" da pausa e a ligação do imóvel (M8.3c, `inicioDaCarencia`).
+   */
   desde: Date;
   /** Na alterada: as alterações aplicadas sem a marca das OTAs. */
   alteracaoIds: string[];
@@ -193,40 +200,48 @@ export function textoDaTarefa(t: Pick<TarefaOta, "caso" | "codigo" | "checkin" |
   }
 }
 
-/** Os códigos das reservas do aviso (até 5; o resto em número): quem lê sabe qual abrir. */
-const codigos = (xs: readonly { codigo: string }[]) => (xs.length <= 5 ? xs.map((x) => x.codigo).join(", ") : `${xs.slice(0, 5).map((x) => x.codigo).join(", ")} e mais ${xs.length - 5}`);
+/**
+ * A frase da seção 6.2 (M8.3c): só com o envio automático ligado para a reserva (`envioAutomaticoLigado`: a chave pronta no
+ * deploy de produção, sem a pausa, o imóvel ligado) e numa situação automática — a tarefa atrasada (no Início e na ficha) e,
+ * na ficha, a atenção de falha, recusa ou incerteza do envio (plano, P5). Fora disso ela não seria verdade: mostrá-la marcaria
+ * intenção como entrega.
+ */
+export const FRASE_DO_ENVIO_AUTOMATICO = "O sistema faz isso sozinho; este aviso fica quando ele não consegue.";
+
+/** Os motivos da atenção em que a frase vale na ficha: as falhas, a recusa e a incerteza do envio. */
+const MOTIVOS_DA_FRASE: readonly MotivoAcompanhamentoBeds24[] = ["falhas", "incerta", "sem_disponibilidade", "recusada_pelo_beds24", "sem_permissao"];
+
+/** A frase da 6.2 quando cabe (a tarefa atrasada, ou a atenção de falha, recusa ou incerteza), com o envio automático ligado; senão null. */
+export function fraseDoEnvioAutomatico(automatico: boolean, o: { estado?: EstadoTarefaOta; motivo?: MotivoAcompanhamentoBeds24 | null }): string | null {
+  if (!automatico) return null;
+  return o.estado === "atrasada" || (o.motivo != null && MOTIVOS_DA_FRASE.includes(o.motivo)) ? FRASE_DO_ENVIO_AUTOMATICO : null;
+}
+
+/** Os códigos das reservas do aviso (até 5; o resto em número): quem lê sabe qual abrir. As linhas de atenção também usam. */
+export const codigosDoAviso = (xs: readonly { codigo: string }[]) => (xs.length <= 5 ? xs.map((x) => x.codigo).join(", ") : `${xs.slice(0, 5).map((x) => x.codigo).join(", ")} e mais ${xs.length - 5}`);
 /** Uma reserva: a ficha dela. Mais de uma: a lista das reservas. */
 const link = (xs: readonly { reservaId: string }[]) => (xs.length === 1 ? `/painel/reservas/${xs[0].reservaId}` : "/painel/reservas");
 /** Uma linha por reserva (a mesma reserva pode ter duas tarefas automáticas). */
-const porReserva = <T extends { reservaId: string }>(xs: readonly T[]) => [...new Map(xs.map((x) => [x.reservaId, x])).values()];
-
-/** O texto de atenção de cada reserva no Início (o que fazer está na ficha). */
-const ATENCAO_NO_INICIO: Record<Exclude<AtencaoOta, "transicao">, (codigo: string) => string> = {
-  conflito: (c) => `Reserva ${c}: as noites estão ocupadas por outra reserva no Beds24 (possível venda dupla). Veja a ficha.`,
-  divergente: (c) => `Reserva ${c} está diferente no Beds24: veja a ficha.`,
-  aguardando_equipe: (c) => `Reserva ${c} aguarda a equipe no Beds24: veja a ficha.`,
-  ja_no_beds24: (c) => `Reserva ${c} está ligada a um registro do Beds24 que o sistema não criou: veja a ficha.`,
-};
+export const porReserva = <T extends { reservaId: string }>(xs: readonly T[]) => [...new Map(xs.map((x) => [x.reservaId, x])).values()];
 
 /**
- * As linhas do Início (desenho 6.1), sem valores, nesta ordem: atenção (conflito, divergente, aguardando a equipe e a
- * reserva ligada a outro registro, as atrasadas), depois o que a equipe faz à mão (a paga e a D3 agrupadas com os códigos;
- * cancelada e alterada uma por reserva, porque o texto leva as datas dela) e por fim o informativo (sendo enviadas pelo
- * sistema e o bloqueio feito à mão sobre as noites). Todo texto leva um código ou uma contagem (a chave da lista no Início).
+ * As linhas das tarefas no Início (desenho 6.1), sem valores, nesta ordem: o que a equipe faz à mão (a paga e a D3 agrupadas
+ * com os códigos; cancelada e alterada uma por reserva, porque o texto leva as datas dela) e o informativo (sendo enviadas
+ * pelo sistema e o bloqueio feito à mão sobre as noites, das atenções do tipo `transicao`). Todo texto leva um código ou uma
+ * contagem (a chave da lista no Início).
+ * M8.3c (bloco G; desenho 6.5): antes, as linhas de atenção (conflito, divergente, aguardando a equipe, a reserva ligada a
+ * outro registro e as atrasadas) vinham primeiro, daqui. Agora elas são de `avisosDeReservasNoBeds24`
+ * (`reservas-site-avisos.ts`), que também lê o acompanhamento direto da tabela (a divergência com as datas fechadas mantidas,
+ * que `classificarTarefa` não vê), põe a linha de configuração entre elas e chama esta função para o resto.
  */
 export function avisosDasTarefas(tarefas: readonly TarefaOta[], atencoes: readonly LinhaAtencaoOta[]): AvisoTarefaOta[] {
   const avisos: AvisoTarefaOta[] = [];
-  for (const tipo of ["conflito", "divergente", "aguardando_equipe", "ja_no_beds24"] as const) {
-    for (const x of atencoes.filter((y) => y.tipo === tipo)) avisos.push({ nivel: "atencao", texto: ATENCAO_NO_INICIO[tipo](x.codigo), link: link([x]) });
-  }
-  const atrasadas = porReserva(tarefas.filter((t) => t.estado === "atrasada"));
-  if (atrasadas.length) avisos.push({ nivel: "atencao", texto: `${atrasadas.length} reserva(s) do site com o envio ao Beds24 atrasado (${codigos(atrasadas)}): confira na ficha.`, link: link(atrasadas) });
   const manuais = tarefas.filter((t) => t.estado === "manual");
   const pagas = manuais.filter((t) => t.caso === "paga");
-  if (pagas.length) avisos.push({ nivel: "info", texto: `${pagas.length} reserva(s) do site paga(s) (${codigos(pagas)}): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.`, link: link(pagas) });
+  if (pagas.length) avisos.push({ nivel: "info", texto: `${pagas.length} reserva(s) do site paga(s) (${codigosDoAviso(pagas)}): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.`, link: link(pagas) });
   const d3 = manuais.filter((t) => t.caso === "d3");
   if (d3.length)
-    avisos.push({ nivel: "info", texto: `${d3.length} reserva(s) do site confirmada(s) à mão, sem pagamento pelo site (${codigos(d3)}): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.`, link: link(d3) });
+    avisos.push({ nivel: "info", texto: `${d3.length} reserva(s) do site confirmada(s) à mão, sem pagamento pelo site (${codigosDoAviso(d3)}): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.`, link: link(d3) });
   const datas = (t: TarefaOta) => `${diaMesBr(t.checkin)} a ${diaMesBr(t.checkout)}`;
   for (const t of manuais) {
     if (t.caso === "cancelada_bloqueio" || t.caso === "d3_cancelada") avisos.push({ nivel: "info", texto: `Reserva ${t.codigo}, cancelada: mude o bloqueio de ${datas(t)} para Cancelado (não apague).`, link: link([t]) });
@@ -250,6 +265,19 @@ type Candidata = { fato: FatoDaTarefaOta; id: string; codigo: string; imovelId: 
 const ORDEM_DOS_CASOS: readonly CasoTarefaOta[] = ["paga", "d3", "d3_cancelada", "cancelada_bloqueio", "cancelada_criada", "alterada_bloqueio", "alterada_criada"];
 /** Sem a hora do fato, a carência conta como passada (avisar em vez de supor). */
 const SEM_HORA = new Date(0);
+
+/**
+ * Desde quando a carência conta (M8.3c, plano 1.8; desenho 6.1): o mais tarde entre o fato, o "Retomar" da pausa
+ * (`retomado.em`) e a ligação do imóvel (`ligadoEm`). Antes deles o sistema não podia enviar: logo depois de "Retomar" ou
+ * de ligar o imóvel, o que ficou parado está "sendo enviado", não "atrasado". Antes do M8.3c, só o fato contava (o registro
+ * da 6.1 dizia "o M8.3c pode guardar a hora"). Sem a hora do fato, continua sem hora (atrasada: avisar em vez de supor). A
+ * chave ligada pela variável da Vercel não tem hora guardada: fica como limite, registrado no desenho.
+ */
+export function inicioDaCarencia(fato: Date, config: ConfigReservasBeds24, imovelId: string): Date {
+  if (fato.getTime() === SEM_HORA.getTime()) return fato;
+  const depois = [config.retomado?.em, ligacaoDoImovel(config, imovelId)?.ligadoEm].map((x) => (x ? Date.parse(x) : Number.NaN)).filter((t) => !Number.isNaN(t));
+  return new Date(Math.max(fato.getTime(), ...depois));
+}
 
 /**
  * As tarefas das OTAs da organização (ou só de `reservaIds`, para a ficha), só leitura e sem trava. Os cortes de data são
@@ -417,6 +445,8 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
     const beds24Id = c.beds24Id ?? ops.find((x) => x.beds24Id)?.beds24Id ?? null;
     const ativa = ops.some((x) => ativas.includes(x.situacao));
     const emCurso = a?.situacao === "em_envio" || ops.some((x) => x.situacao === "enviando" || x.situacao === "incerta" || (ativas.includes(x.situacao) && x.enviadoEm !== null && x.beds24Id === null));
+    // M8.3c (plano 1.8): a carência conta do fato, ou do "Retomar" e da ligação do imóvel, se vieram depois.
+    const desde = inicioDaCarencia(c.desde, config, c.imovelId);
     const entrada: EntradaDaTarefaOta = {
       fato: c.fato,
       criada: criadaPeloM83(a ? { quarto: a.roomId } : null, beds24Id),
@@ -424,7 +454,7 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
       emCurso,
       desligada: motivosDesligada(env, { pausada: config.pausado !== null, imovelLigado: ligacaoDoImovel(config, c.imovelId) !== null, comAcompanhamento: true }),
       regua: reguas.get(c.id) ?? null,
-      desde: c.desde,
+      desde,
       agora,
     };
     let k = classificarTarefa(entrada);
@@ -442,7 +472,7 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
     if (k.tipo !== "tarefa") continue;
     const marca = k.estado === "manual" && !ativa ? (k.caso === "paga" || k.caso === "d3" ? "datas_fechadas" : k.caso === "d3_cancelada" ? "datas_reabertas" : null) : null;
     const base = { reservaId: c.id, codigo: c.codigo, caso: k.caso, checkin: c.checkin, checkout: c.checkout };
-    tarefas.push({ ...base, estado: k.estado, desde: c.desde, alteracaoIds: c.alteracaoIds, texto: textoDaTarefa(base), marca });
+    tarefas.push({ ...base, estado: k.estado, desde, alteracaoIds: c.alteracaoIds, texto: textoDaTarefa(base), marca });
   }
   // A atenção de uma reserva tira todas as tarefas dela (nunca uma instrução contrária para a mesma reserva). A criação que o
   // sistema está enviando leva as datas de agora: a alteração dela não é outra tarefa.

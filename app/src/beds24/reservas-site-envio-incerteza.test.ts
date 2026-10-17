@@ -24,7 +24,7 @@ import { Beds24Falso, ESCOPOS_ESPERADOS_FALSO } from "./falso";
 import { impressaoCredencialBeds24 } from "./http";
 import { INFO_MARCA_SCL, respostaDaGravacao } from "./normalizar";
 import { vincularRegistro } from "./reservas-site";
-import { avisarEquipeDasReservasNoBeds24, chaveDoEmailBeds24 } from "./reservas-site-avisos";
+import { avisarEquipeDasReservasNoBeds24, avisosDeReservasNoBeds24, chaveDoEmailBeds24 } from "./reservas-site-avisos";
 import { abrirIntencao, enviarReservasDoSite, type OpcoesDoEnvio, resolverOperacaoEmCurso, resolverOperacoesEmCurso } from "./reservas-site-envio";
 import { assinaturaEsperado, chaveOperacaoBeds24, type EsperadoBeds24 } from "./reservas-site-regras";
 import { gravarEscoposLidos } from "./reservas-site-rotina";
@@ -605,6 +605,11 @@ describe("teste 24: a recusa e o success:false", () => {
     const a = await acompanhamento(x.reservaId);
     expect(a).toMatchObject({ situacao: "aguardando_equipe", motivo: "sem_disponibilidade", avisadaEm: minutos(16) });
     expect((await tarefasDasOtas(db, c.org, minutos(16), PRONTO)).atencoes).toMatchObject([{ reservaId: x.reservaId, tipo: "aguardando_equipe" }]);
+    // No Início (bloco G), a linha da reserva com o motivo em palavras (o que fazer está na ficha).
+    const ficha = `/painel/reservas/${x.reservaId}`;
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(16), PRONTO)).filter((l) => l.link === ficha)).toEqual([
+      { nivel: "atencao", texto: `Reserva ${x.reservaCodigo} aguarda a equipe no Beds24 (o Beds24 não mostrou as noites livres): veja a ficha.`, link: ficha },
+    ]);
     expect(correio.enviadas).toHaveLength(1);
     expect(correio.enviadas[0]).toMatchObject({ para: EMAIL_EQUIPE, chave: `beds24-reserva:${x.reservaId}:sem_disponibilidade:${a.assinaturaEsperada}`, conteudoRestrito: true });
     expect(correio.enviadas[0].texto).toContain(x.reservaCodigo);
@@ -636,8 +641,12 @@ describe("teste 25: o ocupante exato e a marca ilegível", () => {
     expect(JSON.stringify(await tarefasDasOtas(db, c.org, minutos(16), PRONTO))).not.toContain("venda dupla");
     expect(await volta(minutos(40), correio)).toMatchObject({ envio: { posts: 0 } });
     expect(falso.escritasReservas).toHaveLength(1);
-    // A incerteza não é caso de e-mail: o Início mostra a atenção.
+    // A incerteza não é caso de e-mail: o Início mostra a atenção (bloco G: a linha da reserva, com o motivo, nunca "venda dupla").
     expect(correio.enviadas).toEqual([]);
+    const ficha = `/painel/reservas/${x.reservaId}`;
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(40), PRONTO)).filter((l) => l.link === ficha)).toEqual([
+      { nivel: "atencao", texto: `Reserva ${x.reservaCodigo} aguarda a equipe no Beds24 (o envio ficou sem confirmação): veja a ficha.`, link: ficha },
+    ]);
   });
 
   it("um canal desconhecido sem a origem da API nas mesmas datas nunca é o ocupante exato: a nova tentativa vira conflito, com o e-mail da venda dupla", async () => {

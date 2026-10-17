@@ -1,7 +1,8 @@
 /**
  * Bloco "No Beds24" da ficha (M8.3a, desenho 8; seção 10, teste 12): os códigos do domínio em linguagem simples, o
  * "desligada" calculado, o histórico curto e o "Simular" só com a permissão e o ambiente. M8.3b (testes 15 e 16): o texto
- * da tarefa das OTAs desta reserva e as marcas manuais, só com `reserva:editar`. O componente só é importado no painel:
+ * da tarefa das OTAs desta reserva e as marcas manuais, só com `reserva:editar`. M8.3c (bloco G): os botões do envio por
+ * permissão e por situação, o vínculo, o resultado de cada botão e a frase da 6.2. O componente só é importado no painel:
  * nenhuma tela do hóspede nem do portal cita o Beds24.
  */
 import { readdirSync, readFileSync } from "node:fs";
@@ -12,11 +13,25 @@ import type { FichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
 import { MOTIVOS_ACOMPANHAMENTO_BEDS24, SITUACOES_ACOMPANHAMENTO_BEDS24 } from "@/beds24/reservas-site-regras";
 import type { TarefaOta } from "@/beds24/reservas-site-tarefas";
 
-vi.mock("@/beds24/acoes-reservas", () => ({ simularReservaBeds24Acao: vi.fn(), marcarDatasFechadasNasOtasAcao: vi.fn(), marcarDatasReabertasNasOtasAcao: vi.fn() }));
+vi.mock("@/beds24/acoes-reservas", () => ({
+  simularReservaBeds24Acao: vi.fn(),
+  marcarDatasFechadasNasOtasAcao: vi.fn(),
+  marcarDatasReabertasNasOtasAcao: vi.fn(),
+  // M8.3c (bloco G): os botões do envio.
+  conferirAgoraBeds24Acao: vi.fn(),
+  tentarDeNovoBeds24Acao: vi.fn(),
+  deixarAMaoBeds24Acao: vi.fn(),
+  reenviarAoBeds24Acao: vi.fn(),
+  naoExisteNoBeds24Acao: vi.fn(),
+  vincularIdDoBeds24Acao: vi.fn(),
+  passarAoSistemaBeds24Acao: vi.fn(),
+}));
 import { NOMES_MOTIVO_NO_BEDS24, NOMES_SITUACAO_NO_BEDS24, ReservaNoBeds24, textoDaSimulacao } from "./ReservaNoBeds24";
 
 const ID = "11111111-1111-4111-8111-111111111111";
-const vazia: FichaReservaNoBeds24 = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [] };
+// Muda junto (M8.3c, bloco G): a ficha ganhou `acoes` (os botões do envio que valem agora); aqui, nenhum.
+const SEM_ACOES: FichaReservaNoBeds24["acoes"] = { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false };
+const vazia: FichaReservaNoBeds24 = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [], acoes: SEM_ACOES };
 const tarefa = (o: Partial<TarefaOta> = {}): TarefaOta => ({
   reservaId: ID,
   codigo: "SCL-7K2QXM",
@@ -120,6 +135,7 @@ describe("bloco No Beds24 da ficha", () => {
       pedido: null,
       tarefas: [],
       atencoes: [],
+      acoes: SEM_ACOES,
     });
     expect(h).toContain("Diferente no Beds24: cancelada no Beds24 por fora");
     expect(h).toContain("98765");
@@ -186,6 +202,74 @@ describe("bloco No Beds24 da ficha", () => {
   });
 });
 
+describe("os botões do envio na ficha (M8.3c, bloco G; plano 1.15)", () => {
+  const TODOS: FichaReservaNoBeds24["acoes"]["botoes"] = ["conferir_agora", "tentar_de_novo", "deixar_a_mao", "reenviar", "nao_existe", "vincular", "passar_ao_sistema"];
+  const com = (acoes: Partial<FichaReservaNoBeds24["acoes"]>, o: Partial<FichaReservaNoBeds24> = {}): FichaReservaNoBeds24 => ({ ...vazia, desligada: [], acoes: { ...SEM_ACOES, ...acoes }, ...o });
+  const tela = (ficha: FichaReservaNoBeds24, p: { editar?: boolean; configurar?: boolean; resultado?: string } = {}) =>
+    renderToStaticMarkup(<ReservaNoBeds24 reservaId={ID} ficha={ficha} editar={p.editar ?? true} configurar={p.configurar ?? false} resultado={p.resultado} />);
+  const DA_OPERACAO = [">Conferir agora</button>", ">Tentar de novo</button>", ">Reenviar o que está no SCL</button>", ">Deixar à mão</button>"];
+  const DA_CONFIGURACAO = [">Não existe, pode criar</button>", ">Vincular o id</button>", ">Passar ao sistema</button>"];
+
+  it("por permissão: a operação vê os de reserva:editar; quem edita as configurações vê todos; sem reserva:editar, nenhum", () => {
+    const todos = com({ botoes: TODOS });
+    const admin = tela(todos, { configurar: true });
+    for (const b of [...DA_OPERACAO, ...DA_CONFIGURACAO]) expect(admin).toContain(b);
+    expect(admin).toContain('aria-label="Envio ao Beds24"');
+    const operacao = tela(todos);
+    for (const b of DA_OPERACAO) expect(operacao).toContain(b);
+    for (const b of DA_CONFIGURACAO) expect(operacao).not.toContain(b);
+    expect(operacao).not.toContain('name="beds24Id"');
+    const semEditar = tela(todos, { editar: false, configurar: true });
+    expect(semEditar).not.toContain('aria-label="Envio ao Beds24"');
+    for (const b of [...DA_OPERACAO, ...DA_CONFIGURACAO]) expect(semEditar).not.toContain(b);
+  });
+
+  it("por situação: só os que a regra do domínio dá (`acoes.botoes`); nenhum, nada; o pedido nunca mostra os botões", () => {
+    expect(tela(com({ botoes: [] }), { configurar: true })).not.toContain('aria-label="Envio ao Beds24"');
+    const conflito = tela(com({ botoes: ["tentar_de_novo", "deixar_a_mao"] }), { configurar: true });
+    expect(conflito).toContain(">Tentar de novo</button>");
+    expect(conflito).toContain(">Deixar à mão</button>");
+    for (const b of [">Conferir agora</button>", ">Reenviar o que está no SCL</button>", ...DA_CONFIGURACAO]) expect(conflito).not.toContain(b);
+    // Só configuração, para a operação: o bloco inteiro some (nenhum botão que ela possa usar).
+    expect(tela(com({ botoes: ["passar_ao_sistema"] }))).not.toContain('aria-label="Envio ao Beds24"');
+    expect(tela(com({ botoes: TODOS }, { pedido: "segurado" }), { configurar: true })).not.toContain('aria-label="Envio ao Beds24"');
+  });
+
+  it("Vincular: o id sugerido no campo, a caixa \"sem a marca\" só quando a credencial não lê a marca, e os registros duplicados", () => {
+    const sugerido = tela(com({ botoes: ["conferir_agora", "vincular"], candidato: "900001" }), { configurar: true });
+    expect(sugerido).toMatch(/name="beds24Id"[^>]*value="900001"/);
+    expect(sugerido).toContain("O id sugerido (900001) é o registro sem marca nas mesmas datas e quarto");
+    expect(sugerido).not.toContain('name="semMarca"');
+    const semMarca = tela(com({ botoes: ["vincular"], vincularSemMarca: true }), { configurar: true });
+    expect(semMarca).toMatch(/type="checkbox" name="semMarca" value="sim"/);
+    expect(semMarca).toMatch(/name="beds24Id"[^>]*value=""/);
+    const duplicadas = tela(com({ botoes: ["conferir_agora", "vincular"], duplicadas: ["900001", "900002"] }), { configurar: true });
+    expect(duplicadas).toContain("Registros com a marca desta reserva no Beds24: 900001, 900002. Cancele no Beds24 os que sobram (não apague) e use Conferir agora.");
+  });
+
+  it("o resultado de cada botão (`?beds24=`): sucesso quando resolveu, aviso senão; chave desconhecida, nada", () => {
+    expect(tela(com({}), { resultado: "na_fila" })).toMatch(/class="[^"]*sucesso[^"]*">Na fila: o sistema envia ao Beds24 em até 10 minutos/);
+    expect(tela(com({}), { resultado: "a_mao" })).toMatch(/class="[^"]*sucesso[^"]*">Deixada à mão/);
+    for (const chave of ["aguarde", "diferente", "vinculado_sem_marca", "descartado", "overbooking"]) expect(tela(com({}), { resultado: chave })).toMatch(/role="status" class="[^"]*alerta/);
+    expect(tela(com({}), { resultado: "toString" })).not.toContain('role="status"');
+  });
+
+  it("a frase da 6.2 só com o envio automático: na atrasada e no aguardando a equipe de falha, recusa e incerteza", () => {
+    const FRASE = "O sistema faz isso sozinho; este aviso fica quando ele não consegue.";
+    expect(tela(com({ automatico: true }, { tarefas: [tarefa({ estado: "atrasada", marca: null })] }))).toContain(`mexer à mão. ${FRASE}`);
+    expect(tela(com({ automatico: false }, { tarefas: [tarefa({ estado: "atrasada", marca: null })] }))).not.toContain(FRASE);
+    const aguardando = (motivo: NonNullable<FichaReservaNoBeds24["acompanhamento"]>["motivo"], automatico: boolean) =>
+      tela(com({ automatico }, {
+        acompanhamento: { situacao: "aguardando_equipe", motivo, quarto: "20", conferidaEm: null, lido: null, lidoEm: null, otaFechadaEm: null, otaFechadaAMao: false },
+        atencoes: [{ reservaId: ID, codigo: "SCL-7K2QXM", tipo: "aguardando_equipe" }],
+      }));
+    for (const motivo of ["falhas", "incerta", "recusada_pelo_beds24"] as const) expect(aguardando(motivo, true)).toContain(`confira a situação abaixo. ${FRASE}`);
+    expect(aguardando("incerta", false)).not.toContain(FRASE);
+    // A duplicada e a marca no registro inesperado pedem a equipe de verdade: sem a frase.
+    for (const motivo of ["duplicada", "marca_em_registro_inesperado"] as const) expect(aguardando(motivo, true)).not.toContain(FRASE);
+  });
+});
+
 describe("o Beds24 fica no painel", () => {
   /** Todos os arquivos de código de `src/` (menos os testes). */
   function arquivos(dir: string): string[] {
@@ -213,7 +297,11 @@ describe("o Beds24 fica no painel", () => {
 
   it("M8.3b: as tarefas das OTAs só no painel (o Início e a ficha); nenhum funil do pagamento importa o módulo do M8.3", () => {
     const quem = (nome: string) => arquivos(src).filter((f) => readFileSync(f, "utf8").includes(`/${nome}"`)).map((f) => relative(src, f).replaceAll("\\", "/")).sort();
-    expect(quem("reservas-site-tarefas")).toEqual(["beds24/acoes-reservas.ts", "beds24/reservas-site-painel.ts", "components/reservas/ReservaNoBeds24.tsx", "painel/dashboard.ts"]);
+    // Muda junto (M8.3c, bloco G): o Início passou a ler `avisosDeReservasNoBeds24` (`reservas-site-avisos.ts`, que junta as
+    // tarefas com as atenções), e os botões da ficha leem a tarefa da reserva (`reservas-site-botoes.ts`); antes, o
+    // `painel/dashboard.ts` importava as tarefas direto. Os dois continuam só no painel, e o pagamento nunca os importa.
+    expect(quem("reservas-site-tarefas")).toEqual(["beds24/acoes-reservas.ts", "beds24/reservas-site-avisos.ts", "beds24/reservas-site-botoes.ts", "beds24/reservas-site-painel.ts", "components/reservas/ReservaNoBeds24.tsx"]);
+    expect(quem("reservas-site-avisos")).toEqual(["app/painel/reservas/page.tsx", "beds24/cron-reservas.ts", "painel/dashboard.ts"]);
     expect(arquivos(join(src, "pagamentos")).filter((f) => readFileSync(f, "utf8").includes("@/beds24/"))).toEqual([]);
   });
 });

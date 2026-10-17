@@ -109,6 +109,14 @@ export function motivosDesligada(env: NodeJS.ProcessEnv, o: { pausada: boolean; 
   return m;
 }
 
+/**
+ * O envio automático vale para as reservas deste imóvel (M8.3c, desenho 6.2): a chave pronta no deploy de produção, sem a
+ * pausa e o imóvel ligado — `motivosDesligada` vazio, sem contar a linha de acompanhamento (a rotina a cria). Só aí o aviso
+ * diz "o sistema faz isso sozinho"; a ficha e o Início leem daqui.
+ */
+export const envioAutomaticoLigado = (env: NodeJS.ProcessEnv, c: ConfigReservasBeds24, imovelId: string): boolean =>
+  motivosDesligada(env, { pausada: c.pausado !== null, imovelLigado: ligacaoDoImovel(c, imovelId) !== null, comAcompanhamento: true }).length === 0;
+
 /** O último ensaio conferido vale para a credencial de agora (impressão igual e não vazia). */
 export const ensaioValeParaCredencial = (c: ConfigReservasBeds24, credencialAtual: string): boolean => Boolean(credencialAtual) && c.ensaio?.credencial === credencialAtual;
 

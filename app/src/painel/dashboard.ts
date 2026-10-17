@@ -30,7 +30,7 @@ import {
   textoEscaladaDaDisputa,
 } from "@/pagamentos/contestacao-regras";
 import { prazoDosDocumentos } from "@/pagamentos/contestacao-tela";
-import { tarefasDasOtas } from "@/beds24/reservas-site-tarefas";
+import { avisosDeReservasNoBeds24 } from "@/beds24/reservas-site-avisos";
 import { avisosDeContestacaoNosRepasses } from "@/repasses/avisos-contestacao";
 import { avisosDeDescontos } from "@/repasses/descontos";
 import { partesDoProprietario } from "@/repasses/extrato";
@@ -110,6 +110,11 @@ export async function carregarDashboard(
     /** M8.3b: o ambiente das tarefas das OTAs (a chave das reservas e o deploy de produção); ausente = `{}`, tudo à mão. */
     env?: NodeJS.ProcessEnv;
     /**
+     * M8.3c: quem edita as configurações recebe o link para Integrações na linha "Envio de reservas parado" (a operação vê o
+     * mesmo texto sem link: Integrações a recusa).
+     */
+    verConfiguracao?: boolean;
+    /**
      * M10.1a: quantas conversas do WhatsApp estão sem resposta, já contadas por quem chama com
      * `contarConversasSemResposta(db, sessao)`, que devolve 0 para quem não vê as conversas. O dashboard nunca consulta as
      * conversas nem decide quem as vê (quem reaproveitar estes avisos, como o `ver_pendencias` do MCP, não tem como
@@ -171,8 +176,9 @@ export async function carregarDashboard(
   // Alteração de reserva paga pelo site (M8.2d): as mesmas pessoas e a mesma regra das mensagens com valor.
   if (o.verCancelamentos) alertas.push(...(await avisosDeAlteracao(db, organizacaoId, o.agora ?? new Date(), { mensagensComValor: o.verPagamentos === true })));
   // Tarefas das OTAs (M8.3b): a fonte única dos avisos da paga, da D3, da cancelada e da alterada, sem valores. O ambiente
-  // ausente conta como desligado (tudo à mão: o lado seguro).
-  if (o.verCancelamentos) alertas.push(...(await tarefasDasOtas(db, organizacaoId, o.agora ?? new Date(), o.env ?? AMBIENTE_DESLIGADO)).avisos);
+  // ausente conta como desligado (tudo à mão: o lado seguro). M8.3c (desenho 6.5): as linhas de atenção das reservas do site
+  // no Beds24 (lidas também direto do acompanhamento), a linha única de configuração e as tarefas, numa ordem só.
+  if (o.verCancelamentos) alertas.push(...(await avisosDeReservasNoBeds24(db, organizacaoId, o.agora ?? new Date(), o.env ?? AMBIENTE_DESLIGADO, { verConfiguracao: o.verConfiguracao === true })));
   // Pagamento no site (M8.2a): da empresa toda, sem depender do filtro de imóveis (aprovado sem reserva, devoluções,
   // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo).
   if (o.verPagamentos) {

@@ -81,6 +81,15 @@ export const BOTOES_BEDS24 = [
 ] as const;
 export type BotaoBeds24 = (typeof BOTOES_BEDS24)[number];
 
+/** Os botões da ficha da reserva (M8.3c, bloco G; desenho 8), na ordem em que a ficha os mostra. */
+export const BOTOES_DA_FICHA_BEDS24 = ["conferir_agora", "tentar_de_novo", "deixar_a_mao", "reenviar", "nao_existe", "vincular", "passar_ao_sistema"] as const satisfies readonly BotaoBeds24[];
+export type BotaoDaFichaBeds24 = (typeof BOTOES_DA_FICHA_BEDS24)[number];
+/**
+ * Os botões da ficha que pedem também `configuracao:editar` (desenho 8: hoje, só o admin), além de `reserva:editar`. Uma
+ * regra, um lugar: a ficha esconde por ela, e a ação e o domínio (`reservas-site-botoes.ts`) recusam por ela.
+ */
+export const BOTOES_DE_CONFIGURACAO_BEDS24: readonly BotaoDaFichaBeds24[] = ["nao_existe", "vincular", "passar_ao_sistema"];
+
 /** As noites de um bloqueio achado no Beds24 ou no SCL, `[inicio, fim)` como uma estadia (o texto mostra de dd/mm a dd/mm). */
 export type BloqueioAchadoBeds24 = { inicio: string; fim: string };
 

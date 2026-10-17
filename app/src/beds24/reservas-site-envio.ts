@@ -538,9 +538,10 @@ type OverbookingLido = { funcionou: true; noites: string[] } | { funcionou: fals
 
 /**
  * Lê o calendário das noites escritas e devolve as que estão com overbooking (`livres < 0`), só leitura. Não conclui com a
- * leitura falhando, com valores inválidos ou sem alguma das noites (uma noite sem leitura nunca é "sem overbooking").
+ * leitura falhando, com valores inválidos ou sem alguma das noites (uma noite sem leitura nunca é "sem overbooking"). A
+ * mesma leitura em "Conferir agora" (bloco G), que tira o motivo do overbooking quando as noites voltam a `livres >= 0`.
  */
-async function lerOverbooking(leitor: LeitorBeds24, quarto: string, noites: readonly string[]): Promise<OverbookingLido> {
+export async function lerOverbooking(leitor: LeitorBeds24, quarto: string, noites: readonly string[]): Promise<OverbookingLido> {
   if (!noites.length) return { funcionou: true, noites: [] };
   try {
     // O fim do calendário é exclusivo: a noite seguinte à última.
@@ -2171,4 +2172,51 @@ export async function resolverOperacoesEmCurso(db: Db, org: string, leitor: Leit
     }
   }
   return r;
+}
+
+// ---------------------------------------------------------------- "Já existe, vincular o id" (desenho 3.8; plano 1.15)
+
+/** O `erro` do vínculo sem a marca (a segunda confirmação da equipe): texto do SCL, nunca do Beds24. */
+export const ERRO_VINCULO_SEM_MARCA = "Vinculado sem a marca: a marca não pôde ser lida com esta credencial. As datas nas OTAs não foram marcadas pelo sistema.";
+
+/**
+ * O fim do "Já existe, vincular o id ___" (M8.3c, bloco G; `reservas-site-botoes.ts`), na transação de quem chama, com a trava
+ * `beds24:<org>` e logo depois do vínculo (`vincularRegistro`, que já gravou o id na reserva, com a auditoria, e passou a
+ * criação em curso a `feita`):
+ * - a operação `vincular` nasce já concluída (nunca ativa: o índice `uma_ativa` pode ter a `incerta`), com o id do Beds24, a
+ *   chave da versão seguinte (`chaveOperacaoBeds24("vincular", reservaId, versao + 1)`), o autor e o botão em `detalhe`;
+ * - a conferência é a mesma de depois do POST (`conferirAConfirmada`): o registro relido igual ao pedido da criação e com a
+ *   marca desta reserva dá `conferida`, com as datas fechadas nas OTAs e as alterações lidas na fase 1 da criação marcadas
+ *   pelo sistema; diferente, `divergente`; com o SCL mudado, nenhuma marca e `pendente` (a volta seguinte envia). Sem a marca
+ *   (`semMarca`: só quando a credencial não lê a marca, com a segunda confirmação), a conferência dá `divergente`/
+ *   `marca_ilegivel` e nunca grava as marcas das OTAs, com o texto fixo no `erro`;
+ * - a criação que o vínculo passou a `feita` termina com o mesmo resultado: sem isso, o passo 1 da volta a conferiria de novo.
+ * `buscas_sem_conclusao` volta a zero (plano, P10): a equipe resolveu a incerteza.
+ */
+export async function concluirVinculo(
+  tx: Db,
+  org: string,
+  o: { reserva: typeof reservas.$inferSelect; acompanhamento: Acompanhamento; criar: LinhaDaOperacao; registro: ReservaBeds24; semMarca: boolean; autorId: string; credencial: string; agora: Date },
+): Promise<Fechamento> {
+  const { reserva, acompanhamento: a, criar, registro, agora } = o;
+  const pedido: PedidoBeds24 | null = criar.pedido ?? (a.esperado ? { ...a.esperado, referencia: reserva.codigo } : null);
+  if (!pedido) return "descartada";
+  await travarCancelamentoEAlteracoes(tx, org, reserva.id, criar.alteracoes);
+  const versao = a.versao + 1;
+  const [vinculo] = await tx
+    .insert(op)
+    .values({
+      organizacaoId: org, reservaId: reserva.id, acompanhamentoId: a.id, tipo: "vincular", chave: chaveOperacaoBeds24("vincular", reserva.id, versao), modo: "real", situacao: "feita", pedido,
+      alteracoes: criar.alteracoes, beds24Id: registro.idExterno, credencial: o.credencial, autorId: o.autorId,
+      detalhe: detalheOperacaoBeds24({ porBotao: "vincular", ...(o.semMarca ? { marcaNaoLida: true } : {}) }), erro: o.semMarca ? ERRO_VINCULO_SEM_MARCA : "",
+    })
+    .returning();
+  await tx.update(acomp).set({ versao, ...FIM_DA_INCERTEZA, atualizadoEm: agora }).where(eq(acomp.id, a.id));
+  const operacao: OperacaoEmEnvio = {
+    id: vinculo.id, reservaId: reserva.id, acompanhamentoId: a.id, tipo: "criar", versao, codigo: reserva.codigo, imovelId: reserva.imovelId, propertyId: a.propertyId ?? "", quarto: a.roomId ?? pedido.quarto,
+    pedido, alteracoes: criar.alteracoes, beds24Id: registro.idExterno, idsConhecidos: [registro.idExterno], comPostAnterior: false, credencialGuardada: a.credencial,
+  };
+  const fechamento = await conferirAConfirmada(tx, org, gravacoes(tx, vinculo, vinculo, a, agora), operacao, reserva, a, registro, [], agora);
+  await tx.update(op).set({ situacao: fechamento === "divergente" ? "divergente" : "conferida", ...terminada }).where(and(eq(op.id, criar.id), eq(op.situacao, "feita")));
+  return fechamento;
 }

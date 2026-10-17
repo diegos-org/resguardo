@@ -75,14 +75,14 @@ function textoDosEscopos(r: EscoposDaCredencial): string {
   return `${SITUACAO_ESCOPOS[r.avaliacao.situacao]} Lidos: ${lista}${tortos}${demais}${faltam}.`;
 }
 
-/** Prontidão: conferir os escopos da credencial (só leitura; nada é gravado). */
+/** Prontidão: conferir os escopos da credencial (só leitura no Beds24; a leitura fica guardada no SCL, M8.3c). */
 export function ConferirEscoposBeds24() {
   const [estado, enviar, pendente] = useActionState(conferirEscoposReservasBeds24Acao, {} as EstadoEscoposReservasBeds24);
   return (
     <form action={enviar} style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
       <BotaoConfirmar
         className={styles.botao}
-        pergunta="Conferir os escopos da credencial no Beds24? É só leitura: nada é gravado lá nem aqui. Fora do deploy de produção, nada é lido."
+        pergunta="Conferir os escopos da credencial no Beds24? É só leitura: nada muda lá; aqui, o sistema guarda o que leu. Fora do deploy de produção, nada é lido."
         disabled={pendente}
       >
         {pendente ? "Conferindo…" : "Conferir os escopos"}

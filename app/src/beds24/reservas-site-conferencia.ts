@@ -63,13 +63,19 @@ export type ConferenciaDaReservaLigada = ConferenciaNaImportacao | { resultado: 
  * (`ota_fechada_em` = agora, `por` nulo) quando a divergência a tinha limpado. Sem isso, os consertos do desenho ("No Beds24,
  * volte-a para Confirmado", repor o info code) não levariam a nada: a atualização ficaria suspensa e uma `marca_ilegivel`
  * pararia as criações da empresa para sempre. A mesma função na conferência contínua e em "Conferir agora".
+ * M8.3c (bloco G): a mesma saída vale para o `aguardando_equipe`/`sem_permissao` que a própria conferência deixou
+ * (`semAcessoNaConferencia`: o id não voltou com uma credencial que não é a da criação). Quando o registro volta igual, em
+ * "Conferir agora" (a conferência contínua só relê `conferida` e `divergente`), a reserva volta a `conferida`; sem isso ela
+ * ficaria à espera da equipe para sempre, sem nenhuma leitura que a tirasse dali. `autorId`: quem apertou "Conferir agora"
+ * (na auditoria); nulo na rotina.
  */
-export async function conferirReservaLigada(tx: Db, org: string, reservaId: string, beds24Id: string, registro: ReservaBeds24 | null, agora: Date): Promise<ConferenciaDaReservaLigada> {
+export async function conferirReservaLigada(tx: Db, org: string, reservaId: string, beds24Id: string, registro: ReservaBeds24 | null, agora: Date, autorId: string | null = null): Promise<ConferenciaDaReservaLigada> {
   const t = await travarReservaDoSite(tx, org, reservaId, "no key update");
   if (!t?.acompanhamento || t.reserva.beds24Id !== beds24Id || (registro && registro.idExterno !== beds24Id)) return { resultado: "descartada" };
   const antes = t.acompanhamento;
   const c = await conferirNaImportacao(tx, org, reservaId, registro, agora);
-  if (c.resultado !== "igual" || !c.conferida || antes.situacao !== "divergente" || t.reserva.estado !== "confirmada") return c;
+  const saiDoAviso = antes.situacao === "divergente" || (antes.situacao === "aguardando_equipe" && antes.motivo === "sem_permissao");
+  if (c.resultado !== "igual" || !c.conferida || !saiDoAviso || t.reserva.estado !== "confirmada") return c;
   // `conferida` já diz que não há operação ativa; a `feita` (a criação adotada que o passo 1 ainda termina) também espera.
   const [emCurso] = await tx
     .select({ id: op.id })
@@ -80,10 +86,10 @@ export async function conferirReservaLigada(tx: Db, org: string, reservaId: stri
   await tx
     .update(acomp)
     .set({ situacao: "conferida", motivo: null, ...(antes.otaFechadaEm ? {} : { otaFechadaEm: agora, otaFechadaPor: null }), atualizadoEm: agora })
-    .where(and(eq(acomp.id, antes.id), eq(acomp.situacao, "divergente")));
+    .where(and(eq(acomp.id, antes.id), eq(acomp.situacao, antes.situacao)));
   await registrarAuditoria(tx, {
-    organizacaoId: org, usuarioId: null, acao: "beds24.reserva.conferir", entidade: "reserva", entidadeId: reservaId,
-    mudancas: { situacaoNoBeds24: ["divergente", "conferida"], motivoNoBeds24: [antes.motivo, null], ...(antes.otaFechadaEm ? {} : { otaFechadaPeloSistema: [false, true] }) },
+    organizacaoId: org, usuarioId: autorId, acao: "beds24.reserva.conferir", entidade: "reserva", entidadeId: reservaId,
+    mudancas: { situacaoNoBeds24: [antes.situacao, "conferida"], motivoNoBeds24: [antes.motivo, null], ...(antes.otaFechadaEm ? {} : { otaFechadaPeloSistema: [false, true] }) },
   });
   return { resultado: "voltou" };
 }
@@ -92,9 +98,10 @@ export async function conferirReservaLigada(tx: Db, org: string, reservaId: stri
  * O id ligado não voltou numa releitura limpa, mas a credencial de agora não é a da criação (ou o quarto não está acessível
  * em BRL): não dá para concluir "apagada" (todos os ids sumiriam com a troca do token para outra conta). A equipe confere a
  * credencial: `aguardando_equipe`/`sem_permissao`, sem mexer nas datas fechadas nem na leitura guardada. Revalida sob a trava
- * (o id, a situação acompanhada, nenhuma operação em curso e nenhuma leitura mais nova); false = nada mudou.
+ * (o id, a situação acompanhada, nenhuma operação em curso e nenhuma leitura mais nova); false = nada mudou. A mesma regra
+ * em "Conferir agora" (`reservas-site-botoes.ts`).
  */
-async function semAcessoNaConferencia(tx: Db, org: string, reservaId: string, beds24Id: string, agora: Date): Promise<boolean> {
+export async function semAcessoNaConferencia(tx: Db, org: string, reservaId: string, beds24Id: string, agora: Date): Promise<boolean> {
   const t = await travarReservaDoSite(tx, org, reservaId, "no key update");
   const a = t?.acompanhamento;
   if (!t || !a || t.reserva.beds24Id !== beds24Id || !ACOMPANHADAS.includes(a.situacao) || (a.lidoEm && a.lidoEm.getTime() > agora.getTime())) return false;

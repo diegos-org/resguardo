@@ -19,10 +19,13 @@ import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { lerConfigBeds24, listarMapeamentosBeds24, organizacaoBeds24 } from "./configuracao";
 import { ambienteDeEscritaDeReservas, credencialDeEscritaForaDaProducao, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta, impressaoCredencialBeds24, leitorDeCredencialDoAmbiente, simulacaoReservasBeds24Permitida } from "./http";
-import { ensaioValeParaCredencial, lerConfigReservasBeds24, ligacaoDoImovel, type MotivoDesligadaBeds24, motivosDesligada } from "./reservas-site-config";
+import { botoesDaFichaBeds24, lerEstadoDosBotoes } from "./reservas-site-botoes";
+import { ensaioValeParaCredencial, envioAutomaticoLigado, lerConfigReservasBeds24, ligacaoDoImovel, type MotivoDesligadaBeds24, motivosDesligada } from "./reservas-site-config";
 import { type EnsaioNoPainel, ensaioNoPainel } from "./reservas-site-ensaio";
 import { type LinhaAtencaoOta, type TarefaOta, tarefasDasOtas } from "./reservas-site-tarefas";
 import {
+  type BotaoDaFichaBeds24,
+  detalheOperacaoBeds24,
   type EscoposLidosBeds24,
   type LidoBeds24,
   type ModoOperacaoBeds24,
@@ -83,7 +86,26 @@ export type FichaReservaNoBeds24 = {
   tarefas: TarefaOta[];
   /** M8.3b: o que pede atenção nesta reserva (conflito, divergência, aguardando a equipe), no lugar das tarefas. */
   atencoes: LinhaAtencaoOta[];
+  /** M8.3c (bloco G): os botões que valem para esta reserva agora e o que eles mostram. */
+  acoes: AcoesDaFichaBeds24;
 };
+
+/** M8.3c (bloco G; plano 1.15): os botões da ficha que valem agora (códigos) e o que eles mostram. */
+export type AcoesDaFichaBeds24 = {
+  /** Os botões que valem para esta reserva agora (`botoesDaFichaBeds24`); a permissão de cada um é de quem mostra. */
+  botoes: BotaoDaFichaBeds24[];
+  /** O id sugerido para "Vincular" (o ocupante exato, `detalhe.candidato`): o campo já preenchido. Nunca vai para `beds24_id` sozinho. */
+  candidato: string | null;
+  /** Os ids com a marca desta reserva no Beds24 (a duplicada, a marca em registro inesperado): a lista que a equipe confere lá. */
+  duplicadas: string[];
+  /** "Vincular" sem a marca vale: a credencial não lê a marca (sem ensaio válido para ela, ou a marca ilegível que conta). */
+  vincularSemMarca: boolean;
+  /** O envio automático vale para esta reserva (`envioAutomaticoLigado`): a frase da 6.2 na atrasada e nas atenções do envio. */
+  automatico: boolean;
+};
+
+/** Sem nenhum botão (a reserva fora do envio, ou o pedido): o que a ficha recebe quando não há o que mostrar. */
+export const SEM_ACOES_NA_FICHA: AcoesDaFichaBeds24 = { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false };
 
 export type PedidoNaFicha = "segurado" | "vencido";
 
@@ -109,6 +131,7 @@ export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: strin
   const { tarefas, atencoes } = await tarefasDasOtas(db, org, agora, env, { reservaIds: [r.id] });
   return {
     desligada: motivosDesligada(env, { pausada: config.pausado !== null, imovelLigado: ligacaoDoImovel(config, r.imovelId) !== null, comAcompanhamento: Boolean(a) }),
+    acoes: r.estado === "pedido" ? SEM_ACOES_NA_FICHA : await acoesDaFicha(db, org, r.id, r.imovelId, env, agora, { config, tarefas }),
     beds24Id: r.beds24Id,
     acompanhamento: a
       ? { situacao: a.situacao, motivo: a.motivo, quarto: a.roomId, conferidaEm: a.conferidaEm, lido: a.lido, lidoEm: a.lidoEm, otaFechadaEm: a.otaFechadaEm, otaFechadaAMao: a.otaFechadaEm !== null && a.otaFechadaPor !== null }
@@ -119,6 +142,23 @@ export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: strin
     tarefas,
     atencoes,
   };
+}
+
+/**
+ * Os botões da ficha (M8.3c, bloco G): os que valem agora, pela mesma regra que o domínio confere (`botoesDaFichaBeds24`, de
+ * `reservas-site-botoes.ts`), o id sugerido e as duplicadas do `detalhe` da operação mais nova que os tem (só no aguardando a
+ * equipe que os pede), se "Vincular" sem a marca vale e se o envio automático vale para a reserva (a frase da 6.2).
+ */
+async function acoesDaFicha(db: Db, org: string, reservaId: string, imovelId: string, env: NodeJS.ProcessEnv, agora: Date, o: { config: Awaited<ReturnType<typeof lerConfigReservasBeds24>>; tarefas: TarefaOta[] }): Promise<AcoesDaFichaBeds24> {
+  const l = await lerEstadoDosBotoes(db, org, reservaId, env, agora, { tarefas: o.tarefas });
+  if (!l) return SEM_ACOES_NA_FICHA;
+  const botoes = botoesDaFichaBeds24(l.estado);
+  const a = l.acompanhamento;
+  const detalhes = l.operacoes.map((x) => detalheOperacaoBeds24(x.detalhe));
+  const candidato = a?.situacao === "aguardando_equipe" && a.motivo === "incerta" ? (detalhes.find((d) => d.candidato)?.candidato ?? null) : null;
+  const duplicadas = a?.situacao === "aguardando_equipe" && (a.motivo === "duplicada" || a.motivo === "marca_em_registro_inesperado") ? (detalhes.find((d) => d.duplicadas?.length)?.duplicadas ?? []) : [];
+  const vincularSemMarca = botoes.includes("vincular") && !(ensaioValeParaCredencial(o.config, impressaoCredencialBeds24(env)) && !(await existeMarcaIlegivelQueConta(db, org, agora)));
+  return { botoes, candidato, duplicadas, vincularSemMarca, automatico: envioAutomaticoLigado(env, o.config, imovelId) };
 }
 
 // ---------------------------------------------------------------- Integrações (desenho 8)

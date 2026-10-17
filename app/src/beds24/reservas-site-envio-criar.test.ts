@@ -17,6 +17,7 @@ import { alterar, type Cenario, cancelar, entradaPadrao, env, minutos, montarCen
 import { Beds24Falso, ESCOPOS_ESPERADOS_FALSO } from "./falso";
 import { impressaoCredencialBeds24 } from "./http";
 import { INFO_MARCA_SCL, respostaDaGravacao } from "./normalizar";
+import { avisosDeReservasNoBeds24 } from "./reservas-site-avisos";
 import { abrirIntencao, devolverVencidasSemPost, ERRO_ALTERACAO_SEM_MARCA, encerrarTerminadas, enviarReservasDoSite, type OpcoesDoEnvio } from "./reservas-site-envio";
 import { chaveOperacaoBeds24 } from "./reservas-site-regras";
 import { gravarEscoposLidos } from "./reservas-site-rotina";
@@ -86,6 +87,8 @@ describe("teste 20: a criação conferida", () => {
     const x = await pagarEConfirmar(c);
     const antes = await lancamentosDaOrg();
     expect((await tarefasDasOtas(db, c.org, minutos(5), PRONTO)).tarefas.map((t) => [t.caso, t.estado])).toEqual([["paga", "sendo_enviada"]]);
+    // No Início (bloco G), o informativo: o sistema está enviando (a configuração em ordem, sem a linha de parado).
+    expect(await avisosDeReservasNoBeds24(db, c.org, minutos(5), PRONTO)).toEqual([{ nivel: "info", texto: "1 reserva(s) do site sendo enviadas pelo sistema: não feche à mão.", link: `/painel/reservas/${x.reservaId}` }]);
 
     // O `avisada_em` de antes fica: a conferida sem overbooking não é um caso de e-mail (o contraste do overbooking, abaixo).
     // Muda junto (bloco D): os números da volta ganharam as atualizações e os cancelamentos aceitos (o resumo da rotina, desenho 9).
@@ -102,6 +105,8 @@ describe("teste 20: a criação conferida", () => {
     });
     // A tarefa da paga some (o sistema marcou as datas fechadas), e o financeiro fica igual.
     expect(await tarefasDasOtas(db, c.org, minutos(15), PRONTO)).toEqual({ tarefas: [], atencoes: [], avisos: [] });
+    // O aviso some também do Início (bloco G: o aviso é de `avisosDeReservasNoBeds24`).
+    expect(await avisosDeReservasNoBeds24(db, c.org, minutos(15), PRONTO)).toEqual([]);
     expect(await lancamentosDaOrg()).toEqual(antes);
     const [auditada] = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, c.org), eq(auditoria.acao, "beds24.reserva.criar")));
     expect(auditada).toMatchObject({ entidade: "reserva", entidadeId: x.reservaId, usuarioId: null, mudancas: { beds24Id: [null, "900001"] } });
@@ -120,6 +125,10 @@ describe("teste 20: a criação conferida", () => {
     expect(await rodar(minutos(10), { ganchos: { antesDaFase2: () => avisadaAntes(x.reservaId, minutos(5)) } })).toMatchObject({ posts: 1, conferidas: 1 });
     expect(await acompanhamento(x.reservaId)).toMatchObject({ situacao: "conferida", motivo: "noites_ocupadas", otaFechadaEm: minutos(10), avisadaEm: null });
     expect((await operacoes(x.reservaId))[0].situacao).toBe("conferida");
+    // No Início (bloco G), a linha própria do overbooking: a reserva que o sistema criou está certa (nunca "não criou nada").
+    expect(await avisosDeReservasNoBeds24(db, c.org, minutos(15), PRONTO)).toEqual([
+      { nivel: "atencao", texto: `Reserva ${x.reservaCodigo}: o Beds24 informa overbooking nas noites dela (a reserva que o sistema criou está certa): resolva com o hóspede ou com o canal. Veja a ficha.`, link: `/painel/reservas/${x.reservaId}` },
+    ]);
   });
 });
 
@@ -507,6 +516,13 @@ describe("teste 36 (criação): os escopos e o ensaio", () => {
 });
 
 describe("teste 26 (integração): quem ocupa as noites antes de criar", () => {
+  /** A linha do Início de cada caso (bloco G; desenho 6.5), uma por reserva: a atenção com o motivo; o bloqueio feito à mão é informativo. */
+  const NO_INICIO: Record<string, (codigo: string) => { nivel: string; texto: string }> = {
+    noites_ocupadas: (codigo) => ({ nivel: "atencao", texto: `Reserva ${codigo}: as noites estão ocupadas por outra reserva no Beds24 (possível venda dupla). Veja a ficha.` }),
+    bloqueio_manual: (codigo) => ({ nivel: "info", texto: `Reserva ${codigo}: há um bloqueio feito à mão sobre as noites no Beds24, e o sistema não cria por cima: veja a ficha.` }),
+    bloqueio_do_scl: (codigo) => ({ nivel: "atencao", texto: `Reserva ${codigo} aguarda a equipe no Beds24 (há um bloqueio do próprio SCL sobre as noites): veja a ficha.` }),
+    sem_disponibilidade: (codigo) => ({ nivel: "atencao", texto: `Reserva ${codigo} aguarda a equipe no Beds24 (o Beds24 não mostrou as noites livres): veja a ficha.` }),
+  };
   it.each([
     ["uma reserva de OTA", () => falso.bookings.push(registro({ id: 5550001, arrival: "2026-10-13", departure: "2026-10-16", referer: "Airbnb" })), "conflito", "noites_ocupadas", "conflito", undefined],
     ["a estadia em curso (chegou antes)", () => falso.bookings.push(registro({ id: 5550001, arrival: "2026-10-10", departure: "2026-10-13", channel: "Direct" })), "conflito", "noites_ocupadas", "conflito", undefined],
@@ -535,6 +551,8 @@ describe("teste 26 (integração): quem ocupa as noites antes de criar", () => {
     expect(o.terminadoEm).toBeInstanceOf(Date);
     expect(o.detalhe).toEqual(bloqueio ? { bloqueio } : {});
     expect(await acompanhamento(x.reservaId)).toMatchObject({ situacao, motivo, otaFechadaEm: null });
+    const ficha = `/painel/reservas/${x.reservaId}`;
+    expect(await avisosDeReservasNoBeds24(db, c.org, minutos(15), PRONTO)).toEqual([{ ...NO_INICIO[motivo](x.reservaCodigo), link: ficha }]);
     // Nada fica ativo, e a volta seguinte não tenta de novo sozinha.
     expect(await rodar(minutos(20))).toMatchObject({ posts: 0 });
     expect(await operacoes(x.reservaId)).toHaveLength(1);
@@ -589,6 +607,10 @@ describe("teste 26 (integração): quem ocupa as noites antes de criar", () => {
     expect(falso.escritasReservas).toEqual([]);
     expect(await operacoes(x.reservaId)).toEqual([]);
     expect(await acompanhamento(x.reservaId)).toMatchObject({ situacao: "pendente", motivo: "sem_vinculo", tentativas: 0, versao: 0 });
+    // No Início (bloco G; plano 1.9), a linha do imóvel parado, com o link para Integrações só para quem edita as configurações.
+    const linha = "Envio de reservas parado no imóvel 403: confira o vínculo com um quarto do Beds24, o acesso da credencial a ele e a moeda (BRL).";
+    expect(await avisosDeReservasNoBeds24(db, c.org, minutos(25), PRONTO, { verConfiguracao: true })).toContainEqual({ nivel: "atencao", texto: linha, link: "/painel/configuracoes/integracoes" });
+    expect(await avisosDeReservasNoBeds24(db, c.org, minutos(25), PRONTO)).toContainEqual({ nivel: "atencao", texto: linha });
   });
 });
 

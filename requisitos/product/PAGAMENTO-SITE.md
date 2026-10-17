@@ -1247,6 +1247,12 @@ cancelamento sem devolução). As datas voltam à venda no site na hora do cance
 `cancelamentos_reserva` com `situacao = 'cancelada'` e `ota_liberada_em` vazio, e gravar a marca sozinho (desde o M8.3b:
 fica para o M8.3c, quando o cancelamento da reserva criada pelo sistema for conferido; a reserva criada pelo sistema tem o
 texto "No Beds24, mude a reserva SCL-… para Cancelado (não apague).", que só aparece a partir do M8.3c).
+*Registro da implementação (M8.3c, 17/10/2026):* antes, a marca `ota_liberada_em` da reserva criada pelo sistema ficava
+para o M8.3c; agora, a rotina das reservas do site grava a marca sozinha (`marcarOtaLiberada` com `por` nulo) quando o
+cancelamento é conferido no Beds24, inclusive a política, a contestada e o não comparecimento, e também na reserva cancelada
+antes de ser criada, quando a leitura mostra que não há registro, bloqueio nem ocupante. Motivo: o sistema só pode dizer
+"Datas reabertas" depois de ver o cancelamento no Beds24. Objetivo: a equipe só faz à mão o que o sistema não consegue
+conferir. Isso só acontece com a escrita das reservas ligada (desenho RESERVA-SITE-BEDS24.md, 6.3); sem ela, continua à mão.
 
 *Antes do M8.3b (texto do M8.2c, até 17/10/2026):* o Início agrupava as canceladas, vindo de `pagamentos/consultas.ts`:
 "N reserva(s) do site cancelada(s) (SCL-…): reabra as datas nas OTAs (no Beds24, apague o bloqueio)."; a ficha dizia
@@ -1751,7 +1757,11 @@ como o Início mostrar (não apague nem crie outro)." A reserva paga ainda sem a
 alterada mostra os dois avisos (as marcas são independentes). O M8.3 vai consumir `alteracoes_reserva` com
 `situacao = 'aplicada'` e `ota_atualizada_em` vazio, e gravar a marca sozinho (desde o M8.3b: fica para o M8.3c, quando a
 atualização da reserva criada pelo sistema for conferida; essa reserva tem o texto "No Beds24, mude as datas da reserva
-SCL-… para dd/mm a dd/mm.", que só aparece a partir do M8.3c); a reserva-pedido nunca vai ao Beds24. O plano do envio
+SCL-… para dd/mm a dd/mm.", que só aparece a partir do M8.3c); a reserva-pedido nunca vai ao Beds24. *Registro da implementação (M8.3c, 17/10/2026):* antes,
+a marca `ota_atualizada_em` ficava para o M8.3c; agora, a rotina grava a marca sozinha (`marcarOtaAtualizada` com `por`
+nulo) só para as alterações lidas no começo do envio, quando a criação ou a atualização é conferida no Beds24, inclusive a
+alteração só de pessoas, e nunca por horário (motivo: a marca só vale para o que foi conferido; objetivo: menos trabalho à
+mão sem afirmar nada que o sistema não viu). Só com a escrita das reservas ligada (RESERVA-SITE-BEDS24.md, 6.3). O plano do envio
 (M3.7) também não conta as noites dela (elas podem vencer), e o envio confere as reservas do imóvel de novo logo antes e logo depois de escrever: se uma alteração for
 aplicada (ou qualquer reserva mudar) entre o plano e a escrita, nada é escrito pelo plano velho; se mudar durante a
 escrita, o que foi escrito fica velho. Nos dois casos, o envio do imóvel é refeito em seguida, numa execução nova com as

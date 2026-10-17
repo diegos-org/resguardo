@@ -57,7 +57,9 @@ describe("ficha da reserva", () => {
     const f = await fichaReservaNoBeds24(db, org, reservaId, env(), AGORA);
     // Confirmada do site sem pagamento pelo site (a D3): fechar as datas à mão, com a marca (a mesma tarefa do Início).
     const tarefa = { reservaId, codigo, caso: "d3", estado: "manual", checkin: "2026-12-20", checkout: "2026-12-27", desde: new Date(0), alteracaoIds: [], texto: expect.stringContaining("Feche as datas no Beds24 como bloqueio"), marca: "datas_fechadas" };
-    expect(f).toEqual({ desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [tarefa], atencoes: [] });
+    // Muda junto (M8.3c, bloco G): a ficha ganhou `acoes`, os botões do envio que valem agora — fora do deploy de produção, nenhum.
+    const acoes = { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false };
+    expect(f).toEqual({ desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [tarefa], atencoes: [], acoes });
     // Outra reserva não entra na ficha desta.
     await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-OUTRA1", origem: "site", fonte: "site", checkin: "2026-12-01", checkout: "2026-12-03", hospedes: 2 });
     expect((await fichaReservaNoBeds24(db, org, reservaId, env(), AGORA))?.tarefas.map((t) => t.codigo)).toEqual([codigo]);

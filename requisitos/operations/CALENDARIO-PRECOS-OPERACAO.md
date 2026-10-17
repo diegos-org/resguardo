@@ -234,6 +234,14 @@ Implementado no painel (um só lugar por regra; `app/src/calendario/`):
   vínculo do imóvel, o estado do quarto antigo é descartado com aviso (o que o SCL fechou lá é
   reaberto manualmente). As observações do calendário também guardam o quarto lido: leitura
   de outro quarto não descreve o imóvel (plano, prévia e site a tratam como ausente). Bloqueios e 0 unidades que só existem no Beds24 viram aviso.
+  **Registro (M8.3c, 17/10/2026): unidades negativas.** Antes, uma noite com `numAvail` negativo na leitura do calendário
+  era tratada como valor inválido, e a faixa inteira virava divergência. Agora o negativo é aceito como o overbooking que o
+  Beds24 informa ("may be negative… if a room is overbooked", `apiV2.yaml`): a noite conta como fechada no site e no plano
+  (`livres <= 0`, `site/disponibilidade.ts`, `fechadaNaLeitura`), e o plano ganha o aviso "Beds24 informa unidades negativas
+  (overbooking)…", com ou sem reserva no SCL (`calendario/motor.ts`). O aviso de 0 unidades continua igual, só para o zero sem
+  reserva nem bloqueio no SCL. Motivo: a conferência depois de cada escrita de reserva do site (M8.3c,
+  `requisitos/product/RESERVA-SITE-BEDS24.md`, 4.4) precisa ver o overbooking, e o descarte o escondia. Objetivo: a noite
+  vendida duas vezes nunca aparece livre no site e sempre vira aviso. O envio do M3.7 continua igual.
   Reservas nunca são criadas, alteradas ou canceladas pelo envio.
 - **Bloqueio pelo proprietário (M5.5, 3/10):** o portal grava um bloqueio comum com fonte
   "proprietario", que segue ao Beds24 pelo mesmo envio (mesma posse, mesma reabertura). Só com

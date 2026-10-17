@@ -10,6 +10,7 @@ import { descreverFiltros, lerFiltros, lerImoveisSelecionados, periodoDosFiltros
 import { formatBRL } from "@/lib/money";
 import { NOMES_ESTADO, NOMES_ORIGEM, noites } from "@/reservas/regras";
 import { lerFiltrosLista, linkLista, listarReservasPaginadas, resumoImportacao, TAMANHO_PAGINA } from "@/reservas/listagem";
+import { reservasComAtencaoNoBeds24 } from "@/beds24/reservas-site-avisos";
 
 export default async function ListaReservas({ searchParams }: PageProps<"/painel/reservas">) {
   const sessao = await exigirSessaoPainel();
@@ -26,8 +27,10 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
   const idsFiltro = efetivos.map(i => i.id);
   const descricao = descreverFiltros({ ...filtros, imoveis: efetivos.map(i => i.codigo) }, opcoes);
   const verCanceladas = params.canceladas === "1";
+  // M8.3c (desenho 6.5): as reservas do site que pedem atenção no Beds24, da mesma leitura do aviso do Início.
+  const atencaoNoBeds24 = local.beds24 === "atencao" ? await reservasComAtencaoNoBeds24(db, sessao.organizacaoId, new Date(), process.env) : undefined;
   const [resultado, ultima] = await Promise.all([
-    listarReservasPaginadas(db, sessao.organizacaoId, local, { periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas }),
+    listarReservasPaginadas(db, sessao.organizacaoId, local, { periodo, imovelIds: idsFiltro, incluirCanceladas: verCanceladas, soIds: atencaoNoBeds24 }),
     resumoImportacao(db, sessao.organizacaoId, local.execucao || undefined),
   ]);
   const lista = resultado.itens;
@@ -67,6 +70,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
         <input type="hidden" name="mes" value={filtros.mes ?? "todos"} /><input type="hidden" name="ano" value={filtros.ano} />
         {verCanceladas && <input type="hidden" name="canceladas" value="1" />}
         {local.execucao && <><input type="hidden" name="execucao" value={local.execucao} /><input type="hidden" name="mudanca" value={local.mudanca} /></>}
+        {local.beds24 === "atencao" && <input type="hidden" name="beds24" value="atencao" />}
         <label>Buscar por código SCL, código do canal ou hóspede<input name="busca" maxLength={100} defaultValue={local.busca} /></label>
         <label>Consultar<select name="escopo" defaultValue={local.escopo}><option value="periodo">Estadias no período acima</option><option value="historico">Todo o histórico importado/cadastrado</option></select></label>
         <label>Situação<select name="situacao" defaultValue={local.situacao}><option value="todas">Todas</option>{Object.entries(NOMES_ESTADO).map(([v, nome]) => <option key={v} value={v}>{nome}</option>)}</select></label>
@@ -77,6 +81,7 @@ export default async function ListaReservas({ searchParams }: PageProps<"/painel
       </form>
       {local.execucao && <p>Mostrando mudanças da importação selecionada. <Link href={linkLista(params, { execucao: null, mudanca: null })}>Ver todas as importações</Link></p>}
       {local.cancelamento === "pedido" && <p role="note">Mostrando só as reservas com pedido de cancelamento esperando a equipe, de qualquer período. <Link href={linkLista(params, { cancelamento: null })}>Ver todas as reservas</Link></p>}
+      {local.beds24 === "atencao" && <p role="note">Mostrando só as reservas do site que pedem atenção no Beds24, de qualquer período e com as canceladas · <Link href={linkLista(params, { beds24: null })}>Ver todas</Link></p>}
       <p>Consultas não ocupam datas. A data da origem é a informada pelo Beds24. Datas ausentes ficam como “Não informada” e no fim da ordenação por mais recentes; não entram nos filtros de 7 ou 30 dias.</p>
       <p className={styles.etiqueta} style={{ alignSelf: "flex-start" }}>
         {local.escopo === "historico" ? "Todo o histórico · imóveis selecionados" : efetivos.length ? descricao : "Nenhum imóvel ativo selecionado"} · {resultado.total} registro(s) · página {resultado.pagina} de {resultado.paginas}

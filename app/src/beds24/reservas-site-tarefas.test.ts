@@ -17,6 +17,7 @@ import { marcarOtaLiberada } from "@/pagamentos/cancelamento";
 import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
 import { alterar, type Cenario, cancelar, entradaPadrao, env, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, semDadosDoHospede, usuarioDeTeste } from "@/pagamentos/testes";
 import { conferirNaImportacao } from "./reservas-site";
+import { avisosDeReservasNoBeds24 } from "./reservas-site-avisos";
 import { chaveDoResultadoDaSimulacao, simularReservaNoBeds24 } from "./reservas-site-simulacao";
 import {
   avisosDasTarefas,
@@ -372,23 +373,36 @@ describe("teste 18: a carência do envio automático", () => {
     expect(await marcarDatasFechadasNasOtas(db, admin, x.reservaId, PRONTO, minutos(10, desde))).toEqual({ ok: false, erro: ERRO_MARCA_EM_ENVIO });
     const aos31 = await tarefas(minutos(CARENCIA_ENVIO_RESERVA_MINUTOS + 1, desde), PRONTO);
     expect(aos31.tarefas.map((t) => t.estado)).toEqual(["atrasada"]);
-    expect(aos31.avisos).toEqual([{ nivel: "atencao", texto: `1 reserva(s) do site com o envio ao Beds24 atrasado (${x.reservaCodigo}): confira na ficha.`, link: `/painel/reservas/${x.reservaId}` }]);
-    // Conflito: só a atenção (nunca "feche como bloqueio" sobre noites já ocupadas), nem informativo nem tarefa.
+    // Muda junto (M8.3c, bloco G; desenho 6.5): a linha das atrasadas saiu de `avisosDasTarefas` para
+    // `avisosDeReservasNoBeds24`, que põe as atenções na ordem do Início; com o envio automático ligado (a chave pronta, sem
+    // pausa, o imóvel ligado), ela leva a frase da 6.2. Antes: a mesma linha, sem a frase, em `tarefasDasOtas().avisos`.
+    expect(aos31.avisos).toEqual([]);
+    const ficha = `/painel/reservas/${x.reservaId}`;
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(CARENCIA_ENVIO_RESERVA_MINUTOS + 1, desde), PRONTO)).filter((a) => a.link === ficha)).toEqual([
+      { nivel: "atencao", texto: `1 reserva(s) do site com o envio ao Beds24 atrasado (${x.reservaCodigo}): confira na ficha. O sistema faz isso sozinho; este aviso fica quando ele não consegue.`, link: ficha },
+    ]);
+    // Conflito: só a atenção (nunca "feche como bloqueio" sobre noites já ocupadas), nem informativo nem tarefa. Muda junto
+    // (bloco G): a linha de atenção também saiu de `tarefasDasOtas().avisos` (as atenções continuam em `atencoes`).
     await db.update(beds24ReservasSite).set({ situacao: "conflito", motivo: "noites_ocupadas" }).where(eq(beds24ReservasSite.reservaId, x.reservaId));
     for (const e of [PRONTO, env()]) {
       const t = await tarefas(minutos(10, desde), e);
       expect(t.tarefas).toEqual([]);
       expect(t.atencoes).toEqual([{ reservaId: x.reservaId, codigo: x.reservaCodigo, tipo: "conflito" }]);
-      expect(t.avisos).toEqual([{ nivel: "atencao", texto: `Reserva ${x.reservaCodigo}: as noites estão ocupadas por outra reserva no Beds24 (possível venda dupla). Veja a ficha.`, link: `/painel/reservas/${x.reservaId}` }]);
+      expect(t.avisos).toEqual([]);
+      expect((await avisosDeReservasNoBeds24(db, c.org, minutos(10, desde), e)).filter((a) => a.link === ficha)).toEqual([
+        { nivel: "atencao", texto: `Reserva ${x.reservaCodigo}: as noites estão ocupadas por outra reserva no Beds24 (possível venda dupla). Veja a ficha.`, link: ficha },
+      ]);
     }
-    // Divergente, aguardando a equipe e o bloqueio feito à mão sobre as noites (a transição, informativa).
-    for (const [situacao, motivo, nivel, texto] of [
-      ["divergente", "mudada_no_beds24", "atencao", `Reserva ${x.reservaCodigo} está diferente no Beds24: veja a ficha.`],
-      ["aguardando_equipe", "incerta", "atencao", `Reserva ${x.reservaCodigo} aguarda a equipe no Beds24: veja a ficha.`],
-      ["aguardando_equipe", "bloqueio_manual", "info", `Reserva ${x.reservaCodigo}: há um bloqueio feito à mão sobre as noites no Beds24, e o sistema não cria por cima: veja a ficha.`],
+    // Divergente, aguardando a equipe e o bloqueio feito à mão sobre as noites (a transição, informativa, que continua aqui).
+    // Muda junto (bloco G): as duas atenções vêm de `avisosDeReservasNoBeds24`, e o aguardando a equipe diz o motivo.
+    for (const [situacao, motivo, nivel, texto, daqui] of [
+      ["divergente", "mudada_no_beds24", "atencao", `Reserva ${x.reservaCodigo} está diferente no Beds24: veja a ficha.`, false],
+      ["aguardando_equipe", "incerta", "atencao", `Reserva ${x.reservaCodigo} aguarda a equipe no Beds24 (o envio ficou sem confirmação): veja a ficha.`, false],
+      ["aguardando_equipe", "bloqueio_manual", "info", `Reserva ${x.reservaCodigo}: há um bloqueio feito à mão sobre as noites no Beds24, e o sistema não cria por cima: veja a ficha.`, true],
     ] as const) {
       await db.update(beds24ReservasSite).set({ situacao, motivo }).where(eq(beds24ReservasSite.reservaId, x.reservaId));
-      expect((await tarefas(minutos(10, desde), PRONTO)).avisos).toEqual([{ nivel, texto, link: `/painel/reservas/${x.reservaId}` }]);
+      expect((await tarefas(minutos(10, desde), PRONTO)).avisos).toEqual(daqui ? [{ nivel, texto, link: ficha }] : []);
+      expect((await avisosDeReservasNoBeds24(db, c.org, minutos(10, desde), env())).filter((a) => a.link === ficha)).toEqual([{ nivel, texto, link: ficha }]);
     }
     // Um motivo de configuração não é atenção por reserva: fica à mão (o aviso único é do M8.3c).
     await db.update(beds24ReservasSite).set({ situacao: "pendente", motivo: "sem_vinculo" }).where(eq(beds24ReservasSite.reservaId, x.reservaId));
@@ -418,6 +432,29 @@ describe("teste 18: a carência do envio automático", () => {
     expect(await daReserva(y.reservaId, minutos(70), PRONTO)).toMatchObject([{ caso: "cancelada_criada", estado: "manual" }]);
   });
 
+  it("a carência conta do mais tarde entre o fato, o \"Retomar\" e a ligação do imóvel (M8.3c, plano 1.8): o que ficou parado está sendo enviado, não atrasado", async () => {
+    const x = await pagarEConfirmar(c);
+    await novaLinha(x, { situacao: "pendente" });
+    const [p] = await db.select({ desfechoEm: pagamentos.desfechoEm }).from(pagamentos).where(and(eq(pagamentos.reservaId, x.reservaId), eq(pagamentos.desfecho, "reserva")));
+    const desde = p.desfechoEm!;
+    const ligado = { imovelId: c.imovel, ligadoEm: "2026-09-01T00:00:00.000Z", ligadoPor: null };
+    // A pausa logo depois do pagamento, e "Retomar" 2 h depois: 10 min depois da retomada, sendo enviada (desde a retomada).
+    await gravarConfig(db, c.org, "reservas_beds24", { pausado: null, retomado: { em: minutos(120, desde).toISOString(), por: equipe }, imoveis: [ligado], ensaio: null }, null);
+    expect(await daReserva(x.reservaId, minutos(130, desde), PRONTO)).toMatchObject([{ caso: "paga", estado: "sendo_enviada", desde: minutos(120, desde) }]);
+    expect((await daReserva(x.reservaId, minutos(120 + CARENCIA_ENVIO_RESERVA_MINUTOS + 1, desde), PRONTO)).map((t) => t.estado)).toEqual(["atrasada"]);
+    // Sem a retomada guardada, a mesma hora já é atrasada (a carência do fato passou): antes do M8.3c, só o fato contava.
+    await gravarConfig(db, c.org, "reservas_beds24", { pausado: null, retomado: null, imoveis: [ligado], ensaio: null }, null);
+    expect(await daReserva(x.reservaId, minutos(130, desde), PRONTO)).toMatchObject([{ caso: "paga", estado: "atrasada", desde }]);
+    // A ligação do imóvel depois do fato (desligado e ligado de novo): o cancelamento da reserva que o sistema criou conta dela.
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05", email: "y@example.com" });
+    await db.update(reservas).set({ beds24Id: "90001" }).where(eq(reservas.id, y.reservaId));
+    await novaLinha(y, { propertyId: "10", roomId: "20", situacao: "conferida", otaFechadaEm: minutos(10) });
+    await cancelar(c, y.reservaId, empresa(), equipe, minutos(60));
+    await gravarConfig(db, c.org, "reservas_beds24", { pausado: null, retomado: null, imoveis: [{ ...ligado, ligadoEm: minutos(80).toISOString() }], ensaio: null }, null);
+    expect(await daReserva(y.reservaId, minutos(100), PRONTO)).toMatchObject([{ caso: "cancelada_criada", estado: "sendo_enviada", desde: minutos(80) }]);
+    expect(await daReserva(y.reservaId, minutos(80 + CARENCIA_ENVIO_RESERVA_MINUTOS + 1), PRONTO)).toMatchObject([{ caso: "cancelada_criada", estado: "atrasada" }]);
+  });
+
   it("sem acompanhamento ainda: a régua diz (criar = sendo enviada; confirmada antes de ligar ou ligada a outro registro, não); envio em curso nunca é manual", async () => {
     await ligarImovel();
     const x = await pagarEConfirmar(c);
@@ -430,7 +467,12 @@ describe("teste 18: a carência do envio automático", () => {
     await db.update(reservas).set({ beds24Id: "90009" }).where(eq(reservas.id, x.reservaId));
     const t = await tarefas(minutos(15), PRONTO);
     expect(t.tarefas).toEqual([]);
-    expect(t.avisos).toEqual([{ nivel: "atencao", texto: `Reserva ${x.reservaCodigo} está ligada a um registro do Beds24 que o sistema não criou: veja a ficha.`, link: `/painel/reservas/${x.reservaId}` }]);
+    // Muda junto (M8.3c, bloco G): a linha de atenção saiu de `tarefasDasOtas().avisos` para `avisosDeReservasNoBeds24`.
+    expect(t.atencoes).toEqual([{ reservaId: x.reservaId, codigo: x.reservaCodigo, tipo: "ja_no_beds24" }]);
+    expect(t.avisos).toEqual([]);
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(15), PRONTO)).filter((a) => a.link === `/painel/reservas/${x.reservaId}`)).toEqual([
+      { nivel: "atencao", texto: `Reserva ${x.reservaCodigo} está ligada a um registro do Beds24 que o sistema não criou: veja a ficha.`, link: `/painel/reservas/${x.reservaId}` },
+    ]);
     expect(await marcarDatasFechadasNasOtas(db, admin, x.reservaId, PRONTO, minutos(15))).toEqual({ ok: false, erro: ERRO_NADA_A_FECHAR });
     // Um envio real sem conclusão: o sistema está nele, mesmo com a chave desligada (nunca "feche como bloqueio" por cima).
     await db.update(reservas).set({ beds24Id: null }).where(eq(reservas.id, x.reservaId));

@@ -45,6 +45,11 @@ const ROTULOS: Record<string, string> = {
   otaFechadaEm: "Datas fechadas nas OTAs",
   situacaoNoBeds24: "Situação no Beds24",
   beds24Id: "Id no Beds24",
+  // M8.3c: a escrita real das reservas do site no Beds24 e os botões da ficha.
+  motivoNoBeds24: "Motivo no Beds24",
+  otaFechadaPeloSistema: "Datas fechadas nas OTAs pelo sistema",
+  operacao: "Envio ao Beds24",
+  operacoesSuperadas: "Envios na fila superados",
   // M10.1a: o vínculo da conversa do WhatsApp (só "tipo:id", sem nome), a situação da conta e a configuração.
   vinculo: "Vínculo",
   situacao: "Situação",
@@ -81,6 +86,17 @@ const ACOES: Record<string, string> = {
   "beds24.reserva.ota_fechada": "marcou as datas fechadas nas OTAs",
   "beds24.reserva.ota_reaberta": "marcou as datas reabertas nas OTAs",
   "beds24.reserva.adotar": "ligou a reserva ao registro do Beds24",
+  // M8.3c: a escrita real (o autor nulo é o sistema) e os botões da ficha (o autor é quem apertou).
+  "beds24.reserva.criar": "criou a reserva no Beds24",
+  "beds24.reserva.atualizar": "atualizou a reserva no Beds24",
+  "beds24.reserva.cancelar": "cancelou a reserva no Beds24",
+  "beds24.reserva.encerrar": "encerrou o acompanhamento no Beds24",
+  "beds24.reserva.conferir": "conferiu a reserva no Beds24",
+  "beds24.reserva.tentar_de_novo": "pediu de novo o envio ao Beds24",
+  "beds24.reserva.deixar_a_mao": "deixou a reserva à mão no Beds24",
+  "beds24.reserva.reenviar": "reenviou ao Beds24 o que está no SCL",
+  "beds24.reserva.nao_existe": "confirmou que a reserva não existe no Beds24",
+  "beds24.reserva.passar_ao_sistema": "passou a reserva ao sistema no Beds24",
   // M10.1a: verbos, como os outros ("{autor} {ação}"). Só o da conversa tem tela de histórico (a página da conversa); os
   // da configuração e da conta ficam para a leitura da auditoria.
   "configuracao.whatsapp": "alterou a configuração do WhatsApp",
