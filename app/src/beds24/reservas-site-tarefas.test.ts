@@ -211,6 +211,22 @@ describe("teste 15: os textos por reserva (6.2)", () => {
     // A reserva agora tem as datas novas; a ficha e o Início leem o mesmo texto.
     expect(await c.reserva(semMarca.reservaId)).toMatchObject({ checkin: "2026-10-20", checkout: "2026-10-24" });
   });
+
+  it("\"Datas fechadas nas OTAs\" também é marca: feita depois da mudança, o bloqueio nasceu nas datas novas; antes, nas de antes", async () => {
+    const depois = await pagarEConfirmar(c, { entrada: "2026-11-08", saida: "2026-11-11", email: "e@example.com", liberar: true });
+    const antes = await pagarEConfirmar(c, { entrada: "2026-11-13", saida: "2026-11-16", email: "f@example.com", liberar: true });
+    await alterarSaida(depois, "2026-11-12");
+    expect(await marcarDatasFechadasNasOtas(db, admin, depois.reservaId, env(), minutos(35))).toEqual({ ok: true });
+    expect(await marcarDatasFechadasNasOtas(db, admin, antes.reservaId, env(), minutos(15))).toEqual({ ok: true });
+    await alterarSaida(antes, "2026-11-17");
+    for (const x of [depois, antes]) expect((await cancelar(c, x.reservaId, empresa(), equipe, minutos(60))).resultado.ok).toBe(true);
+    expect((await tarefas()).avisos.map((a) => a.texto).sort()).toEqual(
+      [
+        `Reserva ${depois.reservaCodigo}, cancelada: mude o bloqueio de 08/11 a 12/11 para Cancelado (não apague).`,
+        `Reserva ${antes.reservaCodigo}, cancelada: mude o bloqueio de 13/11 a 16/11 para Cancelado (não apague).`,
+      ].sort(),
+    );
+  });
 });
 
 describe("teste 16: a marca manual \"Datas fechadas nas OTAs\" (D8)", () => {

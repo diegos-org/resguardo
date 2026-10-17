@@ -118,9 +118,11 @@ aparecem as tarefas à mão descritas abaixo.
   reserva cancelada e o botão "Datas reabertas nas OTAs" do quadro do cancelamento.
 - **Reserva paga alterada e cancelada antes da marca "Datas atualizadas nas OTAs":** o sistema não confere o Beds24;
   ele se guia pelas marcas da equipe. Por isso, o aviso da cancelada mostra as datas em que o bloqueio deveria estar
-  pela última marca: as de antes da primeira mudança de datas feita depois da última marca "Datas atualizadas nas OTAs"
-  (sem marca nenhuma, as de antes da primeira mudança). Sem mudança depois da última marca, mostra as datas atuais da
-  reserva. Confira no Beds24 antes de mudar o bloqueio para Cancelado.
+  pela última marca: as de antes da primeira mudança de datas feita depois da última marca, "Datas atualizadas nas OTAs"
+  ou "Datas fechadas nas OTAs" (sem marca nenhuma, as de antes da primeira mudança). As duas marcas valem porque cada
+  uma registra o bloqueio nas datas da reserva daquela hora: quem marca "Datas fechadas" depois de uma alteração fechou
+  as datas novas. Sem mudança depois da última marca, mostra as datas atuais da reserva. Confira no Beds24 antes de mudar
+  o bloqueio para Cancelado.
 - **O que você e a equipe fazem** (o mesmo passo a passo está na seção 6, item 50). **Já, mesmo antes desta parte
   entrar:** no Beds24, nunca apague o bloqueio de uma reserva do site; para cancelar, mude o bloqueio para Cancelado;
   para mudar as datas, mude o mesmo bloqueio, sem criar outro. **Depois que esta parte entrar no sistema:**

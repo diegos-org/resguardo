@@ -1239,8 +1239,9 @@ mostra o mesmo texto ("Mude o bloqueio de dd/mm a dd/mm para Cancelado (não apa
 reabertas nas OTAs"** (com confirmação, "Confirmar que as datas desta reserva já foram reabertas nas OTAs (no Beds24,
 mudadas para Cancelado, sem apagar)?", auditado); sem a tarefa, o texto genérico "Mude o bloqueio para Cancelado no
 Beds24 (não apague)." As datas são as do bloqueio feito à mão: as da reserva agora; se alguma alteração de datas foi
-aplicada depois da última marca "Datas atualizadas nas OTAs" (ou sem marca nenhuma), as de antes da primeira dessas
-alterações, onde o bloqueio ficou. A pergunta do cancelamento termina com "As datas voltam à venda no site; nas OTAs,
+aplicada depois da última marca, "Datas atualizadas nas OTAs" ou "Datas fechadas nas OTAs" (ou sem marca nenhuma), as de
+antes da primeira dessas alterações, onde o bloqueio ficou (as duas marcas registram o bloqueio nas datas da reserva
+daquela hora; revisão do Codex no PR #156). A pergunta do cancelamento termina com "As datas voltam à venda no site; nas OTAs,
 siga o aviso do Início (no Beds24, mude para Cancelado; não apague). O cancelamento não pode ser desfeito." (também no
 cancelamento sem devolução). As datas voltam à venda no site na hora do cancelamento. O M8.3 vai consumir
 `cancelamentos_reserva` com `situacao = 'cancelada'` e `ota_liberada_em` vazio, e gravar a marca sozinho (desde o M8.3b:

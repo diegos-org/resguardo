@@ -307,9 +307,10 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
   for (const { canceladaEm, ...r } of new Map(canceladas.map((x) => [x.id, x])).values()) candidatas.push({ fato: "cancelada", ...r, desde: canceladaEm ?? SEM_HORA, alteracaoIds: [] });
 
   // Cancelada depois de uma mudança de datas que a equipe ainda não marcou nas OTAs: o bloqueio feito à mão ficou onde a
-  // última marca o pôs. A marca de uma alteração segue o texto da tarefa, com as datas da reserva naquela hora: depois da
-  // última marca, o bloqueio está nas datas de antes da primeira mudança aplicada depois dela (sem marca nenhuma, da primeira
-  // mudança). O texto leva essas datas; sem mudança depois da última marca, as da reserva agora.
+  // última marca o pôs. "Datas fechadas nas OTAs" fecha as datas da reserva naquela hora, e a marca de uma alteração segue o
+  // texto da tarefa, também com as datas daquela hora: depois da última marca (das duas), o bloqueio está nas datas de antes
+  // da primeira mudança aplicada depois dela (sem marca nenhuma, da primeira mudança). O texto leva essas datas; sem mudança
+  // depois da última marca, as da reserva agora.
   const canceladasIds = candidatas.filter((c) => c.fato === "cancelada" || c.fato === "d3_cancelada").map((c) => c.id);
   if (canceladasIds.length) {
     const mudancas = await db
@@ -330,10 +331,17 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
         ),
       )
       .orderBy(asc(alteracoesReserva.aplicadaEm), asc(alteracoesReserva.id));
+    const fechadas = mudancas.length
+      ? await db
+          .select({ reservaId: beds24ReservasSite.reservaId, otaFechadaEm: beds24ReservasSite.otaFechadaEm })
+          .from(beds24ReservasSite)
+          .where(and(eq(beds24ReservasSite.organizacaoId, org), inArray(beds24ReservasSite.reservaId, canceladasIds), isNotNull(beds24ReservasSite.otaFechadaEm)))
+      : [];
     for (const c of candidatas) {
       if (c.fato !== "cancelada" && c.fato !== "d3_cancelada") continue;
       const dela = mudancas.filter((x) => x.reservaId === c.id);
-      const ultimaMarca = Math.max(-Infinity, ...dela.map((x) => x.otaAtualizadaEm?.getTime() ?? -Infinity));
+      const fechadaEm = fechadas.find((x) => x.reservaId === c.id)?.otaFechadaEm?.getTime() ?? -Infinity;
+      const ultimaMarca = Math.max(fechadaEm, ...dela.map((x) => x.otaAtualizadaEm?.getTime() ?? -Infinity));
       const primeira = dela.find((x) => x.otaAtualizadaEm === null && (x.aplicadaEm ?? SEM_HORA).getTime() > ultimaMarca);
       if (primeira) Object.assign(c, { checkin: primeira.checkinAntes, checkout: primeira.checkoutAntes });
     }
