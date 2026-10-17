@@ -78,8 +78,23 @@ reaproveita a ideia do hold, com as diferenças abaixo. O hold do visitante do s
 
 ## Limites conhecidos
 
-- Até o M8.3, as OTAs não sabem do hold: um visitante do Airbnb pode reservar as mesmas noites durante o
-  prazo. Por isso o prazo é curto e a equipe deve confirmar ou cancelar logo.
+- O hold nunca vai às OTAs (D9 do desenho do M8.3, `RESERVA-SITE-BEDS24.md`, seção 11, como no ROADMAP): durante o
+  prazo, um visitante do Airbnb pode reservar as mesmas noites. Por isso o prazo é curto e a equipe deve confirmar ou
+  cancelar logo. Só a reserva paga pelo site vai ao Beds24 pelo sistema (o envio é o M8.3c, ainda não feito). O pedido
+  do site que a equipe confirma à mão, sem pagamento pelo site, nunca vai ao Beds24 pelo sistema (D3, decidida por
+  Diego em 16/10/2026): a equipe fecha as datas no Beds24 como bloqueio e marca "Datas fechadas nas OTAs" na ficha da
+  reserva. Até a marca, o Início (para quem edita reservas, sem valores) avisa "N reserva(s) do site confirmada(s) à
+  mão, sem pagamento pelo site (SCL-…): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs."
+  (M8.3b, 17/10/2026, na branch do M8.3b, em revisão; regras em `PAGAMENTO-SITE.md` e `RESERVA-SITE-BEDS24.md`,
+  seção 6).
+  - **Registro (17/10/2026, M8.3b).** *Antes:* "Até o M8.3, as OTAs não sabem do hold: um visitante do Airbnb pode
+    reservar as mesmas noites durante o prazo. Por isso o prazo é curto e a equipe deve confirmar ou cancelar logo."
+    ("até o M8.3" sugeria que o M8.3 mudaria isso). *Agora:* o texto acima. *Motivo:* o desenho do M8.3 manteve as OTAs
+    abertas durante o hold (D9, como no ROADMAP; o risco continua registrado), e Diego decidiu em 16/10 que só a reserva
+    paga pelo site vai ao Beds24 (D3): no Airbnb o hóspede tem 24 horas para pagar, fechar as datas em todos os canais
+    para quem depois não paga dá muito trabalho e tira reservas daquelas datas, e o caso é raro. A D3 reforça a D9 pelo
+    mesmo motivo. *Objetivo final:* o Beds24 e as OTAs só fecham sozinhos as datas de uma reserva paga pelo site; o hold
+    continua curto e o pedido confirmado à mão fica com a equipe, com o aviso até a marca.
 - Até o M8.2, o fecho da reserva é na conversa (botão de WhatsApp na página da cotação com o código).
   Desde o M8.2a (8/10, em teste nas prévias), com o Pix oferecido, o pedido confirma sozinho quando o
   pagamento é aprovado com as datas seguradas; o prazo das datas é estendido até o fim do Pix; pedido com
