@@ -8,15 +8,16 @@
  *   informou, relido por id, com a duplicada já cancelada e o vínculo sem a marca.
  * - `conferirNaImportacao` (5.2 b): a importação confere a reserva do site contra o `esperado` e nunca a muda.
  * - `prepararDesvioNaImportacao` e `desvioNaImportacao` (5.2 a–e): o desvio no laço da importação, antes da conferência de
- *   vínculo e do ramo de bloqueio.
+ *   vínculo e do ramo de bloqueio. M8.3c: o ensaio não resolvido (`ensaioNaoResolvidoNoBanco`, a mesma condição da guarda de
+ *   um ensaio por vez em `reservas-site-ensaio.ts`) protege as noites dele em "e", e a marca ambígua é desviada com aviso.
  * O SCL é o dono da reserva: origem, valores, taxa, valor líquido, hóspede, e-mail, situação, `confirmadaEm`,
  * `reservadaEm` e o motor nunca mudam por causa do Beds24. Os avisos levam só o código SCL e o id do registro.
  */
-import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { beds24ReservasOperacoes, beds24ReservasSite, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { assinaturaAtualDoScl, casoDeEmailBeds24, type DecisaoAdocao, diferencaNaMarca, diferencaNoBeds24, type DiferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, type MotivoAcompanhamentoBeds24, origemPodeSerDoScl, regraDeAdocao, registroNossoBeds24, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
+import { assinaturaAtualDoScl, casoDeEmailBeds24, type DecisaoAdocao, diferencaNaMarca, diferencaNoBeds24, type DiferencaNoBeds24, type EsperadoBeds24, lidoDoRegistro, type MotivoAcompanhamentoBeds24, origemPodeSerDoScl, regraDeAdocao, registroNossoBeds24, SITUACOES_ENSAIO_FECHADO, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
 import { ErroBeds24, type FiltroReservas, type LeitorBeds24, type ReservaBeds24 } from "./tipos";
 import { JANELA_RESERVA_EM_ANDAMENTO_MINUTOS } from "./trava";
 
@@ -342,21 +343,39 @@ export function avisoDeReleituraSemConclusao(codigo: string, beds24Id: string): 
 
 /**
  * Operação `enviando` vencida (mais de 6 min), com o POST tentado (`enviado_em`) e sem o id do Beds24: vira `incerta`
- * (desenho 3.6), para a busca da incerteza resolver antes de qualquer coisa. Quem chama já tem a trava `beds24:<org>`.
+ * (desenho 3.6), para a busca da incerteza resolver antes de qualquer coisa. M8.3c (plano 1.1): o ensaio vencido com o POST
+ * tentado passa a `incerta` também com o id (a queda no meio da criação ou do cancelamento dele): a fase 3 da reserva, que
+ * resolveria a operação com o id, trava a reserva, e o ensaio não tem reserva — ele ficaria `enviando` para sempre. Só
+ * "Conferir o ensaio" o resolve depois. Quem chama já tem a trava `beds24:<org>`.
  */
 export async function passarEnviandoVencidasAIncerta(tx: Db, org: string): Promise<number> {
+  const op = beds24ReservasOperacoes;
   const r = await tx
-    .update(beds24ReservasOperacoes)
+    .update(op)
     .set({ situacao: "incerta" })
-    .where(and(eq(beds24ReservasOperacoes.organizacaoId, org), eq(beds24ReservasOperacoes.situacao, "enviando"), isNotNull(beds24ReservasOperacoes.enviadoEm), isNull(beds24ReservasOperacoes.beds24Id), sql`${beds24ReservasOperacoes.iniciadoEm} <= now() - make_interval(mins => ${JANELA_RESERVA_EM_ANDAMENTO_MINUTOS})`))
-    .returning({ id: beds24ReservasOperacoes.id });
+    .where(and(eq(op.organizacaoId, org), eq(op.situacao, "enviando"), isNotNull(op.enviadoEm), or(isNull(op.beds24Id), eq(op.tipo, "ensaio")), sql`${op.iniciadoEm} <= now() - make_interval(mins => ${JANELA_RESERVA_EM_ANDAMENTO_MINUTOS})`))
+    .returning({ id: op.id });
   return r.length;
 }
+
+/**
+ * O ensaio não resolvido no banco (plano 1.12; a regra pura é `ensaioNaoResolvidoBeds24`): a operação `ensaio` real que teve
+ * POST, fora das situações fechadas (`SITUACOES_ENSAIO_FECHADO`) e sem o registro relido como cancelado (`depois`) — inclusive a
+ * `feita`, a `incerta`, a `divergente` e a `enviando`. Uma condição para a guarda de um ensaio por vez e o desvio "e".
+ */
+export const ensaioNaoResolvidoNoBanco = and(
+  eq(beds24ReservasOperacoes.tipo, "ensaio"),
+  eq(beds24ReservasOperacoes.modo, "real"),
+  isNotNull(beds24ReservasOperacoes.enviadoEm),
+  notInArray(beds24ReservasOperacoes.situacao, [...SITUACOES_ENSAIO_FECHADO]),
+  sql`coalesce(${beds24ReservasOperacoes.depois}->>'situacao', '') <> 'cancelada'`,
+);
 
 type ReservaLigada = { id: string; codigo: string; beds24Id: string | null };
 /** O que um id do Beds24 já é no SCL: uma reserva (`fonte = 'beds24'` ou com `beds24_id`) ou um bloqueio importado. */
 export type RegistroConhecido = "reserva" | "bloqueio";
-type CriacaoNaoResolvida = { referencia: string; quarto: string; chegada: string; saida: string };
+/** Uma criação não resolvida (5.2 e): a reserva do site, ou o ensaio não resolvido (`ensaio`, sem reserva no SCL). */
+type CriacaoNaoResolvida = { referencia: string; quarto: string; chegada: string; saida: string; ensaio?: true };
 
 /** O que o desvio precisa saber da importação, lido uma vez antes do laço. */
 export type ContextoDoDesvio = {
@@ -369,7 +388,7 @@ export type ContextoDoDesvio = {
   ensaios: Set<string>;
   /** Código → a reserva do site com esse código (só os códigos que apareceram no lote). */
   porCodigo: Map<string, ReservaLigada>;
-  /** Criações não resolvidas (5.2 e): o quarto e as noites de cada uma. */
+  /** Criações não resolvidas (5.2 e), inclusive o ensaio não resolvido: o quarto e as noites de cada uma. */
   naoResolvidas: CriacaoNaoResolvida[];
   /** Ids que o SCL já conhece, com o que eles são no SCL (reserva ou bloqueio importado): a atualização deles não cria nada e segue. */
   conhecidos: ReadonlyMap<string, RegistroConhecido>;
@@ -388,7 +407,9 @@ export type ContextoDoDesvio = {
  * Lê, uma vez por importação, o que o desvio consulta: as reservas do site ligadas a um id do Beds24, os ensaios, as
  * reservas dos códigos marcados no lote e as criações não resolvidas — uma operação `criar` em `enviando` (de qualquer
  * idade), uma operação `incerta`, um POST tentado sem o id, ou o acompanhamento `aguardando_equipe` com motivo `incerta`,
- * de reserva ainda sem `beds24_id`.
+ * de reserva ainda sem `beds24_id`; e (M8.3c, desenho 5.2 "Para o M8.3c") o ensaio não resolvido, pelo quarto e pelas noites
+ * do pedido dele: o registro do ensaio que voltou sem a marca legível (a credencial que não lê os info items) e sem o id
+ * conhecido (a resposta perdida) nunca vira reserva.
  */
 export async function prepararDesvioNaImportacao(tx: Db, org: string, registros: Iterable<ReservaBeds24>, conhecidos: ReadonlyMap<string, RegistroConhecido>, agora: Date, o: { leituraComIlegivel: boolean; ilegiveis: ReadonlySet<string> }): Promise<ContextoDoDesvio> {
   const marcados = new Map<string, ReservaBeds24[]>();
@@ -430,6 +451,8 @@ export async function prepararDesvioNaImportacao(tx: Db, org: string, registros:
     .innerJoin(reservas, eq(reservas.id, beds24ReservasSite.reservaId))
     .where(and(eq(beds24ReservasSite.organizacaoId, org), eq(reservas.fonte, "site"), isNull(reservas.beds24Id), eq(beds24ReservasSite.situacao, "aguardando_equipe"), eq(beds24ReservasSite.motivo, "incerta")));
   for (const a of incertas) somar(a.referencia, a.roomId ?? a.esperado?.quarto, [a.esperado, { chegada: a.checkin, saida: a.checkout }]);
+  const ensaiosAbertos = await tx.select({ pedido: op.pedido }).from(op).where(and(eq(op.organizacaoId, org), ensaioNaoResolvidoNoBanco));
+  for (const e of ensaiosAbertos) if (e.pedido) naoResolvidas.push({ referencia: e.pedido.referencia, quarto: e.pedido.quarto, chegada: e.pedido.chegada, saida: e.pedido.saida, ensaio: true });
   return { agora, marcados, ligadas, ensaios, porCodigo, naoResolvidas, conhecidos, duplicadasAvisadas: new Set(), leituraComIlegivel: o.leituraComIlegivel, ilegiveis: o.ilegiveis };
 }
 
@@ -459,7 +482,10 @@ function conhecidoSegue(b: ReservaBeds24, conhecidos: ReadonlyMap<string, Regist
  * - c. a marca casada pelas regras de adoção chama `adotarReservaCriada` e depois confere; com um registro ilegível ou sem
  *   dono na leitura, a adoção não conclui (pode ser outra cópia com a marca): pula, com aviso;
  * - d. a marca sem reserva correspondente, duplicada ou num registro que não bate vira aviso; nada é criado;
- * - e. sem marca legível, no mesmo quarto e com noites sobrepostas a uma criação não resolvida: pula, com aviso.
+ * - M8.3c (desenho 5.2, "Para o M8.3c"): a marca ambígua (dois códigos, ou o info item `SCL` com o texto ilegível) pula, com
+ *   aviso: pode ser a nossa com a marca estragada, e importar criaria a duplicata (antes, contava como "sem marca");
+ * - e. sem marca legível, no mesmo quarto e com noites sobrepostas a uma criação não resolvida (ou ao ensaio não resolvido):
+ *   pula, com aviso.
  * O SCL nunca cria um `black`: um bloqueio com o código no nome (a equipe fechando as datas à mão) segue o caminho dos
  * bloqueios em c, d e e. O registro que o SCL já conhece (reserva ou bloqueio importado) também segue em c, d e e: a
  * atualização dele não cria nada, e pular escondia o cancelamento (o bloqueio cancelado ficava fechando as noites no site;
@@ -495,7 +521,9 @@ export async function desvioNaImportacao(tx: Db, org: string, b: ReservaBeds24, 
   }
 
   if (!ref && b.estado !== "bloqueio" && !ctx.conhecidos.has(b.idExterno)) {
+    if (b.marcaAmbigua) return desviado(`Registro ${id}: marca do SCL ambígua (dois códigos, ou o código ilegível): nada foi importado; confira no Beds24.`);
     const n = ctx.naoResolvidas.find((x) => x.quarto === b.roomId && b.checkin < x.saida && x.chegada < b.checkout);
+    if (n?.ensaio) return desviado(`Registro ${id}: sobre as noites de um ensaio do SCL ainda não resolvido; não importado (confira o ensaio em Integrações).`);
     if (n) return desviado(`Registro ${id}: aguardando a conferência de um envio de reserva do site (${n.referencia}); não importado.`);
   }
   return segue;

@@ -111,7 +111,8 @@ export type RelogioDoEnvio = { agora: () => Date; restanteMs: () => number };
 
 /**
  * Só para os testes: antes da fase 2 (o SCL muda entre as fases, a pausa) e antes de cada tentativa da fase 3 (a trava
- * ocupada). `op` null = a leitura da cancelada antes de criar (`cancelarAntesDeCriar`), que não tem operação em curso.
+ * ocupada). `op` null = a leitura da cancelada antes de criar (`cancelarAntesDeCriar`), que não tem operação em curso, ou o
+ * ensaio (`reservas-site-ensaio.ts`), que não tem reserva.
  */
 export type GanchosDoEnvio = {
   antesDaFase2?: (op: OperacaoEmEnvio | null) => unknown;
@@ -165,7 +166,8 @@ const agoraDoBanco = sql`now()`;
 const vencidaNoBanco = sql`${op.iniciadoEm} <= now() - make_interval(mins => ${JANELA_RESERVA_EM_ANDAMENTO_MINUTOS})`;
 const ACOES: readonly string[] = ["criar", "atualizar", "cancelar"] satisfies readonly AcaoBeds24[];
 const ehAcao = (t: string): t is AcaoBeds24 => ACOES.includes(t);
-const textoSeguro = (e: unknown, padrao: string) => (e instanceof ErroBeds24 ? e.message : padrao).slice(0, 300);
+/** A mensagem segura de uma falha (a do SCL no `ErroBeds24`, nunca a resposta crua do provedor), curta. */
+export const textoSeguro = (e: unknown, padrao: string) => (e instanceof ErroBeds24 ? e.message : padrao).slice(0, 300);
 
 // ---------------------------------------------------------------- fase 1 (desenho 3.3 e 3.6)
 
@@ -251,8 +253,8 @@ const NADA: AberturaDaIntencao = { saida: "nada" };
 
 type Mapas = Awaited<ReturnType<typeof listarMapeamentosBeds24>>;
 
-/** O vínculo único e válido do imóvel (a régua de `quartoVinculado`), com a propriedade do quarto. */
-function vinculoDoImovel(mapas: Mapas, imovelId: string): { propertyId: string; roomId: string } | null {
+/** O vínculo único e válido do imóvel (a régua de `quartoVinculado`), com a propriedade do quarto. O ensaio usa o mesmo. */
+export function vinculoDoImovel(mapas: Mapas, imovelId: string): { propertyId: string; roomId: string } | null {
   const roomId = quartoDoVinculo(mapas, imovelId);
   const m = roomId ? mapas.find((x) => x.imovelId === imovelId && x.roomId === roomId) : undefined;
   return roomId && m ? { propertyId: m.propertyId, roomId } : null;
@@ -275,7 +277,7 @@ const superar = (tx: Db, id: string) => tx.update(op).set({ situacao: "superada"
  * primeiro 401 (`nao_enviado`) e a credencial recusada (`http_401`, `http_403`). O `enviado_em` delas continua a prova da
  * tentativa (nunca se limpa), mas não de um registro deixado no Beds24.
  */
-const RESPOSTAS_NAO_PROCESSADAS: readonly RespostaBeds24[] = ["limite", "nao_enviado", "http_401", "http_403"];
+export const RESPOSTAS_NAO_PROCESSADAS: readonly RespostaBeds24[] = ["limite", "nao_enviado", "http_401", "http_403"];
 
 /**
  * Uma `criar` desta reserva já teve um POST que pode ter gravado sem o id chegar ao SCL (desenho 3.8, item 5: só então o
@@ -441,7 +443,7 @@ export function paradaPelaRecusa(status: number | undefined): ParadaPelaRecusa |
   return undefined;
 }
 
-const statusDoErro = (e: unknown) => (e instanceof ErroBeds24 ? e.status : undefined);
+export const statusDoErro = (e: unknown) => (e instanceof ErroBeds24 ? e.status : undefined);
 
 /** A leitura dos quartos desta volta, uma vez só (como a importação faz antes do laço); a falha leva o status HTTP, se houve. */
 type QuartosDaVolta = () => Promise<{ ok: true; itens: QuartoBeds24[] } | { ok: false; erro: string; status?: number }>;
@@ -504,8 +506,14 @@ type DesfechoDaFase2 =
   | { desfecho: "ja_cancelada"; registro: ReservaBeds24; antes: LidoBeds24; estranhos: string[]; bloqueio: BloqueioAchadoBeds24 | null }
   | { desfecho: "respondida"; resposta: RespostaGravacaoReserva; releitura: ReleituraDepois | null; ultima?: RespostaGravacaoReserva };
 
+/**
+ * O que as travas de todo POST de reserva (`antesDoPost`) deixam: a falha antes do POST, a pausa, o tempo, o imóvel desligado
+ * entre as fases e o UPDATE de `enviado_em` que não pegou a linha (`perdida`). Uma parte de `DesfechoDaFase2`.
+ */
+export type DesfechoAntesDoPost = Extract<DesfechoDaFase2, { desfecho: "falha_antes" }> | { desfecho: "pausa" | "sem_tempo" | "desligado" | "perdida" };
+
 /** A falha antes do POST, com a parada da volta quando o Beds24 recusou com 429, 401 ou 403 (`paradaPelaRecusa`). */
-function falhaAntes(erro: string, status?: number): DesfechoDaFase2 {
+function falhaAntes(erro: string, status?: number): Extract<DesfechoDaFase2, { desfecho: "falha_antes" }> {
   const parada = paradaPelaRecusa(status);
   return { desfecho: "falha_antes", erro, ...(parada ? { parada } : {}) };
 }
@@ -513,8 +521,8 @@ function falhaAntes(erro: string, status?: number): DesfechoDaFase2 {
 /** A releitura por id: o registro (null = o id não voltou numa leitura limpa), ou não conclui (com o HTTP da recusa, se houve). */
 type RegistroPorId = { funcionou: true; registro: ReservaBeds24 | null } | { funcionou: false; status?: number };
 
-/** Relê um id do Beds24 (desenho 4.4), só leitura, com os info items. */
-async function relerPorIdDaOperacao(leitor: LeitorBeds24, id: string): Promise<RegistroPorId> {
+/** Relê um id do Beds24 (desenho 4.4), só leitura, com os info items. O ensaio relê pelo mesmo. */
+export async function relerPorIdDaOperacao(leitor: LeitorBeds24, id: string): Promise<RegistroPorId> {
   try {
     const l = await leitor.reservas({ ids: [id], chegadaDe: "1900-01-01", incluirInfo: true });
     // Um registro em formato inválido, sem dono (um id que não foi pedido) ou repetido pode ser o nosso: nada conclui.
@@ -586,7 +594,7 @@ async function enviarCriacao(db: Db, org: string, operacao: OperacaoEmEnvio, cli
   if (ocupantes.ocupacao.resultado !== "livre") return { desfecho: "ocupada", ocupacao: ocupantes.ocupacao };
 
   const item: ItemGravacaoReserva = { tipo: "criar", quarto, chegada: pedido.chegada, saida: pedido.saida, hospedes: pedido.hospedes ?? 0, marca: { tipo: "reserva", codigo: operacao.codigo } };
-  const parado = await antesDoPost(db, org, operacao, item, cliente, o, { exigirImovelLigado: true });
+  const parado = await antesDoPost(db, org, operacao, item, cliente, o, { exigirImovelLigado: operacao.imovelId });
   if (parado) return parado;
 
   volta.posts++;
@@ -598,13 +606,18 @@ async function enviarCriacao(db: Db, org: string, operacao: OperacaoEmEnvio, cli
 
 /**
  * As travas de todo POST de reserva (desenho 3.6), na ordem: o item conferido (o corpo que sairia), a pausa relida logo
- * antes (e, na criação, o imóvel ainda ligado: a atualização e o cancelamento seguem com o imóvel desligado, desenho 2.1), o
- * token obtido ANTES do UPDATE de `enviado_em` (a renovação que cai aqui é falha antes do POST, nunca um tempo esgotado do
- * POST), o tempo para o POST e a fase 3 (o Beds24 lento não deixa um POST sem tempo de gravar o fato) e o UPDATE simples de
- * `enviado_em`, com o que mais a operação grava junto (o registro relido em `antes`, as duplicadas), sem transação. null =
- * pode enviar; senão, o desfecho de antes do POST.
+ * antes (e, na criação, o imóvel ainda ligado, `exigirImovelLigado`: a atualização e o cancelamento seguem com o imóvel
+ * desligado, desenho 2.1), o token obtido ANTES do UPDATE de `enviado_em` (a renovação que cai aqui é falha antes do POST,
+ * nunca um tempo esgotado do POST), o tempo para o POST e a fase 3 (o Beds24 lento não deixa um POST sem tempo de gravar o
+ * fato) e o UPDATE simples de `enviado_em`, com o que mais a operação grava junto (o registro relido em `antes`, as
+ * duplicadas), sem transação. A mesma trava para o ensaio (`reservas-site-ensaio.ts`): o cancelamento dele é o segundo POST da
+ * mesma operação, que já tem `enviado_em`, e é identificado pela tentativa gravada na fase 1 (`daTentativa`) em vez do
+ * `enviado_em` vazio. null = pode enviar; senão, o desfecho de antes do POST.
  */
-async function antesDoPost(db: Db, org: string, operacao: OperacaoEmEnvio, item: ItemGravacaoReserva, cliente: ClienteDasReservasBeds24, o: OpcoesDoEnvio, x: { exigirImovelLigado?: boolean; junto?: PgUpdateSetSource<typeof op> } = {}): Promise<DesfechoDaFase2 | null> {
+export async function antesDoPost(
+  db: Db, org: string, operacao: Pick<OperacaoEmEnvio, "id">, item: ItemGravacaoReserva, cliente: Pick<ClienteDasReservasBeds24, "prepararToken">, o: Pick<OpcoesDoEnvio, "relogio">,
+  x: { exigirImovelLigado?: string; junto?: PgUpdateSetSource<typeof op>; daTentativa?: number } = {},
+): Promise<DesfechoAntesDoPost | null> {
   try {
     corpoDaGravacaoReserva(item);
   } catch (e) {
@@ -612,19 +625,20 @@ async function antesDoPost(db: Db, org: string, operacao: OperacaoEmEnvio, item:
   }
   const config = await lerConfigReservasBeds24(db, org);
   if (config.pausado) return { desfecho: "pausa" };
-  if (x.exigirImovelLigado && !ligacaoDoImovel(config, operacao.imovelId)) return { desfecho: "desligado" };
+  if (x.exigirImovelLigado !== undefined && !ligacaoDoImovel(config, x.exigirImovelLigado)) return { desfecho: "desligado" };
   try {
     await cliente.prepararToken();
   } catch (e) {
     return falhaAntes(textoSeguro(e, "O token do Beds24 não veio: nada foi enviado."), statusDoErro(e));
   }
   if (o.relogio.restanteMs() < MINIMO_PARA_O_POST_MS) return { desfecho: "sem_tempo" };
-  const [marcada] = await db.update(op).set({ ...x.junto, enviadoEm: agoraDoBanco }).where(and(eq(op.id, operacao.id), eq(op.situacao, "enviando"), isNull(op.enviadoEm))).returning({ id: op.id });
+  const desta = x.daTentativa === undefined ? isNull(op.enviadoEm) : eq(op.tentativas, x.daTentativa);
+  const [marcada] = await db.update(op).set({ ...x.junto, enviadoEm: agoraDoBanco }).where(and(eq(op.id, operacao.id), eq(op.situacao, "enviando"), desta)).returning({ id: op.id });
   return marcada ? null : { desfecho: "perdida" };
 }
 
 /** Logo depois da resposta, antes de qualquer trava (desenho 3.6): o id (se veio), a classificação, `respondido_em` e o `erro` fixo dela. */
-const gravarResposta = (db: Db, operacao: OperacaoEmEnvio, resposta: RespostaGravacaoReserva, beds24Id: string | null) =>
+export const gravarResposta = (db: Db, operacao: Pick<OperacaoEmEnvio, "id">, resposta: RespostaGravacaoReserva, beds24Id: string | null) =>
   db
     .update(op)
     .set({ ...(beds24Id ? { beds24Id } : {}), resposta: resposta.resposta, respondidoEm: agoraDoBanco, erro: TEXTOS_DE_ERRO_BEDS24[resposta.resposta] })
@@ -802,7 +816,7 @@ type LinhaDaOperacao = typeof op.$inferSelect;
  * espera (nunca `esperarEnvioBeds24`: ele veria a própria operação `enviando` e recusaria). No 55P03 e no 40P01 repete até 3
  * vezes, dentro do tempo restante: o fato já está na operação (o id, a resposta e `enviado_em`).
  */
-async function naFase3<T>(db: Db, org: string, o: OpcoesDoEnvio, operacao: OperacaoEmEnvio | null, f: (tx: Db) => Promise<T>): Promise<T> {
+export async function naFase3<T>(db: Db, org: string, o: Pick<OpcoesDoEnvio, "relogio" | "ganchos">, operacao: OperacaoEmEnvio | null, f: (tx: Db) => Promise<T>): Promise<T> {
   for (let tentativa = 1; ; tentativa++) {
     try {
       await o.ganchos?.antesDaFase3?.(operacao, tentativa);
@@ -2118,14 +2132,15 @@ function operacoesASair(db: Db, org: string) {
 /**
  * Há o que o passo 1 resolve (`resolverOperacoesEmCurso`)? Com a chave desligada ou a pausa (o passo 0 da rotina, desenho 2.4
  * e 9), a rotina só entra para isso, e sem nada a resolver sai sem trava, sem leitura do Beds24 e sem linha nova. As mesmas
- * condições do passo 1: a `enviando` vencida sem POST (`devolverVencidasSemPost`), a vencida com POST e sem o id
- * (`passarEnviandoVencidasAIncerta`) e as que a saída lê (`operacoesASair`). Só leitura do SCL, sem trava.
+ * condições do passo 1: a `enviando` vencida sem POST (`devolverVencidasSemPost`), a vencida com POST e sem o id (ou o
+ * ensaio vencido com POST, com ou sem o id; `passarEnviandoVencidasAIncerta`) e as que a saída lê (`operacoesASair`). Só
+ * leitura do SCL, sem trava.
  */
 export async function haOperacaoEmCursoASair(db: Db, org: string): Promise<boolean> {
   const [vencida] = await db
     .select({ id: op.id })
     .from(op)
-    .where(and(eq(op.organizacaoId, org), eq(op.situacao, "enviando"), vencidaNoBanco, or(and(eq(op.modo, "real"), inArray(op.tipo, [...ACOES] as AcaoBeds24[]), isNull(op.enviadoEm)), and(isNotNull(op.enviadoEm), isNull(op.beds24Id)))))
+    .where(and(eq(op.organizacaoId, org), eq(op.situacao, "enviando"), vencidaNoBanco, or(and(eq(op.modo, "real"), inArray(op.tipo, [...ACOES] as AcaoBeds24[]), isNull(op.enviadoEm)), and(isNotNull(op.enviadoEm), or(isNull(op.beds24Id), eq(op.tipo, "ensaio"))))))
     .limit(1);
   return Boolean(vencida) || (await operacoesASair(db, org).limit(1)).length > 0;
 }

@@ -1,13 +1,14 @@
 /**
  * O que o painel mostra das reservas do site no Beds24 (M8.3a, desenho 2.4, 7 e 8; seção 10, teste 12): o bloco da ficha
  * (o "desligada" calculado, o acompanhamento, o histórico curto), a seção de Integrações (chave, ambiente, credencial,
- * prontidão sem rede, pausa, imóveis ligados, contadores) e a leitura dos escopos, que só acontece no deploy de produção
- * com a escrita pronta. PGlite e a versão falsa do Beds24; nenhum `fetch`.
+ * prontidão sem rede, pausa, imóveis ligados, contadores; M8.3c: o último 403 ou 401, os escopos guardados, o motivo que para
+ * a escrita e o ensaio) e a leitura dos escopos, que só acontece no deploy de produção com a escrita pronta e fica guardada
+ * (M8.3c). PGlite e a versão falsa do Beds24; nenhum `fetch`.
  */
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24ReservasOperacoes, beds24ReservasSite, cotacoes, idsExternos, imoveis, organizacoes, reservas, usuarios } from "@/db/schema";
+import { beds24ReservasOperacoes, beds24ReservasRotina, beds24ReservasSite, cotacoes, idsExternos, imoveis, organizacoes, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { Beds24Falso } from "./falso";
@@ -15,6 +16,7 @@ import { ClienteBeds24Http, impressaoCredencialBeds24, leitorDeCredencialDoAmbie
 import { motivosDesligada } from "./reservas-site-config";
 import { conferirEscoposReservasBeds24, fichaReservaNoBeds24, OPERACOES_NA_FICHA, painelReservasBeds24 } from "./reservas-site-painel";
 import { chaveEnsaioBeds24, chaveSimulacaoBeds24 } from "./reservas-site-regras";
+import { gravarEscoposLidos } from "./reservas-site-rotina";
 import { ErroBeds24 } from "./tipos";
 
 const env = (o: Record<string, string | undefined> = {}) => o as unknown as NodeJS.ProcessEnv;
@@ -118,6 +120,13 @@ describe("Integrações: a seção das reservas do site", () => {
         { id: im2, codigo: "T2", ativo: true, ligadoEm: null, ligadoPor: null, quartoDoVinculo: null },
       ],
       contadores: { pendente: 0, em_envio: 0, conferida: 0, divergente: 0, conflito: 0, aguardando_equipe: 0, manual: 0, encerrada: 0 },
+      // Muda junto (M8.3c, bloco F): o último 403 ou 401, os escopos guardados, o motivo que para a escrita (só com a escrita
+      // pronta) e o ensaio (nenhum ainda; fora do deploy de produção, "Criar o ensaio" não vale).
+      ultimaRecusa: null,
+      escopos: null,
+      motivoDeConfiguracao: null,
+      ensaioAtual: null,
+      semEnsaio: "fora_da_producao",
     });
   });
 
@@ -148,7 +157,49 @@ describe("Integrações: a seção das reservas do site", () => {
     const outra = await painelReservasBeds24(db, org, env({ ...PRONTO, BEDS24_REFRESH_TOKEN: "outro-refresh-ficticio" }));
     expect(outra).toMatchObject({ ensaio: { valeParaCredencialAtual: false }, marca: "nao_conferida", semLigar: "sem_ensaio" });
     await db.update(beds24ReservasSite).set({ motivo: "marca_ilegivel", situacao: "divergente" }).where(and(eq(beds24ReservasSite.organizacaoId, org), eq(beds24ReservasSite.reservaId, reservaId)));
-    expect((await painelReservasBeds24(db, org, env(PRONTO))).marca).toBe("ilegivel");
+    expect((await painelReservasBeds24(db, org, env(PRONTO), AGORA)).marca).toBe("ilegivel");
+    // M8.3c (desenho 4.4): a mesma regra do trabalhador — a marca ilegível de uma estadia que já terminou, ou de uma reserva
+    // `manual`, não conta (antes, qualquer linha com o motivo contava, de qualquer situação e data).
+    expect((await painelReservasBeds24(db, org, env(PRONTO), new Date("2027-01-10T12:00:00Z"))).marca).toBe("provada_no_ensaio");
+    await db.update(beds24ReservasSite).set({ situacao: "manual" }).where(eq(beds24ReservasSite.reservaId, reservaId));
+    expect((await painelReservasBeds24(db, org, env(PRONTO), AGORA)).marca).toBe("provada_no_ensaio");
+  });
+
+  it("M8.3c: o último 403 ou 401 (também do ensaio), os escopos guardados e o motivo que para a escrita, só com a escrita pronta", async () => {
+    const credencial = impressaoCredencialBeds24(env(PRONTO));
+    const ensaioId = crypto.randomUUID();
+    await db.insert(beds24ReservasOperacoes).values({ id: ensaioId, organizacaoId: org, tipo: "ensaio", chave: chaveEnsaioBeds24(ensaioId), modo: "real", situacao: "recusada", credencial, resposta: "http_403", respondidoEm: new Date("2026-10-16T14:00:00Z") });
+    await gravarEscoposLidos(db, org, credencial, { escopos: ["read:bookings", "all:bookings"], ilegiveis: [] }, new Date("2026-10-16T14:30:00Z"));
+    const p = await painelReservasBeds24(db, org, env(PRONTO), AGORA);
+    expect(p.ultimaRecusa).toEqual({ resposta: "http_403", em: new Date("2026-10-16T14:00:00Z"), tipo: "ensaio", comCredencialAtual: true });
+    expect(p.escopos).toMatchObject({ situacao: "escopo_excessivo", excessivos: ["all:bookings"], lidoEm: new Date("2026-10-16T14:30:00Z"), comCredencialAtual: true, valida: true });
+    expect(p.motivoDeConfiguracao).toEqual({ motivo: "escopo_excessivo", para: "tudo" });
+    // Com outra credencial, a leitura guardada não vale (e a recusa foi com a anterior); sem a escrita pronta, nenhum motivo.
+    const outra = await painelReservasBeds24(db, org, env({ ...PRONTO, BEDS24_REFRESH_TOKEN: "outro-refresh-ficticio" }), AGORA);
+    expect(outra.ultimaRecusa?.comCredencialAtual).toBe(false);
+    expect(outra.escopos).toMatchObject({ comCredencialAtual: false, valida: false });
+    expect(outra.motivoDeConfiguracao).toEqual({ motivo: "escopo_fora_de_ordem", para: "tudo" });
+    expect((await painelReservasBeds24(db, org, env({ ...PRONTO, VERCEL_ENV: "preview" }), AGORA)).motivoDeConfiguracao).toBeNull();
+  });
+
+  it("M8.3c: \"Criar o ensaio\" só com a escrita pronta, sem pausa, sem ensaio em curso e com um imóvel com o vínculo", async () => {
+    expect((await painelReservasBeds24(db, org, env({ ...PRONTO, BEDS24_ESCRITA_RESERVAS: undefined }), AGORA)).semEnsaio).toBe("nao_pronta");
+    expect((await painelReservasBeds24(db, org, env(PRONTO), AGORA)).semEnsaio).toBeNull();
+    await gravarConfig(db, org, "reservas_beds24", { pausado: { em: "2026-10-16T12:00:00.000Z", por: admin }, imoveis: [], ensaio: null }, admin);
+    expect((await painelReservasBeds24(db, org, env(PRONTO), AGORA)).semEnsaio).toBe("pausa");
+    await gravarConfig(db, org, "reservas_beds24", { pausado: null, imoveis: [], ensaio: null }, admin);
+    // Um ensaio criado (entre os dois botões) é o ensaio em curso: um por vez.
+    const ensaioId = crypto.randomUUID();
+    const pedido = { quarto: "20", chegada: "2026-11-03", saida: "2026-11-04", hospedes: 1, situacao: "confirmada" as const, referencia: "SCL-ENSAIO" };
+    await db.insert(beds24ReservasOperacoes).values({ id: ensaioId, organizacaoId: org, tipo: "ensaio", chave: chaveEnsaioBeds24(ensaioId), modo: "real", situacao: "feita", pedido, beds24Id: "900001", enviadoEm: new Date("2026-10-16T14:50:00Z"), iniciadoEm: new Date("2026-10-16T14:49:00Z") });
+    const p = await painelReservasBeds24(db, org, env(PRONTO), AGORA);
+    expect(p.semEnsaio).toBe("em_curso");
+    // Mais de 5 min depois do envio, a feita também pode ser conferida (a reserva de teste mudada para Cancelado à mão).
+    expect(p.ensaioAtual).toMatchObject({ operacaoId: ensaioId, fase: "criado", imovel: "T1", chegada: "2026-11-03", saida: "2026-11-04", beds24Id: "900001", comCredencialAtual: false, podeCancelar: true, podeConferir: true });
+    // Sem nenhum imóvel ativo com o vínculo único: nada a escolher.
+    await db.update(beds24ReservasOperacoes).set({ situacao: "conferida", depois: { ...pedido, situacao: "cancelada" } }).where(eq(beds24ReservasOperacoes.id, ensaioId));
+    await db.update(imoveis).set({ ativo: false }).where(eq(imoveis.id, im));
+    expect((await painelReservasBeds24(db, org, env(PRONTO), AGORA)).semEnsaio).toBe("sem_imovel");
   });
 });
 
@@ -171,8 +222,10 @@ describe("prontidão: os escopos da credencial (GET /authentication/details)", (
     ["no deploy de produção só com o token direto", env({ ...PRONTO, BEDS24_REFRESH_TOKEN: undefined, BEDS24_API_KEY: "token-direto-ficticio" }), "sem_refresh_token"],
   ])("não lê %s (nenhum leitor é pedido)", async (_nome, e, motivo) => {
     const leitorDe = vi.fn();
-    expect(await conferirEscoposReservasBeds24(e, leitorDe)).toEqual({ lidos: false, motivo });
+    // Muda junto (M8.3c, bloco F): a leitura passa a ser gravada, então recebe o banco e a organização.
+    expect(await conferirEscoposReservasBeds24(db, org, e, leitorDe)).toEqual({ lidos: false, motivo });
     expect(leitorDe).not.toHaveBeenCalled();
+    expect(await db.select().from(beds24ReservasRotina).where(eq(beds24ReservasRotina.organizacaoId, org))).toEqual([]);
   });
 
   it("o leitor real só existe com a escrita pronta (e não chama nada ao ser criado)", () => {
@@ -184,7 +237,8 @@ describe("prontidão: os escopos da credencial (GET /authentication/details)", (
 
   it("pronta, com a versão falsa: em ordem, com escopos demais, ilegível, e a falha da leitura com a mensagem segura", async () => {
     const falso = new Beds24Falso();
-    const ler = () => conferirEscoposReservasBeds24(env(PRONTO), () => falso);
+    // Muda junto (M8.3c, bloco F): o banco e a organização (a leitura fica guardada), e a credencial da organização.
+    const ler = () => conferirEscoposReservasBeds24(db, org, env({ ...PRONTO, BEDS24_ORGANIZACAO_ID: org }), () => falso, AGORA);
     expect(await ler()).toMatchObject({ lidos: true, avaliacao: { situacao: "em_ordem", excessivos: [] }, escopos: expect.arrayContaining(["write:bookings"]) });
     falso.detalhesCredencial = { validToken: true, token: { scopes: ["write:bookings", "all:bookings", "write:bookings-personal"] } };
     expect(await ler()).toMatchObject({ lidos: true, avaliacao: { situacao: "escopo_excessivo", excessivos: ["all:bookings", "write:bookings-personal"] } });
@@ -194,5 +248,22 @@ describe("prontidão: os escopos da credencial (GET /authentication/details)", (
     expect(await ler()).toEqual({ lidos: false, motivo: "falhou", erro: "Beds24 respondeu HTTP 401." });
     falso.falhar = new Error("detalhe interno que não vai para a tela");
     expect(await ler()).toEqual({ lidos: false, motivo: "falhou", erro: "Não foi possível ler a credencial no Beds24." });
+  });
+
+  it("M8.3c: a leitura fica guardada (a mesma da rotina); a falha não apaga a anterior, e outra organização não lê nem grava", async () => {
+    const falso = new Beds24Falso();
+    const credencial = impressaoCredencialBeds24(env(PRONTO));
+    const guardada = async () => (await db.select().from(beds24ReservasRotina).where(eq(beds24ReservasRotina.organizacaoId, org)))[0];
+    await conferirEscoposReservasBeds24(db, org, env({ ...PRONTO, BEDS24_ORGANIZACAO_ID: org }), () => falso, AGORA);
+    expect(await guardada()).toMatchObject({ escopos: { situacao: "em_ordem", excessivos: [], faltando: [], ilegiveis: [] }, escoposCredencial: credencial, escoposLidosEm: AGORA });
+    falso.falhar = new ErroBeds24("Beds24 respondeu HTTP 401.", "http");
+    await conferirEscoposReservasBeds24(db, org, env({ ...PRONTO, BEDS24_ORGANIZACAO_ID: org }), () => falso, new Date(AGORA.getTime() + 60_000));
+    expect((await guardada()).escoposLidosEm).toEqual(AGORA);
+    falso.falhar = null;
+    const leitorDe = vi.fn(() => falso);
+    const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "Outra empresa" }).returning();
+    expect(await conferirEscoposReservasBeds24(db, outra, env({ ...PRONTO, BEDS24_ORGANIZACAO_ID: org }), leitorDe, AGORA)).toEqual({ lidos: false, motivo: "falhou", erro: expect.stringContaining("não está vinculada à sua organização") });
+    expect(leitorDe).not.toHaveBeenCalled();
+    expect(await db.select().from(beds24ReservasRotina).where(eq(beds24ReservasRotina.organizacaoId, outra))).toEqual([]);
   });
 });

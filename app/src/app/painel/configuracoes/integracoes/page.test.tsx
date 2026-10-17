@@ -20,6 +20,10 @@ vi.mock("@/beds24/acoes-reservas", () => ({
   ligarImovelReservasBeds24Acao: vi.fn(),
   desligarImovelReservasBeds24Acao: vi.fn(),
   conferirEscoposReservasBeds24Acao: vi.fn(),
+  // M8.3c: o ensaio.
+  criarEnsaioReservasBeds24Acao: vi.fn(),
+  cancelarEnsaioReservasBeds24Acao: vi.fn(),
+  conferirEnsaioReservasBeds24Acao: vi.fn(),
 }));
 import type { PainelReservasBeds24 } from "@/beds24/reservas-site-painel";
 import Page from "./page";
@@ -34,6 +38,12 @@ const PAINEL: PainelReservasBeds24 = {
   semLigar: "sem_ensaio",
   imoveis: [{ id: "im1", codigo: "103", ativo: true, ligadoEm: null, ligadoPor: null, quartoDoVinculo: "20" }],
   contadores: { pendente: 0, em_envio: 0, conferida: 0, divergente: 0, conflito: 0, aguardando_equipe: 0, manual: 0, encerrada: 0 },
+  // Muda junto (M8.3c, bloco F): os campos novos do painel.
+  ultimaRecusa: null,
+  escopos: null,
+  motivoDeConfiguracao: null,
+  ensaioAtual: null,
+  semEnsaio: "fora_da_producao",
 };
 
 beforeEach(() => {
@@ -135,4 +145,66 @@ it("M8.3a: o imóvel ligado que foi desativado aparece como inativo, só com Des
   expect(h).toContain("imóvel inativo (reative no cadastro antes de ligar de novo)");
   expect(h).toContain(">Desligar</button>");
   expect(h).not.toContain(">Ligar</button>");
+});
+
+it("M8.3c: o texto de abertura sem \"por enquanto nada é escrito\", o último 403, os escopos guardados, o motivo da parada e os contadores com link", async () => {
+  m.reservasBeds24.mockResolvedValue({
+    ...PAINEL,
+    chave: { ligada: true, ambienteDeProducao: true, pronta: true },
+    credencial: { refreshToken: true, soTokenDireto: false, foraDaProducao: false },
+    ultimaRecusa: { resposta: "http_403", em: new Date("2026-10-16T14:00:00Z"), tipo: "ensaio", comCredencialAtual: true },
+    escopos: { situacao: "escopo_excessivo", excessivos: ["all:bookings"], faltando: [], ilegiveis: [], lidoEm: new Date("2026-10-16T14:30:00Z"), comCredencialAtual: true, valida: true },
+    motivoDeConfiguracao: { motivo: "escopo_excessivo", para: "tudo" },
+    contadores: { ...PAINEL.contadores, conflito: 1, conferida: 2 },
+  });
+  const h = renderToStaticMarkup(await Page());
+  expect(h).not.toContain("Por enquanto nada é escrito");
+  expect(h).toContain("Nas prévias e no computador, nada é escrito no Beds24.");
+  expect(h).toContain("Última recusa do Beds24 ao gravar reservas: 403 (sem permissão de escrever reservas), em 16/10/2026 às 11:00, no ensaio, com a credencial atual.");
+  expect(h).toContain("Escopos da credencial: com permissões demais (nada é escrito com esta credencial), lidos em 16/10/2026 às 11:30.");
+  expect(h).toContain("Envio de reservas parado: a credencial tem permissões além das do convite; nada é escrito.");
+  expect(h).toContain('<a href="/painel/reservas?beds24=atencao">Noites ocupadas por outra reserva: 1</a>');
+  expect(h).toContain("<li>Conferida: o Beds24 está igual ao SCL: 2</li>");
+});
+
+it("M8.3c: o ensaio — o formulário só com os imóveis do vínculo, desabilitado com o motivo, e cada fase com os botões dela", async () => {
+  const base = { operacaoId: "op-1", situacao: "feita" as const, imovel: "103", chegada: "2026-11-03", saida: "2026-11-04", beds24Id: "900001", comCredencialAtual: true, iniciadoEm: new Date("2026-10-16T14:00:00Z"), terminadoEm: null, erro: "", podeCancelar: true, podeConferir: false, conferirAPartirDe: null };
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, imoveis: [...PAINEL.imoveis, { id: "im2", codigo: "204", ativo: true, ligadoEm: null, ligadoPor: null, quartoDoVinculo: null }] });
+  let h = renderToStaticMarkup(await Page());
+  expect(h).toContain("Ensaio (o primeiro teste real)");
+  expect(h).toContain("O ensaio só roda no deploy de produção");
+  expect(h).toContain('<option value="im1">103</option>');
+  expect(h).not.toContain('<option value="im2">204</option>');
+  expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Criar o ensaio<\/button>/);
+
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, semEnsaio: "em_curso", ensaioAtual: { ...base, fase: "criado" } });
+  h = renderToStaticMarkup(await Page());
+  expect(h).toContain("<strong>Ensaio criado</strong> (imóvel 103, de 03/11/2026 a 04/11/2026, reserva de teste 900001 no Beds24): confira no Beds24 e nas OTAs que as datas fecharam");
+  expect(h).toContain(">Cancelar o ensaio</button>");
+  expect(h).not.toContain(">Conferir o ensaio</button>");
+  expect(h).toContain("Um ensaio por vez");
+
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, semEnsaio: "em_curso", ensaioAtual: { ...base, fase: "nao_resolvido", situacao: "incerta", beds24Id: null, podeCancelar: false, conferirAPartirDe: new Date("2026-10-16T14:05:00Z") } });
+  h = renderToStaticMarkup(await Page());
+  expect(h).toContain("Ensaio criado e não cancelado: mude para Cancelado no Beds24 (não apague)");
+  expect(h).toContain("Conferir o ensaio fica disponível a partir de 16/10/2026 às 11:05");
+  expect(h).not.toContain(">Cancelar o ensaio</button>");
+
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, ensaioAtual: { ...base, fase: "nao_resolvido", situacao: "divergente", podeConferir: true } });
+  h = renderToStaticMarkup(await Page());
+  expect(h).toContain(">Cancelar o ensaio</button>");
+  expect(h).toContain(">Conferir o ensaio</button>");
+  expect(h).not.toContain("feito com outra credencial");
+  // Com outra credencial, o sistema não cancela: a tela diz o caminho (Cancelado no Beds24 e Conferir o ensaio).
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, ensaioAtual: { ...base, fase: "criado", comCredencialAtual: false, podeConferir: true } });
+  h = renderToStaticMarkup(await Page());
+  expect(h).toContain("Este ensaio foi feito com outra credencial");
+  expect(h).toContain(">Conferir o ensaio</button>");
+
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, ensaioAtual: { ...base, fase: "terminado", situacao: "conferida", podeCancelar: false, terminadoEm: new Date("2026-10-16T14:10:00Z") } });
+  h = renderToStaticMarkup(await Page());
+  expect(h).toContain("Ensaio mais recente (imóvel 103, de 03/11/2026 a 04/11/2026, reserva de teste 900001 no Beds24, terminado em 16/10/2026 às 11:10): conferido e cancelado.");
+  m.reservasBeds24.mockResolvedValue({ ...PAINEL, ensaioAtual: { ...base, fase: "terminado", situacao: "conflito", beds24Id: null, podeCancelar: false, erro: "As noites do ensaio não estão livres no Beds24 (outra reserva, um bloqueio ou sem unidade livre): nada foi enviado. Escolha outras datas.", terminadoEm: new Date("2026-10-16T14:10:00Z") } });
+  h = renderToStaticMarkup(await Page());
+  expect(h).toContain("terminado em 16/10/2026 às 11:10): não concluído. As noites do ensaio não estão livres no Beds24");
 });

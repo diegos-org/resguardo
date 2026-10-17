@@ -4,23 +4,26 @@
  * - `fichaReservaNoBeds24`: o bloco da ficha (situação e motivo, id no Beds24, quarto, última conferência e leitura,
  *   histórico curto das operações), o "desligada", calculado e nunca gravado (chave, pausa, imóvel ou nenhuma linha), e as
  *   tarefas das OTAs desta reserva (M8.3b), da mesma função do Início (`tarefasDasOtas`).
- * - `painelReservasBeds24`: a seção de Integrações (chave e ambiente, credencial, prontidão sem rede, pausa geral,
- *   imóveis ligados e contadores por situação).
+ * - `painelReservasBeds24`: a seção de Integrações (chave e ambiente, credencial com o último 403 ou 401 de reservas,
+ *   prontidão sem rede com os escopos guardados, o motivo que para a escrita, pausa geral, imóveis ligados, o ensaio e os
+ *   contadores por situação). M8.3c: a marca ilegível sai da mesma regra do trabalhador (`existeMarcaIlegivelQueConta`).
  * - `conferirEscoposReservasBeds24`: os escopos da credencial (GET /authentication/details), lidos só no deploy de
- *   produção com a escrita pronta; nas prévias, no computador e nos testes, diz que não leu e nada sai.
- * Nada aqui escreve, no banco ou no Beds24.
+ *   produção com a escrita pronta, da credencial da organização; nas prévias, no computador e nos testes, diz que não leu e
+ *   nada sai. M8.3c: a leitura fica guardada (`gravarEscoposLidos`, a mesma da rotina).
+ * Nada aqui escreve no Beds24; no banco, só a leitura dos escopos.
  */
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { quartoDoVinculo } from "@/calendario/envio";
 import { beds24ReservasOperacoes, beds24ReservasSite, cotacoes, imoveis, reservas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { lerConfigBeds24, listarMapeamentosBeds24 } from "./configuracao";
+import { lerConfigBeds24, listarMapeamentosBeds24, organizacaoBeds24 } from "./configuracao";
 import { ambienteDeEscritaDeReservas, credencialDeEscritaForaDaProducao, escritaReservasBeds24Ligada, escritaReservasBeds24Pronta, impressaoCredencialBeds24, leitorDeCredencialDoAmbiente, simulacaoReservasBeds24Permitida } from "./http";
 import { ensaioValeParaCredencial, lerConfigReservasBeds24, ligacaoDoImovel, type MotivoDesligadaBeds24, motivosDesligada } from "./reservas-site-config";
+import { type EnsaioNoPainel, ensaioNoPainel } from "./reservas-site-ensaio";
 import { type LinhaAtencaoOta, type TarefaOta, tarefasDasOtas } from "./reservas-site-tarefas";
 import {
-  avaliarEscoposBeds24,
+  type EscoposLidosBeds24,
   type LidoBeds24,
   type ModoOperacaoBeds24,
   type MotivoAcompanhamentoBeds24,
@@ -31,6 +34,10 @@ import {
   type SituacaoOperacaoBeds24,
   type TipoOperacaoBeds24,
 } from "./reservas-site-regras";
+import {
+  type ConfiguracaoQueParaAsReservas, existeMarcaIlegivelQueConta, gravarEscoposLidos, leituraDosEscoposValida, lerEstadoRotina, motivoDeConfiguracaoDasReservas, ultimaRecusaDeReservas,
+  type UltimaRecusaDeReservas,
+} from "./reservas-site-rotina";
 import { ErroBeds24, type LeitorCredencialBeds24 } from "./tipos";
 
 export type OperacaoNaFicha = {
@@ -128,6 +135,22 @@ export type MotivoSemLigarBeds24 = "sem_credencial" | "sem_ensaio";
  */
 export type ImovelNasReservasBeds24 = { id: string; codigo: string; ativo: boolean; ligadoEm: string | null; ligadoPor: string | null; quartoDoVinculo: string | null };
 
+/**
+ * Por que "Criar o ensaio" não vale agora (o servidor recusa do mesmo jeito, `criarEnsaioReservasBeds24`, e confere ainda os
+ * escopos, o quarto e as noites na hora): fora do deploy de produção, a escrita de reservas não pronta (a chave ou o refresh
+ * token), a pausa, um ensaio em curso ou não resolvido, ou nenhum imóvel ativo com o vínculo único.
+ */
+export type MotivoSemEnsaioBeds24 = "fora_da_producao" | "nao_pronta" | "pausa" | "em_curso" | "sem_imovel";
+
+/** A última leitura dos escopos guardada (pela rotina, pelo botão ou pelo ensaio): a avaliação, quando e se vale agora. */
+export type EscoposGuardadosBeds24 = EscoposLidosBeds24 & {
+  lidoEm: Date | null;
+  /** Lida com a credencial de agora (com outra, a credencial foi trocada depois). */
+  comCredencialAtual: boolean;
+  /** Vale para escrever: a credencial de agora e menos de 26 h (`leituraDosEscoposValida`). */
+  valida: boolean;
+};
+
 export type PainelReservasBeds24 = {
   chave: {
     /** `BEDS24_ESCRITA_RESERVAS=ligada`. */
@@ -154,10 +177,20 @@ export type PainelReservasBeds24 = {
   semLigar: MotivoSemLigarBeds24 | null;
   imoveis: ImovelNasReservasBeds24[];
   contadores: Record<SituacaoAcompanhamentoBeds24, number>;
+  /** M8.3c: o último 403 ou 401 do POST de reservas, também do ensaio (`ultimaRecusaDeReservas`); null = nenhum. */
+  ultimaRecusa: UltimaRecusaDeReservas | null;
+  /** M8.3c: os escopos guardados; null = nunca lidos. */
+  escopos: EscoposGuardadosBeds24 | null;
+  /** M8.3c: com a escrita pronta, o que para a escrita por configuração (`motivoDeConfiguracaoDasReservas`); null = nada para. */
+  motivoDeConfiguracao: ConfiguracaoQueParaAsReservas | null;
+  /** M8.3c: o ensaio em curso ou não resolvido, ou o último, com o resultado (`ensaioNoPainel`); null = nenhum ainda. */
+  ensaioAtual: EnsaioNoPainel | null;
+  /** M8.3c: null = "Criar o ensaio" vale agora (o servidor confere de novo). */
+  semEnsaio: MotivoSemEnsaioBeds24 | null;
 };
 
 /** A seção "Reservas do site no Beds24" em Integrações; nenhuma leitura do Beds24 (os escopos vêm por um botão). */
-export async function painelReservasBeds24(db: Db, org: string, env: NodeJS.ProcessEnv): Promise<PainelReservasBeds24> {
+export async function painelReservasBeds24(db: Db, org: string, env: NodeJS.ProcessEnv, agora: Date = new Date()): Promise<PainelReservasBeds24> {
   const config = await lerConfigReservasBeds24(db, org);
   const importacao = await lerConfigBeds24(db, org);
   const doCadastro = await db.select({ id: imoveis.id, codigo: imoveis.codigo, ativo: imoveis.ativo }).from(imoveis).where(eq(imoveis.organizacaoId, org)).orderBy(asc(imoveis.codigo));
@@ -167,12 +200,29 @@ export async function painelReservasBeds24(db: Db, org: string, env: NodeJS.Proc
   const ids = [...new Set([config.pausado?.por, ...config.imoveis.map((i) => i.ligadoPor)].filter((x): x is string => Boolean(x)))];
   const nomes = new Map(ids.length ? (await db.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios).where(and(eq(usuarios.organizacaoId, org), inArray(usuarios.id, ids)))).map((u) => [u.id, u.nome]) : []);
   const porSituacao = await db.select({ situacao: beds24ReservasSite.situacao, n: count() }).from(beds24ReservasSite).where(eq(beds24ReservasSite.organizacaoId, org)).groupBy(beds24ReservasSite.situacao);
-  const [ilegivel] = await db.select({ id: beds24ReservasSite.id }).from(beds24ReservasSite).where(and(eq(beds24ReservasSite.organizacaoId, org), eq(beds24ReservasSite.motivo, "marca_ilegivel"))).limit(1);
+  // M8.3c (desenho 4.4): a mesma regra que para as criações — fora de `manual` e `encerrada`, de estadia que não terminou.
+  // Antes, qualquer linha com o motivo, de qualquer situação e data, contava.
+  const ilegivel = await existeMarcaIlegivelQueConta(db, org, agora);
   const credencial = impressaoCredencialBeds24(env);
   const ensaioVale = ensaioValeParaCredencial(config, credencial);
   const contadores = Object.fromEntries(SITUACOES_ACOMPANHAMENTO_BEDS24.map((s) => [s, 0])) as Record<SituacaoAcompanhamentoBeds24, number>;
   for (const l of porSituacao) if (l.situacao in contadores) contadores[l.situacao] = Number(l.n);
   const refreshToken = Boolean(env.BEDS24_REFRESH_TOKEN?.trim());
+  const rotina = await lerEstadoRotina(db, org);
+  const pronta = escritaReservasBeds24Pronta(env);
+  const ensaioAtual = await ensaioNoPainel(db, org, agora, env);
+  const paraEnsaio = locais.some((i) => i.ativo && quartoDoVinculo(mapas, i.id) !== null);
+  const semEnsaio: MotivoSemEnsaioBeds24 | null = !ambienteDeEscritaDeReservas(env)
+    ? "fora_da_producao"
+    : !pronta
+      ? "nao_pronta"
+      : config.pausado
+        ? "pausa"
+        : ensaioAtual && ensaioAtual.fase !== "terminado" && ensaioAtual.fase !== "parado_antes_do_envio"
+          ? "em_curso"
+          : !paraEnsaio
+            ? "sem_imovel"
+            : null;
   return {
     chave: { ligada: escritaReservasBeds24Ligada(env), ambienteDeProducao: ambienteDeEscritaDeReservas(env), pronta: escritaReservasBeds24Pronta(env) },
     credencial: { refreshToken, soTokenDireto: !refreshToken && Boolean(env.BEDS24_API_KEY?.trim()), foraDaProducao: credencialDeEscritaForaDaProducao(env) },
@@ -186,6 +236,14 @@ export async function painelReservasBeds24(db: Db, org: string, env: NodeJS.Proc
       return { id: i.id, codigo: i.codigo, ativo: i.ativo, ligadoEm: l?.ligadoEm ?? null, ligadoPor: l?.ligadoPor ? (nomes.get(l.ligadoPor) ?? null) : null, quartoDoVinculo: quartoDoVinculo(mapas, i.id) };
     }),
     contadores,
+    ultimaRecusa: await ultimaRecusaDeReservas(db, org, env),
+    escopos: rotina.escopos
+      ? { ...rotina.escopos, lidoEm: rotina.escoposLidosEm, comCredencialAtual: Boolean(credencial) && rotina.escoposCredencial === credencial, valida: leituraDosEscoposValida(rotina, credencial, agora) }
+      : null,
+    // A mesma função do trabalhador, do Início e do Sistema, com o que já foi lido aqui (sem ler o Beds24).
+    motivoDeConfiguracao: pronta ? motivoDeConfiguracaoDasReservas({ refreshToken, credencial, rotina, leituraFalhou: false, agora, ensaioValido: ensaioVale, marcaIlegivel: ilegivel }) : null,
+    ensaioAtual,
+    semEnsaio,
   };
 }
 
@@ -195,21 +253,32 @@ export type EscoposDaCredencial =
   | { lidos: false; motivo: "fora_da_producao" | "chave_desligada" | "sem_refresh_token" }
   | { lidos: false; motivo: "falhou"; erro: string };
 
+export const ERRO_ESCOPOS_OUTRA_ORGANIZACAO = "Esta credencial do Beds24 não está vinculada à sua organização: nada foi lido.";
+
 /**
  * Prontidão (desenho 7): lê os escopos da credencial por GET /authentication/details, só leitura, e só onde a escrita de
- * reservas está pronta (o deploy de produção, a chave e o refresh token). `leitorDe` é o leitor real por padrão, que
- * devolve null fora dessa condição; os testes passam a versão falsa. Nada é gravado: a tela mostra o que leu agora.
+ * reservas está pronta (o deploy de produção, a chave e o refresh token) e com a credencial da organização. `leitorDe` é o
+ * leitor real por padrão, que devolve null fora dessa condição; os testes passam a versão falsa. M8.3c (plano 1.9): a leitura
+ * fica guardada (`gravarEscoposLidos`, a mesma da rotina), para a escrita valer por 26 h sem ler de novo; antes, nada era
+ * gravado.
  */
-export async function conferirEscoposReservasBeds24(env: NodeJS.ProcessEnv, leitorDe: (env: NodeJS.ProcessEnv) => LeitorCredencialBeds24 | null = leitorDeCredencialDoAmbiente): Promise<EscoposDaCredencial> {
+export async function conferirEscoposReservasBeds24(
+  db: Db, org: string, env: NodeJS.ProcessEnv, leitorDe: (env: NodeJS.ProcessEnv) => LeitorCredencialBeds24 | null = leitorDeCredencialDoAmbiente, agora: Date = new Date(),
+): Promise<EscoposDaCredencial> {
   if (!ambienteDeEscritaDeReservas(env)) return { lidos: false, motivo: "fora_da_producao" };
   if (!escritaReservasBeds24Ligada(env)) return { lidos: false, motivo: "chave_desligada" };
   if (!env.BEDS24_REFRESH_TOKEN?.trim()) return { lidos: false, motivo: "sem_refresh_token" };
+  // A credencial é global e atende uma organização só: a leitura dela nunca fica guardada em outra.
+  const daOrganizacao = await organizacaoBeds24(db, env).then((id) => id === org, () => false);
+  if (!daOrganizacao) return { lidos: false, motivo: "falhou", erro: ERRO_ESCOPOS_OUTRA_ORGANIZACAO };
   const leitor = leitorDe(env);
   if (!leitor) return { lidos: false, motivo: "fora_da_producao" };
+  let c: Awaited<ReturnType<LeitorCredencialBeds24["credencial"]>>;
   try {
-    const c = await leitor.credencial();
-    return { lidos: true, avaliacao: avaliarEscoposBeds24(c), escopos: c.escopos ?? [], ilegiveis: c.ilegiveis, lidoEm: c.lidoEm };
+    c = await leitor.credencial();
   } catch (e) {
     return { lidos: false, motivo: "falhou", erro: e instanceof ErroBeds24 ? e.message : "Não foi possível ler a credencial no Beds24." };
   }
+  const avaliacao = await gravarEscoposLidos(db, org, impressaoCredencialBeds24(env), c, agora);
+  return { lidos: true, avaliacao: { situacao: avaliacao.situacao, excessivos: avaliacao.excessivos, faltando: avaliacao.faltando }, escopos: c.escopos ?? [], ilegiveis: c.ilegiveis, lidoEm: c.lidoEm };
 }

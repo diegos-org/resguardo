@@ -5,7 +5,8 @@
  * ela (seção 2.1), o `esperado` com a assinatura, as chaves de idempotência (3.3) e a leitura dos escopos da credencial
  * (prontidão, seção 7). M8.3c (a escrita, atrás de `escritaReservasBeds24Pronta`): o `detalhe` de forma fechada das
  * operações, as regras de adoção com a marca do info item e a origem (3.5), a resposta da fila à régua (3.3), as saídas da
- * incerteza (3.8), as janelas e os atrasos da rotina (9) e os casos do e-mail à equipe (6.5). Nada disto chama a rede:
+ * incerteza (3.8), as janelas e os atrasos da rotina (9), os casos do e-mail à equipe (6.5) e o ensaio não resolvido (8 e
+ * 5.2). Nada disto chama a rede:
  * quem escreve é o trabalhador (`reservas-site-envio.ts`), que decide por aqui.
  *
  * O SCL é o dono da reserva (valor, financeiro, hóspede, situação); o Beds24 só espelha o quarto, as datas, o número de
@@ -738,6 +739,28 @@ export function casoDeEmailBeds24(situacao: SituacaoAcompanhamentoBeds24, motivo
   if ((motivo === "sem_disponibilidade" || motivo === "recusada_pelo_beds24" || motivo === "sem_permissao") && operacao === "recusada") return "recusada";
   return null;
 }
+
+// ---------------------------------------------------------------- o ensaio (desenho 8, 5.2 e D7)
+
+/**
+ * As situações do ensaio FECHADO (M8.3c, plano 1.12), sem nada dele confirmado no Beds24: `conferida` (criado, conferido,
+ * cancelado e relido como cancelado) e as que concluem sem reserva de teste viva — recusado antes do POST (`falhou`,
+ * `conflito`), o POST não processado (o 401 e o 403 em `recusada`; o 429 sem a lista e o token que caiu em `falhou`), "Conferir
+ * o ensaio" que leu e não achou nada (`falhou`) e o cancelado sem a conferência completa (`falhou`, com `depois` cancelado).
+ * `superada` não é usada no ensaio, mas também não deixa nada. Antes deste registro, a definição do plano era só "sem `depois`
+ * cancelado": o ensaio sem id que "Conferir o ensaio" fechou como "nada criado" ficaria não resolvido para sempre (e, com ele,
+ * a guarda de um ensaio por vez impediria o "Ligar").
+ */
+export const SITUACOES_ENSAIO_FECHADO = ["conferida", "falhou", "recusada", "conflito", "superada"] as const satisfies readonly SituacaoOperacaoBeds24[];
+
+/**
+ * O ensaio NÃO RESOLVIDO (plano 1.12), uma regra para a guarda de um ensaio por vez, o desvio "e" da importação (desenho 5.2;
+ * a mesma condição no banco, `ensaioNaoResolvidoNoBanco`) e Integrações: teve POST (`enviado_em`), não está fechado e o
+ * registro não foi relido como cancelado (`depois`). Entra também a `feita` (entre "Criar o ensaio" e "Cancelar o ensaio": a
+ * reserva de teste está confirmada no Beds24, fechando as OTAs), a `incerta`, a `divergente` e a `enviando`.
+ */
+export const ensaioNaoResolvidoBeds24 = (o: { enviadoEm: Date | null; situacao: SituacaoOperacaoBeds24; depois: LidoBeds24 | null }): boolean =>
+  o.enviadoEm !== null && !(SITUACOES_ENSAIO_FECHADO as readonly string[]).includes(o.situacao) && o.depois?.situacao !== "cancelada";
 
 // ---------------------------------------------------------------- escopos da credencial (prontidão, desenho 7)
 

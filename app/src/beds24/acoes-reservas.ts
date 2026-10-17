@@ -1,8 +1,11 @@
 "use server";
 
 /**
- * Reserva paga do site no Beds24 (M8.3a e M8.3b) — ações do painel. Nenhuma escreve no Beds24 e nenhuma chama a rede, salvo
- * a leitura dos escopos no deploy de produção com a escrita pronta (`conferirEscoposReservasBeds24`).
+ * Reserva paga do site no Beds24 (M8.3a, M8.3b e M8.3c) — ações do painel. Só o ensaio escreve no Beds24 ("Criar o ensaio" e
+ * "Cancelar o ensaio", M8.3c), e só no deploy de produção com a escrita de reservas pronta; a rede, fora dele, só a leitura
+ * dos escopos e "Conferir o ensaio", nas mesmas condições. Estas ações (e a rota da rotina) são o único lugar que chama as
+ * fábricas do cliente das reservas (`clienteDeReservasDoAmbiente`, `leitorDeReservasDoAmbiente`): o domínio recebe o cliente
+ * injetado, e fora da produção a fábrica devolve null.
  *
  * Sempre nesta ordem: sessão (a empresa vem só dela) → permissão (deny-by-default) → validação → domínio, que confere a
  * permissão de novo.
@@ -11,8 +14,8 @@
  *   a marca manual da reserva paga sem criação pelo sistema e da confirmada à mão sem pagamento) e "Datas reabertas nas
  *   OTAs" (a confirmada à mão, marcada e depois cancelada pelo "Cancelar reserva" comum). Recusa volta à ficha com `?erro=`.
  * - Integrações (`configuracao:editar`, com `BotaoConfirmar` na tela e auditoria no domínio): pausar e retomar, ligar e
- *   desligar um imóvel (D6; ligar exige um ensaio conferido com a credencial atual, e o ensaio é do M8.3c) e conferir os
- *   escopos da credencial (só leitura).
+ *   desligar um imóvel (D6; ligar exige um ensaio conferido com a credencial atual), conferir os escopos da credencial (só
+ *   leitura no Beds24; a leitura fica guardada) e o ensaio (M8.3c, D7): criar, cancelar e conferir.
  */
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -20,6 +23,11 @@ import { exigir, podeFazer, type Sessao } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
 import { getDb } from "@/db/client";
 import { uuidValido } from "@/lib/ids";
+import { avisarErroDoServidor } from "@/observabilidade/aviso-do-servidor";
+import { clienteDeReservasDoAmbiente, leitorDeReservasDoAmbiente } from "./http";
+import {
+  cancelarEnsaioReservasBeds24, conferirEnsaioReservasBeds24, criarEnsaioReservasBeds24, type DesfechoDoEnsaio, ERRO_ENSAIO_INTERROMPIDO, relogioDoEnsaio, type ResultadoDoEnsaio,
+} from "./reservas-site-ensaio";
 import { conferirEscoposReservasBeds24, type EscoposDaCredencial } from "./reservas-site-painel";
 import { desligarImovelReservasBeds24, ligarImovelReservasBeds24, pausarReservasBeds24, type ResultadoConfigReservasBeds24, retomarReservasBeds24 } from "./reservas-site-config";
 import { chaveDoResultadoDaSimulacao, simularReservaNoBeds24 } from "./reservas-site-simulacao";
@@ -118,11 +126,79 @@ export async function desligarImovelReservasBeds24Acao(_anterior: EstadoReservas
   return resposta(await desligarImovelReservasBeds24(getDb(), sessao, imovelId), "Imóvel desligado: nenhuma reserva nova dele vai ao Beds24; as já criadas continuam sendo atualizadas e canceladas.");
 }
 
-/** Prontidão: os escopos da credencial, só leitura (nas prévias e no computador, a resposta é que não lê). */
+/** Prontidão: os escopos da credencial, só leitura no Beds24 e guardados (nas prévias e no computador, a resposta é que não lê). */
 export async function conferirEscoposReservasBeds24Acao(_anterior: EstadoEscoposReservasBeds24, _form: FormData): Promise<EstadoEscoposReservasBeds24> {
   void _anterior;
   void _form;
   const sessao = await sessaoDaConfiguracao();
   if (!sessao) return { mensagem: SEM_PERMISSAO.mensagem };
-  return { resultado: await conferirEscoposReservasBeds24(process.env) };
+  const r = await conferirEscoposReservasBeds24(getDb(), sessao.organizacaoId, process.env);
+  revalidar();
+  return { resultado: r };
+}
+
+// ---------------------------------------------------------------- o ensaio (M8.3c, desenho 8 e D7)
+
+/** O que cada botão do ensaio deixou, para a tela (o domínio devolve o código). `ok` = resolveu; senão, pede a ação ao lado. */
+const TEXTOS_DO_ENSAIO: Record<DesfechoDoEnsaio, { ok: boolean; texto: string }> = {
+  criado: { ok: true, texto: "Ensaio criado no Beds24. Confira no Beds24 e nas OTAs que as datas fecharam (cerca de 1 minuto); depois, Cancelar o ensaio." },
+  sem_confirmacao: { ok: false, texto: "O Beds24 não confirmou: a reserva de teste pode estar lá. Espere 5 minutos e use Conferir o ensaio." },
+  marca_nao_voltou: { ok: false, texto: "A reserva de teste foi criada, mas não voltou com a marca do ensaio: o ensaio não vale. Use Cancelar o ensaio." },
+  cancelado: { ok: true, texto: "Ensaio conferido e cancelado: agora dá para ligar um imóvel. Confira nas OTAs que as datas reabriram." },
+  cancelado_sem_conferencia: { ok: true, texto: "Ensaio cancelado no Beds24, mas sem a conferência completa: faça um ensaio novo antes de ligar um imóvel." },
+  nada_criado: { ok: true, texto: "Conferido: nada do ensaio ficou no Beds24. Pode fazer um ensaio novo." },
+  achado_vivo: { ok: false, texto: "A reserva de teste está no Beds24 e não foi cancelada: use Cancelar o ensaio (ou mude para Cancelado no Beds24, sem apagar, e confira de novo)." },
+  encerrado_sem_envio: { ok: true, texto: "O ensaio tinha parado antes do envio: nada foi enviado ao Beds24, e ele foi encerrado." },
+};
+
+function respostaDoEnsaio(r: ResultadoDoEnsaio): EstadoReservasBeds24 {
+  revalidar();
+  if (!r.ok) return { ok: false, mensagem: r.erro };
+  const t = TEXTOS_DO_ENSAIO[r.desfecho];
+  return { ok: t.ok, mensagem: t.texto };
+}
+
+/**
+ * Um botão do ensaio com o cliente do ambiente (null fora do deploy de produção com a escrita pronta: o domínio recusa sem
+ * rede), com o prazo da fase 2 ligado ao `fetch`. A falha inesperada no meio vira o texto fixo (o ensaio aparece em
+ * Integrações, e "Conferir o ensaio" resolve) e o aviso ao Sentry, sem a mensagem original.
+ */
+async function noEnsaio(f: (o: { relogio: ReturnType<typeof relogioDoEnsaio>; prazo: { prazo: () => AbortSignal | null }; prazoDaOperacao: (s: AbortSignal | null) => void }) => Promise<ResultadoDoEnsaio>): Promise<EstadoReservasBeds24> {
+  let sinal: AbortSignal | null = null;
+  try {
+    return respostaDoEnsaio(await f({ relogio: relogioDoEnsaio(), prazo: { prazo: () => sinal }, prazoDaOperacao: (s) => { sinal = s; } }));
+  } catch (e) {
+    await avisarErroDoServidor(e, "ensaio-beds24");
+    revalidar();
+    return { ok: false, mensagem: ERRO_ENSAIO_INTERROMPIDO };
+  }
+}
+
+/** "Criar o ensaio": o imóvel e as datas do formulário (a empresa vem só da sessão); o domínio confere tudo de novo. */
+export async function criarEnsaioReservasBeds24Acao(_anterior: EstadoReservasBeds24, form: FormData): Promise<EstadoReservasBeds24> {
+  void _anterior;
+  const sessao = await sessaoDaConfiguracao();
+  if (!sessao) return SEM_PERMISSAO;
+  const entrada = { imovelId: texto(form, "imovelId"), chegada: texto(form, "chegada"), saida: texto(form, "saida") };
+  return noEnsaio((o) => criarEnsaioReservasBeds24(getDb(), sessao, entrada, process.env, { cliente: clienteDeReservasDoAmbiente(process.env, o.prazo), relogio: o.relogio, prazoDaOperacao: o.prazoDaOperacao }));
+}
+
+/** "Cancelar o ensaio": muda a reserva de teste para Cancelado no Beds24 (nunca apaga) e relê. */
+export async function cancelarEnsaioReservasBeds24Acao(_anterior: EstadoReservasBeds24, form: FormData): Promise<EstadoReservasBeds24> {
+  void _anterior;
+  const sessao = await sessaoDaConfiguracao();
+  if (!sessao) return SEM_PERMISSAO;
+  const operacaoId = texto(form, "operacaoId");
+  return noEnsaio((o) => cancelarEnsaioReservasBeds24(getDb(), sessao, operacaoId, process.env, { cliente: clienteDeReservasDoAmbiente(process.env, o.prazo), relogio: o.relogio, prazoDaOperacao: o.prazoDaOperacao }));
+}
+
+/** "Conferir o ensaio": só lê (com a chave desligada, pelo leitor de reservas), e só no deploy de produção. */
+export async function conferirEnsaioReservasBeds24Acao(_anterior: EstadoReservasBeds24, form: FormData): Promise<EstadoReservasBeds24> {
+  void _anterior;
+  const sessao = await sessaoDaConfiguracao();
+  if (!sessao) return SEM_PERMISSAO;
+  const operacaoId = texto(form, "operacaoId");
+  return noEnsaio((o) =>
+    conferirEnsaioReservasBeds24(getDb(), sessao, operacaoId, process.env, { leitor: clienteDeReservasDoAmbiente(process.env, o.prazo) ?? leitorDeReservasDoAmbiente(process.env, o.prazo), relogio: o.relogio, prazoDaOperacao: o.prazoDaOperacao }),
+  );
 }

@@ -1,8 +1,9 @@
 /**
  * Ações do painel das reservas do site no Beds24 (M8.3a, desenho 8; seção 10, testes 12 e 16): deny-by-default. "Simular" e
- * as marcas manuais das OTAs (M8.3b) pedem `reserva:editar`; pausar, retomar, ligar e desligar um imóvel e conferir os escopos
- * pedem `configuracao:editar` (hoje, só o admin). A empresa vem só da sessão. Domínio simulado: aqui só a ordem sessão →
- * permissão → validação → domínio.
+ * as marcas manuais das OTAs (M8.3b) pedem `reserva:editar`; pausar, retomar, ligar e desligar um imóvel, conferir os escopos
+ * e o ensaio (M8.3c: criar, cancelar e conferir; plano, teste 38) pedem `configuracao:editar` (hoje, só o admin). A empresa vem
+ * só da sessão. Domínio simulado: aqui só a ordem sessão → permissão → validação → domínio, e o cliente das fábricas do
+ * ambiente (simuladas: nenhum cliente de verdade nasce aqui) entregue ao domínio.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AcessoNegado } from "@/acesso/politica";
@@ -21,6 +22,12 @@ const m = vi.hoisted(() => ({
   escopos: vi.fn(),
   fechadas: vi.fn(),
   reabertas: vi.fn(),
+  criarEnsaio: vi.fn(),
+  cancelarEnsaio: vi.fn(),
+  conferirEnsaio: vi.fn(),
+  cliente: vi.fn(),
+  leitor: vi.fn(),
+  avisar: vi.fn(),
 }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({ banco: true }) }));
@@ -36,8 +43,19 @@ vi.mock("./reservas-site-config", async (original) => ({
 }));
 vi.mock("./reservas-site-painel", () => ({ conferirEscoposReservasBeds24: m.escopos }));
 vi.mock("./reservas-site-tarefas", async (original) => ({ ...(await original<typeof import("./reservas-site-tarefas")>()), marcarDatasFechadasNasOtas: m.fechadas, marcarDatasReabertasNasOtas: m.reabertas }));
+vi.mock("./reservas-site-ensaio", async (original) => ({
+  ...(await original<typeof import("./reservas-site-ensaio")>()),
+  criarEnsaioReservasBeds24: m.criarEnsaio,
+  cancelarEnsaioReservasBeds24: m.cancelarEnsaio,
+  conferirEnsaioReservasBeds24: m.conferirEnsaio,
+}));
+vi.mock("@/observabilidade/aviso-do-servidor", () => ({ avisarErroDoServidor: m.avisar }));
+vi.mock("./http", async (original) => ({ ...(await original<typeof import("./http")>()), clienteDeReservasDoAmbiente: m.cliente, leitorDeReservasDoAmbiente: m.leitor }));
 import {
+  cancelarEnsaioReservasBeds24Acao,
+  conferirEnsaioReservasBeds24Acao,
   conferirEscoposReservasBeds24Acao,
+  criarEnsaioReservasBeds24Acao,
   desligarImovelReservasBeds24Acao,
   ligarImovelReservasBeds24Acao,
   marcarDatasFechadasNasOtasAcao,
@@ -47,6 +65,7 @@ import {
   simularReservaBeds24Acao,
 } from "./acoes-reservas";
 import { ERRO_LIGAR_SEM_ENSAIO } from "./reservas-site-config";
+import { ERRO_ENSAIO_INTERROMPIDO, ERRO_ENSAIO_NAO_RESOLVIDO } from "./reservas-site-ensaio";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const IMOVEL = "22222222-2222-4222-8222-222222222222";
@@ -67,6 +86,11 @@ beforeEach(() => {
   m.escopos.mockResolvedValue({ lidos: false, motivo: "fora_da_producao" });
   m.fechadas.mockResolvedValue({ ok: true });
   m.reabertas.mockResolvedValue({ ok: true });
+  m.criarEnsaio.mockResolvedValue({ ok: true, desfecho: "criado", operacaoId: ID });
+  m.cancelarEnsaio.mockResolvedValue({ ok: true, desfecho: "cancelado", operacaoId: ID });
+  m.conferirEnsaio.mockResolvedValue({ ok: true, desfecho: "nada_criado", operacaoId: ID });
+  m.cliente.mockReturnValue(null);
+  m.leitor.mockReturnValue(null);
 });
 
 describe("Simular (reserva:editar)", () => {
@@ -167,6 +191,53 @@ describe("Integrações (configuracao:editar): pausa, imóveis ligados e escopos
 
   it("escopos: o resultado do domínio, lido com o ambiente do processo", async () => {
     expect(await conferirEscoposReservasBeds24Acao({}, form({}))).toEqual({ resultado: { lidos: false, motivo: "fora_da_producao" } });
-    expect(m.escopos).toHaveBeenCalledWith(process.env);
+    // Muda junto (M8.3c, bloco F): a leitura passa a ser guardada, com o banco e a empresa da sessão.
+    expect(m.escopos).toHaveBeenCalledWith({ banco: true }, "org", process.env);
+  });
+});
+
+describe("o ensaio em Integrações (M8.3c, configuracao:editar; plano, teste 38)", () => {
+  const acoes = [
+    ["criar", () => criarEnsaioReservasBeds24Acao({}, form({ imovelId: IMOVEL, chegada: "2026-11-03", saida: "2026-11-04" })), m.criarEnsaio],
+    ["cancelar", () => cancelarEnsaioReservasBeds24Acao({}, form({ operacaoId: ID })), m.cancelarEnsaio],
+    ["conferir", () => conferirEnsaioReservasBeds24Acao({}, form({ operacaoId: ID })), m.conferirEnsaio],
+  ] as const;
+
+  it.each(["operacao", "proprietario", "limpeza"])("%s é recusado no servidor: nenhum domínio, nenhuma fábrica do cliente", async (papel) => {
+    sessao(papel);
+    for (const [, acao, dominio] of acoes) {
+      expect(await acao()).toEqual({ ok: false, mensagem: expect.stringContaining("Somente quem edita as configurações") });
+      expect(dominio).not.toHaveBeenCalled();
+    }
+    expect(m.cliente).not.toHaveBeenCalled();
+    expect(m.leitor).not.toHaveBeenCalled();
+  });
+
+  it("o admin: a empresa vem da sessão, o cliente da fábrica do ambiente vai ao domínio (null fora da produção) e o texto do desfecho volta", async () => {
+    const cliente = { cliente: true };
+    m.cliente.mockReturnValue(cliente);
+    expect(await acoes[0][1]()).toEqual({ ok: true, mensagem: expect.stringContaining("Ensaio criado no Beds24") });
+    expect(m.criarEnsaio).toHaveBeenCalledWith({ banco: true }, expect.objectContaining({ organizacaoId: "org", papel: "admin" }), { imovelId: IMOVEL, chegada: "2026-11-03", saida: "2026-11-04" }, process.env, expect.objectContaining({ cliente, relogio: expect.anything() }));
+    expect(m.cliente).toHaveBeenCalledWith(process.env, expect.objectContaining({ prazo: expect.any(Function) }));
+    expect(await acoes[1][1]()).toEqual({ ok: true, mensagem: expect.stringContaining("agora dá para ligar um imóvel") });
+    expect(m.cancelarEnsaio).toHaveBeenCalledWith({ banco: true }, expect.objectContaining({ organizacaoId: "org" }), ID, process.env, expect.objectContaining({ cliente }));
+    // "Conferir o ensaio" só lê: com a chave desligada, o leitor de reservas do ambiente.
+    m.cliente.mockReturnValue(null);
+    const leitor = { leitor: true };
+    m.leitor.mockReturnValue(leitor);
+    expect(await acoes[2][1]()).toEqual({ ok: true, mensagem: expect.stringContaining("nada do ensaio ficou no Beds24") });
+    expect(m.conferirEnsaio).toHaveBeenCalledWith({ banco: true }, expect.objectContaining({ organizacaoId: "org" }), ID, process.env, expect.objectContaining({ leitor }));
+    expect(m.revalidar).toHaveBeenCalledWith("/painel", "layout");
+  });
+
+  it("a recusa do domínio, o desfecho que pede ação e a falha inesperada chegam à tela com o texto fixo", async () => {
+    m.criarEnsaio.mockResolvedValue({ ok: false, erro: ERRO_ENSAIO_NAO_RESOLVIDO });
+    expect(await acoes[0][1]()).toEqual({ ok: false, mensagem: ERRO_ENSAIO_NAO_RESOLVIDO });
+    m.conferirEnsaio.mockResolvedValue({ ok: true, desfecho: "achado_vivo", operacaoId: ID });
+    expect(await acoes[2][1]()).toEqual({ ok: false, mensagem: expect.stringContaining("use Cancelar o ensaio") });
+    const queda = new Error("detalhe interno que não vai para a tela");
+    m.cancelarEnsaio.mockRejectedValue(queda);
+    expect(await acoes[1][1]()).toEqual({ ok: false, mensagem: ERRO_ENSAIO_INTERROMPIDO });
+    expect(m.avisar).toHaveBeenCalledWith(queda, "ensaio-beds24");
   });
 });
