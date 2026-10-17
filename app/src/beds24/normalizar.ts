@@ -2,9 +2,16 @@
  * Normalização estrita das respostas do Beds24 → tipos internos. Qualquer coisa fora do
  * esperado vira divergência (nunca um dado "chutado"). Formato conferido contra a
  * documentação pública da API v2; confirmar com a conta real antes de sincronizar (M3.3).
+ * M8.3c: também o caminho de volta da escrita de reservas, num lugar só para o HTTP e o falso —
+ * o corpo de `POST /bookings` (`corpoDaGravacaoReserva`) e a classificação da resposta
+ * (`classificarGravacaoReserva`).
  */
+import { uuidValido } from "@/lib/ids";
 import { codigosDeReservaNoTexto, dataValida, ehCodigoDeReserva } from "@/reservas/regras";
-import { BLOQUEIOS_BEDS24, type CanalBeds24, type CredencialBeds24, type DiaCalendario, type Divergencia, type EstadoBeds24, type QuartoBeds24, type ReservaBeds24 } from "./tipos";
+import {
+  BLOQUEIOS_BEDS24, type CanalBeds24, type CredencialBeds24, type DiaCalendario, type Divergencia, ErroBeds24, type EstadoBeds24, type ItemGravacaoReserva,
+  type ObservadoNaGravacao, type QuartoBeds24, type RespostaBeds24, type RespostaGravacaoReserva, type ReservaBeds24, TEXTOS_DE_ERRO_BEDS24,
+} from "./tipos";
 
 type Obj = Record<string, unknown>;
 const ehObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -61,27 +68,54 @@ export const INFO_MARCA_SCL = "SCL";
 /** Código do info item do ensaio do SCL (M8.3): o texto é o id da operação do ensaio. */
 export const INFO_ENSAIO_SCL = "SCL-ENSAIO";
 
-/** Info items bem formados ({ code, text } em texto). Lista ausente ou torta conta como sem info items, nunca como divergência. */
+/**
+ * Info items bem formados ({ code, text } em texto). Lista ausente ou torta conta como sem info items, nunca como divergência.
+ * M8.3c (desenho 5.2): o info item `SCL` com o texto que não é texto (ausente, null, número) fica, com o texto vazio — a
+ * marca está lá e não dá para ler (`marcaAmbigua`); descartá-lo em silêncio faria valer o código do nome ou das notas.
+ */
 function infoItems(v: unknown): { code: string; text: string }[] {
   if (!Array.isArray(v)) return [];
-  return v.filter(ehObj).flatMap((i) => (typeof i.code === "string" && typeof i.text === "string" ? [{ code: i.code.trim().toUpperCase(), text: i.text.trim() }] : []));
+  return v.filter(ehObj).flatMap((i) => {
+    if (typeof i.code !== "string") return [];
+    const code = i.code.trim().toUpperCase();
+    if (typeof i.text === "string") return [{ code, text: i.text.trim() }];
+    return code === INFO_MARCA_SCL ? [{ code, text: "" }] : [];
+  });
 }
+
+type MarcaLida = Pick<ReservaBeds24, "referenciaScl" | "marcaFonte" | "marcaAmbigua">;
 
 /**
  * Marca do SCL num registro (M8.3, desenho 3.5): o info item `SCL` com um código válido; sem ele, como reforço, o código
- * solto no nome ou nas notas. Mais de um código diferente na mesma fonte = null, como sem marca: nunca escolhe um dos
- * códigos. Separar "ambígua" de "sem marca", para desviar o ambíguo com aviso, fica para o M8.3c (desenho 5.2).
+ * solto no nome ou nas notas. Mais de um código diferente na mesma fonte = sem referência: nunca escolhe um dos códigos.
+ * M8.3c (desenho 5.2): esse caso, e o info item `SCL` com um texto que não é um código válido (ou sem texto), ficam
+ * separados de "sem marca" como `marcaAmbigua`, para desviar com aviso. O info item vale antes do texto: com ele, o código
+ * no nome ou nas notas não conta.
  */
-function marcaDoScl(b: Obj, itens: { code: string; text: string }[]): string | null {
-  const unico = (xs: string[]) => {
-    const distintos = [...new Set(xs)];
-    return distintos.length === 1 ? distintos[0] : distintos.length > 1 ? null : undefined;
-  };
-  const doInfo = unico(itens.filter((i) => i.code === INFO_MARCA_SCL && ehCodigoDeReserva(i.text)).map((i) => i.text));
-  if (doInfo !== undefined) return doInfo;
-  const reforco = unico(codigosDeReservaNoTexto([texto(b.firstName), texto(b.lastName), texto(b.notes)].join(" ")));
-  return reforco ?? null;
+function marcaDoScl(b: Obj, itens: { code: string; text: string }[]): MarcaLida {
+  const doInfo = itens.filter((i) => i.code === INFO_MARCA_SCL).map((i) => i.text);
+  if (doInfo.length) {
+    const distintos = [...new Set(doInfo)];
+    return distintos.length === 1 && ehCodigoDeReserva(distintos[0])
+      ? { referenciaScl: distintos[0], marcaFonte: "info", marcaAmbigua: false }
+      : { referenciaScl: null, marcaFonte: null, marcaAmbigua: true };
+  }
+  const reforco = codigosDeReservaNoTexto([texto(b.firstName), texto(b.lastName), texto(b.notes)].join(" "));
+  if (reforco.length === 1) return { referenciaScl: reforco[0], marcaFonte: "texto", marcaAmbigua: false };
+  return { referenciaScl: null, marcaFonte: null, marcaAmbigua: reforco.length > 1 };
 }
+
+/** O id da operação do ensaio no info item `SCL-ENSAIO` (M8.3c): um uuid só; outro texto, ou dois ids diferentes, = null. */
+function ensaioOperacaoId(itens: { code: string; text: string }[]): string | null {
+  const ids = [...new Set(itens.filter((i) => i.code === INFO_ENSAIO_SCL).map((i) => i.text.toLowerCase()))];
+  return ids.length === 1 && uuidValido(ids[0]) ? ids[0] : null;
+}
+
+/** `apiSource` (M8.3c): curto e só com caracteres seguros; fora disso, null (nunca um texto livre do Beds24 guardado). */
+const origemApi = (v: unknown) => {
+  const t = texto(v);
+  return /^[A-Za-z0-9 ._:/-]{1,40}$/.test(t) ? t : null;
+};
 
 export function normalizarReserva(b: unknown): { ok: true; r: ReservaBeds24 } | { ok: false; d: Divergencia } {
   const falha = (motivo: string) => ({ ok: false as const, d: { origem: "reserva" as const, id: ehObj(b) ? texto(b.id) || "?" : "?", motivo } });
@@ -126,8 +160,10 @@ export function normalizarReserva(b: unknown): { ok: true; r: ReservaBeds24 } | 
       codigoCanal: id(b.apiReference),
       modificadoEm: texto(b.modifiedTime) || null,
       reservadaEm: instanteDaReserva(b.bookingTime),
-      referenciaScl: marcaDoScl(b, itens),
+      ...marcaDoScl(b, itens),
       ensaio: itens.some((i) => i.code === INFO_ENSAIO_SCL),
+      ensaioOperacaoId: ensaioOperacaoId(itens),
+      origemApi: origemApi(b.apiSource),
     },
   };
 }
@@ -181,7 +217,10 @@ export function normalizarCalendario(salas: unknown[], inicio: string, fim: stri
       const maximo = faixa.maxStay === undefined || faixa.maxStay === null ? null : Number(faixa.maxStay);
       const bloqueio = faixa.override === undefined || faixa.override === null ? null : texto(faixa.override);
       const inteiroNaoNegativo = (x: number | null) => x === null || (Number.isInteger(x) && x >= 0 && x <= 2_147_483_647);
-      if (preco === undefined || !inteiroNaoNegativo(preco) || !inteiroNaoNegativo(livres) || !inteiroNaoNegativo(minimo) || !inteiroNaoNegativo(maximo) || (bloqueio !== null && !OVERRIDES.has(bloqueio))) {
+      // M8.3c: `numAvail` negativo é o overbooking ("may be negative… if a room is overbooked", desenho 4.4), não um valor
+      // inválido: vem como está e conta como noite fechada (`fechadaNaLeitura`). Antes, a faixa inteira virava divergência.
+      const inteiroComSinal = (x: number | null) => x === null || (Number.isInteger(x) && Math.abs(x) <= 2_147_483_647);
+      if (preco === undefined || !inteiroNaoNegativo(preco) || !inteiroComSinal(livres) || !inteiroNaoNegativo(minimo) || !inteiroNaoNegativo(maximo) || (bloqueio !== null && !OVERRIDES.has(bloqueio))) {
         divergencias.push({ origem: "calendario", id: roomId, motivo: "valores inválidos" });
         continue;
       }
@@ -217,3 +256,119 @@ export function normalizarQuartos(props: unknown[]): { itens: QuartoBeds24[]; di
   return { itens, divergencias };
 }
 
+// ---------------------------------------------------------------- escrita de reservas (M8.3c, desenho 3.7 e 3.8)
+
+/** Os dois nomes do cabeçalho de crédito restante: a wiki e a especificação divergem (desenho 9; item 11 a confirmar). */
+export const CABECALHOS_CREDITO_BEDS24 = ["x-five-min-limit-remaining", "x-fivemincreditlimit-remaining"] as const;
+
+/** Id de reserva e de quarto do Beds24: só dígitos (os ids são números na API). */
+const ID_NUMERICO = /^\d{1,15}$/;
+
+/**
+ * O corpo de `POST /bookings` para um item (desenho 3.7): uma lista com um item só, com quarto, datas, pessoas, situação e
+ * a marca — nunca nome, e-mail, telefone, `notes`, `price`, `deposit`, `invoiceItems` nem `commission` (D1 e D2). As duas
+ * notificações vão sempre `false`, explícitas (o padrão não está documentado). Item fora do formato lança
+ * (`configuracao`) antes de qualquer rede: nada sai com um dado que não passou na validação.
+ */
+export function corpoDaGravacaoReserva(item: ItemGravacaoReserva): Obj[] {
+  const recusar = (motivo: string): never => {
+    throw new ErroBeds24(`Pedido de reserva ao Beds24 inválido (${motivo}): nada foi enviado.`, "configuracao");
+  };
+  const id = (v: string) => (ID_NUMERICO.test(v) && Number(v) > 0 ? Number(v) : recusar("id"));
+  const datas = (chegada: string, saida: string) => (dataValida(chegada) && dataValida(saida) && chegada < saida ? { arrival: chegada, departure: saida } : recusar("datas"));
+  const pessoas = (n: number) => (Number.isInteger(n) && n >= 1 && n <= 99 ? n : recusar("pessoas"));
+  switch (item.tipo) {
+    case "criar": {
+      const marca = item.marca.tipo === "reserva"
+        ? (ehCodigoDeReserva(item.marca.codigo) ? { code: INFO_MARCA_SCL, text: item.marca.codigo } : recusar("marca"))
+        : (uuidValido(item.marca.operacaoId) ? { code: INFO_ENSAIO_SCL, text: item.marca.operacaoId.toLowerCase() } : recusar("marca"));
+      return [{
+        roomId: id(item.quarto), ...datas(item.chegada, item.saida), status: "confirmed", numAdult: pessoas(item.hospedes), numChild: 0,
+        infoItems: [marca], actions: { checkAvailability: true, notifyGuest: false, notifyHost: false },
+      }];
+    }
+    // Nunca troca o quarto: só as datas e as pessoas.
+    case "atualizar":
+      return [{ id: id(item.id), ...datas(item.chegada, item.saida), numAdult: pessoas(item.hospedes) }];
+    // Nunca DELETE: "Deleted bookings can not be updated" (desenho 3.7).
+    case "cancelar":
+      return [{ id: id(item.id), status: "cancelled" }];
+    default:
+      return recusar("tipo");
+  }
+}
+
+/** A resposta já classificada, com o `erro` fixo do código (nunca o texto do Beds24). */
+export function respostaDaGravacao(
+  resposta: RespostaBeds24,
+  o: { beds24Id?: string | null; http?: number | null; creditoRestante?: number | null; observado?: ObservadoNaGravacao } = {},
+): RespostaGravacaoReserva {
+  return { resposta, beds24Id: o.beds24Id ?? null, http: o.http ?? null, erro: TEXTOS_DE_ERRO_BEDS24[resposta], creditoRestante: o.creditoRestante ?? null, ...(o.observado ? { observado: o.observado } : {}) };
+}
+
+/** Crédito restante dos cabeçalhos (os dois nomes; com os dois, o menor). Sem nenhum legível, null: desconhecido. */
+export function creditoRestanteBeds24(cabecalhos: Headers): number | null {
+  const valores = CABECALHOS_CREDITO_BEDS24.map((n) => cabecalhos.get(n)?.trim() ?? "").filter((t) => /^-?\d{1,9}$/.test(t)).map(Number);
+  return valores.length ? Math.min(...valores) : null;
+}
+
+/** Só os nomes (nunca os valores) dos cabeçalhos que parecem de crédito ou limite, para o ensaio registrar (item 11). */
+const nomesDeCredito = (cabecalhos: Headers) => [...cabecalhos.keys()].filter((n) => /credit|limit/i.test(n) && /^[a-z0-9-]{1,60}$/.test(n)).slice(0, 10);
+
+/**
+ * O id da reserva criada dentro de `new` (desenho 3.8; a chave está "a confirmar", item 1): `id`, `bookId` ou
+ * `bookingId`, ou o próprio `new` quando é o número. Só dígitos, sem zero; senão, null (a criação fica sem a prova).
+ */
+function idDaCriada(novo: unknown): { id: string; chave: string } | null {
+  const ler = (v: unknown) => {
+    const t = texto(v);
+    const n = Number(t);
+    return ID_NUMERICO.test(t) && Number.isSafeInteger(n) && n > 0 ? String(n) : null;
+  };
+  if (!ehObj(novo)) {
+    const id = ler(novo);
+    return id ? { id, chave: "new" } : null;
+  }
+  for (const chave of ["id", "bookId", "bookingId"]) {
+    const id = ler(novo[chave]);
+    if (id) return { id, chave };
+  }
+  return null;
+}
+
+/** A recusa por disponibilidade: a mensagem só é lida aqui (o formato está "a confirmar", item 2) e nunca guardada. */
+const recusaDeDisponibilidade = (erros: unknown[]) => erros.some((e) => ehObj(e) && typeof e.message === "string" && /availab|disponib/i.test(e.message));
+
+/**
+ * A resposta de `POST /bookings` (desenho 3.8) → a classificação de um item, a mesma no HTTP e no falso. Entra a última
+ * resposta (depois da renovação do 401, se houve), com o corpo já lido como JSON (`json` null = não é JSON). Os desfechos
+ * sem resposta (rede, tempo, o token que não veio) são classificados por quem chama.
+ * - 401 e 403: o pedido não foi processado; 429 sem a lista de itens: `limite`; outro 4xx: `http_4xx`; 5xx: `http_5xx`;
+ * - 2xx (e o 429 com a lista) pelo item: `success: false` ou `errors` = recusa; `success: true` = sucesso — no 429, sempre
+ *   duvidoso (`sem_id`); na criação, só com id legível em `new`; o que não for nem um nem outro = `formato`.
+ */
+export function classificarGravacaoReserva(item: ItemGravacaoReserva, cru: { status: number; json: { valor: unknown } | null; cabecalhos: Headers }): RespostaGravacaoReserva {
+  const creditoRestante = creditoRestanteBeds24(cru.cabecalhos);
+  const cabecalhosDeCredito = nomesDeCredito(cru.cabecalhos);
+  const fim = (resposta: RespostaBeds24, beds24Id: string | null = null, chaveDoId: string | null = null, chavesEmNew: string[] = []) =>
+    respostaDaGravacao(resposta, { beds24Id, http: cru.status, creditoRestante, observado: { chaveDoId, chavesEmNew, cabecalhosDeCredito } });
+  const s = cru.status;
+  const lista = cru.json && Array.isArray(cru.json.valor) ? cru.json.valor : null;
+  const r = lista?.[0];
+  if (s === 401) return fim("http_401");
+  if (s === 403) return fim("http_403");
+  if (s === 429 && !ehObj(r)) return fim("limite");
+  if (s >= 400 && s < 500 && s !== 429) return fim("http_4xx");
+  if (s >= 500 && s < 600) return fim("http_5xx");
+  if ((s < 200 || s >= 300) && s !== 429) return fim("formato");
+  if (!ehObj(r)) return fim("formato");
+  const erros = Array.isArray(r.errors) ? r.errors : [];
+  if (r.success === false || erros.length) return fim(recusaDeDisponibilidade(erros) ? "recusada_disponibilidade" : "recusada");
+  if (r.success !== true) return fim("formato");
+  // Só nomes de chave seguros, para o ensaio registrar onde o id veio (item 1).
+  const chavesEmNew = ehObj(r.new) ? Object.keys(r.new).filter((k) => /^[A-Za-z0-9_]{1,40}$/.test(k)).slice(0, 20) : [];
+  if (s === 429) return fim("sem_id", null, null, chavesEmNew);
+  if (item.tipo !== "criar") return fim("modificada", String(Number(item.id)));
+  const novo = idDaCriada(r.new);
+  return novo ? fim("criada", novo.id, novo.chave, chavesEmNew) : fim("sem_id", null, null, chavesEmNew);
+}

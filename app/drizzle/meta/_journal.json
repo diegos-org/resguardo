@@ -512,6 +512,13 @@
       "when": 1792166990366,
       "tag": "0072_m8_3_reservas_site_beds24",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1792232058963,
+      "tag": "0073_m8_3c_escrita_reservas_beds24",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 /**
- * Reserva paga do site no Beds24 (M8.3a) — a marca do SCL na leitura (desenho 3.5; seção 10, teste 9) e a versão falsa
+ * Reserva paga do site no Beds24 (M8.3a) — a marca do SCL na leitura (desenho 3.5; seção 10, teste 9), com a marca ambígua,
+ * a fonte da marca, o id do ensaio e a origem pela API do M8.3c (desenho 5.2), e a versão falsa
  * ampliada só na leitura (info items com `incluirInfo`, filtros novos, escopos da credencial). Sem rede.
  */
 import { describe, expect, it } from "vitest";
@@ -43,6 +44,8 @@ describe("marca do SCL na normalização (M8.3a, teste 9)", () => {
   });
 
   it("info items tortos contam como ausentes: a reserva continua sendo lida (nunca some da importação por isso)", () => {
+    // Desde o M8.3c, o `{ code: "SCL" }` sem texto é a marca ilegível (`marcaAmbigua`, desenho 5.2), não ausente: a reserva
+    // continua lida, sem referência.
     for (const infoItems of ["SCL-7K2QXM", { code: "SCL", text: "SCL-7K2QXM" }, [null, 1, { code: 1, text: "SCL-7K2QXM" }, { code: "SCL" }]]) {
       const n = normalizarReserva(registro({ infoItems }));
       expect(n.ok).toBe(true);
@@ -59,6 +62,60 @@ describe("marca do SCL na normalização (M8.3a, teste 9)", () => {
   it("a marca não leva dado pessoal para fora da normalização: as notas não viram campo", () => {
     const r = lida({ notes: "SCL-7K2QXM telefone (21) 99999-0000" });
     expect(JSON.stringify(r)).not.toContain("99999");
+  });
+});
+
+describe("marca ambígua, fonte da marca, ensaio e origem (M8.3c, desenho 5.2 \"Para o M8.3c\")", () => {
+  it("a marca ambígua fica separada de \"sem marca\": dois info items SCL diferentes, o info item SCL com texto inválido, o nome e as notas com códigos diferentes", () => {
+    for (const o of [
+      { infoItems: [{ code: "SCL", text: "SCL-7K2QXM" }, { code: "SCL", text: "SCL-ABCDEF" }] },
+      { infoItems: [{ code: "SCL", text: "SCL-7K2QX0" }] },
+      { infoItems: [{ code: "SCL", text: "lixo" }] },
+      // O info item inválido não cai no reforço do texto: a marca existe e não dá para ler.
+      { infoItems: [{ code: "SCL", text: "lixo" }], notes: "SCL-7K2QXM" },
+      // Também o info item SCL sem texto, ou com um texto que não é texto (desenho 5.2: "presente e ilegível").
+      { infoItems: [{ code: "SCL" }] },
+      { infoItems: [{ code: "SCL", text: null }], notes: "SCL-7K2QXM" },
+      { infoItems: [{ code: " scl ", text: 123 }], lastName: "SCL-7K2QXM" },
+      { infoItems: [{ code: "SCL", text: "SCL-7K2QXM" }, { code: "SCL", text: "SCL-7K2QX0" }] },
+      { lastName: "SCL-7K2QXM", notes: "SCL-ABCDEF" },
+    ]) expect(lida(o)).toMatchObject({ referenciaScl: null, marcaAmbigua: true, marcaFonte: null });
+    // Sem marca nenhuma não é ambígua.
+    expect(lida({})).toMatchObject({ referenciaScl: null, marcaAmbigua: false, marcaFonte: null });
+    expect(lida({ infoItems: [{ code: "OUTRO", text: "SCL-7K2QXM" }] })).toMatchObject({ referenciaScl: null, marcaAmbigua: false });
+    // O info item de código torto (que não é texto) continua contando como ausente, nunca como ambíguo: vale o reforço do
+    // texto, como antes.
+    expect(lida({ infoItems: [{ code: 1, text: "SCL-7K2QXM" }] })).toMatchObject({ referenciaScl: null, marcaAmbigua: false });
+    expect(lida({ infoItems: [{ code: 1, text: "SCL-7K2QXM" }], notes: "SCL-7K2QXM" })).toMatchObject({ referenciaScl: "SCL-7K2QXM", marcaFonte: "texto" });
+    // O info item SCL sem texto é a marca ilegível, ao lado de um de código torto: ambígua (antes, contava como ausente).
+    expect(lida({ infoItems: [{ code: "SCL" }, { code: 1, text: "SCL-7K2QXM" }] })).toMatchObject({ referenciaScl: null, marcaAmbigua: true, marcaFonte: null });
+  });
+
+  it("a fonte da marca: o info item ou o texto (só a do info item adota e cancela duplicada)", () => {
+    expect(lida({ infoItems: [{ code: "SCL", text: "SCL-7K2QXM" }] })).toMatchObject({ referenciaScl: "SCL-7K2QXM", marcaFonte: "info", marcaAmbigua: false });
+    expect(lida({ infoItems: [{ code: "SCL", text: "SCL-7K2QXM" }, { code: "scl", text: " SCL-7K2QXM " }] })).toMatchObject({ referenciaScl: "SCL-7K2QXM", marcaFonte: "info" });
+    expect(lida({ notes: "Reserva paga pelo site SCL-7K2QXM" })).toMatchObject({ referenciaScl: "SCL-7K2QXM", marcaFonte: "texto", marcaAmbigua: false });
+    expect(lida({ lastName: "SCL-7K2QXM (não altere aqui)", notes: "SCL-7K2QXM" })).toMatchObject({ referenciaScl: "SCL-7K2QXM", marcaFonte: "texto" });
+    // O info item vale antes do texto, mesmo com outro código nas notas.
+    expect(lida({ infoItems: [{ code: "SCL", text: "SCL-ABCDEF" }], notes: "SCL-7K2QXM" })).toMatchObject({ referenciaScl: "SCL-ABCDEF", marcaFonte: "info", marcaAmbigua: false });
+  });
+
+  it("o id da operação do ensaio sai do info item SCL-ENSAIO só quando é um uuid (um só)", () => {
+    const op = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    expect(lida({ infoItems: [{ code: "SCL-ENSAIO", text: op }] })).toMatchObject({ ensaio: true, ensaioOperacaoId: op });
+    expect(lida({ infoItems: [{ code: "SCL-ENSAIO", text: op.toUpperCase() }] }).ensaioOperacaoId).toBe(op);
+    expect(lida({ infoItems: [{ code: "SCL-ENSAIO", text: "x" }] })).toMatchObject({ ensaio: true, ensaioOperacaoId: null });
+    expect(lida({ infoItems: [{ code: "SCL-ENSAIO", text: op }, { code: "SCL-ENSAIO", text: "00000000-0000-4000-8000-000000000000" }] }).ensaioOperacaoId).toBeNull();
+    expect(lida({ notes: op }).ensaioOperacaoId).toBeNull();
+  });
+
+  it("a origem pela API (apiSource): curta e só com caracteres seguros; senão, null", () => {
+    expect(lida({ apiSource: " API v2 " }).origemApi).toBe("API v2");
+    expect(lida({ apiSource: "booking.com/api_v2:1" }).origemApi).toBe("booking.com/api_v2:1");
+    expect(lida({}).origemApi).toBeNull();
+    for (const apiSource of ["", "<script>", "a".repeat(41), "Hóspede", "x\ny", { a: 1 }]) expect(lida({ apiSource }).origemApi).toBeNull();
+    // O canal desconhecido continua "outro", com ou sem a origem.
+    expect(lida({ channel: "expedia", apiSource: "API" })).toMatchObject({ canal: "outro", origemApi: "API" });
   });
 });
 
@@ -106,8 +163,11 @@ describe("versão falsa ampliada (só leitura)", () => {
     await expect(b.credencial()).rejects.toThrow("fora do ar");
   });
 
-  it("não ganhou escrita de reservas (é do M8.3c): só o calendário escreve", () => {
+  it("a escrita de reservas é a do M8.3c: o calendário e as reservas, cada uma com o seu método", () => {
+    // M8.3c (muda junto, desenho 10): o falso ganhou `gravarReservas` e `prepararToken` (o contrato `EscritorReservasBeds24`)
+    // e os auxiliares privados da escrita (criar, modificar, ocupar o calendário e contar o que as gravadas ocupam). Nenhum
+    // método apaga.
     const metodos = Object.getOwnPropertyNames(Beds24Falso.prototype).filter((m) => m !== "constructor").sort();
-    expect(metodos).toEqual(["calendario", "checar", "credencial", "escreverCalendario", "quartos", "reservas"]);
+    expect(metodos).toEqual(["calendario", "checar", "credencial", "criar", "diasDaSala", "escreverCalendario", "gravarReservas", "guardarDias", "modificar", "ocupadasNaNoite", "ocupar", "prepararToken", "quartos", "reservas"]);
   });
 });

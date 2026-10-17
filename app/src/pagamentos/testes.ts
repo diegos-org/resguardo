@@ -20,6 +20,7 @@ import {
   auditoria,
   beds24Calendario,
   beds24ReservasOperacoes,
+  beds24ReservasRotina,
   beds24ReservasSite,
   cancelamentosReserva,
   contestacoesPagamento,
@@ -28,6 +29,7 @@ import {
   disjuntoresCartao,
   eventosContestacao,
   eventosPagamento,
+  execucoesAutomacao,
   idsExternos,
   imoveis,
   imoveisDetalhes,
@@ -41,6 +43,7 @@ import {
   usuarios,
 } from "@/db/schema";
 import type { Db } from "@/db/types";
+import type { CorreioMemoria } from "@/email/correio";
 import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { registrarAceiteDoHospede } from "@/site/aceites";
@@ -194,9 +197,11 @@ export async function montarCenario(db: Db, o: { semPaginasLegais?: boolean } = 
  * nenhum. `nomes` (M8.2c): o nome do hóspede, procurado nas mesmas tabelas, menos a auditoria da reserva que nasce no
  * M8.1 (`reserva.importar` guarda os dados dela, nome inclusive, fora das tabelas do pagamento). M8.2e: também as
  * disputas do pagamento e a linha do tempo delas. M8.3: também o acompanhamento das reservas do site no Beds24 e as
- * operações (o pedido, as leituras e o erro nunca levam nome, e-mail, telefone, documento nem valor).
+ * operações (o pedido, as leituras e o erro nunca levam nome, e-mail, telefone, documento nem valor). M8.3c: também a
+ * resposta e o detalhe das operações (as colunas novas vêm no `select`), o estado da rotina (`beds24_reservas_rotina`), o
+ * resumo das execuções das automações e, com `correio`, o assunto e o texto dos e-mails à equipe.
  */
-export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: string[] } = {}): Promise<string[]> {
+export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: string[]; correio?: Pick<CorreioMemoria, "enviadas"> } = {}): Promise<string[]> {
   const semAuditoria = [
     await db.select().from(pagamentos),
     await db.select().from(eventosPagamento),
@@ -216,6 +221,11 @@ export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: s
     // M8.3: o acompanhamento das reservas do site no Beds24 e as operações (quarto, datas, pessoas, situação, códigos).
     await db.select().from(beds24ReservasSite),
     await db.select().from(beds24ReservasOperacoes),
+    // M8.3c: o estado da rotina (os escopos lidos, a impressão da credencial e as marcas de tempo), o resumo das rotinas
+    // (só números) e os e-mails à equipe (só o código SCL, o imóvel e as datas).
+    await db.select().from(beds24ReservasRotina),
+    await db.select({ nome: execucoesAutomacao.nome, resumo: execucoesAutomacao.resumo }).from(execucoesAutomacao),
+    (o.correio?.enviadas ?? []).map((m) => ({ assunto: m.assunto, texto: m.texto, html: m.html ?? "" })),
   ];
   const registros = await db.select().from(auditoria);
   const tudo = JSON.stringify([semAuditoria, registros]);

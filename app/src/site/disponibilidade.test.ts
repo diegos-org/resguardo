@@ -74,6 +74,17 @@ describe("disponibilidade e cotação do site (M7.2)", () => {
     expect((await consultar()).situacao).toBe("indisponivel");
   });
 
+  it("M8.3c: unidades negativas no Beds24 (overbooking) fecham a noite como o zero, na consulta e em noitesLivres", async () => {
+    await observar(dias("2026-10-12", 4));
+    await db.update(beds24Calendario).set({ livres: -1 }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect(await consultar()).toMatchObject({ situacao: "indisponivel", motivos: ["Há noites já reservadas nessas datas (13/10/2026)."], cotacao: null });
+    expect(await noitesLivres(db, org, im, "2026-10-12", "2026-10-15", { agora, exigirLeituraAtual: true })).toEqual({ livres: false, motivo: "ocupada", conflito: "agenda_externa" });
+    // Sem a leitura atual exigida, só o SCL decide (como com o zero).
+    expect(await noitesLivres(db, org, im, "2026-10-12", "2026-10-15", { agora, exigirLeituraAtual: false })).toEqual({ livres: true });
+    await db.update(beds24Calendario).set({ livres: 1 }).where(eq(beds24Calendario.data, "2026-10-13"));
+    expect((await consultar()).situacao).toBe("disponivel");
+  });
+
   it("data ocupada no SCL e no Beds24 ao mesmo tempo conta uma vez: só as noites realmente tomadas aparecem", async () => {
     await observar(dias("2026-10-12", 4));
     // Reserva importada: existe no SCL e o Beds24 mostra 0 unidades na mesma noite (13/10).
@@ -289,6 +300,15 @@ describe("cotação da alteração de uma reserva paga (M8.2d): as noites da pr�
     // Sem leitura da acrescentada: a confirmar.
     await db.delete(beds24Calendario).where(eq(beds24Calendario.data, "2026-10-15"));
     expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "a_confirmar" });
+  });
+
+  it("M8.3c (desenho 10, teste 39, a parte do -1): com overbooking nas noites dela (-1), a noite acrescentada livre continua aceita; fechada, não", async () => {
+    // A reserva criada pelo M8.3 e outra por cima, nas noites dela: o Beds24 informa -1 (antes do M8.3c, a leitura virava
+    // divergência e a noite ficava sem leitura).
+    for (const d of dias("2026-10-12", 3)) await db.update(beds24Calendario).set({ livres: -1, bloqueio: "none" }).where(eq(beds24Calendario.data, d));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "disponivel", noites: 4 });
+    await db.update(beds24Calendario).set({ livres: -1 }).where(eq(beds24Calendario.data, "2026-10-15"));
+    expect(await cotar({ saida: "2026-10-16" })).toMatchObject({ situacao: "indisponivel", motivos: ["Há noites já reservadas nessas datas (15/10/2026)."] });
   });
 
   it("a leitura velha das noites dela não deixa a confirmar; a restrição de entrada e saída vale na data nova, como para qualquer estadia", async () => {
