@@ -30,14 +30,17 @@ import {
   textoEscaladaDaDisputa,
 } from "@/pagamentos/contestacao-regras";
 import { prazoDosDocumentos } from "@/pagamentos/contestacao-tela";
+import { avisosDeReservasNoBeds24 } from "@/beds24/reservas-site-avisos";
 import { avisosDeContestacaoNosRepasses } from "@/repasses/avisos-contestacao";
 import { avisosDeDescontos } from "@/repasses/descontos";
 import { partesDoProprietario } from "@/repasses/extrato";
-import { hojeISO } from "@/lib/datas";
+import { diaHoraNoFuso, FUSO_PADRAO, hojeISO, horaNoFuso } from "@/lib/datas";
 import { conflitos } from "@/reservas/regras";
 import { listarBloqueios, listarReservas, type Reserva } from "@/reservas/repositorio";
 import { rotinasPendentes } from "@/rotinas/rotinas";
 import { regrasEmVigor } from "@/sistema/regras";
+import { contaDoWhatsapp } from "@/whatsapp/integracao";
+import type { SituacaoConta } from "@/whatsapp/regras";
 import { calcularOcupacao, type Financeiro, mesesDoAno, type OcupacaoImovel, ocupacaoTotal, resumoFinanceiro } from "./indicadores";
 
 export type Alerta = { nivel: "atencao" | "info"; texto: string; link?: string };
@@ -65,6 +68,18 @@ export async function contaDeTesteParaInicio(o: { env?: NodeJS.ProcessEnv; prove
   return esperarNoMaximo(contaDeTesteConfirmada(provedor), o.esperaMs ?? ESPERA_TELA_MS, null);
 }
 
+/** M10.1a: a conta do WhatsApp no Início (para quem edita as configurações): só a situação, sem dado nenhum. */
+const AVISO_DA_CONTA: Record<SituacaoConta, string | null> = {
+  nao_conectada: null,
+  conectada: null,
+  desconectada: "A conexão do WhatsApp com o sistema caiu: as mensagens novas não chegam ao painel.",
+  aguardando_reconexao: "O WhatsApp está aguardando reconexão (troca de aparelho ou reinstalação).",
+  suspensa: "A Meta suspendeu ou vai suspender a conta do WhatsApp.",
+};
+
+/** Sem o ambiente de quem chama, as tarefas das OTAs ficam todas à mão (nenhuma chave lida: o lado seguro). */
+const AMBIENTE_DESLIGADO = {} as NodeJS.ProcessEnv;
+
 const somaDias = (d: string, n: number) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)) + n)).toISOString().slice(0, 10);
 
 export async function carregarDashboard(
@@ -85,12 +100,29 @@ export async function carregarDashboard(
     /** Quem lê o financeiro recebe os avisos do pagamento no site (M8.2a), da empresa toda. */
     verPagamentos?: boolean;
     /**
-     * Quem edita reservas recebe os avisos do cancelamento pela política (M8.2c: pedidos esperando, datas a reabrir nas
-     * OTAs, hóspede a avisar), da empresa toda e sem valores — mesmo sem acesso ao financeiro.
+     * Quem edita reservas recebe os avisos do cancelamento pela política (M8.2c: pedidos esperando, hóspede a avisar), da
+     * alteração (M8.2d) e as tarefas das OTAs (M8.3b: paga, D3, cancelada, alterada), da empresa toda e sem valores —
+     * mesmo sem acesso ao financeiro.
      */
     verCancelamentos?: boolean;
     /** Conta das chaves do Mercado Pago conferida agora (true/false); null ou ausente = não conferida (sem esse aviso). */
     contaDeTesteMercadoPago?: boolean | null;
+    /** M8.3b: o ambiente das tarefas das OTAs (a chave das reservas e o deploy de produção); ausente = `{}`, tudo à mão. */
+    env?: NodeJS.ProcessEnv;
+    /**
+     * M8.3c: quem edita as configurações recebe o link para Integrações na linha "Envio de reservas parado" (a operação vê o
+     * mesmo texto sem link: Integrações a recusa).
+     */
+    verConfiguracao?: boolean;
+    /**
+     * M10.1a: quantas conversas do WhatsApp estão sem resposta, já contadas por quem chama com
+     * `contarConversasSemResposta(db, sessao)`, que devolve 0 para quem não vê as conversas. O dashboard nunca consulta as
+     * conversas nem decide quem as vê (quem reaproveitar estes avisos, como o `ver_pendencias` do MCP, não tem como
+     * mostrar a contagem a quem não pode).
+     */
+    conversasSemResposta?: number;
+    /** M10.1a: quem edita as configurações recebe o aviso da conta do WhatsApp desconectada, aguardando ou suspensa. */
+    verContaWhatsapp?: boolean;
     agora?: Date;
   },
 ): Promise<Dashboard> {
@@ -130,13 +162,25 @@ export async function carregarDashboard(
     if (contatos) alertas.push({ nivel: "info", texto: `${contatos} pedido(s) de contato de proprietário esperando resposta.`, link: "/painel/proprietarios/contatos" });
     if (cadastros) alertas.push({ nivel: "info", texto: `${cadastros} cadastro(s) de proprietário pelo site esperando análise.`, link: "/painel/proprietarios/cadastros" });
   }
+  // WhatsApp (M10.1a): da organização toda, sem nome, telefone nem trecho de conversa.
+  if (o.conversasSemResposta && o.conversasSemResposta > 0) {
+    alertas.push({ nivel: "info", texto: `${o.conversasSemResposta} conversa(s) do WhatsApp sem resposta.`, link: "/painel/mensagens?filtro=sem_resposta" });
+  }
+  if (o.verContaWhatsapp) {
+    const texto = AVISO_DA_CONTA[(await contaDoWhatsapp(db, organizacaoId, o.agora ?? new Date())).situacao];
+    if (texto) alertas.push({ nivel: "atencao", texto, link: "/painel/configuracoes/integracoes" });
+  }
   // Cancelamento pela política (M8.2c): da operação, fora dos avisos do financeiro e sem valores.
   // A mensagem pendente ao hóspede (decisão, devolução feita) leva o valor: o aviso dela só para quem lê o financeiro.
   if (o.verCancelamentos) alertas.push(...(await avisosDeCancelamento(db, organizacaoId, o.agora ?? new Date(), { mensagensComValor: o.verPagamentos === true })));
   // Alteração de reserva paga pelo site (M8.2d): as mesmas pessoas e a mesma regra das mensagens com valor.
   if (o.verCancelamentos) alertas.push(...(await avisosDeAlteracao(db, organizacaoId, o.agora ?? new Date(), { mensagensComValor: o.verPagamentos === true })));
+  // Tarefas das OTAs (M8.3b): a fonte única dos avisos da paga, da D3, da cancelada e da alterada, sem valores. O ambiente
+  // ausente conta como desligado (tudo à mão: o lado seguro). M8.3c (desenho 6.5): as linhas de atenção das reservas do site
+  // no Beds24 (lidas também direto do acompanhamento), a linha única de configuração e as tarefas, numa ordem só.
+  if (o.verCancelamentos) alertas.push(...(await avisosDeReservasNoBeds24(db, organizacaoId, o.agora ?? new Date(), o.env ?? AMBIENTE_DESLIGADO, { verConfiguracao: o.verConfiguracao === true })));
   // Pagamento no site (M8.2a): da empresa toda, sem depender do filtro de imóveis (aprovado sem reserva, devoluções,
-  // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo, datas a fechar nas OTAs).
+  // liberação vencida, configuração e conta do Mercado Pago, live_mode, dinheiro sem cálculo).
   if (o.verPagamentos) {
     const pagamentos = await avisosDePagamento(db, organizacaoId, o.agora ?? new Date(), { contaDeTeste: o.contaDeTesteMercadoPago ?? null });
     alertas.push(...pagamentos.alertas);
@@ -326,23 +370,19 @@ export async function carregarDashboard(
 
 // ---------------------------------------------------------------- alteração de reserva paga pelo site (M8.2d)
 
-const horaSP = (d: Date, agora: Date) => {
-  const f = (x: Date, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...o }).format(x);
-  const hora = f(d, { hour: "2-digit", minute: "2-digit" });
-  return f(d, { day: "2-digit", month: "2-digit" }) === f(agora, { day: "2-digit", month: "2-digit" }) ? hora : `${f(d, { day: "2-digit", month: "2-digit" })} às ${hora}`;
-};
+/** "15:05" no mesmo dia; "16/10 às 15:05" noutro (São Paulo). */
+const horaSP = (d: Date, agora: Date) => (hojeISO(FUSO_PADRAO, d) === hojeISO(FUSO_PADRAO, agora) ? horaNoFuso(d) : diaHoraNoFuso(d));
 /** Os códigos das reservas do aviso (até 5; o resto em número): quem lê sabe qual abrir. */
 const codigosDoAviso = (xs: readonly { codigo: string }[]) => (xs.length <= 5 ? xs.map((x) => x.codigo).join(", ") : `${xs.slice(0, 5).map((x) => x.codigo).join(", ")} e mais ${xs.length - 5}`);
 const linkDoAviso = (xs: readonly { reservaId: string }[]) => (xs.length === 1 ? `/painel/reservas/${xs[0].reservaId}` : "/painel/reservas");
 
 /**
  * Os avisos da alteração de reserva paga pelo site no Início (da operação: quem edita reservas, sem valores, da empresa
- * toda): cada alteração com as datas seguradas agora (pela situação que vale agora, com a carência do pagamento), as
- * reservas alteradas cujo bloqueio nas OTAs ainda não foi mudado (o envio ao Beds24 não muda datas de reservas), e as
- * mensagens ao hóspede pendentes (a proposta e a devolução feita levam valor: só para quem lê o financeiro).
+ * toda): cada alteração com as datas seguradas agora (pela situação que vale agora, com a carência do pagamento) e as
+ * mensagens ao hóspede pendentes (a proposta e a devolução feita levam valor: só para quem lê o financeiro). As datas a
+ * mudar nas OTAs da reserva alterada saíram daqui no M8.3b: são de `tarefasDasOtas` (beds24/reservas-site-tarefas.ts).
  */
 export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Date = new Date(), o: { mensagensComValor?: boolean } = {}): Promise<Alerta[]> {
-  const hoje = hojeISO("America/Sao_Paulo", agora);
   const alertas: Alerta[] = [];
   const seguradas = await db
     .select({ a: alteracoesReserva, codigo: reservasTabela.codigo })
@@ -366,32 +406,6 @@ export async function avisosDeAlteracao(db: Db, organizacaoId: string, agora: Da
       link: `/painel/reservas/${a.reservaId}`,
     });
   }
-  // Aplicada e o bloqueio nas OTAs ainda não mudado (o M8.3 vai gravar sozinho; até lá, à mão), com alguma noite (de antes
-  // ou de agora) ainda por vir. A reserva-pedido das datas seguradas nunca vai às OTAs. Só a que mudou as datas: as pessoas
-  // ou o valor não mexem no bloqueio.
-  const otas = await db
-    .select({ reservaId: alteracoesReserva.reservaId, codigo: reservasTabela.codigo })
-    .from(alteracoesReserva)
-    .innerJoin(reservasTabela, eq(reservasTabela.id, alteracoesReserva.reservaId))
-    .where(
-      and(
-        eq(alteracoesReserva.organizacaoId, organizacaoId),
-        eq(alteracoesReserva.situacao, "aplicada"),
-        isNull(alteracoesReserva.otaAtualizadaEm),
-        or(ne(alteracoesReserva.checkinAntes, alteracoesReserva.checkinDepois), ne(alteracoesReserva.checkoutAntes, alteracoesReserva.checkoutDepois)),
-        eq(reservasTabela.estado, "confirmada"),
-        sql`greatest(${alteracoesReserva.checkoutAntes}, ${alteracoesReserva.checkoutDepois}) >= ${hoje}::date`,
-      ),
-    )
-    .orderBy(reservasTabela.codigo);
-  const alteradas = [...new Map(otas.map((x) => [x.reservaId, x])).values()];
-  // Sempre, mesmo com o envio ao Beds24 ligado: o envio fecha só os bloqueios do SCL, nunca as datas das reservas (até o M8.3).
-  if (alteradas.length)
-    alertas.push({
-      nivel: "info",
-      texto: `${alteradas.length} reserva(s) do site alterada(s) (${codigosDoAviso(alteradas)}): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).`,
-      link: linkDoAviso(alteradas),
-    });
   // A proposta leva a diferença e a devolução feita leva o valor: só quem as pode copiar (quem lê o financeiro) recebe o aviso.
   if (o.mensagensComValor === false) return alertas;
   const pendentes = await alteracoesComMensagemPendente(db, organizacaoId, agora);

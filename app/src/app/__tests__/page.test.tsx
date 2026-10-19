@@ -258,7 +258,8 @@ describe("site público (M7.1)", () => {
   it("variante de busca da capa: mesmos campos e destino, sem título e com o botão \"Consultar\"", () => {
     render(<FormConsulta imoveis={[imovel]} valores={{}} hoje="2026-09-25" canal="whatsapp" variante="busca" />);
     const form = document.querySelector("form")!;
-    expect(form.getAttribute("action")).toBe("/consulta");
+    // A busca abre no resultado (M7.21): a lista das casas.
+    expect(form.getAttribute("action")).toBe("/consulta#resultado");
     expect([...form.querySelectorAll("[name]")].map((e) => e.getAttribute("name"))).toEqual(["imovel", "entrada", "saida", "hospedes"]);
     expect(screen.getByRole("button", { name: /Consultar/ }).getAttribute("type")).toBe("submit");
     expect(form.querySelector("strong")).toBeNull();
@@ -267,7 +268,8 @@ describe("site público (M7.1)", () => {
   it("formulário de consulta vai para /consulta por GET, com o imóvel escolhido e os erros", () => {
     render(<FormConsulta imoveis={[imovel]} valores={{ imovel: "403" }} erros={{ saida: "A saída precisa ser depois da entrada." }} hoje="2026-09-25" canal="email" />);
     const form = document.querySelector("form")!;
-    expect(form.getAttribute("action")).toBe("/consulta");
+    // A consulta abre no resultado (M7.21): o "Resumo da viagem".
+    expect(form.getAttribute("action")).toBe("/consulta#resultado");
     expect(form.getAttribute("method")).toBe("get");
     expect((screen.getByRole("combobox", { name: /Seu lugar/ }) as HTMLSelectElement).value).toBe("403");
     expect(screen.getByText("A saída precisa ser depois da entrada.")).toBeTruthy();

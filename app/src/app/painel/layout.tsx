@@ -6,11 +6,14 @@ import { Menu } from "@/components/painel/Menu";
 import { marcaComDestaque } from "@/components/site/MolduraBase";
 import { nomeDaEmpresa } from "@/configuracoes/empresa";
 import { getDb } from "@/db/client";
+import { podeVerConversas } from "@/whatsapp/acesso";
 import styles from "@/components/painel/painel.module.css";
 
 export default async function PainelLayout({ children }: LayoutProps<"/painel">) {
   const sessao = await exigirSessaoPainel();
-  const empresa = await nomeDaEmpresa(getDb(), sessao.organizacaoId);
+  const db = getDb();
+  // M10.1a: "Mensagens" só no menu de quem vê as conversas (a configuração "Quem vê as conversas", padrão só o admin).
+  const [empresa, verConversas] = await Promise.all([nomeDaEmpresa(db, sessao.organizacaoId), podeVerConversas(db, sessao)]);
 
   async function sair() {
     "use server";
@@ -24,13 +27,13 @@ export default async function PainelLayout({ children }: LayoutProps<"/painel">)
           {marcaComDestaque(empresa)}
         </Link>
         <Suspense>
-          <Menu papel={sessao.papel} />
+          <Menu papel={sessao.papel} ocultar={verConversas ? [] : ["mensagens"]} />
         </Suspense>
       </aside>
       <div className={styles.principal}>
         <header className={styles.cabecalho}>
           <span>Painel interno</span>
-          <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <span className={styles.cabecalhoAcoes}>
             <span className={styles.selo}>Homologação · dados fictícios</span>
             <form action={sair}>
               <button type="submit" className={styles.sair}>

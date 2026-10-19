@@ -46,6 +46,9 @@ vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/acesso/auth", () => ({ signOut: vi.fn() }));
 vi.mock("@/configuracoes/empresa", async (orig) => ({ ...(await orig<typeof import("@/configuracoes/empresa")>()), nomeDaEmpresa: m.empresa }));
 vi.mock("@/db/client", async (orig) => ({ ...(await orig<typeof import("@/db/client")>()), getDb: vi.fn(() => ({})) }));
+// M10.1a: o layout pergunta a `whatsapp/acesso.ts` se a sessão vê as conversas (o item "Mensagens" do menu); com o banco
+// simulado vazio, a resposta vem pronta.
+vi.mock("@/whatsapp/acesso", () => ({ podeVerConversas: async () => true }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NAO_ENCONTRADA");
@@ -104,7 +107,7 @@ const MINIMO_INDICADOR = 3; // WCAG 1.4.11 (e DESIGN.md): 3:1 para contornos, í
 const VERDES = ["--scl-floresta", "--scl-profundo", "--scl-musgo", "--scl-salvia"];
 const CLAROS = ["--scl-creme", "--scl-papel", "--scl-areia"];
 
-const SELETOR_FOCO = "a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible";
+const SELETOR_FOCO = "a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible";
 const FOCO = regra(GLOBAL, SELETOR_FOCO);
 const [larguraFoco, , corFoco] = (valor(FOCO, "outline") ?? "").split(/\s+/);
 const deslocamentoFoco = parseFloat(valor(FOCO, "outline-offset") ?? "0");
@@ -264,12 +267,112 @@ describe("contorno de foco visível sobre os verdes (M7.11)", () => {
     const miniaturas = regra(site, ".miniaturasRolagem");
     expect(Math.min(...folgas(valor(miniaturas, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
     expect(parseFloat(valor(miniaturas, "scroll-padding")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
-    // Menu do painel no celular, que rola para o lado.
-    const menu = regras(ler("components/painel/painel.module.css")).find((r) => r.seletor === ".menu" && valor(r.corpo, "overflow-x"))!.corpo;
-    expect(Math.min(...folgas(valor(menu, "padding")!))).toBeGreaterThanOrEqual(ALCANCE_FOCO);
-    // A padding só vale no começo e no fim da rolagem; no meio, o navegador leva o item com foco até a borda, menos o
-    // scroll-padding.
-    expect(parseFloat(valor(menu, "scroll-padding-inline")!)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // O menu do painel no celular rolava para o lado até o M0.10; agora abre a lista inteira (conferido mais abaixo).
+  });
+});
+
+/** As regras de dentro de um @media (achado pelo par de chaves) e as de fora de todos eles. */
+function porTela(css: string, condicao: string): { dentro: Regra[]; fora: Regra[] } {
+  const limpo = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const inicio = limpo.indexOf(`@media ${condicao}`);
+  if (inicio < 0) throw new Error(`@media ${condicao} não encontrado`);
+  const abre = limpo.indexOf("{", inicio);
+  let fim = abre + 1;
+  for (let nivel = 1; nivel > 0; fim++) nivel += limpo[fim] === "{" ? 1 : limpo[fim] === "}" ? -1 : 0;
+  const semMedias = (texto: string) => texto.replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
+  return { dentro: regras(limpo.slice(abre + 1, fim - 1)), fora: regras(semMedias(limpo)) };
+}
+
+describe("menu do painel no celular (M0.10)", () => {
+  const PAINEL = ler("components/painel/painel.module.css");
+  const CELULAR = "(max-width: 760px)";
+  const { dentro: celular, fora: computador } = porTela(PAINEL, CELULAR);
+  const em = (lista: Regra[], seletor: string) => {
+    const achada = lista.find((r) => r.seletor === seletor);
+    if (!achada) throw new Error(`regra ${seletor} não encontrada`);
+    return achada.corpo;
+  };
+  /** Os quatro lados (em cima, direita, embaixo, esquerda) de um padding de 1 a 4 valores, em px. */
+  const lados = (texto: string) => {
+    const v = texto.split(/\s+/).map(parseFloat);
+    return [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
+  };
+  // A letra do html fica no padrão do navegador (16px): globals.css não muda o tamanho dela.
+  const REM = 16;
+
+  it("no computador, nada muda: o botão Menu não aparece e a lista lateral segue em coluna, sempre à vista", () => {
+    expect(valor(em(computador, ".gaveta"), "display")).toBe("none");
+    const menu = em(computador, ".menu");
+    expect([valor(menu, "display"), valor(menu, "flex-direction")]).toEqual(["flex", "column"]);
+    // A lista só se esconde com o <details> fechado, e isso só no celular.
+    expect(computador.filter((r) => r.seletor.includes("[open]"))).toEqual([]);
+  });
+
+  it("no celular, o botão Menu abre a lista inteira, sem rolagem para o lado", () => {
+    expect(valor(em(celular, ".gaveta"), "display")).toBe("block");
+    expect(valor(em(celular, ".gaveta:not([open]) + .menu"), "display")).toBe("none");
+    const menu = em(celular, ".menu");
+    expect(valor(menu, "display")).toBe("grid");
+    // Nenhuma regra do menu rola (nem esconde o que passa da borda), no celular ou no computador.
+    for (const r of regras(PAINEL).filter((x) => /\.menu\b/.test(x.seletor))) expect(r.corpo, r.seletor).not.toMatch(/overflow|scroll-/);
+    // Os itens quebram em linhas (grade), em vez de seguir numa faixa só.
+    expect(valor(em(celular, ".menu a"), "white-space")).toBeUndefined();
+    // Duas colunas num celular de 360px (DESIGN.md, registro 9), e nada passa da largura. Com `overflow-x: hidden` em html
+    // e body (globals.css), uma coluna larga demais não faria a página rolar: cortaria o fim dos itens, sem aviso.
+    expect(regras(GLOBAL).filter((r) => r.seletor.split(", ").includes("html") && valor(r.corpo, "font-size"))).toEqual([]);
+    const colunas = /^repeat\(auto-fill, minmax\(min\(([\d.]+)rem, 100%\), 1fr\)\)$/.exec(valor(menu, "grid-template-columns") ?? "");
+    expect(colunas, "grid-template-columns").not.toBeNull();
+    const coluna = parseFloat(colunas![1]) * REM;
+    const vao = parseFloat(valor(menu, "gap")!);
+    const [, direita, , esquerda] = lados(valor(em(celular, ".lateral"), "padding")!);
+    const util = 360 - direita - esquerda;
+    expect(2 * coluna + vao).toBeLessThanOrEqual(util);
+    expect(3 * coluna + 2 * vao).toBeGreaterThan(util);
+    // Com a letra grande (o "aA" do Safari, a fonte grande do Android), a coluna cresce com o rem; o `min` com 100%, na
+    // expressão acima, a segura na largura da lista: uma coluna só, sem passar da tela.
+  });
+
+  it("alvos de toque de 44px: o botão, cada seção da lista, o link da marca e o Sair", () => {
+    expect(parseFloat(valor(em(celular, ".botaoMenu"), "min-height")!)).toBeGreaterThanOrEqual(44);
+    expect(parseFloat(valor(em(celular, ".menu a"), "min-height")!)).toBeGreaterThanOrEqual(44);
+    // A marca: a altura da linha (a letra do celular vezes a altura de linha de sempre) mais a folga de cima e de baixo.
+    const marca = em(celular, ".marca");
+    const [cima, , baixo] = lados(valor(marca, "padding")!);
+    const linha = parseFloat(valor(marca, "font-size")!) * REM * parseFloat(valor(em(computador, ".marca"), "line-height")!);
+    expect(linha + cima + baixo).toBeGreaterThanOrEqual(44);
+    // O Sair (o único botão do cabeçalho; um toque errado encerra a sessão). A regra do celular vem depois da de base, que
+    // tem a mesma especificidade e, depois, desfaria o ajuste.
+    expect(parseFloat(valor(em(celular, ".sair"), "min-height")!)).toBeGreaterThanOrEqual(44);
+    expect(regras(PAINEL).filter((r) => r.seletor === ".sair").at(-1)!.corpo).toBe(em(celular, ".sair"));
+  });
+
+  it("o contorno do foco (M7.11) aparece no botão e fica inteiro sobre o verde do menu", () => {
+    // O botão é um <summary>, que entra no mesmo contorno dos links e botões.
+    expect(SELETOR_FOCO.split(", ")).toContain("summary:focus-visible");
+    // O menu lateral é o contêiner verde que troca o contorno para o creme (M7.11)…
+    expect(FOCO_CLARO.test(regra(PAINEL, ".lateral"))).toBe(true);
+    // …e, no celular, a folga dos quatro lados cobre o alcance do contorno (deslocamento mais espessura).
+    const folgas = (valor(em(celular, ".lateral"), "padding") ?? "").split(/\s+/).map(parseFloat);
+    expect(Math.min(...folgas)).toBeGreaterThanOrEqual(ALCANCE_FOCO);
+    // O triângulo padrão do <summary> sai: o botão tem a própria seta.
+    expect(valor(em(celular, ".botaoMenu"), "list-style")).toBe("none");
+    expect(valor(em(celular, ".botaoMenu::-webkit-details-marker"), "display")).toBe("none");
+  });
+
+  it("cabeçalho do painel no celular: o selo e o Sair descem de linha em vez de estourar a largura", () => {
+    for (const seletor of [".cabecalho", ".cabecalhoAcoes"]) {
+      const quebra = celular.filter((r) => r.seletor.split(", ").includes(seletor)).map((r) => valor(r.corpo, "flex-wrap"));
+      expect(quebra, seletor).toContain("wrap");
+    }
+    // O selo pode quebrar dentro da pílula quando a letra está grande: com `nowrap`, passaria da borda da tela, e o
+    // `overflow-x: hidden` de html e body cortaria o fim sem rolagem. Com a letra normal, a quebra acima já basta para ele
+    // caber numa linha só.
+    const selos = regras(PAINEL).filter((r) => r.seletor.split(", ").includes(".selo"));
+    expect(selos.length).toBeGreaterThan(0);
+    for (const r of selos) expect(valor(r.corpo, "white-space"), r.seletor).toBeUndefined();
+    // No computador, como antes: uma linha só.
+    expect(valor(em(computador, ".cabecalho"), "flex-wrap")).toBeUndefined();
+    expect(valor(em(computador, ".cabecalhoAcoes"), "flex-wrap")).toBeUndefined();
   });
 });
 
@@ -413,6 +516,97 @@ describe("Pular para o conteúdo (M7.11)", () => {
     expect(valor(regra(GLOBAL, 'main[tabindex="-1"]:focus'), "outline")).toBe("none");
     // Texto e fundo do link legíveis (tinta sobre papel).
     expect(contraste(cor(tokenDe(valor(regra(GLOBAL, ".scl-pular"), "color")!)), cor(tokenDe(valor(regra(GLOBAL, ".scl-pular"), "background")!)))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("resultado à vista depois do envio da consulta (M7.21)", () => {
+  /** A âncora do envio (`ID_RESULTADO`, em FormConsulta.tsx): fica no endereço, que o visitante pode copiar e mandar. */
+  const ID_RESULTADO = "resultado";
+  /** O destino da âncora na página. */
+  const alvos = (raiz: HTMLElement) => [...raiz.querySelectorAll<HTMLElement>(`#${ID_RESULTADO}`)];
+  const consultar = async (sp: Record<string, string>) => renderToStaticMarkup(await Consulta(props({}, sp) as never));
+  /** O nome que o leitor de tela anuncia ao focar o alvo: o título ligado por aria-labelledby, senão o aria-label. */
+  const nome = (raiz: HTMLElement, alvo: HTMLElement) => (alvo.getAttribute("aria-labelledby") ? raiz.querySelector(`#${alvo.getAttribute("aria-labelledby")}`)?.textContent : alvo.getAttribute("aria-label"));
+
+  it("todo formulário da consulta (capa, página da casa, consulta e busca) envia por GET para a âncora do resultado", async () => {
+    const comFormulario: string[] = [];
+    for (const [tela, html] of Object.entries(await telas())) {
+      const forms = dom(html).querySelectorAll('form[aria-label="Consultar disponibilidade"]');
+      if (forms.length) comFormulario.push(tela);
+      for (const form of forms) {
+        expect(form.getAttribute("action"), tela).toBe(`/consulta#${ID_RESULTADO}`);
+        expect(form.getAttribute("method"), tela).toBe("get");
+      }
+    }
+    expect(comFormulario).toEqual(["página inicial", "página do imóvel", "consulta", "Sua busca"]);
+  });
+
+  it("com resultado, a página abre nele: um alvo só, focável fora da ordem do Tab, com nome para o leitor de tela", async () => {
+    // Consulta de uma casa: o quadro "Resumo da viagem", com a disponibilidade e o valor dentro.
+    const consulta = dom(await consultar(pedido));
+    const [resumo, ...outros] = alvos(consulta);
+    expect(outros).toEqual([]);
+    expect(resumo.tagName).toBe("ASIDE");
+    expect(resumo.className).toBe(styles.resumoViagem);
+    expect(resumo.getAttribute("tabindex")).toBe("-1");
+    expect(nome(consulta, resumo)).toBe("Resumo da viagem");
+    expect(resumo.querySelector('[aria-label="Disponibilidade e valor"]')?.textContent).toContain("Disponível");
+    // Busca em todas as casas: a lista "N casas na sua busca", com os cartões dentro.
+    const busca1 = dom(await consultar(busca));
+    const [lista, ...maisListas] = alvos(busca1);
+    expect(maisListas).toEqual([]);
+    expect(lista.tagName).toBe("SECTION");
+    expect(lista.getAttribute("tabindex")).toBe("-1");
+    expect(nome(busca1, lista)).toBe("1 casa na sua busca");
+    expect(lista.querySelector('a[href^="/imoveis/403?"]')).not.toBeNull();
+    // Nenhuma casa recebe o grupo: o aviso com o contato é o resultado.
+    const grande = dom(await consultar({ ...busca, hospedes: "9" }));
+    const [aviso, ...maisAvisos] = alvos(grande);
+    expect(maisAvisos).toEqual([]);
+    expect(aviso.getAttribute("tabindex")).toBe("-1");
+    expect(nome(grande, aviso)).toBe("Nenhuma casa para o grupo");
+    expect(aviso.textContent).toContain(TEXTOS_SITE_INICIAIS.buscaSemCasa);
+    // O alvo não entra na ordem do Tab: o primeiro focável continua sendo o "Pular para o conteúdo".
+    for (const raiz of [consulta, busca1, grande]) expect(primeiroFocavel(raiz)?.textContent).toBe(ROTULO_PULAR);
+  });
+
+  it("com erro de preenchimento (ou sem datas), nenhum alvo: a âncora não acha nada e a página fica no topo, onde os erros aparecem", async () => {
+    const casos: [string, Record<string, string>, string | null][] = [
+      ["consulta sem datas", {}, null],
+      ["consulta com a entrada antes de hoje", { ...pedido, entrada: "2020-01-10" }, "A entrada não pode ser antes de hoje."],
+      ["consulta com o grupo maior que a casa", { ...pedido, hospedes: "9" }, "Este apartamento recebe até 4 pessoas."],
+      ["busca com a saída igual à entrada", { ...busca, saida: busca.entrada }, "A saída precisa ser depois da entrada."],
+      ["busca sem o número de pessoas", { ...busca, hospedes: "" }, "Informe quantas pessoas."],
+    ];
+    for (const [caso, sp, erro] of casos) {
+      const raiz = dom(await consultar(sp));
+      expect(alvos(raiz), caso).toEqual([]);
+      if (erro) expect([...raiz.querySelectorAll(`form .${styles.erro}`)].map((e) => e.textContent), caso).toContain(erro);
+    }
+    // Busca sem o número de pessoas: o campo combina com o aviso ("Escolha", obrigatório), sem um palpite de 2 pessoas.
+    const semPessoas = dom(await consultar({ ...busca, hospedes: "" })).querySelector<HTMLSelectElement>('form select[name="hospedes"]')!;
+    expect(semPessoas.value).toBe("");
+    expect(semPessoas.required).toBe(true);
+    expect(semPessoas.options[0].textContent).toBe("Escolha");
+    expect(semPessoas.getAttribute("aria-describedby")).toBe("erro-hospedes");
+    // Grupo maior que a casa: o número pedido continua marcado, ao lado do aviso "recebe até N pessoas".
+    expect(dom(await consultar({ ...pedido, hospedes: "9" })).querySelector<HTMLSelectElement>('form select[name="hospedes"]')!.value).toBe("9");
+    // Nada foi consultado com dados errados (e o quadro do resumo fica com "a confirmar").
+    expect(m.disponibilidade).not.toHaveBeenCalled();
+    // A página da casa não é destino do envio: nem com a disponibilidade à vista há alvo nela.
+    const casa = dom(renderToStaticMarkup(await PaginaImovel(props({ codigo: "403" }, pedido) as never)));
+    expect(casa.querySelector('[aria-label="Disponibilidade e valor"]')).not.toBeNull();
+    expect(alvos(casa)).toEqual([]);
+  });
+
+  it("o alvo focado não ganha contorno (é um contêiner, como o miolo) e para com folga da borda; o contorno dos controles continua", () => {
+    expect(valor(regra(GLOBAL, `#${ID_RESULTADO}[tabindex="-1"]:focus`), "outline")).toBe("none");
+    expect(valor(regra(GLOBAL, 'main[tabindex="-1"]:focus'), "outline")).toBe("none");
+    expect(parseFloat(valor(regra(GLOBAL, `#${ID_RESULTADO}`), "scroll-margin-top") ?? "0")).toBeGreaterThan(0);
+    // O contorno de sempre, nos controles (inclusive os de tabindex próprio, como os dias do calendário), não mudou.
+    expect(valor(FOCO, "outline")).toBe("3px solid var(--scl-foco-cor)");
+    // Sem rolagem animada na página: o navegador pula direto para o resultado, também com "reduzir movimento".
+    expect(regras(GLOBAL).filter((r) => valor(r.corpo, "scroll-behavior"))).toEqual([]);
   });
 });
 

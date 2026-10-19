@@ -5,14 +5,16 @@ import { usePathname } from "next/navigation";
 import { ErroNoPortal, molduraDoErro } from "@/components/portal/ErroNoPortal";
 import { MolduraBase } from "@/components/site/MolduraBase";
 import styles from "@/components/site/site.module.css";
+import { useAvisoDeErro } from "@/observabilidade/aviso-de-erro";
 
 /**
  * Erro inesperado (M7.8), em português e no visual do site: "tente de novo" e a volta ao início. Texto fixo e curto, sem
  * nada do banco, porque o erro pode ser o próprio banco (por isso a moldura sem banco, com a marca do estudo). Nas áreas
  * internas sem página de erro própria (a agenda da equipe, a entrada, o convite, ou uma falha na moldura do painel),
- * a moldura dos portais, sem o menu do site.
+ * a moldura dos portais, sem o menu do site. O erro vai para o Sentry, sem dados pessoais (M0.9).
  */
 export default function ErroNaPagina({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  useAvisoDeErro(error);
   const interna = molduraDoErro(usePathname() ?? "/");
   if (interna) return <ErroNoPortal titulo={interna.titulo} volta={interna.volta} digest={error.digest} retry={retry} />;
   return (

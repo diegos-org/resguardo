@@ -96,3 +96,25 @@ it("filtro de pedidos de cancelamento (M8.2c): ?cancelamento=pedido mostra só a
   await cancelar(c, comPedido.reservaId, entradaPadrao(), equipe, minutos(60));
   expect((await listarDe({ cancelamento: "pedido" })).itens).toEqual([]);
 });
+
+it("filtro das reservas do site com atenção no Beds24 (M8.3c): ?beds24=atencao mostra só os ids passados, de qualquer período e com as canceladas", async () => {
+  const c = await montarCenario(db);
+  const equipe = await usuarioDeTeste(c);
+  const comAtencao = await pagarEConfirmar(c);
+  const cancelada = await pagarEConfirmar(c, { entrada: "2026-11-20", saida: "2026-11-23", email: "outro@example.com" });
+  const semAtencao = await pagarEConfirmar(c, { entrada: "2026-11-24", saida: "2026-11-27", email: "terceiro@example.com" });
+  await cancelar(c, cancelada.reservaId, entradaPadrao(), equipe, minutos(60));
+  const filtros = (p: Record<string, string>) => lerFiltrosLista({ escopo: "periodo", ...p });
+  expect(filtros({ beds24: "atencao" }).beds24).toBe("atencao");
+  expect(filtros({ beds24: "qualquer" }).beds24).toBe("todas");
+  expect(linkLista({ beds24: "atencao", busca: "x" }, { pagina: "2" })).toBe("/painel/reservas?busca=x&beds24=atencao&pagina=2");
+  // A página passa os ids (lidos da mesma leitura do aviso do Início): `reservas/` não sabe quais são.
+  const ids = [comAtencao.reservaId, cancelada.reservaId];
+  const outroMes = { inicio: "2027-01-01", fim: "2027-02-01" };
+  const listarDe = (p: Record<string, string>, soIds?: string[]) => listarReservasPaginadas(db, c.org, filtros(p), { imovelIds: [c.imovel], periodo: outroMes, agora: minutos(70), ...(soIds ? { soIds } : {}) });
+  expect((await listarDe({ beds24: "atencao" }, ids)).itens.map((r) => r.id).sort()).toEqual([...ids].sort());
+  // Fora do filtro, o período e o "sem canceladas" de sempre; a lista vazia de ids não mostra nada (nunca a lista toda).
+  expect((await listarDe({})).itens).toEqual([]);
+  expect((await listarDe({ beds24: "atencao" }, [])).itens).toEqual([]);
+  expect((await listarDe({ beds24: "atencao", busca: semAtencao.reservaCodigo }, ids)).itens).toEqual([]);
+});

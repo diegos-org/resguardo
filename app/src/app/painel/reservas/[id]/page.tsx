@@ -22,7 +22,9 @@ import { Horarios } from "@/components/reservas/Horarios";
 import { PagamentoNoSite } from "@/components/reservas/PagamentoNoSite";
 import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas";
 import { Recebimentos } from "@/components/reservas/Recebimentos";
-import { hojeISO } from "@/lib/datas";
+import { ReservaNoBeds24 } from "@/components/reservas/ReservaNoBeds24";
+import { fichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
+import { dataBr, dataHoraNoFuso, diaHoraNoFuso, diaMesBr, hojeISO } from "@/lib/datas";
 import { alteracaoDoPortador, alteracoesDaReserva } from "@/pagamentos/alteracao-painel";
 import { textoDoResultadoDaAlteracao } from "@/pagamentos/alteracao-tela";
 import { cancelamentoDaReserva, momentosDoCancelamento } from "@/pagamentos/cancelamento-painel";
@@ -32,17 +34,25 @@ import { lerContestacoesDaEquipe, lerContestacoesDaOperacao, textoDoResultadoDaC
 import { recebidoPorReserva, recebimentosDaReserva } from "@/repasses/recebimentos";
 import { aceitesDaReserva } from "@/site/aceites";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
+import { ConversaWhatsapp } from "@/components/reservas/ConversaWhatsapp";
+import { podeVerConversas } from "@/whatsapp/acesso";
+import { conversasDaReserva } from "@/whatsapp/conversas";
+
+/**
+ * M8.3c (bloco G; plano 1.15): "Conferir agora", "Vincular" e "Passar ao sistema" leem o Beds24 (a fase da leitura tem até
+ * 120 s, e o limite interno do botão é de 240 s): a mesma duração de Integrações.
+ */
+export const maxDuration = 300;
 
 // M8.2d: a diferença de uma alteração também é valor (o histórico da reserva nunca leva o valor a quem não lê o financeiro).
 const CAMPOS_FINANCEIROS = ["valorBruto", "taxaCanal", "valorLiquido", "moeda", "recebimento", "diferenca"];
-const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d).replace(", ", " às ");
-const dataBr = (d: string) => d.split("-").reverse().join("/");
+const horaSP = (d: Date) => diaHoraNoFuso(d);
 const brl = (c: number | null) => (c === null ? "não informado" : formatBRL(c));
 
 export default async function DetalheReserva({ params, searchParams }: PageProps<"/painel/reservas/[id]">) {
   const sessao = await exigirSessaoPainel();
   const { id } = await params;
-  const { salvo, erro, cancelamento: resultadoCancelamento, alteracao: resultadoAlteracao, contestacao: resultadoContestacao } = await searchParams;
+  const { salvo, erro, cancelamento: resultadoCancelamento, alteracao: resultadoAlteracao, contestacao: resultadoContestacao, beds24: resultadoBeds24 } = await searchParams;
   const db = getDb();
   const r = await obterReserva(db, sessao.organizacaoId, id);
   if (!r) notFound();
@@ -115,15 +125,30 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     r.estado === "confirmada" &&
     (!momentos || agora.getTime() < momentos.entradaEm.getTime()) &&
     (disputasEquipe ?? disputasOperacao).some((d) => d.seguraValor && pagamentosSite.some((p) => p.id === d.pagamentoId && (p.desfecho === "reserva" || p.desfecho === "alteracao")));
+  // M8.3a: a reserva do site no Beds24 (só para a equipe; "Simular" com reserva:editar, sem rede). M8.3b: as tarefas das
+  // OTAs desta reserva (a mesma função do Início) e as marcas manuais.
+  const noBeds24 = r.fonte === "site" && sessao.papel !== "proprietario" && podeFazer(sessao.papel, "reserva:ler") ? await fichaReservaNoBeds24(db, sessao.organizacaoId, r.id, process.env, agora) : null;
+  // O texto das OTAs no cancelamento e na alteração vem da tarefa à mão desta reserva (uma regra, um lugar).
+  const tarefaOta = (casos: readonly string[]) => noBeds24?.tarefas.find((t) => casos.includes(t.caso) && t.estado === "manual")?.texto;
+  const textoOtaCancelamento = tarefaOta(["cancelada_bloqueio", "cancelada_criada"]);
+  const textoOtaAlteracao = tarefaOta(["alterada_bloqueio", "alterada_criada"]);
+  // A reserva do site marcada como fechada nas OTAs e cancelada pelo botão de sempre (a confirmada à mão, sem pagamento): só
+  // quando a tarefa dela vai existir depois (acompanhamento manual e a saída depois de hoje), com o botão "Datas reabertas".
+  const otaNoCancelar = r.fonte === "site" && noBeds24?.acompanhamento?.otaFechadaEm && noBeds24.acompanhamento.situacao === "manual" && r.checkout > hojeISO(undefined, agora)
+    ? ` As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de ${diaMesBr(r.checkin)} a ${diaMesBr(r.checkout)} para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha.`
+    : "";
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).
   const aceitesSite = podeFazer(sessao.papel, "reserva:ler") ? await aceitesDaReserva(db, sessao.organizacaoId, r.id) : [];
+  // M10.1a: a conversa do WhatsApp ligada a esta reserva, só para quem vê as conversas (a configuração "Quem vê as
+  // conversas", padrão só o admin): sem acesso, nada é consultado e o bloco não aparece.
+  const conversas = (await podeVerConversas(db, sessao)) ? await conversasDaReserva(db, sessao, r.id, agora) : null;
 
   const linhas: [string, string][] = [
     ["Imóvel", imovel ? `${imovel.codigo} · ${imovel.nome}` : "—"],
     ["Origem", `${NOMES_ORIGEM[r.origem]}${r.codigoCanal ? ` (${r.codigoCanal})` : ""}`],
     ["Situação", NOMES_ESTADO[r.estado]],
-    ["Feita em (data da origem)", r.reservadaEm ? r.reservadaEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Não informada pela origem"],
-    ["Cadastrada no SCL em", r.criadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })],
+    ["Feita em (data da origem)", r.reservadaEm ? dataHoraNoFuso(r.reservadaEm) : "Não informada pela origem"],
+    ["Cadastrada no SCL em", dataHoraNoFuso(r.criadoEm)],
     ["Entrada → saída", `${dataBr(r.checkin)} → ${dataBr(r.checkout)} · ${noites(r.checkin, r.checkout)} noite(s)`],
     ["Hóspedes", r.hospedes === null ? "—" : String(r.hospedes)],
     ["Hóspede", r.hospedeNome || "—"],
@@ -224,7 +249,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
         <form action={cancelar}>
           <input type="hidden" name="id" value={r.id} />
           <BotaoConfirmar
-            pergunta={`Cancelar a reserva ${r.codigo}? O financeiro dela será estornado.`}
+            pergunta={`Cancelar a reserva ${r.codigo}? O financeiro dela será estornado.${otaNoCancelar}`}
             style={{ font: "inherit", padding: "8px 16px", borderRadius: 6, border: "1px solid var(--scl-erro)", color: "var(--scl-erro)", background: "var(--scl-papel)", cursor: "pointer" }}
           >
             Cancelar reserva
@@ -251,6 +276,7 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
               editarFinanceiro={editarFinanceiro}
               verValores={verValores}
               agora={agora}
+              textoOta={textoOtaAlteracao}
             />
           ) : null
         }
@@ -266,11 +292,23 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
               editarFinanceiro={editarFinanceiro}
               verValores={verValores}
               agora={agora}
+              textoOta={textoOtaCancelamento}
             />
           ) : null
         }
       />
+      {noBeds24 && (
+        <ReservaNoBeds24
+          reservaId={r.id}
+          ficha={noBeds24}
+          editar={editarReserva}
+          // M8.3c: "Não existe, pode criar", "Vincular" e "Passar ao sistema" pedem também a configuração (a operação não os vê).
+          configurar={podeFazer(sessao.papel, "configuracao:editar")}
+          resultado={typeof resultadoBeds24 === "string" ? resultadoBeds24 : undefined}
+        />
+      )}
       <PaginasLegaisAceitas aceites={aceitesSite} />
+      <ConversaWhatsapp conversas={conversas} />
       {emConferencia && (
         <section aria-label="Em conferência" className={styles.alerta} style={{ maxWidth: 820 }}>
           <p style={{ margin: 0 }}>

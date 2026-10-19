@@ -7,7 +7,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { aplicarMotor, recalcularReservas } from "@/financeiro/aplicar";
 import { cancelamentoNoPortal, pedirCancelamentoPeloHospede } from "@/hospede/cancelamento";
-import { avisosDeAlteracao } from "@/painel/dashboard";
+import { avisosDeAlteracao, carregarDashboard } from "@/painel/dashboard";
 import { recebidoPorReserva } from "@/repasses/recebimentos";
 import { criarCotacao, segurarDatas } from "@/site/cotacoes";
 import { consultarDisponibilidade } from "@/site/disponibilidade";
@@ -70,6 +70,9 @@ beforeEach(async () => {
 });
 
 /** Um instante no horário de São Paulo ("AAAA-MM-DD HH:MM"). */
+/** O Início de quem edita reservas, sem o financeiro: as tarefas das OTAs vêm dele (M8.3b), não dos avisos da alteração. */
+const avisosDoInicio = async (agora: Date) =>
+  (await carregarDashboard(db, c.org, { imoveis: [], todos: false, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: false, verCancelamentos: true, agora })).alertas;
 const sp = (dataHora: string) => new Date(`${dataHora.replace(" ", "T")}:00-03:00`);
 /** A leitura do Beds24 renovada pouco antes de `quando` (a agenda das noites continua livre). */
 const lerAgenda = (quando: Date) => db.update(beds24Calendario).set({ observadoEm: new Date(quando.getTime() - 3_600_000) }).where(eq(beds24Calendario.organizacaoId, c.org));
@@ -159,13 +162,13 @@ describe("aumento: o hóspede paga a diferença na página da reserva", () => {
       valorADevolver: 0,
     });
     expect(previa.previa.pergunta).toBe(
-      "Segurar as novas datas (12/10 a 16/10, 4 noites, 4 pessoas) até 13:20 e liberar para o hóspede pagar a diferença de R$ 528,00 na página da reserva? Até o pagamento, a reserva continua como está (12/10 a 15/10). Quando ele pagar, a alteração vale sozinha; depois, mude o bloqueio nas OTAs (no Beds24).",
+      "Segurar as novas datas (12/10 a 16/10, 4 noites, 4 pessoas) até 13:20 e liberar para o hóspede pagar a diferença de R$ 528,00 na página da reserva? Até o pagamento, a reserva continua como está (12/10 a 15/10). Quando ele pagar, a alteração vale sozinha; depois, mude as datas no Beds24 como o Início mostrar (não apague nem crie outro).",
     );
     expect(previa.previa.avisos).toEqual(
       expect.arrayContaining([
         `As novas datas ficam seguradas por 60 minutos (Configurações → Calendário e preços, "alteração de reserva paga pelo site"); o Pix da diferença estende esse prazo.`,
         "A taxa do pagamento da diferença fica conhecida depois do pagamento.",
-        "Depois de aplicada, mude o bloqueio no Beds24: feche as novas datas e reabra as antigas.",
+        "Depois de aplicada, mude as datas no Beds24 como o Início mostrar (no mesmo bloqueio: não apague nem crie outro).",
       ]),
     );
     expect(resultado).toMatchObject({ ok: true, situacao: "segurada", holdAte: minutos(80), devolucoes: [] });
@@ -174,7 +177,7 @@ describe("aumento: o hóspede paga a diferença na página da reserva", () => {
     expect(await c.reserva(x.reservaId)).toMatchObject({ checkin: "2026-10-12", checkout: "2026-10-15", valorBruto: TOTAL });
     const [portador] = await portadores();
     expect(portador).toMatchObject({ estado: "pedido", checkin: "2026-10-15", checkout: "2026-10-16", idFonte: resultado.alteracaoId, hospedeNome: `Alteração ${x.reservaCodigo}`, hospedeEmail: "", hospedeTelefone: "", valorBruto: null, taxaCanal: null });
-    expect(portador.observacoes).toContain("até 01/10, 13:20");
+    expect(portador.observacoes).toContain("até 01/10 às 13:20");
     expect(await alteracaoGravada(c, resultado.alteracaoId)).toMatchObject({ situacao: "segurada", holdReservaId: portador.id, diferenca: 52800, valorAntes: TOTAL, valorDepois: 235200, criadaPor: equipe });
 
     // O hóspede paga a diferença por Pix (taxa 1%): o prazo das datas acompanha o Pix e a aprovação aplica.
@@ -205,28 +208,30 @@ describe("aumento: o hóspede paga a diferença na página da reserva", () => {
     const acoes = (await db.select({ acao: auditoria.acao }).from(auditoria).where(eq(auditoria.organizacaoId, c.org))).map((y) => y.acao);
     expect(acoes).toEqual(expect.arrayContaining(["alteracao.preparar", "alteracao.segurar", "alteracao.estender", "reserva.alterar", "alteracao.aplicar", "pagamento.alteracao"]));
 
-    // Início (operação): mudar o bloqueio nas OTAs até a equipe marcar.
-    const ota = (await avisosDeAlteracao(db, c.org, minutos(40))).find((y) => y.texto.includes("mude o bloqueio nas OTAs"));
+    // Início (operação): mudar as datas do bloqueio nas OTAs até a equipe marcar (M8.3b: a tarefa das OTAs, com as datas de
+    // agora e sem apagar; os avisos da alteração não falam mais das OTAs).
+    expect((await avisosDeAlteracao(db, c.org, minutos(40))).some((y) => y.texto.includes("OTAs") || y.texto.includes("bloqueio"))).toBe(false);
+    const ota = (await avisosDoInicio(minutos(40))).find((y) => y.texto.includes(", alterada:"));
     expect(ota).toEqual({
       nivel: "info",
-      texto: `1 reserva(s) do site alterada(s) (${x.reservaCodigo}): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas).`,
+      texto: `Reserva ${x.reservaCodigo}, alterada: mude as datas do bloqueio para 12/10 a 16/10 (não apague nem crie outro).`,
       link: `/painel/reservas/${x.reservaId}`,
     });
     expect(ota!.texto).not.toContain("R$");
-    // Com o envio automático ao Beds24 ligado (no ambiente e no painel) o aviso continua: o envio fecha só os bloqueios
-    // do SCL, nunca as datas das reservas (até o M8.3). Credencial fictícia: nada é chamado.
+    // Com o envio automático do calendário ligado (no ambiente e no painel) a tarefa continua: a chave das reservas é outra.
+    // Credencial fictícia: nada é chamado.
     vi.stubEnv("BEDS24_ESCRITA", "ligada");
     vi.stubEnv("BEDS24_REFRESH_TOKEN", "refresh-ficticio");
     try {
       const regras = await lerRegrasCalendario(db, c.org);
       await salvarRegrasCalendario(db, c.org, { ...regras, envio: { ...regras.envio, automatico: true } }, null);
-      expect((await avisosDeAlteracao(db, c.org, minutos(40))).find((y) => y.texto.includes("mude o bloqueio nas OTAs"))).toEqual(ota);
+      expect((await avisosDoInicio(minutos(40))).find((y) => y.texto.includes(", alterada:"))).toEqual(ota);
     } finally {
       vi.unstubAllEnvs();
     }
     expect(await marcarOtaAtualizada(db, c.org, a.id, equipe, minutos(41))).toEqual({ ok: true });
     expect(await marcarOtaAtualizada(db, c.org, a.id, equipe, minutos(42))).toMatchObject({ ok: false });
-    expect((await avisosDeAlteracao(db, c.org, minutos(43))).some((y) => y.texto.includes("mude o bloqueio nas OTAs"))).toBe(false);
+    expect((await avisosDoInicio(minutos(43))).some((y) => y.texto.includes(", alterada:"))).toBe(false);
     // Repetir a aplicação não muda nada: a alteração aplicada recusa de novo (e a outra tentativa não aplica duas vezes).
     expect(await previaDaAplicacao(db, c.org, a.id, c.provedor, minutos(44))).toMatchObject({ ok: false, codigo: "nao_segurada" });
     expect(await semDadosDoHospede(db)).toEqual([]);
@@ -1118,7 +1123,7 @@ describe("revisão do M8.2d: os textos da equipe dizem quem decidiu e só falam 
     expect(aumento.previa.pergunta).not.toContain("OTAs");
     // Aplicada (só as pessoas e o valor): nada a mudar no bloqueio das OTAs.
     expect((await alterar(c, x.reservaId, { hospedes: 2, valor: menos200 }, minutos(20), { autorId: equipe, aplicar: true })).resultado).toMatchObject({ ok: true, situacao: "aplicada" });
-    expect((await avisosDeAlteracao(db, c.org, minutos(30))).some((a) => a.texto.includes("mude o bloqueio nas OTAs"))).toBe(false);
+    expect((await avisosDoInicio(minutos(30))).some((a) => a.texto.includes(", alterada:"))).toBe(false);
     // Retida (fora do prazo da política), as mesmas datas: nenhuma noite é liberada.
     const y = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "outro@example.com" });
     const retida = await previaDaAlteracao(db, c.org, y.reservaId, entradaAlteracao({ checkin: "2026-10-20", checkout: "2026-10-23", hospedes: 2, recebidoEm: tarde, valor: menos200 }), c.provedor, tarde);

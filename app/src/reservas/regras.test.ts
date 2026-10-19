@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conflitos, dataValida, type DadosReserva, gerarCodigo, noites, periodosCruzam, validarReserva } from "./regras";
+import { codigosDeReservaNoTexto, conflitos, dataValida, type DadosReserva, ehCodigoDeReserva, gerarCodigo, noites, periodosCruzam, validarReserva } from "./regras";
 
 const reservaBase = (over: Partial<DadosReserva> = {}): DadosReserva => ({
   imovelId: "00000000-0000-4000-8000-000000000000",
@@ -73,6 +73,18 @@ describe("validarReserva", () => {
 describe("gerarCodigo", () => {
   it("formato SCL-XXXXXX sem caracteres ambíguos", () => {
     for (let i = 0; i < 50; i++) expect(gerarCodigo()).toMatch(/^SCL-[A-HJ-NP-Z2-9]{6}$/);
+  });
+
+  it("reconhece o código gerado sozinho e solto num texto, com o mesmo alfabeto (M8.3)", () => {
+    for (let i = 0; i < 50; i++) {
+      const c = gerarCodigo();
+      expect(ehCodigoDeReserva(c)).toBe(true);
+      expect(codigosDeReservaNoTexto(`Reserva paga pelo site ${c}: não altere aqui`)).toEqual([c]);
+    }
+    // Letras e números ambíguos (0, O, 1, I) ficam de fora, como em gerarCodigo; minúsculas também.
+    for (const t of ["SCL-7K2QX0", "SCL-7K2QXO", "SCL-7K2QX1", "SCL-7K2QXI", "scl-7k2qxm", "SCL-7K2QX", "SCL-7K2QXMM", " SCL-7K2QXM"]) expect(ehCodigoDeReserva(t)).toBe(false);
+    expect(codigosDeReservaNoTexto("XSCL-7K2QXM e SCL-7K2QXM2 grudados")).toEqual([]);
+    expect(codigosDeReservaNoTexto("Site SCL-7K2QXM (não altere aqui) SCL-7K2QXM e SCL-ABCDEF")).toEqual(["SCL-7K2QXM", "SCL-ABCDEF"]);
   });
 });
 

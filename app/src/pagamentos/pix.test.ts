@@ -38,7 +38,7 @@ describe("gerar o Pix (M8.2a)", () => {
     expect(p.pixExpiraEm?.toISOString()).toBe(minutos(30).toISOString());
     expect((await c.cotacao(cotacaoId)).holdAte?.toISOString()).toBe(new Date(minutos(30).getTime() + FOLGA_PRAZO_PIX_MS).toISOString());
     // A observação do pedido acompanha o prazo novo (12:32 em São Paulo).
-    expect((await c.reserva(reservaId)).observacoes).toContain("Datas seguradas até 01/10, 12:32 (estendido pelo pagamento);");
+    expect((await c.reserva(reservaId)).observacoes).toContain("Datas seguradas até 01/10 às 12:32 (estendido pelo pagamento);");
     const estender = await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, c.org), eq(auditoria.acao, "cotacao.estender")));
     expect(estender.length).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(estender)).not.toContain(EMAIL_HOSPEDE);

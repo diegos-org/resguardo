@@ -61,13 +61,17 @@ describe("campo de datas do site (M7.6)", () => {
     expect([escondido("entrada"), escondido("saida")]).toEqual(["", ""]);
   });
 
-  it("calendário com dois meses, semana a partir do domingo, dias passados marcados e mês anterior bloqueado no mês de hoje", () => {
+  it("calendário com dois meses, semana a partir da segunda (Diego, 16/10/2026), dias passados marcados e mês anterior bloqueado no mês de hoje", () => {
     render(<Formulario />);
     fireEvent.click(campo("Entrada"));
     expect(campo("Entrada").getAttribute("aria-expanded")).toBe("true");
     const grades = quadro().getAllByRole("grid");
     expect(grades.map((g) => g.getAttribute("aria-labelledby") && document.getElementById(g.getAttribute("aria-labelledby")!)?.textContent)).toEqual(["outubro de 2026", "novembro de 2026"]);
-    expect(within(grades[0]).getAllByRole("columnheader").map((c) => c.textContent).join(" ")).toBe("dom seg ter qua qui sex sáb");
+    expect(within(grades[0]).getAllByRole("columnheader").map((c) => c.textContent).join(" ")).toBe("seg ter qua qui sex sáb dom");
+    expect(within(grades[0]).getAllByRole("columnheader").map((c) => c.getAttribute("abbr"))).toEqual(["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]);
+    // 1/10/2026 é quinta: a primeira linha tem três casas vazias (segunda a quarta) e o dia 4, domingo, fecha a semana.
+    const primeira = within(grades[0]).getAllByRole("row")[1];
+    expect(within(primeira).getAllByRole("gridcell").map((c) => c.textContent)).toEqual(["", "", "", "1", "2", "3", "4"]);
     expect(dia("6 de outubro de 2026").getAttribute("aria-label")).toBe("6 de outubro de 2026, já passou");
     expect(dia("6 de outubro de 2026").getAttribute("aria-disabled")).toBe("true");
     expect(dia("7 de outubro de 2026").getAttribute("aria-current")).toBe("date");
@@ -229,8 +233,13 @@ describe("campo de datas do site (M7.6)", () => {
     // PageDown vai ao mesmo dia do mês seguinte, trazendo o mês para a tela.
     fireEvent.keyDown(document.activeElement!, { key: "PageDown" });
     expect(document.activeElement).toBe(dia("7 de dezembro de 2026"));
+    // Home e End vão à segunda e ao domingo da semana: 7/12/2026 já é segunda e fica; o domingo é 13/12.
     fireEvent.keyDown(document.activeElement!, { key: "Home" });
-    expect(document.activeElement).toBe(dia("6 de dezembro de 2026"));
+    expect(document.activeElement).toBe(dia("7 de dezembro de 2026"));
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    expect(document.activeElement).toBe(dia("13 de dezembro de 2026"));
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    expect(document.activeElement).toBe(dia("7 de dezembro de 2026"));
     // Não volta para antes de hoje.
     fireEvent.keyDown(document.activeElement!, { key: "PageUp" });
     fireEvent.keyDown(document.activeElement!, { key: "PageUp" });

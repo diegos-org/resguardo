@@ -3,15 +3,18 @@ import { redirect } from "next/navigation";
 import { sql } from "drizzle-orm";
 import { podeFazer } from "@/acesso/politica";
 import { exigirSessaoPainel } from "@/acesso/sessao-atual";
+import { escritaReservasBeds24Pronta } from "@/beds24/http";
+import { estadoDaConfiguracaoDasReservas, motivoDeConfiguracaoDasReservas } from "@/beds24/reservas-site-rotina";
 import styles from "@/components/formularios.module.css";
 import { getDb } from "@/db/client";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
-import { hojeISO } from "@/lib/datas";
+import { dataHoraNoFuso, hojeISO } from "@/lib/datas";
 import { situacaoDoMercadoPago } from "@/pagamentos/integracao";
 import { NOMES_ORIGEM } from "@/reservas/regras";
-import { AUTOMACOES, ultimasExecucoes } from "@/sistema/automacoes";
+import { AUTOMACOES, execucaoNaoRodou, ultimasExecucoes } from "@/sistema/automacoes";
 import { regrasEmVigor } from "@/sistema/regras";
 import { type SituacaoServico, situacaoServicos } from "@/sistema/servicos";
+import { situacaoDoWhatsapp } from "@/whatsapp/integracao";
 
 const SELO: Record<SituacaoServico, { texto: string; cor: string }> = {
   ok: { texto: "Funcionando (testado agora)", cor: "var(--scl-ok-fundo)" },
@@ -21,7 +24,7 @@ const SELO: Record<SituacaoServico, { texto: string; cor: string }> = {
   planejado: { texto: "Ainda não construído", cor: "var(--scl-neutro-fundo)" },
 };
 const RECEBE = { split: "canal paga o proprietário", empresa: "empresa recebe e repassa", a_confirmar: "a confirmar" };
-const quando = (d: Date | null) => (d ? d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "—");
+const quando = (d: Date | null) => (d ? dataHoraNoFuso(d) : "—");
 
 export default async function Sistema() {
   const sessao = await exigirSessaoPainel();
@@ -34,14 +37,20 @@ export default async function Sistema() {
   } catch {
     bancoOk = false;
   }
-  const [execucoes, regras, financeiras, mercadoPago] = await Promise.all([
+  const [execucoes, regras, financeiras, mercadoPago, whatsapp, paradaDasReservas] = await Promise.all([
     ultimasExecucoes(db),
     regrasEmVigor(db, sessao.organizacaoId, hojeISO()),
     lerRegrasFinanceiras(db, sessao.organizacaoId),
     // A mesma função que Integrações lê (uma regra, um lugar); sem banco, a linha diz que não foi conferida.
     bancoOk ? situacaoDoMercadoPago(db) : Promise.resolve(null),
+    // M10.1a: a mesma função que Integrações lê, com a mesma proteção do banco.
+    bancoOk ? situacaoDoWhatsapp(db, sessao.organizacaoId, process.env, new Date()) : Promise.resolve(null),
+    // M8.3c (desenho 2.4): com a chave das reservas pronta, o motivo que para a escrita, pela função única (só leitura do banco).
+    bancoOk && escritaReservasBeds24Pronta(process.env)
+      ? estadoDaConfiguracaoDasReservas(db, sessao.organizacaoId, process.env, new Date()).then(motivoDeConfiguracaoDasReservas)
+      : Promise.resolve(null),
   ]);
-  const servicos = situacaoServicos(process.env, bancoOk, mercadoPago);
+  const servicos = situacaoServicos(process.env, bancoOk, mercadoPago, whatsapp, { paradaDasReservas });
 
   return (
     <>
@@ -107,7 +116,8 @@ export default async function Sistema() {
                       ) : !e ? (
                         "ainda não rodou"
                       ) : e.ok === false ? (
-                        <span className={styles.etiqueta} style={{ background: SELO.falha.cor }}>
+                        // "Não rodou" (ex.: outra execução ocupava o Beds24) é aviso, não falha; nunca aparece como sucesso.
+                        <span className={styles.etiqueta} style={{ background: execucaoNaoRodou(e) ? SELO.nao_configurado.cor : SELO.falha.cor }}>
                           {e.resumo}
                         </span>
                       ) : (

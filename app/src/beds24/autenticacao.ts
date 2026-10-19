@@ -1,11 +1,12 @@
 import { ErroBeds24 } from "./tipos";
 import { diagnosticarFalhaBeds24 } from "./diagnostico";
 
+/** Só POST: o DELETE (e qualquer outro método de escrita) fica impossível pelo tipo (M8.3c: cancelar nunca apaga). */
 export type CorpoBeds24 = { method: "POST"; body: string } | undefined;
 
 /**
  * Chamada sem cache persistente nem redirecionamento de cabeçalhos com segredos. GET por
- * padrão; POST só com `corpo` explícito (escrita do calendário, M3.7).
+ * padrão; POST só com `corpo` explícito (escrita do calendário, M3.7, e das reservas, M8.3c).
  */
 export async function buscarBeds24(fetchImpl: typeof fetch, url: URL, headers: Record<string, string>, timeoutMs: number, corpo?: CorpoBeds24): Promise<Response> {
   const renovacao = Object.hasOwn(headers, "refreshToken");
@@ -26,6 +27,8 @@ export async function buscarBeds24(fetchImpl: typeof fetch, url: URL, headers: R
       redirect: "error",
     });
   } catch (e) {
+    // A recusa local já classificada (o prazo da operação acabado antes de a chamada sair, M8.3c) não é falha de rede.
+    if (e instanceof ErroBeds24) throw e;
     throw diagnosticarFalhaBeds24(e, renovacao);
   }
 }
@@ -68,7 +71,8 @@ export class AutenticacaoBeds24 {
       refreshToken: this.o.refreshToken!,
     }, this.o.timeoutMs);
     if (!resposta.ok) {
-      throw new ErroBeds24(`Beds24 recusou a renovação (HTTP ${resposta.status}). Confira o refresh token, sua validade e as restrições de acesso.`, "http");
+      // O status vai junto (M8.3c): a escrita de reservas distingue a renovação recusada (HTTP) da que caiu por rede ou tempo.
+      throw new ErroBeds24(`Beds24 recusou a renovação (HTTP ${resposta.status}). Confira o refresh token, sua validade e as restrições de acesso.`, "http", resposta.status);
     }
     let corpo: unknown;
     try { corpo = await resposta.json(); } catch {

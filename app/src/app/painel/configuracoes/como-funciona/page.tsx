@@ -9,10 +9,10 @@ import { publicarComoFuncionaAcao } from "@/configuracoes/acoes";
 import { lerComoFunciona, RASCUNHO_COMO_FUNCIONA, versaoAtual } from "@/configuracoes/como-funciona";
 import { getDb } from "@/db/client";
 import { usuarios } from "@/db/schema";
+import { dataBr, dataHoraNoFuso } from "@/lib/datas";
 import { situacaoDosProprietarios } from "@/portal/aceites";
 
-const br = (d: string) => d.split("-").reverse().join("/");
-const quando = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const quando = (d: Date) => dataHoraNoFuso(d);
 
 /** Configurações → Como funciona (proprietário), M5.6: texto por seção, versões e quem aceitou. */
 export default async function ComoFunciona() {
@@ -39,7 +39,7 @@ export default async function ComoFunciona() {
       <p style={{ fontSize: "0.875rem", margin: 0 }}>
         {atual ? (
           <>
-            <strong>Versão atual: {atual.numero}</strong>, publicada em {br(atual.data)}
+            <strong>Versão atual: {atual.numero}</strong>, publicada em {dataBr(atual.data)}
             {autor(atual.autorId)}. {ativos.filter((s) => s.aceitouAtual).length} de {ativos.length} proprietário(s) ativo(s) já aceitou(aram).
           </>
         ) : (
@@ -91,7 +91,7 @@ export default async function ComoFunciona() {
               .slice(1)
               .map((v) => (
                 <li key={v.numero}>
-                  Versão {v.numero} — {br(v.data)}
+                  Versão {v.numero} — {dataBr(v.data)}
                   {autor(v.autorId)}
                 </li>
               ))}

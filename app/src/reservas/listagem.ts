@@ -12,6 +12,12 @@ export type FiltrosLista = {
   execucao: string; mudanca: "todas" | "adicionada" | "alterada" | "cancelada";
   /** M8.2c: "pedido" = só as reservas com pedido de cancelamento esperando a equipe. */
   cancelamento: "todas" | "pedido";
+  /**
+   * M8.3c (desenho 6.5): "atencao" = só as reservas do site que pedem atenção no Beds24, de qualquer período e com as
+   * canceladas. Quem lê esta lista não sabe quais são: a página passa os ids (`soIds`), lidos da mesma função do aviso do
+   * Início (`reservasComAtencaoNoBeds24`); `reservas/` não importa `beds24/`.
+   */
+  beds24: "todas" | "atencao";
 };
 const primeiro = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 export function lerFiltrosLista(p: ParamsLista): FiltrosLista {
@@ -29,10 +35,11 @@ export function lerFiltrosLista(p: ParamsLista): FiltrosLista {
     execucao: primeiro(p.execucao).slice(0, 100),
     mudanca: ["adicionada", "alterada", "cancelada"].includes(mudanca) ? mudanca as FiltrosLista["mudanca"] : "todas",
     cancelamento: primeiro(p.cancelamento) === "pedido" ? "pedido" : "todas",
+    beds24: primeiro(p.beds24) === "atencao" ? "atencao" : "todas",
   };
 }
 
-const CHAVES = ["imovel", "mes", "ano", "busca", "situacao", "escopo", "ordem", "recentes", "execucao", "mudanca", "canceladas", "cancelamento"];
+const CHAVES = ["imovel", "mes", "ano", "busca", "situacao", "escopo", "ordem", "recentes", "execucao", "mudanca", "canceladas", "cancelamento", "beds24"];
 export function linkLista(p: ParamsLista, alteracoes: Record<string, string | null> = {}) {
   const q = new URLSearchParams();
   for (const k of CHAVES) for (const v of [p[k] ?? []].flat()) q.append(k, v);
@@ -40,15 +47,21 @@ export function linkLista(p: ParamsLista, alteracoes: Record<string, string | nu
   return `/painel/reservas?${q}`;
 }
 
-/** Consulta paginada exclusiva da lista. Calendário/indicadores continuam usando o período completo. */
+/**
+ * Consulta paginada exclusiva da lista. Calendário/indicadores continuam usando o período completo. `soIds` (M8.3c): só estas
+ * reservas, lidas por quem chama (o filtro `beds24=atencao`); a lista vazia não mostra nada.
+ */
 export async function listarReservasPaginadas(db: Db, org: string, f: FiltrosLista, o: {
-  imovelIds: string[]; periodo: { inicio: string; fim: string }; incluirCanceladas?: boolean; agora?: Date;
+  imovelIds: string[]; periodo: { inicio: string; fim: string }; incluirCanceladas?: boolean; agora?: Date; soIds?: readonly string[];
 }) {
   const condicoes = [eq(reservas.organizacaoId, org), o.imovelIds.length ? inArray(reservas.imovelId, o.imovelIds) : sql`false`];
-  // Os pedidos de cancelamento esperando a equipe (M8.2c) aparecem de qualquer período: um pedido nunca some da lista.
-  if (f.escopo === "periodo" && f.cancelamento !== "pedido") condicoes.push(lt(reservas.checkin, o.periodo.fim), sql`${reservas.checkout} > ${o.periodo.inicio}`);
+  // Os pedidos de cancelamento esperando a equipe (M8.2c) e as reservas do site que pedem atenção no Beds24 (M8.3c) aparecem
+  // de qualquer período: nenhuma delas some da lista.
+  const deQualquerPeriodo = f.cancelamento === "pedido" || f.beds24 === "atencao";
+  if (f.escopo === "periodo" && !deQualquerPeriodo) condicoes.push(lt(reservas.checkin, o.periodo.fim), sql`${reservas.checkout} > ${o.periodo.inicio}`);
   if (f.situacao !== "todas") condicoes.push(eq(reservas.estado, f.situacao));
-  else if (!o.incluirCanceladas && !f.execucao) condicoes.push(sql`${reservas.estado} <> 'cancelada'`);
+  else if (!o.incluirCanceladas && !f.execucao && f.beds24 !== "atencao") condicoes.push(sql`${reservas.estado} <> 'cancelada'`);
+  if (o.soIds) condicoes.push(o.soIds.length ? inArray(reservas.id, [...o.soIds]) : sql`false`);
   if (f.busca) {
     const termo = `%${f.busca.replace(/[\\%_]/g, "\\$&")}%`;
     condicoes.push(or(ilike(reservas.codigo, termo), ilike(reservas.codigoCanal, termo), ilike(reservas.hospedeNome, termo))!);

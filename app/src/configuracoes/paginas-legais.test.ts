@@ -212,6 +212,27 @@ describe("textos-base das páginas legais (M7.4)", () => {
     // M7.14: os formulários de proprietários guardam o registro da autorização; a linha deles diz isso.
     const proprietarios = /- Proprietários que nos procuram pelo site: ([^\n]+)/.exec(RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto)![1];
     expect(proprietarios).toContain("o registro da autorização dada no formulário (o texto autorizado, a versão dele e a data e a hora do envio)");
+    // M0.9: o serviço que registra os erros técnicos está na lista de fornecedores e nos dados fora do Brasil, dizendo o
+    // que recebe e o que não recebe; continua sem ferramenta de análise de audiência.
+    const privacidade = RASCUNHO_PAGINAS_LEGAIS.privacidade.secoes.texto;
+    const sentry = /- Sentry, ([^\n]+)/.exec(privacidade)![1];
+    expect(sentry).toContain("que registra os erros técnicos do site para a gente corrigir");
+    // M0.9 (revisão): o aviso leva também o caminho até o erro (os rastros do Sentry), e o texto diz isso, sem "só".
+    expect(sentry).toContain("o caminho até ele (as páginas abertas, os botões tocados e as chamadas feitas pela página logo antes, sem o que foi digitado)");
+    expect(sentry).not.toMatch(/recebe só/);
+    expect(sentry).toContain("não recebe seu nome, seus contatos, seus documentos nem seus dados de pagamento, e não guarda o seu IP");
+    expect(privacidade).toContain("hospedagem do site, banco de dados, registro de erros técnicos, envio de e-mails e pagamento");
+    expect(privacidade).toContain("Não usamos cookies de publicidade nem ferramentas de análise de audiência");
+  });
+
+  it("a hora no texto-base da Política de cancelamento é a do Brasil, HH:MM (M7.22): 23:59 e 00:00, sem 23h59 nem 0h", () => {
+    // Só o rascunho muda: a versão publicada fica no banco como foi aceita, e o texto no site muda quando Diego publica outra.
+    const politica = Object.values(RASCUNHO_PAGINAS_LEGAIS.cancelamento.secoes).join("\n");
+    expect(politica).not.toContain("23h59");
+    expect(politica).not.toMatch(/(?<![\w:])0h(?!\w)/);
+    expect(politica).toContain("recebidos até as 23:59 do dia");
+    expect(politica).toContain("A partir das 00:00 do dia seguinte");
+    expect(politica).toContain("termina às 23:59 (horário de Brasília)");
   });
 });
 

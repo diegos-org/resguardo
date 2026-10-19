@@ -1,7 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import Page from "./page";
-const mocks = vi.hoisted(() => ({ listar: vi.fn(), sessao: vi.fn(), imoveis: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listar: vi.fn(), sessao: vi.fn(), imoveis: vi.fn(), atencao: vi.fn() }));
+// M8.3c (bloco G): o filtro ?beds24=atencao lê os ids da mesma leitura do aviso do Início.
+vi.mock("@/beds24/reservas-site-avisos", () => ({ reservasComAtencaoNoBeds24: mocks.atencao }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: mocks.sessao }));
 vi.mock("@/db/client", () => ({ getDb: () => ({}) }));
 vi.mock("@/imoveis/repositorio", () => ({ listarImoveis: mocks.imoveis }));
@@ -11,6 +13,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.imoveis.mockResolvedValue([{ id: "im", codigo: "FAKE", nome: "Fictício", ativo: true }, { id: "arq", codigo: "ARQ", nome: "Antigo", ativo: false }]);
   mocks.sessao.mockResolvedValue({ organizacaoId: "org", papel: "operacao" });
+  mocks.atencao.mockResolvedValue(["fake"]);
   mocks.listar.mockResolvedValue({ total: 56, pagina: 2, paginas: 3, itens: [{ id: "fake", codigo: "SCL-FICTIC", imovelId: "im", origem: "airbnb", estado: "consulta", checkin: "2027-06-01", checkout: "2027-06-04", hospedeNome: "Fictício", valorBruto: 90000, reservadaEm: new Date("2026-10-02T02:30:00Z"), conflito: false }] });
 });
 
@@ -55,7 +58,7 @@ it("página preserva filtros nos links, mostra consulta/data local e oculta fina
   expect(html).toContain("26–50 de 56");
   expect(html).toContain("Próxima");
   expect(html).toContain("situacao=consulta&amp;escopo=historico&amp;ordem=origem&amp;pagina=3");
-  expect(html).toContain("01/10/2026, 23:30:00");
+  expect(html).toContain("01/10/2026 às 23:30");
   expect(html).not.toContain("<th>Bruto</th>");
   expect(html).not.toContain("possível overbooking");
   expect(mocks.listar.mock.calls[0][1]).toBe("org");
@@ -68,4 +71,22 @@ it("administrador vê a coluna financeira; busca vazia explica como ampliar os f
   const vazio = renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve({ busca: "inexistente" }) }));
   expect(vazio).toContain("Nenhum registro corresponde aos filtros");
   expect(vazio).not.toContain(">Próxima</a>");
+});
+
+it("M8.3c: ?beds24=atencao passa à lista só os ids da leitura do Início (de qualquer período, com as canceladas), mantém o filtro na busca e diz como sair", async () => {
+  const html = renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve({ beds24: "atencao", busca: "SCL" }) }));
+  expect(mocks.atencao).toHaveBeenCalledWith(expect.anything(), "org", expect.any(Date), process.env);
+  expect(mocks.listar).toHaveBeenCalledWith(expect.anything(), "org", expect.objectContaining({ beds24: "atencao" }), expect.objectContaining({ soIds: ["fake"] }));
+  expect(html).toContain('type="hidden" name="beds24" value="atencao"');
+  expect(html).toContain("Mostrando só as reservas do site que pedem atenção no Beds24, de qualquer período e com as canceladas");
+  expect(html).toMatch(/href="\/painel\/reservas\?busca=SCL"[^>]*>Ver todas</);
+  expect(html).toMatch(/href="[^"]*beds24=atencao[^"]*pagina=3/);
+});
+
+it("M8.3c: sem o filtro, a leitura do Beds24 nem acontece (e a lista não recebe soIds)", async () => {
+  const html = renderToStaticMarkup(await Page({ params: Promise.resolve({}), searchParams: Promise.resolve({ beds24: "outra" }) }));
+  expect(mocks.atencao).not.toHaveBeenCalled();
+  expect(mocks.listar).toHaveBeenCalledWith(expect.anything(), "org", expect.objectContaining({ beds24: "todas" }), expect.objectContaining({ soIds: undefined }));
+  expect(html).not.toContain('name="beds24" value="atencao"');
+  expect(html).not.toContain("pedem atenção no Beds24");
 });

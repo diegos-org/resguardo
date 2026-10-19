@@ -972,10 +972,12 @@ fuso do imóvel (fuso diferente de `America/Sao_Paulo` = aviso na prévia). O in
    entrada (padrão 21, de 0 a 72, em Configurações → Pagamento no site: entrada às 15:00 = 12:00 do dia
    seguinte; antes: "Não comparecimento só depois de dd/mm às HH:MM (o hóspede pode chegar atrasado e
    avisar)."). A pergunta começa por "Confirme que o hóspede não chegou e não avisou de atraso."
-3. **No prazo** (pedido até 23h59 do dia que fica N dias antes da entrada, `prazoDoReembolso`) → integral.
-4. **Arrependimento** (dia da aprovação + 7 dias, até 23h59; `DIAS_ARREPENDIMENTO`, da lei, não editável) →
+3. **No prazo** (pedido até 23:59 do dia que fica N dias antes da entrada, `prazoDoReembolso`) → integral.
+4. **Arrependimento** (dia da aprovação + 7 dias, até 23:59; `DIAS_ARREPENDIMENTO`, da lei, não editável) →
    integral, mesmo dentro dos N dias. Com `regras.arrependimentoAteEntrada` (padrão: sim), só antes do instante
    da entrada. `aprovadoEm` é a primeira leitura que viu a aprovação: a janela só pode ficar maior que a real.
+   A hora-limite é escrita "23:59" (`HORA_LIMITE_DO_DIA`) desde o M7.22, decisão de Diego em 16/10/2026 (a hora
+   no padrão do Brasil, igual em todo lugar); antes, "23h59". A regra do prazo não mudou, só a escrita.
 5. **Depois do início da estadia** → nada (`estadia_iniciada`). No pedido do hóspede, o cancelamento é
    **recusado**: "saída antecipada não é cancelamento"; a reserva continua (descarte o pedido, se for o caso).
 6. Fora disso → nada (`fora_do_prazo`).
@@ -1194,7 +1196,7 @@ depois do prazo do integral: só o arrependimento); a do arrependimento, só qua
 Para a reserva paga pelo site daquele e-mail (os mesmos filtros de Minha reserva, no domínio), antes do
 instante da entrada e com "Hóspede pode pedir o cancelamento em Minha reserva" ligado (Configurações →
 Pagamento no site, ligado por padrão): o quadro "Cancelar a reserva" com a abertura editável, os prazos da
-política aceita ("pedidos até dd/mm (23h59) têm devolução integral; depois disso, não há devolução, salvo o
+política aceita ("pedidos até dd/mm (23:59) têm devolução integral; depois disso, não há devolução, salvo o
 arrependimento até dd/mm ou até a entrada, o que vier antes. Pedido feito agora: devolução integral | sem
 devolução pela política"; sem política aceita, "A equipe confirma com você, por escrito, o valor da
 devolução.") e o botão **"Pedir o cancelamento"** (com confirmação). Nunca valores. O hóspede **só pede**: o
@@ -1229,11 +1231,36 @@ ao escolher o modelo, ao editar um modelo já escolhido e ao copiar (modelo que 
 
 ### OTAs e o gancho do M8.3
 
-Nada é escrito no Beds24. O Início (para quem edita reservas), com ou sem o envio ao Beds24 ligado (ver a decisão
-de 10/10 em "OTAs e o gancho do M8.3" do M8.2d), lista as reservas do site canceladas com saída no futuro e sem a marca: "reabra as datas nas OTAs (no Beds24,
-apague o bloqueio)", com o botão **"Datas reabertas nas OTAs"** na ficha (com confirmação, auditado). As datas
-voltam à venda no site na hora do cancelamento. O M8.3 vai consumir `cancelamentos_reserva` com
-`situacao = 'cancelada'` e `ota_liberada_em` vazio, e gravar a marca sozinho.
+Nada é escrito no Beds24. O Início (para quem edita reservas, sem valores), com ou sem o envio ao Beds24 ligado (ver a
+decisão de 10/10 em "OTAs e o gancho do M8.3" do M8.2d), lista as reservas do site canceladas com saída no futuro e sem a
+marca; desde o M8.3b (17/10/2026, na branch do M8.3b, em revisão), uma linha por reserva, com o link da ficha: "Reserva
+SCL-…, cancelada: mude o bloqueio de dd/mm a dd/mm para Cancelado (não apague)." Na ficha, o quadro do cancelamento
+mostra o mesmo texto ("Mude o bloqueio de dd/mm a dd/mm para Cancelado (não apague).") ao lado do botão **"Datas
+reabertas nas OTAs"** (com confirmação, "Confirmar que as datas desta reserva já foram reabertas nas OTAs (no Beds24,
+mudadas para Cancelado, sem apagar)?", auditado); sem a tarefa, o texto genérico "Mude o bloqueio para Cancelado no
+Beds24 (não apague)." As datas são as do bloqueio feito à mão: as da reserva agora; se alguma alteração de datas foi
+aplicada depois da última marca, "Datas atualizadas nas OTAs" ou "Datas fechadas nas OTAs" (ou sem marca nenhuma), as de
+antes da primeira dessas alterações, onde o bloqueio ficou (as duas marcas registram o bloqueio nas datas da reserva
+daquela hora; revisão do Codex no PR #156). A pergunta do cancelamento termina com "As datas voltam à venda no site; nas OTAs,
+siga o aviso do Início (no Beds24, mude para Cancelado; não apague). O cancelamento não pode ser desfeito." (também no
+cancelamento sem devolução). As datas voltam à venda no site na hora do cancelamento. O M8.3 vai consumir
+`cancelamentos_reserva` com `situacao = 'cancelada'` e `ota_liberada_em` vazio, e gravar a marca sozinho (desde o M8.3b:
+fica para o M8.3c, quando o cancelamento da reserva criada pelo sistema for conferido; a reserva criada pelo sistema tem o
+texto "No Beds24, mude a reserva SCL-… para Cancelado (não apague).", que só aparece a partir do M8.3c).
+*Registro da implementação (M8.3c, 17/10/2026):* antes, a marca `ota_liberada_em` da reserva criada pelo sistema ficava
+para o M8.3c; agora, a rotina das reservas do site grava a marca sozinha (`marcarOtaLiberada` com `por` nulo) quando o
+cancelamento é conferido no Beds24, inclusive a política, a contestada e o não comparecimento, e também na reserva cancelada
+antes de ser criada, quando a leitura mostra que não há registro, bloqueio nem ocupante. Motivo: o sistema só pode dizer
+"Datas reabertas" depois de ver o cancelamento no Beds24. Objetivo: a equipe só faz à mão o que o sistema não consegue
+conferir. Isso só acontece com a escrita das reservas ligada (desenho RESERVA-SITE-BEDS24.md, 6.3); sem ela, continua à mão.
+
+*Antes do M8.3b (texto do M8.2c, até 17/10/2026):* o Início agrupava as canceladas, vindo de `pagamentos/consultas.ts`:
+"N reserva(s) do site cancelada(s) (SCL-…): reabra as datas nas OTAs (no Beds24, apague o bloqueio)."; a ficha dizia
+"reabra as datas nas OTAs (no Beds24, apague o bloqueio)", o botão perguntava "Confirmar que as datas desta reserva já
+foram reabertas nas OTAs (no Beds24, o bloqueio foi apagado)?" e a pergunta do cancelamento terminava com "As datas voltam
+à venda no site; reabra-as nas OTAs (no Beds24, apague o bloqueio). O cancelamento não pode ser desfeito." (no
+cancelamento sem devolução, só "reabra-as nas OTAs"). Por que mudou: registro de 17/10/2026 (M8.3b) em "OTAs e o gancho
+do M8.3" do M8.2d.
 
 ### Limites do M8.2c
 
@@ -1716,17 +1743,38 @@ pelos nomes (`ondeVale`).
 
 ### OTAs e o gancho do M8.3
 
-Nada é escrito no Beds24. O Início (para quem edita reservas), com ou sem o envio ao Beds24 ligado, avisa
-"N reserva(s) do site alterada(s) (SCL-…): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as
-antigas)." para a alteração aplicada que mudou as datas, ainda sem a marca e com alguma noite por vir; a ficha tem
-**"Datas atualizadas nas OTAs"** (com confirmação, auditado). Mudar só pessoas ou valor não mexe no bloqueio. O M8.3
-vai consumir `alteracoes_reserva` com `situacao = 'aplicada'` e `ota_atualizada_em` vazio, e gravar a marca
-sozinho; a reserva-pedido nunca vai ao Beds24. O plano do envio (M3.7) também não conta as noites dela (elas podem
-vencer), e o envio confere as reservas do imóvel de novo logo antes e logo depois de escrever: se uma alteração for
+Nada é escrito no Beds24. O Início (para quem edita reservas, sem valores), com ou sem o envio ao Beds24 ligado, avisa,
+desde o M8.3b (17/10/2026, na branch do M8.3b, em revisão), uma linha por reserva, com o link da ficha: "Reserva SCL-…,
+alterada: mude as datas do bloqueio para dd/mm a dd/mm (não apague nem crie outro)." (as datas da reserva agora) para a
+alteração aplicada que mudou as datas, ainda sem a marca e com alguma noite (de antes ou de agora) por vir; a ficha mostra o
+mesmo texto ("Mude as datas do bloqueio para dd/mm a dd/mm (não apague nem crie outro).") ao lado de **"Datas
+atualizadas nas OTAs"** (com confirmação, "Confirmar que as datas desta reserva já foram mudadas nas OTAs (no Beds24, sem
+apagar nem criar outro)?", auditado); sem a tarefa, o texto genérico "Mude as datas do bloqueio no Beds24 para as novas
+(não apague nem crie outro)." Mudar só pessoas ou valor não mexe no bloqueio. Quando as datas mudam, a prévia da
+alteração avisa "Depois de aplicada, mude as datas no Beds24 como o Início mostrar (no mesmo bloqueio: não apague nem crie
+outro)." e a pergunta do aumento termina com "Quando ele pagar, a alteração vale sozinha; depois, mude as datas no Beds24
+como o Início mostrar (não apague nem crie outro)." A reserva paga ainda sem a marca "Datas fechadas nas OTAs" e também
+alterada mostra os dois avisos (as marcas são independentes). O M8.3 vai consumir `alteracoes_reserva` com
+`situacao = 'aplicada'` e `ota_atualizada_em` vazio, e gravar a marca sozinho (desde o M8.3b: fica para o M8.3c, quando a
+atualização da reserva criada pelo sistema for conferida; essa reserva tem o texto "No Beds24, mude as datas da reserva
+SCL-… para dd/mm a dd/mm.", que só aparece a partir do M8.3c); a reserva-pedido nunca vai ao Beds24. *Registro da implementação (M8.3c, 17/10/2026):* antes,
+a marca `ota_atualizada_em` ficava para o M8.3c; agora, a rotina grava a marca sozinha (`marcarOtaAtualizada` com `por`
+nulo) só para as alterações lidas no começo do envio, quando a criação ou a atualização é conferida no Beds24, inclusive a
+alteração só de pessoas, e nunca por horário (motivo: a marca só vale para o que foi conferido; objetivo: menos trabalho à
+mão sem afirmar nada que o sistema não viu). Só com a escrita das reservas ligada (RESERVA-SITE-BEDS24.md, 6.3). O plano do envio
+(M3.7) também não conta as noites dela (elas podem vencer), e o envio confere as reservas do imóvel de novo logo antes e logo depois de escrever: se uma alteração for
 aplicada (ou qualquer reserva mudar) entre o plano e a escrita, nada é escrito pelo plano velho; se mudar durante a
 escrita, o que foi escrito fica velho. Nos dois casos, o envio do imóvel é refeito em seguida, numa execução nova com as
 reservas de agora (uma vez; se mudar de novo, fica para o próximo envio). O que muda depois da conferência já é
 posterior à escrita, como qualquer reserva feita depois de um envio.
+
+*Antes do M8.3b (texto do M8.2d, até 17/10/2026):* o Início agrupava as alteradas, vindo de `painel/dashboard.ts`: "N
+reserva(s) do site alterada(s) (SCL-…): mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as
+antigas)."; a ficha dizia "mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas)", o botão
+perguntava "Confirmar que o bloqueio desta reserva já foi mudado nas OTAs (no Beds24: novas datas fechadas, antigas
+reabertas)?", a prévia avisava "Depois de aplicada, mude o bloqueio no Beds24: feche as novas datas e reabra as antigas."
+e a pergunta do aumento terminava com "Quando ele pagar, a alteração vale sozinha; depois, mude o bloqueio nas OTAs (no
+Beds24)." Por que mudou: registro de 17/10/2026 (M8.3b), abaixo da decisão de 10/10.
 
 **Decisão de 10/10/2026 (revisão do M8.2d), vale para os três avisos das OTAs** (reserva do site paga, do M8.2a;
 cancelada, do M8.2c; alterada, do M8.2d):
@@ -1739,6 +1787,52 @@ cancelada, do M8.2c; alterada, do M8.2d):
   imóveis fora da lista de envio.
 - *Objetivo final:* o M8.3 fecha, reabre e muda as datas das reservas do site no Beds24 e grava as marcas sozinho;
   aí os avisos deixam de aparecer porque não sobra nada a fazer à mão.
+
+**Registro de 17/10/2026 (M8.3b), vale para os três avisos das OTAs** (na branch do M8.3b, em revisão; ainda não
+integrado à `main`). A decisão de 10/10 acima continua valendo: o aviso aparece sempre, com ou sem o envio do calendário
+(M3.7) ligado, até a marca. Só quando o próprio sistema estiver enviando a reserva paga (o envio das reservas, M8.3c; no
+M8.3b isso só acontece nos testes, porque ligar um imóvel exige o ensaio), a linha à mão dá lugar a "N reserva(s) do site
+sendo enviadas pelo sistema: não feche à mão." (depois de 30 minutos, à linha das atrasadas); conflito, divergência ou
+"aguarda a equipe" viram só a linha de atenção.
+- *Antes:* cada aviso vinha de um lugar e tinha o seu texto: a paga e a cancelada de `pagamentos/consultas.ts`, a
+  alterada de `painel/dashboard.ts`. A paga ("N reserva(s) do site paga(s): feche as datas nas OTAs (no Beds24, como
+  bloqueio).") só aparecia para quem lê o financeiro e não tinha marca: apesar do "até a marca da equipe" de 10/10, ela
+  só sumia com a saída ou com o cancelamento, mesmo depois de a equipe fechar as datas. A cancelada mandava apagar o
+  bloqueio ("reabra as datas nas OTAs (no Beds24, apague o bloqueio)") e a alterada, fechar as novas datas e reabrir as
+  antigas. Os textos exatos de antes estão em cada seção ("OTAs e o gancho do M8.3" do M8.2c e deste M8.2d; "Painel",
+  item Início).
+- *Agora:*
+  - os avisos vêm de uma função só, `tarefasDasOtas` (`beds24/reservas-site-tarefas.ts`), que também dá o bloco "No
+    Beds24" da ficha e o texto ao lado de "Datas reabertas nas OTAs" e de "Datas atualizadas nas OTAs";
+  - a paga ganhou a marca **"Datas fechadas nas OTAs"** (na ficha, bloco "No Beds24", com confirmação, para quem tem
+    `reserva:editar`, auditada, com a data e o autor no histórico da reserva) e o aviso do Início passou a "N reserva(s)
+    do site paga(s) (SCL-…): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.", que some com a
+    marca; depois da marca, o sistema nunca cria essa reserva no Beds24. O pedido do site confirmado à mão sem
+    pagamento pelo site (D3, decidida por Diego em 16/10: nunca vai ao Beds24 pelo sistema) tem linha própria, com a
+    mesma instrução e a mesma marca;
+  - a paga passou a ser vista por quem tem `reserva:editar` (admin e o papel operação), da empresa toda e sem valores,
+    como a cancelada e a alterada já eram; saiu dos avisos do pagamento, que são de quem lê o financeiro;
+  - "apague o bloqueio" virou "mude para Cancelado (não apague)", e "feche as novas datas e reabra as antigas" virou
+    "mude as datas do bloqueio para dd/mm a dd/mm (não apague nem crie outro)"; a cancelada e a alterada têm uma linha
+    por reserva, com as datas e o link da ficha; a paga continua agrupada, agora com até 5 códigos ("e mais N"), e a
+    linha nova da D3 segue o mesmo formato;
+  - a D3 marcada e depois cancelada pelo "Cancelar reserva" comum (que não grava `cancelamentos_reserva`) ganha a mesma
+    linha da cancelada, até a equipe marcar "Datas reabertas nas OTAs" na ficha (com confirmação, auditada); sem a marca
+    das datas fechadas, ela não gera aviso (o sistema não sabe se a equipe fechou);
+  - os textos de `pagamentos/` não levam datas, porque nenhum funil do pagamento importa o módulo do M8.3
+    (`RESERVA-SITE-BEDS24.md`, seção 3.1), e mandam seguir o aviso do Início: as perguntas do cancelamento e da
+    alteração (acima e no M8.2c) e o resultado do "Cancelar a reserva contestada", que era "Reserva cancelada sem devolução pelo sistema: o valor fica
+    retido até o resultado da disputa. Reabra as datas nas OTAs." e passou a "… Nas OTAs, siga o aviso do Início (no
+    Beds24, mude para Cancelado; não apague)."
+- *Motivo:* um bloqueio apagado no Beds24 nunca sai do SCL (a importação só avisa que o registro anterior foi
+  preservado); só o que volta como Cancelado sai. Quem seguia "apague o bloqueio" deixava as noites fechadas no site para
+  sempre; na alteração, reabrir as antigas apagando o bloqueio fazia o mesmo com as noites antigas. A correção vale já,
+  com ou sem o envio ligado. A paga sem marca ficava no Início mesmo depois de a equipe fechar as datas, e a operação,
+  que fecha as datas, não a via. E três lugares com três textos eram a mesma regra em três versões (uma regra, um lugar).
+- *Objetivo final:* o da decisão de 10/10, ajustado pela D3: no M8.3c, o sistema cria no Beds24 a reserva paga pelo
+  site, cuida do cancelamento e da alteração dela e grava as marcas sozinho; o bloqueio feito à mão e o pedido
+  confirmado à mão sem pagamento continuam com a equipe, com o aviso até a marca. Em produção hoje, com o envio
+  desligado, tudo é à mão e só as tarefas manuais aparecem. Desenho completo em `RESERVA-SITE-BEDS24.md`, seção 6.
 
 ### Início
 
@@ -2273,6 +2367,14 @@ Efeitos:
   - Mesmas recusas do M8.2c que não dependem da política: parte num repasse ainda a pagar, devolução com chave em voo,
     tentativa em andamento, nota com dado pessoal.
   - Entra no Início a tarefa "reabra as datas nas OTAs" do M8.2c; a página do hóspede mostra `cancelada_em_conferencia`.
+    Desde o M8.3b (17/10/2026, na branch do M8.3b, em revisão), a tarefa vem de `tarefasDasOtas`: "Reserva SCL-…,
+    cancelada: mude o bloqueio de dd/mm a dd/mm para Cancelado (não apague)."; a pergunta termina com "As datas voltam à
+    venda no site; nas OTAs, siga o aviso do Início (no Beds24, mude para Cancelado; não apague). O cancelamento não pode
+    ser desfeito." e o resultado da ação, que era "Reserva cancelada sem devolução pelo sistema: o valor fica retido até o
+    resultado da disputa. Reabra as datas nas OTAs.", passou a "… Nas OTAs, siga o aviso do Início (no Beds24, mude para
+    Cancelado; não apague)." (registro de 17/10/2026 em "OTAs e o gancho do M8.3" do M8.2d). Antes, a pergunta terminava
+    com "As datas voltam à venda no site; reabra-as nas OTAs (no Beds24, apague o bloqueio). O cancelamento não pode ser
+    desfeito."
   - A disputa segue igual: perdida, a decisão de quem arca vale sobre o valor perdido; ganha, o banco deu a cobrança por
     válida e o retido continua dividido como numa reserva cancelada sem devolução.
   - **Registro de decisão (11/10/2026).** *Antes* (M8.2c, "A regra", item 1): "A SCL cancela → integral, em qualquer
@@ -3573,7 +3675,7 @@ consulta".
 | Reserva cancelada, devolvida (M8.2c) | "Devolução de R$ … confirmada pelo Mercado Pago em dd/mm" (o valor lido, quando a leitura o traz), "feita pelo Mercado Pago em dd/mm" (confirmada pela equipe) ou "feita em dd/mm" (por fora, com a frase da transferência e sem linha da forma de pagamento) |
 | Reserva cancelada, com a equipe (M8.2c) | "A devolução de R$ … pelo Mercado Pago não foi possível." e a frase editável de que a equipe combina outra forma, sem custo (Pix recusado, ou cartão com a devolução por fora já aberta) |
 | Reserva cancelada, em conferência (M8.2c) | devolução a menos, pagamento contestado ou devolvido em parte, devolução parada por um problema (desde o M8.2e, também a reserva cancelada por "Cancelar a reserva contestada", enquanto a disputa não termina, e depois da perdida que não cobre todo o retido; perdida e cobrindo o retido, a página diz que o dinheiro voltou pela frase `cancelamentoDevolvidoPelaDisputa`, desde a revisão do Codex de 11/10): "Estamos conferindo a devolução com o Mercado Pago; a nossa equipe fala com você." Nunca oferece outro jeito de pagar |
-| Reserva cancelada sem devolução (M8.2c) | os prazos da política aceita ("Prazo de reembolso integral: pedidos até dd/mm, às 23h59." e o arrependimento, quando vai além) e a frase do caso (fora do prazo, não comparecimento, ou decisão da equipe sem política) |
+| Reserva cancelada sem devolução (M8.2c) | os prazos da política aceita ("Prazo de reembolso integral: pedidos até dd/mm, às 23:59." e o arrependimento, quando vai além; "23:59" desde o M7.22, decisão de Diego em 16/10/2026, antes "23h59") e a frase do caso (fora do prazo, não comparecimento, ou decisão da equipe sem política) |
 | Reserva cancelada, devolução esperando a liberação (M8.2d) | o restante de um pagamento já devolvido em parte, que só é pedido depois da liberação: "…previsto para dd/mm" e a frase editável `devolucaoAguardaLiberacao` ("Ela será pedida ao Mercado Pago quando ele liberar o seu pagamento…"), nunca "Já pedimos" |
 | Alteração segurada (M8.2d) | "Alteração da sua reserva": de/para (datas, noites, pessoas, valor, diferença), "Datas seguradas até HH:MM (horário de Brasília)" (ou "dd/mm às HH:MM"), a frase do rumo e a linha da política; no aumento, o Pix e o cartão da diferença (com o aceite D11 quando preciso); a reserva continua como está até a confirmação |
 | Alteração confirmada (M8.2d) | "Alteração confirmada": as datas, as pessoas e o valor novos e, na redução, a devolução da diferença (esperando a liberação, pedida, feita, com a equipe, em conferência) ou "não é devolvida"; a última aplicada, enquanto a devolução está aberta e por 30 dias |
@@ -3652,11 +3754,27 @@ navegador também barra um desafio em outro endereço.
   devolução pedida ou recusada,
   liberação prevista vencida sem sinal, criação do pagamento sem resposta do Mercado Pago há mais que a
   carência, conta das chaves que não é de teste, configuração inválida,
-  aviso com `live_mode`, dinheiro sem cálculo, e o informativo "N reserva(s) do site paga(s): feche as
+  aviso com `live_mode`, dinheiro sem cálculo, e, até o M8.3b, o informativo "N reserva(s) do site paga(s): feche as
   datas nas OTAs (no Beds24, como bloqueio)." (desde 10/10, com ou sem o envio ao Beds24 ligado; antes, só com ele
-  desligado: ver a decisão em "OTAs e o gancho do M8.3" do M8.2d).
+  desligado: ver a decisão em "OTAs e o gancho do M8.3" do M8.2d), só para quem lê o financeiro e sem marca que o
+  tirasse.
+- **Desde o M8.3b (17/10/2026, na branch do M8.3b, em revisão)**, esse informativo saiu dos avisos do pagamento e vem de
+  `tarefasDasOtas` (`beds24/reservas-site-tarefas.ts`), para quem edita reservas (admin e o papel operação), da empresa
+  toda e sem valores: "N reserva(s) do site paga(s) (SCL-…): feche as datas no Beds24 como bloqueio e marque Datas
+  fechadas nas OTAs." (até 5 códigos e "e mais N"; o link vai à ficha, se for uma, ou à lista de reservas). Ele some com
+  a marca **"Datas fechadas nas OTAs"** da ficha (bloco "No Beds24", com confirmação: "Confirmar que as datas desta
+  reserva (dd/mm a dd/mm) já foram fechadas nas OTAs (no Beds24, como bloqueio)? Depois disso o sistema nunca cria esta
+  reserva no Beds24."; auditada). O pedido do site confirmado à mão sem pagamento pelo site (D3) tem linha própria: "N
+  reserva(s) do site confirmada(s) à mão, sem pagamento pelo site (SCL-…): feche as datas no Beds24 como bloqueio e
+  marque Datas fechadas nas OTAs.", com a mesma marca. Registro de 17/10/2026 (M8.3b) em "OTAs e o gancho do M8.3" do
+  M8.2d.
 - Até o M8.3, a equipe fecha as datas no Beds24 como **bloqueio**, nunca como reserva (a importação
-  criaria uma segunda reserva).
+  criaria uma segunda reserva). Desde o M8.3b, depois de fechar, a equipe marca "Datas fechadas nas OTAs" na ficha; na
+  cancelada, muda o bloqueio para Cancelado (nunca apaga); na alterada, muda as datas do mesmo bloqueio (nunca apaga nem
+  cria outro). O "até o M8.3" vale só para a reserva paga pelo site: o pedido confirmado à mão sem pagamento pelo site
+  (D3, decidida por Diego em 16/10) nunca vai ao Beds24 pelo sistema, e a equipe continua a fechá-lo como bloqueio e a
+  marcar "Datas fechadas nas OTAs" também depois do M8.3c (registro de 17/10/2026 em "OTAs e o gancho do M8.3" do
+  M8.2d).
 - **Cancelamento no painel (M8.2c):**
   - Configurações → Pagamento no site: "Hóspede pode pedir o cancelamento em Minha reserva (reservas pagas
     pelo site)" (ligado) e "Não comparecimento: horas depois do horário de entrada" (0 a 72, padrão 21).
@@ -3671,9 +3789,10 @@ navegador também barra um desafio em outro endereço.
     ativo e com a hora a partir da qual vale) e, depois do cancelamento, as linhas "Pedido recebido em",
     "Quem cancelou", "Política", "Decisão" (a nota da exceção só para quem lê o financeiro), "Devolução" (com
     a dica do último código do Mercado Pago), "Financeiro" (resultado e caixa lançados), "Parte do
-    proprietário" (saiu do financeiro, desconto lançado e se já foi descontado, ou retida), "OTAs", "Hóspede
-    avisado", os pedidos descartados e as mensagens prontas para copiar. As ações da devolução novas
-    ("Confirmar devolução feita no painel do Mercado Pago", "Registrar que o Mercado Pago recusou a devolução
+    proprietário" (saiu do financeiro, desconto lançado e se já foi descontado, ou retida), "OTAs" (desde o M8.3b, com
+    o texto da tarefa das OTAs ao lado de "Datas reabertas nas OTAs": "Mude o bloqueio de dd/mm a dd/mm para Cancelado
+    (não apague)."), "Hóspede avisado", os pedidos descartados e as mensagens prontas para copiar. As ações da
+    devolução novas ("Confirmar devolução feita no painel do Mercado Pago", "Registrar que o Mercado Pago recusou a devolução
     no painel", "Parar a devolução pedida", "Corrigir taxa que não voltou", "Pedir a devolução de novo")
     aparecem só quando o domínio permite, sempre com confirmação. O resultado de cada ação volta com um texto
     fixo.
@@ -3682,7 +3801,9 @@ navegador também barra um desafio em outro endereço.
     período. Financeiro → Pagamentos do site e o quadro dizem "Reserva cancelada: devolução pedida /
     devolvida / com a equipe / em conferência / sem devolução (valor retido)".
   - Início: para quem edita reservas (sem valores), os pedidos esperando, as datas a reabrir nas OTAs (desde 10/10,
-    com ou sem o envio ao Beds24 ligado); para quem lê o financeiro, as mensagens ao hóspede pendentes, as devoluções
+    com ou sem o envio ao Beds24 ligado; desde o M8.3b, de `tarefasDasOtas`, uma linha por reserva: "Reserva SCL-…,
+    cancelada: mude o bloqueio de dd/mm a dd/mm para Cancelado (não apague)."; antes, "reabra as datas nas OTAs (no
+    Beds24, apague o bloqueio)"); para quem lê o financeiro, as mensagens ao hóspede pendentes, as devoluções
     pedidas e paradas (de qualquer origem), as de pagamento com mais de 78 dias, as feitas a menos, as reservas
     devolvidas no Mercado Pago fora da política e o desconto de proprietário esperando há mais de 7 dias.
     "Pede atenção" inclui o pagamento com pedido de cancelamento esperando.
@@ -3696,8 +3817,9 @@ navegador também barra um desafio em outro endereço.
     entrada; depois dela, a frase do D1), a alteração segurada (o que espera, as tentativas da diferença, "Copiar a
     proposta", "Conferir para aplicar (o hóspede aceitou)" sem aumento, "Desistir da alteração"), a última aplicada
     e as que ainda esperam o bloqueio nas OTAs (antes e depois, a devolução da diferença, o financeiro por mês
-    "Antes / Depois / Diferença", "Datas atualizadas nas OTAs" quando as datas mudaram, as mensagens e "Hóspede
-    avisado") e o histórico (aplicadas, vencidas e desistidas: data, de → para, quem, resultado; valores só com
+    "Antes / Depois / Diferença", "Datas atualizadas nas OTAs" quando as datas mudaram (desde o M8.3b, ao lado do texto
+    da tarefa das OTAs: "Mude as datas do bloqueio para dd/mm a dd/mm (não apague nem crie outro)."), as mensagens e
+    "Hóspede avisado") e o histórico (aplicadas, vencidas e desistidas: data, de → para, quem, resultado; valores só com
     `financeiro:ler`). O resultado de cada ação volta por uma chave fixa (`?alteracao=`).
   - A ficha da reserva-pedido mostra só "Datas seguradas para a alteração da reserva SCL-… até HH:MM", sem e-mail,
     Confirmar, Cancelar e Horários. Sem `financeiro:ler`, nenhum R$ na ficha, nas observações e no histórico

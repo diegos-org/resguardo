@@ -6,9 +6,11 @@ import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { calcularMudancas, registrarAuditoria } from "@/auditoria/auditoria";
 import { imoveis, imoveisDetalhes, imoveisPeriodos } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { lerHora, MENSAGEM_HORA } from "@/lib/datas";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
 import { uuidValido } from "@/lib/ids";
 import { dataValida } from "@/reservas/regras";
+import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 import { COMODIDADES, TIPOS_CAMA } from "./cadastro-opcoes";
 import { esperarEnvioBeds24 } from "@/beds24/trava";
 import { type FontePrecos, fontePrecosValida } from "./fonte-precos";
@@ -29,8 +31,9 @@ export const DETALHES_VAZIOS: Detalhes = {
   aceitaAnimais: false,
   permiteFumar: false,
   permiteFestas: false,
-  checkinAPartirDe: "15:00",
-  checkoutAte: "11:00",
+  // Os horários padrão do sistema (M7.20: um lugar só, `HORARIOS_PADRAO`).
+  checkinAPartirDe: HORARIOS_PADRAO.entrada,
+  checkoutAte: HORARIOS_PADRAO.saida,
   taxaLimpeza: null,
   hospedeExtraValor: null,
   hospedeExtraAPartirDe: null,
@@ -96,10 +99,13 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
     if (c !== null && c > VALOR_MAXIMO) erros[campo] = "Valor alto demais.";
     return c;
   };
+  // Em branco = o horário padrão da casa; "9:00" e "15h" gravam "09:00" e "15:00" (M7.22).
   const hora = (campo: "checkinAPartirDe" | "checkoutAte", padrao: string) => {
-    const v = txt(e[campo]) || padrao;
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) erros[campo] = "Use HH:MM (ex.: 15:00).";
-    return v;
+    const v = txt(e[campo]);
+    if (v === "") return padrao;
+    const h = lerHora(v);
+    if (!h) erros[campo] = MENSAGEM_HORA;
+    return h ?? v;
   };
   const dias = (campo: "diasChegada" | "diasSaida") => {
     const v = lista(e[campo]);
@@ -146,8 +152,8 @@ export function validarDetalhes(e: Entrada): { ok: true; dados: Detalhes } | { o
     aceitaAnimais: marcado(e.aceitaAnimais),
     permiteFumar: marcado(e.permiteFumar),
     permiteFestas: marcado(e.permiteFestas),
-    checkinAPartirDe: hora("checkinAPartirDe", "15:00"),
-    checkoutAte: hora("checkoutAte", "11:00"),
+    checkinAPartirDe: hora("checkinAPartirDe", HORARIOS_PADRAO.entrada),
+    checkoutAte: hora("checkoutAte", HORARIOS_PADRAO.saida),
     taxaLimpeza: dinheiro("taxaLimpeza"),
     hospedeExtraValor: dinheiro("hospedeExtraValor"),
     hospedeExtraAPartirDe: inteiro("hospedeExtraAPartirDe", 1, 50),
@@ -262,11 +268,8 @@ export async function fontesDePrecosDosImoveis(db: Db, organizacaoId: string, im
  * espera a trava do Beds24, como o bloqueio manual e o vínculo — M3.9).
  */
 export async function salvarDetalhes(db: Db, organizacaoId: string, imovelId: string, dados: Detalhes, autorId: string | null, agora = new Date()): Promise<true | false | string> {
-  return db.transaction(async (tx) => {
-    if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return false;
-    const antes = await lerDetalhes(tx, organizacaoId, imovelId);
-    return gravarDetalhes(tx, organizacaoId, imovelId, antes, dados, autorId, agora);
-  });
+  const r = await gravarNaOrdemDasTravas(db, organizacaoId, imovelId, () => dados, autorId, agora);
+  return r.ok ? true : r.naoEncontrado ? false : r.erro;
 }
 
 /** Prepara os detalhes a gravar a partir dos atuais (lidos com o imóvel travado); ou recusa, com erros por campo. */
@@ -286,32 +289,59 @@ export async function salvarDetalhesComLeitura(
   agora = new Date(),
   o: { conferir?: (tx: Db) => Promise<string | null> } = {},
 ): Promise<{ ok: true } | { ok: false; erro: string; erros?: ErrosDetalhes }> {
-  return db.transaction(async (tx) => {
-    if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
-    // Regra de quem chama (ex.: o portal reconfere o contrato marketplace), já com o imóvel travado.
-    const recusa = o.conferir ? await o.conferir(tx) : null;
-    if (recusa) return { ok: false as const, erro: recusa };
-    const atual = await lerDetalhes(tx, organizacaoId, imovelId);
-    const prep = preparar(atual);
-    if ("erro" in prep) return { ok: false as const, ...prep };
-    const r = await gravarDetalhes(tx, organizacaoId, imovelId, atual, prep, autorId, agora);
-    return r === true ? { ok: true as const } : { ok: false as const, erro: r };
-  });
+  const r = await gravarNaOrdemDasTravas(db, organizacaoId, imovelId, preparar, autorId, agora, o.conferir);
+  if (r.ok) return { ok: true };
+  return r.naoEncontrado ? { ok: false, erro: "Imóvel não encontrado." } : { ok: false, erro: r.erro, ...(r.erros ? { erros: r.erros } : {}) };
 }
 
-async function gravarDetalhes(tx: Db, organizacaoId: string, imovelId: string, antes: Detalhes, dados: Detalhes, autorId: string | null, agora: Date): Promise<true | string> {
+type ResultadoGravacao = { ok: true } | { ok: false; naoEncontrado?: true; erro: string; erros?: ErrosDetalhes };
+/** A fonte de preços mudaria sem a trava do Beds24: a gravação recomeça com ela (nada foi gravado). */
+const REFAZER = Symbol("refazer");
+
+/**
+ * A ordem única das travas (M8.3, desenho 3.6: `beds24:<org>` → imóvel → reserva): a troca da fonte de preços espera a trava
+ * do Beds24, e a importação e o envio de reservas pegam essa trava antes da do imóvel. Travar o imóvel primeiro e só
+ * depois esperar o Beds24 podia dar impasse com eles. Por isso: (1) lê a fonte de preços sem trava, só para saber se esta
+ * gravação pode mudá-la; (2) se pode, pega `beds24:<org>` antes de travar o imóvel; (3) reconfere com o imóvel travado —
+ * a fonte que passou a mudar no meio (outra gravação) recomeça a gravação, agora com a trava do Beds24.
+ */
+async function gravarNaOrdemDasTravas(db: Db, organizacaoId: string, imovelId: string, preparar: PrepararDetalhes, autorId: string | null, agora: Date, conferir?: (tx: Db) => Promise<string | null>): Promise<ResultadoGravacao> {
+  const naoEncontrado = { ok: false as const, naoEncontrado: true as const, erro: "Imóvel não encontrado." };
+  if (!uuidValido(imovelId)) return naoEncontrado;
+  const semTrava = await lerDetalhes(db, organizacaoId, imovelId);
+  const previa = preparar(semTrava);
+  const tentar = (comTravaBeds24: boolean) =>
+    db.transaction(async (tx): Promise<ResultadoGravacao | typeof REFAZER> => {
+      if (comTravaBeds24) {
+        const recusa = await esperarEnvioBeds24(tx, organizacaoId, agora);
+        if (recusa) return { ok: false, erro: `${recusa} A fonte de preços só muda com o envio parado, para o SCL nunca escrever preço num imóvel que passou a usar os preços do Beds24.` };
+      }
+      if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return naoEncontrado;
+      // Regra de quem chama (ex.: o portal reconfere o contrato marketplace), já com o imóvel travado.
+      const recusa = conferir ? await conferir(tx) : null;
+      if (recusa) return { ok: false, erro: recusa };
+      const atual = await lerDetalhes(tx, organizacaoId, imovelId);
+      const prep = preparar(atual);
+      if ("erro" in prep) return { ok: false, ...prep };
+      if (prep.fontePrecos !== atual.fontePrecos && !comTravaBeds24) return REFAZER;
+      await gravarDetalhes(tx, organizacaoId, imovelId, atual, prep, autorId);
+      return { ok: true };
+    });
+  const primeira = await tentar(!("erro" in previa) && previa.fontePrecos !== semTrava.fontePrecos);
+  if (primeira !== REFAZER) return primeira;
+  const segunda = await tentar(true);
+  // Com a trava do Beds24 a gravação nunca pede para recomeçar.
+  return segunda === REFAZER ? { ok: false, erro: "O cadastro mudou enquanto salvava. Tente de novo." } : segunda;
+}
+
+async function gravarDetalhes(tx: Db, organizacaoId: string, imovelId: string, antes: Detalhes, dados: Detalhes, autorId: string | null): Promise<void> {
   const mudancas = calcularMudancas(antes, dados);
-  if (!Object.keys(mudancas).length) return true;
-  if (antes.fontePrecos !== dados.fontePrecos) {
-    const recusa = await esperarEnvioBeds24(tx, organizacaoId, agora);
-    if (recusa) return `${recusa} A fonte de preços só muda com o envio parado, para o SCL nunca escrever preço num imóvel que passou a usar os preços do Beds24.`;
-  }
+  if (!Object.keys(mudancas).length) return;
   await tx
     .insert(imoveisDetalhes)
     .values({ ...dados, imovelId, organizacaoId })
     .onConflictDoUpdate({ target: imoveisDetalhes.imovelId, set: { ...dados, atualizadoEm: new Date() } });
   await registrarAuditoria(tx, { organizacaoId, usuarioId: autorId, acao: "imovel.detalhes", entidade: "imovel", entidadeId: imovelId, mudancas });
-  return true;
 }
 
 // --- Períodos de exceção ----------------------------------------------------------------

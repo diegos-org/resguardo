@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AlteracaoDoPainel } from "@/pagamentos/alteracao-painel";
 import type { PagamentoDoPainel } from "@/pagamentos/consultas";
 
@@ -16,6 +16,9 @@ const m = vi.hoisted(() => ({
   historico: vi.fn(),
   alteracoes: vi.fn(),
   portador: vi.fn(),
+  noBeds24: vi.fn(),
+  conversas: vi.fn(),
+  configWhatsapp: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, redirect: vi.fn() }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
@@ -62,7 +65,34 @@ vi.mock("@/pagamentos/acoes-cancelamento", () => ({
   marcarOtaLiberadaAcao: vi.fn(),
   marcarHospedeAvisadoAcao: vi.fn(),
 }));
-import Page from "./page";
+// A pergunta do BotaoConfirmar fica no atributo (o componente de verdade só a mostra no clique).
+vi.mock("@/components/BotaoConfirmar", () => ({
+  BotaoConfirmar: ({ pergunta, children, ...props }: { pergunta: string | (() => string); children?: React.ReactNode }) => (
+    <button type="submit" data-pergunta={typeof pergunta === "string" ? pergunta : ""} {...props}>
+      {children}
+    </button>
+  ),
+}));
+// M8.3a: o bloco "No Beds24" (só leitura; "Simular" sem rede).
+vi.mock("@/beds24/reservas-site-painel", () => ({ fichaReservaNoBeds24: m.noBeds24 }));
+vi.mock("@/beds24/acoes-reservas", () => ({
+  simularReservaBeds24Acao: vi.fn(),
+  marcarDatasFechadasNasOtasAcao: vi.fn(),
+  marcarDatasReabertasNasOtasAcao: vi.fn(),
+  // M8.3c (bloco G): os botões do envio.
+  conferirAgoraBeds24Acao: vi.fn(),
+  tentarDeNovoBeds24Acao: vi.fn(),
+  deixarAMaoBeds24Acao: vi.fn(),
+  reenviarAoBeds24Acao: vi.fn(),
+  naoExisteNoBeds24Acao: vi.fn(),
+  vincularIdDoBeds24Acao: vi.fn(),
+  passarAoSistemaBeds24Acao: vi.fn(),
+}));
+// M10.1a: o bloco "Conversa no WhatsApp". Quem vê as conversas é decidido de verdade (`whatsapp/acesso.ts`), com a
+// configuração "Quem vê as conversas" simulada; as conversas da reserva também.
+vi.mock("@/whatsapp/configuracao", async (original) => ({ ...(await original<typeof import("@/whatsapp/configuracao")>()), lerConfigWhatsapp: m.configWhatsapp }));
+vi.mock("@/whatsapp/conversas", async (original) => ({ ...(await original<typeof import("@/whatsapp/conversas")>()), conversasDaReserva: m.conversas }));
+import Page, { maxDuration } from "./page";
 
 const reserva = {
   id: "r1",
@@ -129,6 +159,9 @@ beforeEach(() => {
   m.historico.mockResolvedValue([]);
   m.alteracoes.mockResolvedValue([]);
   m.portador.mockResolvedValue(null);
+  m.noBeds24.mockResolvedValue(null);
+  m.conversas.mockResolvedValue({ confirmadas: [], sugeridas: 0 });
+  m.configWhatsapp.mockResolvedValue({ wabaId: null, numeroId: null, quemVeConversas: "so_admin" });
 });
 const html = async (busca: Record<string, string> = {}) =>
   renderToStaticMarkup(await Page({ params: Promise.resolve({ id: "r1" }), searchParams: Promise.resolve(busca) } as PageProps<"/painel/reservas/[id]">));
@@ -178,7 +211,7 @@ it("páginas legais aceitas no site (M7.4): a seção aparece para quem lê rese
   expect(h).toContain('<a href="/termos?versao=2" target="_blank" rel="noopener noreferrer">Termos de uso (versão 2)</a>');
   expect(h).toContain('<a href="/privacidade?versao=1" target="_blank" rel="noopener noreferrer">Política de privacidade (versão 1)</a>');
   expect(h).toContain('<a href="/cancelamento?versao=3" target="_blank" rel="noopener noreferrer">Política de cancelamento (versão 3)</a>');
-  expect(h).toContain("01/10/2026, 12:02, ao gerar o Pix");
+  expect(h).toContain("01/10/2026 às 12:02, ao gerar o Pix");
   // Sem reserva:ler (ex.: limpeza), nem se consulta.
   m.aceites.mockClear();
   m.sessao.mockResolvedValue({ papel: "limpeza", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
@@ -505,4 +538,214 @@ it("M8.2d (D26): a operação, em cada caso da alteração — aumento aplicado,
     expect(h).toContain('role="status"');
     expect(h).not.toMatch(VALORES);
   }
+});
+
+/** Um cancelamento pela política já decidido (a devolução integral), sem a marca das OTAs. */
+const cancelada = {
+  id: "c1",
+  situacao: "cancelada",
+  pedidoRecebidoEm: new Date("2026-10-01T15:30:00Z"),
+  pedidoRegistradoOriginalEm: null,
+  motivoMomento: "",
+  canal: "whatsapp",
+  pedidoPor: "Equipe Fictícia",
+  quemCancela: "hospede",
+  motivoEmpresa: null,
+  motivoExcecao: null,
+  politicaVersao: 1,
+  integralAte: "2026-10-26",
+  arrependimentoAte: "2026-10-08",
+  arrependimentoAteEntrada: true,
+  entradaEm: new Date("2026-10-12T18:00:00Z"),
+  calculado: "integral",
+  direito: "integral",
+  base: "prazo",
+  motivoDecisao: "",
+  nota: "",
+  valorPago: 182400,
+  valorADevolver: 182400,
+  canceladaEm: new Date("2026-10-01T16:00:00Z"),
+  canceladaPor: "Equipe Fictícia",
+  resultadoLancadoEm: new Date("2026-10-01T16:00:00Z"),
+  espelhado: false,
+  caixaLancadoEm: null,
+  ota: null,
+  descontos: [],
+  avisados: { pedido: null, decisao: null, devolucao: null },
+  descartados: [],
+  mensagens: { recebido: null, decidido: null, devolvida: null },
+};
+
+describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
+  // Muda junto (M8.3c, bloco G): a ficha ganhou `acoes` (os botões do envio que valem agora); aqui, nenhum.
+  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [], acoes: { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false } };
+  const tarefa = (caso: string, texto: string, marca: string | null = null) => ({ reservaId: "r1", codigo: "SCL-TESTE1", caso, estado: "manual", checkin: "2026-10-12", checkout: "2026-10-15", desde: new Date(0), alteracaoIds: [], texto, marca });
+  beforeEach(() => {
+    m.reserva.mockResolvedValue({ ...reserva, fonte: "site" });
+    m.noBeds24.mockResolvedValue(ficha);
+  });
+
+  it.each(["admin", "operacao"])("%s vê o bloco da reserva do site e o Simular (reserva:editar)", async (papel) => {
+    m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    const h = await html();
+    expect(m.noBeds24).toHaveBeenCalledWith({}, "org", "r1", process.env, expect.any(Date));
+    expect(h).toContain('aria-label="Reserva no Beds24"');
+    expect(h).toContain(">Simular</button>");
+  });
+
+  it("o resultado do Simular vem só de chaves conhecidas", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    expect(await html({ beds24: "simulada_imovel_desligado" })).toContain("Simulação gravada");
+    expect(await html({ beds24: "nada_marketplace" })).toContain("Nada seria enviado ao Beds24: o contrato é de marketplace");
+    expect(await html({ beds24: "<b>forjada</b>" })).not.toContain("forjada");
+  });
+
+  it("M8.3b: a tarefa das OTAs da reserva com o botão da marca, e o texto dela no cancelamento e na alteração pagos pelo site", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.noBeds24.mockResolvedValue({ ...ficha, tarefas: [tarefa("paga", "Feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.", "datas_fechadas")] });
+    const h = await html();
+    expect(h).toContain("Feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.");
+    expect(h).toContain(">Datas fechadas nas OTAs</button>");
+    // O resultado da marca e a recusa (o texto do domínio, em `?erro=`).
+    expect(await html({ beds24: "ota_fechada" })).toContain("Datas marcadas como fechadas nas OTAs.");
+    expect(await html({ erro: "Esta reserva não tem datas a fechar à mão nas OTAs agora." })).toContain("Esta reserva não tem datas a fechar à mão nas OTAs agora.");
+    // A cancelada e a alterada pela política: o texto da tarefa (o mesmo do Início) no quadro do pagamento.
+    m.cancelamento.mockResolvedValue(cancelada);
+    m.reserva.mockResolvedValue({ ...reserva, fonte: "site", estado: "cancelada" });
+    m.noBeds24.mockResolvedValue({ ...ficha, tarefas: [tarefa("cancelada_bloqueio", "Mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague).")] });
+    const fichaCancelada = await html();
+    expect(fichaCancelada).toContain("Mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague).");
+    expect(fichaCancelada).not.toContain("Mude o bloqueio para Cancelado no Beds24 (não apague).");
+    m.reserva.mockResolvedValue({ ...reserva, fonte: "site", checkout: "2026-10-16" });
+    m.cancelamento.mockResolvedValue(null);
+    m.alteracoes.mockResolvedValue([alteracao({ antes: { checkin: "2026-10-12", checkout: "2026-10-15", hospedes: 4, valor: 182400 }, depois: { checkin: "2026-10-12", checkout: "2026-10-16", hospedes: 4, valor: 235200 } })]);
+    m.noBeds24.mockResolvedValue({ ...ficha, tarefas: [tarefa("alterada_bloqueio", "Mude as datas do bloqueio para 12/10 a 16/10 (não apague nem crie outro).")] });
+    expect(await html()).toContain("Mude as datas do bloqueio para 12/10 a 16/10 (não apague nem crie outro).");
+  });
+
+  it("M8.3b: a confirmada à mão (sem pagamento pelo site) marcada como fechada nas OTAs: o \"Cancelar reserva\" de sempre diz o que fazer depois", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+      m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+      m.pagamentos.mockResolvedValue([]);
+      const marcada = (situacao: string) => ({ ...ficha, acompanhamento: { situacao, motivo: null, quarto: null, conferidaEm: null, lido: null, lidoEm: null, otaFechadaEm: new Date("2026-10-02T12:00:00Z"), otaFechadaAMao: true } });
+      m.noBeds24.mockResolvedValue(marcada("manual"));
+      expect(await html()).toContain(
+        'data-pergunta="Cancelar a reserva SCL-TESTE1? O financeiro dela será estornado. As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha."',
+      );
+      const deSempre = 'data-pergunta="Cancelar a reserva SCL-TESTE1? O financeiro dela será estornado."';
+      // Só quando a tarefa vai existir depois: o acompanhamento manual (não o encerrado nem o do sistema) e a saída depois de hoje.
+      for (const situacao of ["encerrada", "conferida", "pendente"]) {
+        m.noBeds24.mockResolvedValue(marcada(situacao));
+        expect(await html()).toContain(deSempre);
+      }
+      m.noBeds24.mockResolvedValue(marcada("manual"));
+      vi.setSystemTime(new Date("2026-10-15T15:00:00Z"));
+      expect(await html()).toContain(deSempre);
+      // Sem a marca, a pergunta de sempre.
+      vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+      m.noBeds24.mockResolvedValue(ficha);
+      expect(await html()).toContain(deSempre);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("M8.3c (bloco G): os botões do envio pela permissão da sessão (a operação nunca vê os de configuração), o resultado em ?beds24= e a recusa em ?erro=", async () => {
+    m.noBeds24.mockResolvedValue({ ...ficha, desligada: [], acoes: { ...ficha.acoes, botoes: ["conferir_agora", "deixar_a_mao", "nao_existe", "vincular"], candidato: "900001" } });
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    const admin = await html();
+    for (const b of [">Conferir agora</button>", ">Deixar à mão</button>", ">Não existe, pode criar</button>", ">Vincular o id</button>"]) expect(admin).toContain(b);
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    const operacao = await html();
+    expect(operacao).toContain(">Conferir agora</button>");
+    expect(operacao).toContain(">Deixar à mão</button>");
+    expect(operacao).not.toContain(">Não existe, pode criar</button>");
+    expect(operacao).not.toContain(">Vincular o id</button>");
+    expect(operacao).not.toContain('name="beds24Id"');
+    expect(await html({ beds24: "na_fila" })).toContain("Na fila: o sistema envia ao Beds24 em até 10 minutos");
+    expect(await html({ erro: "Ainda não deu 5 minutos desde o envio." })).toContain("Ainda não deu 5 minutos desde o envio.");
+  });
+
+  it("M8.3c (bloco G): a ficha tem a duração dos botões que leem o Beds24 (300 s, como Integrações)", () => {
+    expect(maxDuration).toBe(300);
+  });
+
+  it("reserva de outra fonte (Beds24, planilha, manual): sem o bloco e sem ler nada dele", async () => {
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    for (const fonte of ["beds24", "csv", "manual", "alteracao"]) {
+      m.reserva.mockResolvedValue({ ...reserva, fonte });
+      expect(await html()).not.toContain('aria-label="Reserva no Beds24"');
+    }
+    expect(m.noBeds24).not.toHaveBeenCalled();
+  });
+});
+
+describe("M10.1a: Conversa no WhatsApp na ficha", () => {
+  const CONVERSA = "33333333-3333-4333-8333-333333333333";
+  const comConversa = {
+    confirmadas: [
+      {
+        id: CONVERSA,
+        nome: "Visitante Fictício",
+        ultimaMensagemEm: new Date("2026-10-11T15:00:00Z"),
+        mensagens: [
+          { id: "m1", direcao: "recebida", previa: "Chego às 15:00, tudo certo?", enviadaEm: new Date("2026-10-11T14:00:00Z") },
+          { id: "m2", direcao: "enviada_celular", previa: "Tudo certo!", enviadaEm: new Date("2026-10-11T15:00:00Z") },
+        ],
+      },
+    ],
+    sugeridas: 2,
+  };
+
+  it("o admin vê o bloco: a conversa confirmada com as últimas mensagens e o link, e as sugestões apontando para a caixa de entrada", async () => {
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.conversas.mockResolvedValue(comConversa);
+    const h = await html();
+    expect(m.conversas).toHaveBeenCalledWith({}, expect.objectContaining({ papel: "admin", organizacaoId: "org" }), "r1", expect.any(Date));
+    expect(h).toContain('aria-label="Conversa no WhatsApp"');
+    expect(h).toContain("Conversa no WhatsApp");
+    expect(h).toContain(" · última mensagem 11/10/2026 às 12:00");
+    expect(h).toContain("Cliente · 11/10 às 11:00: Chego às 15:00, tudo certo?");
+    expect(h).toContain("Celular · 11/10 às 12:00: Tudo certo!");
+    expect(h).toContain(`href="/painel/mensagens/${CONVERSA}"`);
+    expect(h).toContain(">Abrir a conversa<");
+    expect(h).toContain("2 conversa(s) com sugestão de vínculo a esta reserva: ");
+    expect(h).toContain('href="/painel/mensagens?filtro=sem_vinculo"');
+  });
+
+  it("sem conversa confirmada nem sugestão: o bloco não aparece", async () => {
+    m.sessao.mockResolvedValue({ papel: "admin", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    expect(await html()).not.toContain("Conversa no WhatsApp");
+  });
+
+  it("operação com o padrão só o admin: o bloco não aparece e conversasDaReserva não é chamada", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.conversas.mockResolvedValue(comConversa);
+    const h = await html();
+    expect(m.configWhatsapp).toHaveBeenCalledWith({}, "org");
+    expect(m.conversas).not.toHaveBeenCalled();
+    expect(h).not.toContain("Conversa no WhatsApp");
+    expect(h).not.toContain("/painel/mensagens");
+  });
+
+  it("com a configuração liberada (admin e operação), a operação vê o bloco", async () => {
+    m.sessao.mockResolvedValue({ papel: "operacao", organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+    m.configWhatsapp.mockResolvedValue({ wabaId: null, numeroId: null, quemVeConversas: "admin_e_operacao" });
+    m.conversas.mockResolvedValue(comConversa);
+    expect(await html()).toContain("Conversa no WhatsApp");
+    expect(m.conversas).toHaveBeenCalledTimes(1);
+  });
+
+  it("o proprietário nunca vê o bloco, com qualquer valor da configuração (nem a configuração é lida)", async () => {
+    m.sessao.mockResolvedValue({ papel: "proprietario", organizacaoId: "org", usuarioId: "u", imovelIds: ["im"] });
+    m.configWhatsapp.mockResolvedValue({ wabaId: null, numeroId: null, quemVeConversas: "admin_e_operacao" });
+    m.conversas.mockResolvedValue(comConversa);
+    const h = await html();
+    expect(h).toContain("SCL-TESTE1");
+    expect(m.configWhatsapp).not.toHaveBeenCalled();
+    expect(m.conversas).not.toHaveBeenCalled();
+    expect(h).not.toContain("Conversa no WhatsApp");
+  });
 });

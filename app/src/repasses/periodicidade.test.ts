@@ -79,7 +79,11 @@ describe("periodicidade dos repasses (M4.10)", () => {
 
   it("descrição em linguagem simples com os dias configurados", () => {
     const hoje = "2026-10-10";
-    expect(descreverPeriodicidade("semanal", { ...R, diaSemanal: 3 }, hoje)).toContain("quarta-feira");
+    // Os sete dias, com "todo" no domingo e no sábado e "toda" nos dias que terminam em "-feira" (M7.22).
+    const semanal = ["todo domingo", "toda segunda-feira", "toda terça-feira", "toda quarta-feira", "toda quinta-feira", "toda sexta-feira", "todo sábado"];
+    for (const [diaSemanal, nome] of semanal.entries()) {
+      expect(descreverPeriodicidade("semanal", { ...R, diaSemanal }, hoje)).toBe(`semanal, ${nome} (e no dia 2, junto com o fechamento)`);
+    }
     expect(descreverPeriodicidade("quinzenal", { ...R, diasQuinzenal: [5, 20] }, hoje)).toContain("dias 5 e 20");
     expect(descreverPeriodicidade("mensal", R, hoje)).toContain("dia 2");
     expect(descreverPeriodicidade("mensal", { ...R, fechamento: [{ dia: 1, desde: "2026-10" }] }, hoje)).toContain("dia 1,");

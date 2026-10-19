@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { posicaoNaSemana } from "@/lib/datas";
 import {
   cruzaOcupada,
   dataCurta,
@@ -46,17 +47,28 @@ describe("calendário do site: datas (M7.6)", () => {
     expect(limiteDoCalendario("2026-10-07")).toBe("2028-04-01");
   });
 
-  it("grade do mês com a semana começando no domingo e dias de outro mês vazios", () => {
-    // 1/10/2026 é quinta: quatro casas vazias antes; 31/10 é sábado e fecha a última semana.
+  it("grade do mês com a semana começando na segunda (Diego, 16/10/2026) e dias de outro mês vazios", () => {
+    // 1/10/2026 é quinta: três casas vazias antes (segunda a quarta); 31/10 é sábado e deixa o domingo vazio.
     const outubro = semanasDoMes("2026-10-20");
     expect(outubro).toHaveLength(5);
-    expect(outubro[0]).toEqual([null, null, null, null, "2026-10-01", "2026-10-02", "2026-10-03"]);
-    expect(outubro[4]).toEqual(["2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31"]);
-    // Fevereiro de 2026 começa num domingo e cabe em quatro semanas; novembro de 2026 completa a última com vazios.
-    expect(semanasDoMes("2026-02-01")).toHaveLength(4);
-    expect(semanasDoMes("2026-02-01")[0][0]).toBe("2026-02-01");
-    expect(semanasDoMes("2026-11-01").at(-1)).toEqual(["2026-11-29", "2026-11-30", null, null, null, null, null]);
+    expect(outubro[0]).toEqual([null, null, null, "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]);
+    expect(outubro[4]).toEqual(["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", null]);
+    // Fevereiro de 2026 começa num domingo: o dia 1º fecha a primeira semana, e o mês ocupa cinco.
+    const fevereiro = semanasDoMes("2026-02-01");
+    expect(fevereiro).toHaveLength(5);
+    expect(fevereiro[0]).toEqual([null, null, null, null, null, null, "2026-02-01"]);
+    // Junho de 2026 começa numa segunda: nenhuma casa vazia antes do dia 1º.
+    expect(semanasDoMes("2026-06-01")[0][0]).toBe("2026-06-01");
+    expect(semanasDoMes("2026-06-01")[0]).not.toContain(null);
+    // Novembro de 2026 começa num domingo e termina numa segunda: seis semanas, a última só com o dia 30.
+    const novembro = semanasDoMes("2026-11-01");
+    expect(novembro).toHaveLength(6);
+    expect(novembro.at(-1)).toEqual(["2026-11-30", null, null, null, null, null, null]);
     expect(semanasDoMes("2028-02-01").flat().filter(Boolean)).toHaveLength(29);
+    // Toda semana vai de segunda a domingo.
+    for (const semana of [...outubro, ...fevereiro, ...novembro]) {
+      for (const [j, dia] of semana.entries()) if (dia) expect(posicaoNaSemana(dia), dia).toBe(j);
+    }
   });
 });
 

@@ -8,7 +8,7 @@ import { FormAlteracaoSite, FormAplicarAlteracao, FormDesistirAlteracao } from "
 const RESERVA = "22222222-2222-4222-8222-222222222222";
 const ALTERACAO = "33333333-3333-4333-8333-333333333333";
 const PERGUNTA_AUMENTO =
-  "Segurar as novas datas (10/11 a 15/11, 5 noites, 2 pessoas) até 13:00 e liberar para o hóspede pagar a diferença de R$ 400,00 na página da reserva? A alteração é proposta pela SCL: confirme que o hóspede paga a diferença. Até o pagamento, a reserva continua como está (10/11 a 14/11). Quando ele pagar, a alteração vale sozinha; depois, mude o bloqueio nas OTAs (no Beds24).";
+  "Segurar as novas datas (10/11 a 15/11, 5 noites, 2 pessoas) até 13:00 e liberar para o hóspede pagar a diferença de R$ 400,00 na página da reserva? A alteração é proposta pela SCL: confirme que o hóspede paga a diferença. Até o pagamento, a reserva continua como está (10/11 a 14/11). Quando ele pagar, a alteração vale sozinha; depois, mude as datas no Beds24 como o Início mostrar (não apague nem crie outro).";
 const linha = { rotulo: "Valor bruto", antes: "R$ 1.500,00", depois: "R$ 1.900,00", diferenca: "+R$ 400,00" };
 const previa = (over: Partial<PreviaAlteracaoParaTela> = {}): PreviaAlteracaoParaTela => ({
   alteracaoId: null,
@@ -81,6 +81,9 @@ describe("formulário da alteração da reserva paga pelo site (M8.2d)", () => {
     mostrar();
     expect((screen.getByLabelText(/Pela cotação do site/) as HTMLInputElement).checked).toBe(true);
     expect(screen.getByLabelText("Como chegou")).toBeTruthy();
+    // A hora do pedido no formato 15:00 (M7.22): campo de texto com a hora de agora, nunca o nativo (AM/PM em inglês).
+    const hora = screen.getByRole("textbox", { name: "Hora (Brasília)" }) as HTMLInputElement;
+    expect([hora.type, hora.value, hora.placeholder, hora.required]).toEqual(["text", "12:00", "15:00", true]);
     fireEvent.click(screen.getByLabelText(/A SCL propõe/));
     expect((screen.getByLabelText(/Manter o valor atual \(R\$ 1\.500,00\)/) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText("Motivo do valor") as HTMLSelectElement).value).toBe("alteracao_pela_scl");

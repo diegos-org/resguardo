@@ -161,7 +161,7 @@ describe("quadro Pagamento no site", () => {
     expect(h).toContain('<a href="/termos?versao=1" target="_blank" rel="noopener noreferrer">Termos v1</a>');
     expect(h).toContain('<a href="/privacidade?versao=2" target="_blank" rel="noopener noreferrer">Privacidade v2</a>');
     expect(h).toContain('<a href="/cancelamento?versao=3" target="_blank" rel="noopener noreferrer">Cancelamento v3</a> (reembolso integral até 14 dias antes)');
-    expect(h).toContain(" — 01/10/2026, 12:02");
+    expect(h).toContain(" — 01/10/2026 às 12:02");
     expect(html([{ ...base, aceite: null }])).toContain("não registrado (tentativa anterior às páginas legais do site)");
     // Sem o campo (tentativa montada sem ele), nada é dito.
     expect(html([base])).not.toContain(">Aceite</dt>");

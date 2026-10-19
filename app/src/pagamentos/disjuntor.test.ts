@@ -288,7 +288,7 @@ describe("disjuntor de recusas do cartão (M8.2b)", () => {
     await avaliar(minutos(109));
     const aberto = await textos(minutos(110));
     // Na janela de 30 minutos entram também as duas recusas de 80 e 90 minutos.
-    expect(aberto).toContain("Pagamento com cartão desligado até 01/10, 14:49: 10 recusas em 30 minutos");
+    expect(aberto).toContain("Pagamento com cartão desligado até 01/10 às 14:49: 10 recusas em 30 minutos");
     expect(aberto).toContain("O Pix continua");
     expect(aberto).not.toContain("recusados nas últimas 24 horas");
 

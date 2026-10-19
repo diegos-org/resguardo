@@ -8,7 +8,7 @@ import { reservaCalculadaPeloMotor } from "@/financeiro/motor";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
-import { hojeISO } from "@/lib/datas";
+import { hojeISO, horaNoFuso } from "@/lib/datas";
 import { pagamentoEmAndamentoOuAprovado, type PagamentoQuePrende, pagamentoSemReservaADevolver } from "@/pagamentos/andamento";
 import { devolvidaNoProvedorSql } from "@/portal/posse";
 import { chavesDaImportacao } from "./travas-importacao";
@@ -98,6 +98,13 @@ export async function criarReserva(db: Db, organizacaoId: string, dados: DadosRe
 /** Campos da reserva que entram no cálculo do financeiro (motor) ou na situação dela. */
 const CAMPOS_DO_FINANCEIRO = ["estado", "imovelId", "checkin", "checkout", "valorBruto", "taxaCanal", "valorLiquido", "recebimento", "origem", "moeda"];
 
+/**
+ * Fonte externa nunca muda reserva do site (M8.3, desenho 5.3), num lugar só: o Beds24 (inclusive o ramo do `black`) e a
+ * planilha. O SCL é o dono dela; a diferença no Beds24 vira aviso (`conferirNaImportacao`). Para a planilha a recusa é
+ * defensiva: a busca dela nunca encontra uma reserva `fonte = 'site'` (nenhum teste chega a essa metade hoje).
+ */
+export const RECUSA_RESERVA_DO_SITE = "Reserva do site: os dados vêm do SCL; a diferença no Beds24 vira aviso.";
+
 export async function sincronizarReserva(
   db: Db,
   organizacaoId: string,
@@ -144,6 +151,8 @@ export async function sincronizarReserva(
       existente = candidatas[0];
       if (existente && existente.imovelId !== dados.imovelId) return { ok: false as const, erros: { geral: "O código do canal já existe em outro imóvel. Confira o mapeamento." } };
     }
+    // csv: hoje inalcançável (a busca da planilha nunca encontra `fonte = 'site'`); fica como proteção caso a busca mude.
+    if ((fonte === "beds24" || fonte === "csv") && existente?.fonte === "site") return { ok: false as const, erros: { geral: RECUSA_RESERVA_DO_SITE } };
     if (fonte === "csv" && existente && (existente.beds24Id || existente.fonte === "beds24")) {
       return { ok: false as const, erros: { geral: "Esta reserva já é atualizada pelo Beds24. A planilha não substituiu os dados sincronizados." } };
     }
@@ -258,8 +267,6 @@ export async function salvarEmailHospede(
   });
 }
 
-const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit" }).format(d);
-
 /**
  * Por que a equipe não mexe à mão num pedido com pagamento do site (M8.2a). Também o texto do cancelamento pela política
  * (M8.2c) quando há uma tentativa em andamento.
@@ -274,7 +281,7 @@ export function avisoDoPagamento(p: PagamentoQuePrende, fuso: string, acao: "can
         ? `Não confirmada: ${andamento}. Aguarde a resposta do Mercado Pago antes de confirmar à mão.`
         : `Não cancelada: ${andamento}. Aguarde a resposta dele.`;
     }
-    const ate = p.pixExpiraEm ? ` até ${horaBr(p.pixExpiraEm, fuso)}` : "";
+    const ate = p.pixExpiraEm ? ` até ${horaNoFuso(p.pixExpiraEm, fuso)}` : "";
     // M8.2d: a alteração de uma reserva paga espera o pagamento em andamento, como o cancelamento.
     if (acao === "alterar") return `Não alterada: há um Pix do site em andamento${ate}. Aguarde o prazo dele.`;
     return acao === "confirmar"

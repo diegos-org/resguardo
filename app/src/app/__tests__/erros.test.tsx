@@ -17,7 +17,9 @@ import PortalNaoEncontrado from "../portal/[...resto]/page";
  * M7.8: páginas de erro e de "não encontrada" fora do site — o painel e o portal com as suas, no visual deles —, e a
  * página de erro da raiz, que só usa a moldura do site nas páginas do site.
  */
-const m = vi.hoisted(() => ({ caminho: "/", sessao: vi.fn(), site: vi.fn() }));
+const m = vi.hoisted(() => ({ caminho: "/", sessao: vi.fn(), site: vi.fn(), capturar: vi.fn() }));
+// M0.9: as páginas de erro avisam o Sentry (falso aqui: nada sai), sem mudar o que a pessoa vê.
+vi.mock("@sentry/nextjs", () => ({ captureException: m.capturar }));
 vi.mock("next/navigation", () => ({
   usePathname: () => m.caminho,
   notFound: () => {
@@ -46,7 +48,10 @@ describe("erro inesperado na raiz (M7.8)", () => {
   it("nas páginas do site: moldura do site, texto curto em português, \"Tentar de novo\" chama o retry e nada do erro aparece", () => {
     m.caminho = "/imoveis/403";
     const retry = vi.fn();
-    render(<ErroNaPagina error={erro("abc123")} retry={retry} />);
+    const e = erro("abc123");
+    render(<ErroNaPagina error={e} retry={retry} />);
+    expect(m.capturar).toHaveBeenCalledTimes(1);
+    expect(m.capturar).toHaveBeenCalledWith(e, { tags: { digest: "abc123" } });
     expect(screen.getByRole("navigation", { name: "Principal" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Algo não saiu como esperado");
     expect(screen.getByText("Não conseguimos abrir esta página agora. Tente de novo em instantes.")).toBeTruthy();
@@ -65,6 +70,7 @@ describe("erro inesperado na raiz (M7.8)", () => {
     m.caminho = "/equipe";
     const retry = vi.fn();
     render(<ErroNaPagina error={erro("abc123")} retry={retry} />);
+    expect(m.capturar).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("navigation", { name: "Principal" })).toBeNull();
     expect(screen.getByText("Equipe de limpeza")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Voltar à agenda" }).getAttribute("href")).toBe("/equipe");
@@ -107,7 +113,9 @@ describe("painel (M7.8): erro e não encontrada dentro da moldura do painel", ()
 
   it("erro numa tela do painel: texto curto, código do erro, \"Tentar de novo\" e a volta ao início do painel", () => {
     const retry = vi.fn();
-    render(<ErroNoPainel error={erro("d1g3st")} retry={retry} />);
+    const e = erro("d1g3st");
+    render(<ErroNoPainel error={e} retry={retry} />);
+    expect(m.capturar).toHaveBeenCalledWith(e, { tags: { digest: "d1g3st" } });
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Algo não saiu como esperado");
     expect(document.body.textContent).toContain("d1g3st");
     expect(document.body.textContent).not.toContain("detalhe interno");
@@ -115,9 +123,11 @@ describe("painel (M7.8): erro e não encontrada dentro da moldura do painel", ()
     fireEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
     expect(retry).toHaveBeenCalledTimes(1);
     cleanup();
-    // Sem código (erro do próprio navegador), a linha do código não aparece.
-    render(<ErroNoPainel error={erro()} retry={retry} />);
+    // Sem código (erro do próprio navegador), a linha do código não aparece, e o aviso vai sem ele.
+    const semCodigo = erro();
+    render(<ErroNoPainel error={semCodigo} retry={retry} />);
     expect(document.body.textContent).not.toContain("este código");
+    expect(m.capturar).toHaveBeenLastCalledWith(semCodigo, undefined);
   });
 
   it("endereço que não existe dentro do painel: só para quem entrou, e então a não encontrada do painel", async () => {
@@ -149,7 +159,9 @@ describe("portal do proprietário (M7.8): erro e não encontrada na moldura do p
 
   it("erro no portal: moldura do portal, \"Tentar de novo\" e a volta ao portal", () => {
     const retry = vi.fn();
-    render(<ErroNoPortalDoProprietario error={erro("p0rt4l")} retry={retry} />);
+    const e = erro("p0rt4l");
+    render(<ErroNoPortalDoProprietario error={e} retry={retry} />);
+    expect(m.capturar).toHaveBeenCalledWith(e, { tags: { digest: "p0rt4l" } });
     expect(screen.getByText("Portal do proprietário")).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Algo não saiu como esperado");
     expect(screen.getByRole("link", { name: "Voltar ao portal" }).getAttribute("href")).toBe("/portal");

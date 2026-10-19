@@ -28,6 +28,9 @@ it("admin vê os dias e o padrão por contrato gravados", async () => {
   const h = await html();
   expect(m.regras).toHaveBeenCalledWith({}, "org");
   expect(h).toContain('<option value="3" selected="">quarta-feira</option>');
+  // O dia do repasse semanal de segunda a domingo (M7.22), cada um com o número guardado de sempre (0 = domingo).
+  const select = /<select name="diaSemanal"[^>]*>([\s\S]*?)<\/select>/.exec(h)?.[1] ?? "";
+  expect([...select.matchAll(/<option value="(\d)"[^>]*>([^<]+)<\/option>/g)].map((o) => `${o[2]}:${o[1]}`)).toEqual(["segunda-feira:1", "terça-feira:2", "quarta-feira:3", "quinta-feira:4", "sexta-feira:5", "sábado:6", "domingo:0"]);
   expect(h).toMatch(/<input[^>]*name="diaQuinzenal1"[^>]*value="5"/);
   expect(h).toMatch(/<input[^>]*name="diaQuinzenal2"[^>]*value="20"/);
   expect(h).toContain('name="padrao_marketplace"');

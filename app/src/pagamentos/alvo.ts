@@ -13,6 +13,7 @@ import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { alteracoesReserva, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { diaHoraNoFuso } from "@/lib/datas";
 import { estenderHold, voltarHold } from "@/site/cotacoes";
 import { situacaoEfetiva } from "./alteracao-regras";
 import { type Alteracao, carenciaNoTravado, limiteDaAlteracao, type Pagamento, type Travado } from "./travas";
@@ -42,7 +43,7 @@ export type FalhaDoAlvo = { erro: "nao_oferecido" | "alteracao_mudou" };
 
 export const TEXTO_ALTERACAO_MUDOU = "A alteração mudou enquanto a página estava aberta: atualize a página.";
 
-const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
+const horaBr = (d: Date, fuso: string) => diaHoraNoFuso(d, fuso);
 /** A observação da reserva-pedido diz até quando as novas datas estão seguradas (e se um pagamento estendeu). */
 const OBSERVACAO_PRAZO_ALTERACAO = /até [^;]+(?: \(estendido pelo pagamento\))?;/;
 

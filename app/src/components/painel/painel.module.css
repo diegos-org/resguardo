@@ -56,6 +56,11 @@
   box-shadow: inset 3px 0 0 var(--scl-dourado);
 }
 
+/* Botão "Menu" do celular (M0.10, Menu.tsx): no computador não aparece, e a lista fica sempre à vista. */
+.gaveta {
+  display: none;
+}
+
 .principal {
   min-width: 0;
   display: flex;
@@ -74,6 +79,13 @@
   color: var(--scl-texto-2);
 }
 
+/* O selo e o Sair, à direita do cabeçalho. */
+.cabecalhoAcoes {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .selo {
   font-size: 0.6875rem;
   letter-spacing: 0.04em;
@@ -82,6 +94,23 @@
   color: var(--scl-texto-2);
   padding: 2px 8px;
   border-radius: 999px;
+}
+
+/* Antes do @media do celular, que dá ao Sair 44px de altura: com a mesma especificidade, vale a regra que vem depois. */
+.sair {
+  font: inherit;
+  font-size: 0.8125rem;
+  background: none;
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-campo);
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--scl-texto-2);
+}
+
+.sair:hover {
+  background: var(--scl-areia);
+  color: var(--scl-texto);
 }
 
 .conteudo {
@@ -193,56 +222,120 @@
     grid-template-rows: auto 1fr;
   }
 
+  /* O contorno do foco (até 8px fora do botão e dos links, M7.11) fica inteiro sobre o verde: a folga da borda passa
+     dos 8px dos quatro lados. */
   .lateral {
     min-width: 0;
     padding: 10px 16px;
   }
 
+  /* O link da marca, alvo de toque de 44px como o Menu (M0.10): 1.375rem × 1.2 + 9px em cima e embaixo. */
   .marca {
-    margin: 0 0 6px;
+    margin: 0 0 8px;
+    padding: 9px 0;
     font-size: 1.375rem;
   }
 
-  .menu {
-    flex-direction: row;
-    overflow-x: auto;
-    gap: 4px;
-    /* Folga para o contorno do foco (até 8px fora do link) dentro da rolagem (M7.11); a margem negativa deixa os links
-       no lugar (e os mesmos 4px embaixo). */
-    margin: -8px;
-    padding: 8px 8px 12px;
-    /* O link que recebe o foco no meio da rolagem para com a mesma folga da borda. */
-    scroll-padding-inline: 8px;
+  /* Celular (M0.10): no lugar da faixa que rolava para o lado (nada indicava a rolagem, e Configurações ficava fora da
+     tela), o botão "Menu", com o nome da seção atual, abre a lista inteira logo abaixo. Alvos de toque de 44px. */
+  .gaveta {
+    display: block;
   }
 
-  .menu a {
+  .botaoMenu {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid rgba(243, 238, 227, 0.45);
+    border-radius: var(--scl-raio-campo);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .botaoMenu:hover {
+    background: rgba(243, 238, 227, 0.08);
+  }
+
+  /* O triângulo padrão do <summary> no Safari (nos outros, o list-style acima). */
+  .botaoMenu::-webkit-details-marker {
+    display: none;
+  }
+
+  /* Seta à direita: para baixo fechado, para cima aberto. */
+  .botaoMenu::after {
+    content: "";
+    flex: none;
+    margin-left: auto;
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+  }
+
+  .gaveta[open] .botaoMenu::after {
+    transform: translateY(2px) rotate(-135deg);
+  }
+
+  /* As três linhas do menu. */
+  .iconeMenu {
+    flex: none;
+    width: 18px;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    box-shadow: 0 -5px 0 currentColor, 0 5px 0 currentColor;
+  }
+
+  .rotuloMenu {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .menu a.ativo {
-    box-shadow: inset 0 -3px 0 var(--scl-dourado);
+  /* A lista vem logo depois do <details> (Menu.tsx) e só aparece com ele aberto. Duas colunas em 360px; com a letra
+     grande (o "aA" do Safari, a fonte grande do Android), uma coluna, que nunca passa da largura (o `min` com 100%). */
+  .gaveta:not([open]) + .menu {
+    display: none;
+  }
+
+  .menu {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(9.5rem, 100%), 1fr));
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .menu a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   .cabecalho,
   .conteudo {
     padding: 12px 16px;
   }
-}
 
-.sair {
-  font: inherit;
-  font-size: 0.8125rem;
-  background: none;
-  border: 1px solid var(--scl-borda);
-  border-radius: var(--scl-raio-campo);
-  padding: 4px 10px;
-  cursor: pointer;
-  color: var(--scl-texto-2);
-}
+  /* No celular estreito (360px), o selo e o Sair descem para a linha de baixo em vez de espremer o texto. Com a letra
+     grande, o selo quebra dentro da pílula: sem `nowrap`, que o faria passar da borda da tela (o `overflow-x: hidden`
+     de html e body cortaria o fim, sem rolagem). */
+  .cabecalho,
+  .cabecalhoAcoes {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
 
-.sair:hover {
-  background: var(--scl-areia);
-  color: var(--scl-texto);
+  /* O Sair é o único botão do cabeçalho, e um toque errado nele encerra a sessão: alvo de toque de 44px, como o Menu. */
+  .sair {
+    min-height: 44px;
+    padding: 0 14px;
+  }
 }
 
 /* Botões e campos sem classe nas telas do painel: o padrão já sai pelos tokens (inline só ajusta). */

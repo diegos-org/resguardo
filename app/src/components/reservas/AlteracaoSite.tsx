@@ -3,7 +3,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { BotaoCopiar } from "@/components/BotaoCopiar";
 import styles from "@/components/formularios.module.css";
 import { CANAIS_PEDIDO_ALTERACAO, type EstadoReserva, MOTIVOS_CANCELAMENTO_EMPRESA, MOTIVOS_EXCECAO, MOTIVOS_VALOR_ALTERACAO, type MotivoCancelamentoEmpresa, type ResultadoDaAlteracao } from "@/db/schema";
-import { hojeISO } from "@/lib/datas";
+import { diaMesBr, hojeISO, horaNoFuso } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import type { MensagemPronta } from "@/mensagens/hospede";
 import {
@@ -22,8 +22,6 @@ import { NOMES_SITUACAO_PAGAMENTO } from "@/pagamentos/situacoes";
 import { FormAlteracaoSite, FormAplicarAlteracao, FormDesistirAlteracao, type OpcaoAlteracao } from "./FormAlteracaoSite";
 
 const FUSO = "America/Sao_Paulo";
-const horaSP = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
-const diaIso = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
 const nota = { margin: 0, fontSize: "0.8125rem", color: "var(--scl-texto-2)" } as const;
 const botaoDiscreto = { font: "inherit", fontSize: "0.8125rem", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--scl-borda)", background: "var(--scl-papel)", cursor: "pointer" } as const;
 
@@ -57,6 +55,11 @@ export type PropsAlteracaoSite = {
   /** financeiro:ler — valores, o financeiro da alteração, o motivo da desistência e as mensagens com valor. */
   verValores: boolean;
   agora: Date;
+  /**
+   * M8.3b: o que fazer nas OTAs com as datas desta reserva, o texto da tarefa (`tarefasDasOtas`, o mesmo do Início: as
+   * datas de agora no mesmo bloqueio, ou na reserva criada pelo sistema). Sem ele, o texto genérico.
+   */
+  textoOta?: string;
 };
 
 function Linhas({ linhas }: { linhas: [string, ReactNode][] }) {
@@ -99,7 +102,7 @@ function devolucaoEmTexto(a: AlteracaoDoPainel, verValores: boolean): string | n
   if (!d) return "ainda não registrada (veja o quadro do pagamento)";
   const valor = verValores ? ` de ${formatBRL(d.valorConfirmado ?? d.valor)}` : "";
   const estados: Record<NonNullable<AlteracaoDoPainel["devolucao"]>["estado"], string> = {
-    aguardando_liberacao: `esperando o Mercado Pago liberar o pagamento${d.previstaEm ? ` (previsto para ${diaIso(d.previstaEm)})` : ""}: nada foi pedido ainda`,
+    aguardando_liberacao: `esperando o Mercado Pago liberar o pagamento${d.previstaEm ? ` (previsto para ${diaMesBr(d.previstaEm)})` : ""}: nada foi pedido ainda`,
     pedida: "pedida ao Mercado Pago",
     feita: `feita${d.em ? ` em ${diaBr(d.em)}` : ""}${d.porFora ? " (por fora)" : d.algumaPorFora ? " (uma parte por fora)" : ""}`,
     com_a_equipe: "com a equipe: o Mercado Pago não devolveu (veja o quadro do pagamento)",
@@ -183,15 +186,18 @@ function Avisado({ alteracaoId, qual, marca, editar, podeCopiar }: { alteracaoId
 /** A alteração mudou as datas (só as pessoas ou o valor não mexem no bloqueio das OTAs). */
 const mudouDatas = (a: Pick<AlteracaoDoPainel, "antes" | "depois">) => a.antes.checkin !== a.depois.checkin || a.antes.checkout !== a.depois.checkout;
 
-/** "Datas atualizadas nas OTAs" (reserva:editar) de uma alteração aplicada; o M8.3 vai gravar sozinho quando chegar. */
-function Otas({ a, editar }: { a: AlteracaoDoPainel; editar: boolean }) {
+/**
+ * "Datas atualizadas nas OTAs" (reserva:editar) de uma alteração aplicada, com o texto da tarefa das OTAs (M8.3b, o mesmo
+ * do Início); o M8.3c grava a marca sozinho quando a atualização da reserva criada pelo sistema for conferida.
+ */
+function Otas({ a, editar, textoOta }: { a: AlteracaoDoPainel; editar: boolean; textoOta?: string }) {
   if (a.ota) return <>bloqueio mudado em {diaBr(a.ota.em)} por {a.ota.por ?? "o sistema"}</>;
   if (!editar) return <>bloqueio ainda não marcado como mudado nas OTAs</>;
   return (
     <form action={marcarOtaAtualizadaAcao} style={{ display: "inline" }}>
       <input type="hidden" name="alteracaoId" value={a.id} />
-      mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas){" "}
-      <BotaoConfirmar pergunta="Confirmar que o bloqueio desta reserva já foi mudado nas OTAs (no Beds24: novas datas fechadas, antigas reabertas)?" style={botaoDiscreto}>
+      {textoOta ?? "Mude as datas do bloqueio no Beds24 para as novas (não apague nem crie outro)."}{" "}
+      <BotaoConfirmar pergunta="Confirmar que as datas desta reserva já foram mudadas nas OTAs (no Beds24, sem apagar nem criar outro)?" style={botaoDiscreto}>
         Datas atualizadas nas OTAs
       </BotaoConfirmar>
     </form>
@@ -201,14 +207,14 @@ function Otas({ a, editar }: { a: AlteracaoDoPainel; editar: boolean }) {
 /** O que a alteração segurada espera: o pagamento da diferença ou a confirmação do hóspede (e até quando). */
 function esperaEmTexto(a: AlteracaoDoPainel): string {
   const espera = a.diferenca > 0 ? "esperando o pagamento da diferença" : "esperando a confirmação do hóspede";
-  if (a.emCarencia && a.holdAte) return `o prazo das datas acabou às ${horaSP(a.holdAte)}, mas um pagamento da diferença ainda está em andamento (${espera})`;
-  return `datas seguradas até ${a.holdAte ? `${diaBr(a.holdAte)} às ${horaSP(a.holdAte)}` : "—"} (${espera})`;
+  if (a.emCarencia && a.holdAte) return `o prazo das datas acabou às ${horaNoFuso(a.holdAte, FUSO)}, mas um pagamento da diferença ainda está em andamento (${espera})`;
+  return `datas seguradas até ${a.holdAte ? diaHoraBr(a.holdAte) : "—"} (${espera})`;
 }
 
 /** A pergunta do "Desistir da alteração" (§9.2), com o cancelamento do Pix da diferença ainda não pago, quando há. */
 function perguntaDaDesistencia(a: AlteracaoDoPainel): string {
   const pixPendente = a.tentativas.some((t) => t.forma === "pix" && t.situacao === "pendente");
-  return `Desistir da alteração preparada em ${diaBr(a.criadaEm)} (novas datas ${diaIso(a.depois.checkin)} a ${diaIso(a.depois.checkout)})? As novas datas voltam à venda e a reserva continua como está.${pixPendente ? " O Pix da diferença ainda não pago é cancelado no Mercado Pago." : ""}`;
+  return `Desistir da alteração preparada em ${diaBr(a.criadaEm)} (novas datas ${diaMesBr(a.depois.checkin)} a ${diaMesBr(a.depois.checkout)})? As novas datas voltam à venda e a reserva continua como está.${pixPendente ? " O Pix da diferença ainda não pago é cancelado no Mercado Pago." : ""}`;
 }
 
 /** As tentativas de pagamento da diferença, em palavras (os valores ficam no quadro de cada pagamento). */
@@ -223,7 +229,7 @@ function Segurada({ a, editarReserva, editarFinanceiro, verValores }: { a: Alter
     ["Pedido", pedidoEmTexto(a)],
     ["Datas e pessoas", deParaEmTexto(a)],
     ...(verValores ? ([["Valor", valorEmTexto(a)]] as [string, ReactNode][]) : []),
-    ["Novas noites seguradas", a.noitesNovas ? `${diaIso(a.noitesNovas.inicio)}–${diaIso(a.noitesNovas.fim)}` : "nenhuma (as novas datas cabem nas de agora)"],
+    ["Novas noites seguradas", a.noitesNovas ? `${diaMesBr(a.noitesNovas.inicio)}–${diaMesBr(a.noitesNovas.fim)}` : "nenhuma (as novas datas cabem nas de agora)"],
     ...(a.diferenca > 0 ? ([["Pagamento da diferença", tentativasEmTexto(a)]] as [string, ReactNode][]) : []),
     ["Hóspede avisado: proposta", <Avisado key="proposta" alteracaoId={a.id} qual="proposta" marca={a.avisados.proposta} editar={editarReserva} podeCopiar={verValores} />],
   ];
@@ -239,7 +245,7 @@ function Segurada({ a, editarReserva, editarFinanceiro, verValores }: { a: Alter
 }
 
 /** Uma alteração aplicada: quando e por quem, as datas, o valor, a devolução, o financeiro, as OTAs e as mensagens. */
-function Aplicada({ a, editarReserva, verValores }: { a: AlteracaoDoPainel; editarReserva: boolean; verValores: boolean }) {
+function Aplicada({ a, editarReserva, verValores, textoOta }: { a: AlteracaoDoPainel; editarReserva: boolean; verValores: boolean; textoOta?: string }) {
   const quem = a.aplicadaPor ? `por ${a.aplicadaPor}` : `pelo pagamento da diferença${a.aplicadaTardia ? " (aprovado depois do prazo das datas, com as noites ainda livres)" : ""}`;
   const devolucao = devolucaoEmTexto(a, verValores);
   const linhas: [string, ReactNode][] = [
@@ -248,7 +254,7 @@ function Aplicada({ a, editarReserva, verValores }: { a: AlteracaoDoPainel; edit
     ["Datas e pessoas", deParaEmTexto(a)],
     ...(verValores ? ([["Valor", valorEmTexto(a)]] as [string, ReactNode][]) : []),
     ...(devolucao ? ([["Devolução da diferença", devolucao]] as [string, ReactNode][]) : []),
-    ...(mudouDatas(a) ? ([["OTAs", <Otas key="ota" a={a} editar={editarReserva} />]] as [string, ReactNode][]) : []),
+    ...(mudouDatas(a) ? ([["OTAs", <Otas key="ota" a={a} editar={editarReserva} textoOta={textoOta} />]] as [string, ReactNode][]) : []),
     ...(a.mensagens.confirmada || a.avisados.confirmacao
       ? ([["Hóspede avisado: alteração confirmada", <Avisado key="confirmacao" alteracaoId={a.id} qual="confirmacao" marca={a.avisados.confirmacao} editar={editarReserva} podeCopiar={verValores} />]] as [string, ReactNode][])
       : []),
@@ -300,7 +306,7 @@ function Historico({ lista, verValores }: { lista: readonly AlteracaoDoPainel[];
  * segurada aparece sem valores, e o formulário não aparece. Valores, o financeiro e as mensagens com valor só com
  * `financeiro:ler`; as ações só com a permissão de cada uma (o servidor confere de novo).
  */
-export function AlteracaoSite({ reserva, capacidade, alteracoes, comCancelamento, entradaEm, editarReserva, editarFinanceiro, verValores, agora }: PropsAlteracaoSite) {
+export function AlteracaoSite({ reserva, capacidade, alteracoes, comCancelamento, entradaEm, editarReserva, editarFinanceiro, verValores, agora, textoOta }: PropsAlteracaoSite) {
   const confirmada = reserva.estado === "confirmada";
   if (!confirmada && !alteracoes.length) return null;
   const segurada = alteracoes.find((a) => a.situacao === "segurada") ?? null;
@@ -310,7 +316,7 @@ export function AlteracaoSite({ reserva, capacidade, alteracoes, comCancelamento
   const historico = alteracoes.filter((a) => a !== segurada && !destaque.includes(a));
   const iniciou = !!entradaEm && agora.getTime() >= entradaEm.getTime();
   const podeAlterar = confirmada && !segurada && !comCancelamento && !!entradaEm && !iniciou;
-  const agoraSP = { data: hojeISO(FUSO, agora), hora: horaSP(agora) };
+  const agoraSP = { data: hojeISO(FUSO, agora), hora: horaNoFuso(agora, FUSO) };
   return (
     <section aria-label="Alteração da reserva" style={{ border: "1px solid var(--scl-borda)", borderRadius: "var(--scl-raio-cartao)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
       <strong>Alteração da reserva</strong>
@@ -337,7 +343,7 @@ export function AlteracaoSite({ reserva, capacidade, alteracoes, comCancelamento
         />
       )}
       {destaque.map((a) => (
-        <Aplicada key={a.id} a={a} editarReserva={editarReserva} verValores={verValores} />
+        <Aplicada key={a.id} a={a} editarReserva={editarReserva} verValores={verValores} textoOta={textoOta} />
       ))}
       <Historico lista={historico} verValores={verValores} />
     </section>

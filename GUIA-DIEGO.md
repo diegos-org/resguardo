@@ -3,7 +3,7 @@
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
 > **Regras de preservação (9/10/2026):** Claude e Codex trabalham em cópias e branches novas, preservando originais, acervos e o histórico. Cada PR explica o que mudou, por quê, com qual objetivo e onde retomar. Decisões substituídas continuam registradas; voltar atrás acontece por uma nova mudança, sem apagar o passado. O visual continua tomando o acervo do Sage como referência, depois das entregas funcionais.
 > **Conferência da equipe (9/10/2026):** protegido também o caso de um cadastro ligado por engano a uma conta de outro perfil ou outra empresa. O sistema recusa alterar esse acesso, preserva a conta e não usa seu e-mail nos avisos da equipe. Os testes usam dados fictícios; isso não afirma que os cadastros reais foram inspecionados.
-> **Última atualização:** 16/10/2026, **nomes entram como estão nos textos do proprietário (M5.10), pronto:** no "Como funciona" e no e-mail do fechamento, o nome da empresa e o do proprietário entram exatamente como estão no cadastro. Antes, um nome com certos sinais, como `$&`, saía trocado por outro texto (por exemplo, "Casa $& Lar" virava "Casa {empresa} Lar"). Para nomes comuns, nada muda. Para você: nada. Antes, em 15/10, **fotos mais leves na página da casa (M7.19), pronto:** na página de cada casa, a foto em destaque da galeria passa a vir na versão leve (a mesma das miniaturas) quando ela basta para a tela, em vez de vir sempre na versão grande, bem mais pesada. Quem escolhe é o navegador de quem visita, pelo tamanho e pela nitidez da tela, também ao trocar de foto. A aparência não muda: mesma foto, mesmo recorte, mesmo tamanho. O ganho fica nos celulares de tela menos nítida e, quando a casa tem mais de uma foto, nos computadores de tela menos nítida; com uma foto só, ela ocupa a largura toda e, no computador, continua vindo na grande. Nos celulares de tela mais nítida (como os iPhones recentes) a foto precisa da versão grande e continua vindo nela. A capa da página inicial continua com a foto grande: no celular ela cobre um quadro mais alto que largo e aparece mais larga que a tela, e a versão leve ficaria borrada. As miniaturas e os cartões das casas já usavam a versão leve. Para você: nada. Antes, também em 15/10, **ícone da aba com a marca do site (M7.18), pronto:** a aba do navegador mostrava um círculo preto com um triângulo branco, o ícone padrão da ferramenta com que o sistema é feito. Agora a aba e o atalho na tela do celular mostram a marca da Sua Casa Leblon. No site, vale a marca que você enviar em Configurações → Site, quando ela é um PNG quadrado (no atalho do celular, também sem fundo transparente); até lá, a marca do estudo visual, que fica sempre no painel e nos portais do proprietário e do hóspede. Se a marca enviada não servir de ícone (em JPG, fora do quadrado ou, no atalho, com fundo transparente), fica a do estudo, e a tela da marca diz isso e por quê. No celular, a barra do navegador fica no verde do site. Nada mais muda nas páginas nem na prévia dos links. Hoje o site de verdade não tem marca enviada: a aba mostra a do estudo. Para você: nada obrigatório; se enviar uma marca nova, prefira PNG quadrado. Antes, também em 15/10, **títulos e frases do site editáveis no painel (M7.16), pronto:** os títulos, as linhas pequenas acima deles e as frases que estavam fixos no site passam para Configurações → Textos do site: o topo de Nossas casas, o quadro da consulta na página de cada casa, o quadro "Resumo da viagem" da consulta e as seções Como reservar e Contato da página inicial. A linha pequena de "O bairro à sua porta" fica junto do título e do subtítulo dessa seção, em Configurações → Textos do site, no quadro O bairro à sua porta (mais abaixo na mesma tela). Cada campo já vem com o texto que o site mostra hoje, então nada muda até você editar; os textos do estudo aprovado ficam como sugestão na seção 2. Linha pequena ou frase apagada some do site; título apagado volta ao texto de hoje. A prévia do link de Nossas casas não muda: continua com a frase da vitrine de casas da página inicial. Ficaram de fora, ainda fixos, os nomes do menu, do rodapé e dos botões, os textos do formulário da consulta, alguns avisos e os títulos da ficha da casa (a lista está na seção 2). Para você: nada obrigatório; duas perguntas na seção 7: se quer editar também esses nomes e textos, e se a prévia de Nossas casas deve passar a usar a frase da própria página. Antes, também em 15/10, **frase de abertura de cada casa (M7.17), pronto:** na ficha de cada imóvel no painel, logo antes da descrição, há o campo novo "Frase de abertura (site)". A frase que você escrever ali abre a página da casa no site, em letra grande, acima da descrição, como no estudo aprovado ("Dias leves entre a praia e os restaurantes."). Ela passa a ser também a frase do cartão da casa (inclusive na vitrine de "Anuncie seu imóvel", que os proprietários leem) e da prévia do link no WhatsApp. Em branco, nada aparece acima da descrição, e o cartão continua como antes: a primeira frase da descrição ou, sem descrição, o bairro e a cidade. Nenhuma casa ganhou frase sozinha. Na aba Anúncios, o quadro do site mostra a frase ou, sem ela, a frase que o cartão está usando. A nota do preço base deixou de dizer que o site não mostra valores: agora ela diz, conforme a fonte de preços da casa, se esse preço entra no valor da noite no site. Para você: escrever a frase de cada casa quando quiser; as frases do estudo estão na seção 2 como sugestão (seção 6, item 48). Antes, também em 15/10, **texto das caixas de autorização dos proprietários editável no painel (M7.15), pronto:** o texto ao lado da caixa de autorização dos dois formulários de "Anuncie seu imóvel" (o pedido de contato para a gestão completa e o cadastro do marketplace) agora se muda pelo painel, na aba nova **Configurações → Autorização dos proprietários**, sem mexer em código. Cada mudança publicada vira uma versão nova, com número e data, e vale dali em diante: os pedidos já recebidos continuam com o texto que a pessoa viu. A versão 1 é o texto de hoje, que veio com o sistema; a primeira que você publicar será a versão 2. O nome da empresa continua entrando sozinho no texto (escreva {empresa} onde ele deve aparecer). O sistema não deixa publicar texto vazio, porque a caixa é obrigatória, e avisa enquanto você digita se algo não pode entrar (quebra de linha, por exemplo). Para quem preenche, nada muda até você publicar um texto novo. Para você: nada obrigatório; quando o advogado mandar o texto das caixas (seção 6, item 39), cole lá e publique (seção 2). Antes, também em 15/10, **prévia dos links do site no WhatsApp e nas redes (M7.13), pronto:** quem manda o link do site ou de uma casa pelo WhatsApp, Instagram, Facebook ou X vê uma prévia com a foto (a primeira foto da casa ou, nas outras páginas, a foto da capa do site, na versão leve), o título com o nome da empresa e a frase da própria página, tirada dos textos que você já edita no painel; sem foto, a prévia sai sem imagem, nunca com uma genérica. Enquanto o site não tem casa publicada (como hoje), a prévia da consulta, de Nossas casas e das páginas não encontradas usa o aviso do site sem casas, o mesmo que essas páginas mostram. A prévia e os links das mensagens ao hóspede usam o campo Site de Configurações → Empresa, que precisa ter o endereço em que o sistema abre hoje, com https:// no começo e sem o caminho de uma página; enquanto ele tiver outro endereço, a prévia usa o endereço da Vercel. Para você: conferir o campo Site (seção 6, item 47): na produção ele tem um endereço que não é o do sistema. Antes, também em 15/10, **faixa "Prévia de teste" (M7.12):** nas prévias da Vercel (a versão de teste, com banco próprio e o pagamento de teste do Mercado Pago), todas as páginas — site, cotação, Minha reserva, portais, painel e as telas de erro — mostram no topo uma faixa fina: "Prévia de teste · não é o site de verdade · nenhuma cobrança real". Assim, você e quem você mandar testar não confundem a prévia com o site de verdade, que continua sem a faixa. Na página da cotação, a frase "Ambiente de teste: nenhuma cobrança real." deixou de aparecer nas prévias, porque a faixa do topo já diz isso. Duas perguntas para você, sem pressa: quer a faixa também no site de verdade até a entrada no ar? E o selo "Homologação · dados fictícios" do painel, que aparece também no de verdade, fica ou sai? (seção 2 e seção 7). Antes, também em 15/10, **registro da autorização dos proprietários (M7.14), pronto:** nos dois formulários de "Anuncie seu imóvel" (o pedido de contato para a gestão completa e o cadastro do marketplace), a partir da publicação desta mudança, cada envio guarda o dia e a hora em que chegou com a caixa de autorização marcada e o texto exato que a pessoa viu; você vê isso no painel, em Proprietários → Pedidos de contato e em Cadastros pelo site. Os pedidos de antes aparecem como "Sem registro" (a caixa já era obrigatória), sem data inventada. O texto-base da Política de privacidade passa a citar esse registro na linha dos proprietários. Para quem preenche, nada muda. Para você: nada obrigatório; se você já publicou a Política de privacidade, inclua a frase nova na próxima versão, e a pergunta sobre guardar também o endereço de internet (IP) continua na lista do advogado (seção 6, item 39). O próximo passo, deixar o texto das caixas editável no painel, ficou como um item novo (M7.15). Antes, em 14/10, **buscar as datas em todas as casas de uma vez (M7.9), pronto:** quem só sabe as datas e quantas pessoas vão escolhe "Todas as casas" em "Seu lugar" e vê uma página com as casas que recebem o grupo, cada uma com a situação de verdade naquelas datas (disponível, indisponível ou a confirmar, pela mesma conferência da página da casa) e o valor com o desconto do site à mostra; o cartão leva à página da casa já com as datas, onde se segura e paga como antes. Na página de uma casa, escolher outra casa no "Planeje sua estadia" e tocar em "Continuar" abre a outra com as mesmas datas. A linha pequena, o título, o aviso, a frase de quando nenhuma casa recebe o grupo e a frase do contato ficam em Configurações → Textos do site. Enquanto o site não tem casa publicada (como hoje), a busca mostra o mesmo aviso do site sem casas descrito abaixo (M7.8), com o seu WhatsApp, e não um segundo texto para o mesmo caso. A página da busca segue as regras de acessibilidade do M7.11 (logo abaixo): o botão do WhatsApp avisa a quem usa leitor de tela que abre outra janela e os títulos seguem em ordem, sem pular nível. Para você: nada obrigatório; uma escolha pequena na seção 7 (mostrar ou esconder as casas sem vaga). Antes, também em 14/10, **site mais fácil de usar pelo teclado e pelo leitor de tela (M7.11):** quem navega pela tecla Tab vê um contorno em volta do link ou do botão em que está; nas partes verdes do site, dos portais e do menu do painel esse contorno laranja quase sumia, e agora ali ele é creme, bem visível. A foto escolhida na galeria do imóvel ganhou um anel dourado escuro, mais fácil de ver. Cada página do site e dos portais tem, no primeiro Tab, o link "Pular para o conteúdo", que só aparece para quem usa o teclado. Os links que abrem outra janela (WhatsApp, Pix no Mercado Pago, páginas legais) avisam isso a quem usa leitor de tela, sem mudar nada na tela. E a ordem dos títulos, que o leitor de tela usa para navegar, deixou de pular um nível na página do imóvel, em Nossas casas e na página para proprietários. Para quem usa o mouse, nada muda. Você não precisa fazer nada (seção 2). Antes, também em 14/10, **páginas de "não encontrada" e de erro no site, e o aviso de quando não há casa publicada (M7.8):** um endereço errado ou o link de uma casa que saiu do site agora mostra uma página em português, no visual do site, com o botão "Conhecer as casas" (antes aparecia uma página em inglês, sem o cabeçalho e o rodapé). Um erro inesperado mostra uma tela curta de "tente de novo". O painel e o portal do proprietário ganharam as suas, no visual deles. E, enquanto nenhuma casa está publicada, como hoje no site de verdade, a página inicial, Nossas casas, a consulta e a própria página não encontrada dizem isso com clareza e oferecem o seu WhatsApp (ou o e-mail), no lugar do "Em breve." e de um formulário que não dava para enviar; na página não encontrada, no lugar de "Conhecer as casas", aparecem esse aviso e "Voltar ao início". Os textos novos estão em Configurações → Textos do site, já preenchidos: os títulos e as frases da página não encontrada vêm do estudo aprovado; o aviso de quando não há casa publicada é um texto novo, escrito agora, para você revisar (é ele que aparece hoje no site de verdade). Você não precisa fazer nada além dessa revisão, quando quiser (seção 2). Antes, também em 14/10, **páginas pessoais e internas fora do Google (M7.10):** o Google e os outros buscadores passam a receber o pedido de não listar as páginas que são de uma pessoa ou só da equipe: a cotação de cada hóspede, Minha reserva, o link do convite, as etapas do cadastro do proprietário (inclusive a de digitar o código, que mostra o e-mail da pessoa), a entrada, o painel, o portal e a tela da equipe. Os buscadores sérios atendem esse pedido. A aparência não muda. As páginas públicas (início, casas, consulta, página para proprietários e páginas legais) ficam como estão: se elas aparecem no Google continua decisão sua. A entrada, o convite e a tela da equipe deixaram de mostrar a descrição interna "Sistema de gestão" na aba e na prévia do link, e o convite usa o nome da empresa de Configurações → Empresa. Nada para você fazer (seção 2). Antes, também em 14/10, **teste do pagamento pronto para você e acesso ao banco com regras:** a prévia da Vercel foi publicada de novo depois das suas chaves de teste da conta negócio nova, e o banco das prévias, que estava vazio, recebeu dados fictícios para o teste (um imóvel de teste com preço, contrato, páginas legais e o pagamento e o cartão ligados). A consulta do imóvel de teste já oferece o Pix no site, o que mostra que o Mercado Pago conferiu as suas chaves como de teste. O passo a passo do Pix e do cartão está na página de pendências e na seção 6, item 37, que ganhou o Redeploy depois das chaves e o aviso de que a prévia tem um banco só dela. Você liberou em 14/10 o acesso de Claude e Codex ao Neon, com regras: no banco de verdade, só leitura e mudanças pelo próprio sistema, e correção à mão só com o seu "pode" (regras do projeto, seção "Banco de dados no Neon"; seção 5, linha do Neon). Corrigido também um erro meu: o "não mexer no Neon" que eu repeti como pedido seu era uma anotação minha de 4/10, não uma decisão sua. Antes, em 11/10, **disputa do pagamento (contestação), em teste (M8.2e):** quando alguém pede ao banco para desfazer a cobrança de uma reserva paga pelo site (a contestação no cartão), pede a devolução de um Pix pelo mecanismo do Banco Central (o MED) ou abre uma reclamação no Mercado Pago, o sistema registra a disputa, avisa a equipe no Início e por e-mail e segura a parte do proprietário dessa reserva que ainda não foi repassada, sem descontar nada de ninguém, até você registrar quem arca: o proprietário, a SCL ou cada um na proporção da sua parte (o sistema nunca escolhe). Com a decisão, o valor do proprietário fica segurado nos próximos repasses até o resultado: se a SCL ganhar, volta; se perder, fica definitivo. O resultado é sempre você quem confirma: o sistema mostra o que o Mercado Pago diz, mas não decide sozinho, porque as páginas do Mercado Pago já deram sentidos opostos ao mesmo código. Antes da entrada, dá para "Cancelar a reserva contestada" sem devolução pelo sistema (o dinheiro volta a quem pagou, pela disputa, se ele ganhar). O proprietário vê a disputa no extrato, no portal e no e-mail do repasse; o hóspede só vê "pagamento em conferência", e nenhuma mensagem automática sai. O Mercado Pago de teste não cria disputas: no teste, você registra uma à mão num pagamento de teste (seção 2; o que fazer no item 46 da seção 6, o texto do "Como funciona" no item 42 e o evento novo dos avisos no item 37; 14 decisões novas na seção 7). **Com isso, as cinco partes do pagamento pelo site estão prontas no teste**; o pagamento de verdade continua desligado e espera as suas decisões marcadas com ★ (seção 7). Antes, em 10/10, **alteração de reserva paga pelo site, em teste (M8.2d):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) muda as datas, o número de pessoas ou o valor **antes da entrada**: o sistema mostra antes o valor novo, a diferença e o que acontece com o dinheiro, e segura as noites novas por um tempo que você escolhe. Se o valor sobe, o hóspede paga a diferença por Pix ou cartão na página da reserva e a alteração vale sozinha; se desce, a diferença segue a Política de cancelamento que ele aceitou, contando da entrada original ou da nova, a que vier primeiro: dentro do prazo, volta; fora, fica e é dividida como uma reserva normal. O financeiro é refeito sozinho, e a devolução de parte do valor só é pedida ao Mercado Pago depois que ele libera o pagamento (no teste, registre a liberação à mão). Também ficou pronto o que faltava das devoluções: mais de uma devolução no mesmo pagamento, o restante de um pagamento já devolvido em parte e a devolução que o Mercado Pago fez a menos. Nada é escrito no Beds24: o Início avisa quando mudar o bloqueio nas OTAs, mesmo com o envio ao Beds24 ligado (o envio manda só os bloqueios do SCL, nunca as datas das reservas; o mesmo vale para os avisos de reserva paga e cancelada). Como o Pix, o cartão e o cancelamento, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 44 e 45 da seção 6 e as frases novas da política no item 42; decisões novas na seção 7). Antes, também em 10/10, **cancelamento de reserva paga pelo site, em teste (M8.2c):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) calcula o cancelamento pela Política de cancelamento que o hóspede aceitou, vê o resultado antes (devolução integral ou nada, e por quê) e cancela; o sistema pede a devolução ao Mercado Pago, acompanha até ela sair e acerta o financeiro sozinho: reserva, comissão, parte do proprietário, a taxa que não voltar (despesa da empresa) e, se a parte do proprietário já tinha sido paga, o desconto no próximo repasse dele. Sem devolução, o valor fica e é dividido como uma reserva normal. O hóspede pode pedir o cancelamento em Minha reserva (ele só pede, e a hora fica registrada; quem cancela é a equipe), a página da reserva mostra a situação e há três mensagens novas ao hóspede, prontas para copiar, que saem sozinhas quando você ligar as mensagens. Como o Pix e o cartão, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 41 a 43 da seção 6; decisões novas na seção 7). Também em 10/10, **conferências com dados fictícios:** equipe (senha provisória, troca da própria senha, cidades e avisos) e cartão (liberação imediata, em 14 e em 30 dias). A previsão não vira dinheiro recebido: precisa da confirmação do provedor, e o proprietário espera também o check-in. Não houve criação de contas reais, envio de avisos reais nem cobrança. **Visual:** componentes atuais renderizados localmente em computador (1512 px) e celular (390 px), comparados com o acervo do Sage; sem estouro horizontal, imagens carregadas e campos de no mínimo 44 px. Essa conferência de aparência não valida navegação, autenticação ou pagamentos no site publicado.
+> **Última atualização:** 17/10/2026, **o envio automático das reservas pagas pelo site ao Beds24 (M8.3c), pronto e desligado, na branch e em revisão (ainda não entrou no sistema):** é a terceira das quatro partes do M8.3. Com ela, o sistema sabe criar, mudar e cancelar no Beds24 a reserva paga pelo site, ler de novo para conferir que ficou igual e marcar sozinho as datas fechadas, atualizadas e reabertas nas OTAs. Quando algo não bate (noites ocupadas por outra reserva, a reserva mudada no Beds24, uma resposta que não chegou), ele não supõe nada: avisa no Início e por e-mail à equipe e espera a equipe na ficha, com botões novos. **Nada foi escrito no Beds24 de verdade:** tudo foi testado com uma versão de mentira do Beds24, sem internet. Na produção, o envio só começa com quatro coisas que dependem de você: a chave das reservas ligada na Vercel, uma credencial nova do Beds24 com as permissões certas, um ensaio conferido por você em Integrações e um imóvel ligado por você. Hoje nenhuma delas existe, e ainda não há reserva paga pelo site na produção. Nas prévias, nada é lido nem escrito no Beds24. Para você: nada agora; quando quiser ligar, o passo a passo está na seção 6, item 51, com a pergunta ao suporte do Beds24 pronta para colar (a última parte, M8.3d, espera a resposta deles). Antes, também em 17/10, **caixa de entrada do WhatsApp, ainda sem conexão (M10.1a), pronta e integrada (o PR #158 entrou na main em 17/10; até a atualização anterior, esta linha dizia que ela estava pronta na branch e em revisão, ainda fora do sistema):** é a primeira parte do WhatsApp no sistema, e ela não escreve nada na Meta. Ela recebe e guarda as mensagens que a Meta mandar, mas nada chega antes da conexão (a parte 2, M10.1b, que continua aguardando você) e antes de você ligar o recebimento na Vercel. No menu do painel, a tela nova Mensagens mostra as conversas só para ler (responder continua pelo celular), com fotos, áudios e documentos como "ver no celular". O sistema sugere ligar cada conversa a uma reserva ou a uma cotação, pelo código ou pelo telefone, e só você confirma. Por enquanto, só você vê as conversas, como você decidiu em 17/10; isso muda em Configurações, Integrações, WhatsApp. O número final 0322 continua no WhatsApp Business do celular, e os grupos continuam como hoje. A tela Mensagens é a proposta de visual para você avaliar no computador e no celular. Para você: nada na Meta agora; quando quiser, as perguntas da seção 2 ("Caixa de entrada do WhatsApp"), cada uma com um padrão. Antes, também em 17/10, **tarefas das plataformas num lugar só (M8.3b), pronta e integrada (o PR #156 entrou na main em 17/10; até a atualização anterior, esta linha dizia que ela estava pronta na branch e em revisão):** é a segunda das quatro partes do M8.3 e continua sem escrever nada no Beds24. Os avisos do Início sobre o que a equipe faz à mão no Airbnb e no Booking, pelo Beds24 (reserva do site paga, cancelada e alterada), e o bloco "No Beds24" da ficha passam a sair de uma regra só, com o mesmo texto e sem nenhum valor; o aviso da reserva paga agora aparece também para o papel "operação", que já via os da cancelada e da alterada. Os textos foram corrigidos: na cancelada, "mude o bloqueio de dd/mm a dd/mm para Cancelado (não apague)"; na alterada, "mude as datas do bloqueio para dd/mm a dd/mm (não apague nem crie outro)", porque um bloqueio apagado no Beds24 nunca sai do SCL e as noites podiam continuar fechadas no site. Na ficha, o botão novo "Datas fechadas nas OTAs" marca o que a equipe já fechou à mão, e o aviso daquela reserva some do Início. O pedido do site confirmado à mão, sem pagamento, ganhou o aviso dele, numa linha própria (sua decisão de 16/10: ele nunca vai ao Beds24 pelo sistema); se a equipe marcou as datas fechadas e depois cancela esse pedido pelo "Cancelar reserva" de sempre, o Início pede para mudar o bloqueio para Cancelado, e a ficha tem o botão "Datas reabertas nas OTAs". Sem resposta sua, a decisão 8 (o botão) ficou com o padrão. Para você e a equipe: nunca apagar no Beds24 o bloqueio de uma reserva do site (cancelar é mudar o bloqueio para Cancelado) e, se alguém já apagou no Beds24 o bloqueio de uma reserva do site, me avisar; agora que esta parte entrou, marcar na ficha as reservas que já foram fechadas no Beds24 (seção 2 e seção 6, item 50). Antes, na noite de 16/10, **reserva paga pelo site no Beds24, a base (M8.3a), pronta e integrada (o PR #154 entrou na main depois de mais proteções contra respostas estranhas do Beds24):** é a primeira das quatro partes do M8.3. Ela prepara o sistema para mandar ao Beds24 as reservas pagas pelo site, mas ainda não manda nada: nada é criado, mudado nem cancelado lá. Na ficha de cada reserva do site, o bloco "No Beds24" diz que o envio automático está desligado e por quê, e o que a equipe faz à mão; o botão "Simular" mostra o que seria enviado, sem enviar. Em Configurações, Integrações, a parte nova "Reservas do site no Beds24" mostra a chave das reservas, o ambiente, a credencial, a prontidão, a pausa geral e os imóveis; o Sistema mostra as duas chaves do Beds24 separadas. A importação do Beds24 passa a proteger a reserva do site: nunca muda os dados dela e, quando o registro do Beds24 está ligado a ela ou traz o código dela, também não cria outra por cima; continue fechando as datas no Beds24 como bloqueio, nunca como reserva. Você decidiu em 16/10 que só vai ao Beds24 a reserva paga pelo site; o pedido que a equipe confirma à mão, sem pagamento, fica de fora. Próximas partes: os avisos das plataformas num lugar só (M8.3b), o envio de verdade, atrás da chave que só você liga (M8.3c), e o que depende da resposta do suporte do Beds24 (M8.3d), que você pede com uma pergunta que eu preparo. Como na produção ainda nenhuma reserva é paga pelo site, o envio só vai ter o que mandar depois que você ligar o pagamento de verdade. Para você: nada agora; quando quiser, as decisões do envio ao Beds24, cada uma com um padrão, na seção 7. Antes, também em 16/10, **MCP do SCL desenhado e decisões de hoje registradas (M13.1), pronto:** o MCP é o jeito de você consultar o SCL de dentro do Claude e, quando os créditos acabarem, do ChatGPT ou do Codex, com o seu login de sempre. O desenho está pronto e revisado; nada foi construído ainda. A primeira fase é só de consulta (reservas, ocupação, calendário, repasses e os avisos do Início), sem nomes nem contatos de hóspedes e proprietários. A fase 2, para um dia o assistente fazer mudanças, ficou registrada só como regras, e elas não autorizam construir nada: ações pequenas e com nome, permissão separada que você liga e desliga, prévia e aprovação (no painel, quando mexe em dinheiro), limites, nada de apagar, histórico e aviso, e ensaio nas prévias. O histórico das mudanças vai ficar protegido no próprio banco, para o sistema e um erro de programa não conseguirem apagar nem alterar (M13.12). Também ficaram registradas as decisões de hoje: o marketplace é o modelo principal; primeiro validar a Sua Casa Leblon no ar, depois, talvez, Ipanema como segundo piloto e só então a marca principal; as suítes para outros gestores ficam para depois; e a escrita das reservas do site no Beds24 está autorizada (M8.3, opção B), com uma chave própria que só você liga. Para você: nada agora; 14 decisões do MCP, cada uma com um padrão, na seção 7, e os passos antes de ligar no item 49 da seção 6. Antes, também em 16/10, **datas e horas no padrão do Brasil (M7.22), pronto:** como você decidiu em 16/10, a hora aparece sempre como 15:00 (dois dígitos e dois-pontos, de 00:00 a 23:59) em todas as telas, mensagens, e-mails e PDFs: a página da casa, a cotação e Minha reserva escrevem igual, e o "15h", o "23h59" e o "0h" saíram dos textos do sistema e do texto-base da Política de cancelamento. Os campos de hora viraram campos de texto no formato 15:00, iguais em qualquer celular ou computador, sem "PM". Dia e hora juntos saem como "16/10/2026 às 15:05", no horário de Brasília, sem segundos e sem data no formato de máquina. A semana começa na segunda-feira no calendário de datas do site e em todas as listas de dias, sem mudar nenhum dia já escolhido. A agenda e a tela da limpeza passam a usar o horário da casa. Para você: na próxima publicação da Política de cancelamento, trocar a escrita da hora (seção 6, item 42, passo 7); se quiser, trocar "10h" e "14h" nos modelos de mensagem já salvos; três perguntas na seção 7. Antes, também em 16/10, **menu do painel no celular (M0.10), pronto:** no celular, o menu do painel virava uma faixa no topo que rolava para o lado, sem nada mostrando que dava para rolar, e Configurações ficava fora da tela. Agora, logo abaixo do nome da empresa, aparece o botão "Menu", com o nome da tela em que você está ao lado (por exemplo, "Menu · Reservas"). Ao tocar nele, abre a lista inteira das seções, em grade (duas colunas com o celular em pé), com a atual marcada; ao escolher uma, a lista fecha sozinha. No computador, nada muda: o menu continua na lateral. No celular, o selo "Homologação · dados fictícios" e o botão Sair passam para uma segunda linha do cabeçalho, em vez de espremer o texto; com a letra do celular aumentada, o selo quebra em duas linhas sem sair da tela, e o Sair e o nome da empresa no topo ficam com altura confortável para o dedo. Para você: nada. Antes, também em 16/10, **avisos de erro do sistema (M0.9), pronto:** quando acontece um erro no site, no painel, nos portais, nas rotinas automáticas, no aviso de pagamento que chega do Mercado Pago ou no navegador de quem usa, o Sentry (o serviço de avisos de erro que você criou, nos Estados Unidos) recebe um aviso com a mensagem técnica, o ponto do código onde ele aconteceu, a página e o caminho até o erro (as páginas abertas, os botões tocados e as chamadas feitas logo antes, sem o que foi digitado e sem os códigos pessoais dos endereços) e o navegador e o aparelho, para Claude e Codex corrigirem. Das rotinas automáticas e do aviso do Mercado Pago, no lugar da mensagem técnica vai só um resumo sem nomes: quantas falhas, de que tipo e onde ver o detalhe, que continua guardado no próprio sistema (na página Sistema ou no lugar que o aviso indica; do aviso do Mercado Pago, o sistema só guarda o aviso marcado com erro). O aviso nunca leva nome, e-mail, telefone, CPF, CNPJ, dados de cartão ou de Pix, os códigos das cotações e dos convites nem o IP de quem usa, e o Sentry só recebe algo quando acontece um erro (nada de medir visitas ou gravar a tela). O endereço de envio já está na Vercel desde 16/10, na produção e nas prévias; os avisos começam quando esta mudança entrar e o sistema for publicado de novo. Sem o endereço, nada é enviado, e os testes e o desenvolvimento nunca enviam. O texto-base da Política de privacidade passa a citar o Sentry. Se o endereço de envio for colado errado, a página Sistema mostra "Com problema" na linha do Sentry, em vez de os avisos ficarem desligados sem ninguém saber. Para você: nada agora; se você já publicou a Política de privacidade, a próxima versão deve incluir a frase sugerida (seção 6, item 39), e há uma pergunta nova para o advogado na mesma lista. Antes, também em 16/10, **consulta com o resultado à vista e avisos no link da casa (M7.21), pronto:** no celular, ao tocar em "Continuar" ou "Consultar", a página agora abre direto no resultado (o "Resumo da viagem" da casa ou a lista das casas da busca), em vez de voltar para o topo com o resultado escondido lá embaixo; se algum campo estiver errado, ela fica no topo, onde aparecem os avisos. E o link da casa que vai pelo WhatsApp, quando tem datas que não servem (entrada que já passou, saída antes da entrada, mais pessoas do que a casa recebe ou sem o número de pessoas), passa a mostrar o quadro "Confira os dados" com o motivo e o mesmo aviso no campo do cartão "Planeje sua estadia"; antes, não aparecia nada. Para você: nada. Antes, também em 16/10, **horários e regras da casa na página da cotação (M7.20), pronto:** na página da cotação (o link com o código COT- que o hóspede recebe), logo abaixo das datas, aparecem o horário de entrada e de saída da casa ("Entrada a partir das 15h · Saída até as 11h") e, sob o título "Regras da casa", as mesmas regras da página da casa: animais, fumo, festas e o texto das regras da ficha do imóvel. Ficam antes do Pix e do cartão, para o hóspede ler antes de pagar; antes, quem segurava as datas pela consulta pagava sem ter visto horário nem regra. Aparecem enquanto a estadia vale (cotação aberta, datas seguradas, pagamento em andamento e reserva feita) e somem quando a cotação venceu, foi cancelada ou mudou, ou quando a reserva foi cancelada. O nome da casa vira um link para a página dela, enquanto ela estiver no site, e a cotação ainda não segurada ganha o link "Mudar as datas". A página da casa e Minha reserva continuam iguais. Para você: salvar o cadastro completo de cada casa publicada, se ainda não salvou (sem ele, a casa e a cotação mostram "Não aceita animais", "Proibido fumar" e "Sem festas ou eventos" e os horários padrão), e conferir os horários e as regras na ficha de cada casa, porque agora o hóspede lê isso antes de pagar. Antes, também em 16/10, **nomes entram como estão nos textos do proprietário (M5.10), pronto:** no "Como funciona" e no e-mail do fechamento, o nome da empresa e o do proprietário entram exatamente como estão no cadastro. Antes, um nome com certos sinais, como `$&`, saía trocado por outro texto (por exemplo, "Casa $& Lar" virava "Casa {empresa} Lar"). Para nomes comuns, nada muda. Para você: nada. Antes, em 15/10, **fotos mais leves na página da casa (M7.19), pronto:** na página de cada casa, a foto em destaque da galeria passa a vir na versão leve (a mesma das miniaturas) quando ela basta para a tela, em vez de vir sempre na versão grande, bem mais pesada. Quem escolhe é o navegador de quem visita, pelo tamanho e pela nitidez da tela, também ao trocar de foto. A aparência não muda: mesma foto, mesmo recorte, mesmo tamanho. O ganho fica nos celulares de tela menos nítida e, quando a casa tem mais de uma foto, nos computadores de tela menos nítida; com uma foto só, ela ocupa a largura toda e, no computador, continua vindo na grande. Nos celulares de tela mais nítida (como os iPhones recentes) a foto precisa da versão grande e continua vindo nela. A capa da página inicial continua com a foto grande: no celular ela cobre um quadro mais alto que largo e aparece mais larga que a tela, e a versão leve ficaria borrada. As miniaturas e os cartões das casas já usavam a versão leve. Para você: nada. Antes, também em 15/10, **ícone da aba com a marca do site (M7.18), pronto:** a aba do navegador mostrava um círculo preto com um triângulo branco, o ícone padrão da ferramenta com que o sistema é feito. Agora a aba e o atalho na tela do celular mostram a marca da Sua Casa Leblon. No site, vale a marca que você enviar em Configurações → Site, quando ela é um PNG quadrado (no atalho do celular, também sem fundo transparente); até lá, a marca do estudo visual, que fica sempre no painel e nos portais do proprietário e do hóspede. Se a marca enviada não servir de ícone (em JPG, fora do quadrado ou, no atalho, com fundo transparente), fica a do estudo, e a tela da marca diz isso e por quê. No celular, a barra do navegador fica no verde do site. Nada mais muda nas páginas nem na prévia dos links. Hoje o site de verdade não tem marca enviada: a aba mostra a do estudo. Para você: nada obrigatório; se enviar uma marca nova, prefira PNG quadrado. Antes, também em 15/10, **títulos e frases do site editáveis no painel (M7.16), pronto:** os títulos, as linhas pequenas acima deles e as frases que estavam fixos no site passam para Configurações → Textos do site: o topo de Nossas casas, o quadro da consulta na página de cada casa, o quadro "Resumo da viagem" da consulta e as seções Como reservar e Contato da página inicial. A linha pequena de "O bairro à sua porta" fica junto do título e do subtítulo dessa seção, em Configurações → Textos do site, no quadro O bairro à sua porta (mais abaixo na mesma tela). Cada campo já vem com o texto que o site mostra hoje, então nada muda até você editar; os textos do estudo aprovado ficam como sugestão na seção 2. Linha pequena ou frase apagada some do site; título apagado volta ao texto de hoje. A prévia do link de Nossas casas não muda: continua com a frase da vitrine de casas da página inicial. Ficaram de fora, ainda fixos, os nomes do menu, do rodapé e dos botões, os textos do formulário da consulta, alguns avisos e os títulos da ficha da casa (a lista está na seção 2). Para você: nada obrigatório; duas perguntas na seção 7: se quer editar também esses nomes e textos, e se a prévia de Nossas casas deve passar a usar a frase da própria página. Antes, também em 15/10, **frase de abertura de cada casa (M7.17), pronto:** na ficha de cada imóvel no painel, logo antes da descrição, há o campo novo "Frase de abertura (site)". A frase que você escrever ali abre a página da casa no site, em letra grande, acima da descrição, como no estudo aprovado ("Dias leves entre a praia e os restaurantes."). Ela passa a ser também a frase do cartão da casa (inclusive na vitrine de "Anuncie seu imóvel", que os proprietários leem) e da prévia do link no WhatsApp. Em branco, nada aparece acima da descrição, e o cartão continua como antes: a primeira frase da descrição ou, sem descrição, o bairro e a cidade. Nenhuma casa ganhou frase sozinha. Na aba Anúncios, o quadro do site mostra a frase ou, sem ela, a frase que o cartão está usando. A nota do preço base deixou de dizer que o site não mostra valores: agora ela diz, conforme a fonte de preços da casa, se esse preço entra no valor da noite no site. Para você: escrever a frase de cada casa quando quiser; as frases do estudo estão na seção 2 como sugestão (seção 6, item 48). Antes, também em 15/10, **texto das caixas de autorização dos proprietários editável no painel (M7.15), pronto:** o texto ao lado da caixa de autorização dos dois formulários de "Anuncie seu imóvel" (o pedido de contato para a gestão completa e o cadastro do marketplace) agora se muda pelo painel, na aba nova **Configurações → Autorização dos proprietários**, sem mexer em código. Cada mudança publicada vira uma versão nova, com número e data, e vale dali em diante: os pedidos já recebidos continuam com o texto que a pessoa viu. A versão 1 é o texto de hoje, que veio com o sistema; a primeira que você publicar será a versão 2. O nome da empresa continua entrando sozinho no texto (escreva {empresa} onde ele deve aparecer). O sistema não deixa publicar texto vazio, porque a caixa é obrigatória, e avisa enquanto você digita se algo não pode entrar (quebra de linha, por exemplo). Para quem preenche, nada muda até você publicar um texto novo. Para você: nada obrigatório; quando o advogado mandar o texto das caixas (seção 6, item 39), cole lá e publique (seção 2). Antes, também em 15/10, **prévia dos links do site no WhatsApp e nas redes (M7.13), pronto:** quem manda o link do site ou de uma casa pelo WhatsApp, Instagram, Facebook ou X vê uma prévia com a foto (a primeira foto da casa ou, nas outras páginas, a foto da capa do site, na versão leve), o título com o nome da empresa e a frase da própria página, tirada dos textos que você já edita no painel; sem foto, a prévia sai sem imagem, nunca com uma genérica. Enquanto o site não tem casa publicada (como hoje), a prévia da consulta, de Nossas casas e das páginas não encontradas usa o aviso do site sem casas, o mesmo que essas páginas mostram. A prévia e os links das mensagens ao hóspede usam o campo Site de Configurações → Empresa, que precisa ter o endereço em que o sistema abre hoje, com https:// no começo e sem o caminho de uma página; enquanto ele tiver outro endereço, a prévia usa o endereço da Vercel. Para você: conferir o campo Site (seção 6, item 47): na produção ele tem um endereço que não é o do sistema. Antes, também em 15/10, **faixa "Prévia de teste" (M7.12):** nas prévias da Vercel (a versão de teste, com banco próprio e o pagamento de teste do Mercado Pago), todas as páginas — site, cotação, Minha reserva, portais, painel e as telas de erro — mostram no topo uma faixa fina: "Prévia de teste · não é o site de verdade · nenhuma cobrança real". Assim, você e quem você mandar testar não confundem a prévia com o site de verdade, que continua sem a faixa. Na página da cotação, a frase "Ambiente de teste: nenhuma cobrança real." deixou de aparecer nas prévias, porque a faixa do topo já diz isso. Duas perguntas para você, sem pressa: quer a faixa também no site de verdade até a entrada no ar? E o selo "Homologação · dados fictícios" do painel, que aparece também no de verdade, fica ou sai? (seção 2 e seção 7). Antes, também em 15/10, **registro da autorização dos proprietários (M7.14), pronto:** nos dois formulários de "Anuncie seu imóvel" (o pedido de contato para a gestão completa e o cadastro do marketplace), a partir da publicação desta mudança, cada envio guarda o dia e a hora em que chegou com a caixa de autorização marcada e o texto exato que a pessoa viu; você vê isso no painel, em Proprietários → Pedidos de contato e em Cadastros pelo site. Os pedidos de antes aparecem como "Sem registro" (a caixa já era obrigatória), sem data inventada. O texto-base da Política de privacidade passa a citar esse registro na linha dos proprietários. Para quem preenche, nada muda. Para você: nada obrigatório; se você já publicou a Política de privacidade, inclua a frase nova na próxima versão, e a pergunta sobre guardar também o endereço de internet (IP) continua na lista do advogado (seção 6, item 39). O próximo passo, deixar o texto das caixas editável no painel, ficou como um item novo (M7.15). Antes, em 14/10, **buscar as datas em todas as casas de uma vez (M7.9), pronto:** quem só sabe as datas e quantas pessoas vão escolhe "Todas as casas" em "Seu lugar" e vê uma página com as casas que recebem o grupo, cada uma com a situação de verdade naquelas datas (disponível, indisponível ou a confirmar, pela mesma conferência da página da casa) e o valor com o desconto do site à mostra; o cartão leva à página da casa já com as datas, onde se segura e paga como antes. Na página de uma casa, escolher outra casa no "Planeje sua estadia" e tocar em "Continuar" abre a outra com as mesmas datas. A linha pequena, o título, o aviso, a frase de quando nenhuma casa recebe o grupo e a frase do contato ficam em Configurações → Textos do site. Enquanto o site não tem casa publicada (como hoje), a busca mostra o mesmo aviso do site sem casas descrito abaixo (M7.8), com o seu WhatsApp, e não um segundo texto para o mesmo caso. A página da busca segue as regras de acessibilidade do M7.11 (logo abaixo): o botão do WhatsApp avisa a quem usa leitor de tela que abre outra janela e os títulos seguem em ordem, sem pular nível. Para você: nada obrigatório; uma escolha pequena na seção 7 (mostrar ou esconder as casas sem vaga). Antes, também em 14/10, **site mais fácil de usar pelo teclado e pelo leitor de tela (M7.11):** quem navega pela tecla Tab vê um contorno em volta do link ou do botão em que está; nas partes verdes do site, dos portais e do menu do painel esse contorno laranja quase sumia, e agora ali ele é creme, bem visível. A foto escolhida na galeria do imóvel ganhou um anel dourado escuro, mais fácil de ver. Cada página do site e dos portais tem, no primeiro Tab, o link "Pular para o conteúdo", que só aparece para quem usa o teclado. Os links que abrem outra janela (WhatsApp, Pix no Mercado Pago, páginas legais) avisam isso a quem usa leitor de tela, sem mudar nada na tela. E a ordem dos títulos, que o leitor de tela usa para navegar, deixou de pular um nível na página do imóvel, em Nossas casas e na página para proprietários. Para quem usa o mouse, nada muda. Você não precisa fazer nada (seção 2). Antes, também em 14/10, **páginas de "não encontrada" e de erro no site, e o aviso de quando não há casa publicada (M7.8):** um endereço errado ou o link de uma casa que saiu do site agora mostra uma página em português, no visual do site, com o botão "Conhecer as casas" (antes aparecia uma página em inglês, sem o cabeçalho e o rodapé). Um erro inesperado mostra uma tela curta de "tente de novo". O painel e o portal do proprietário ganharam as suas, no visual deles. E, enquanto nenhuma casa está publicada, como hoje no site de verdade, a página inicial, Nossas casas, a consulta e a própria página não encontrada dizem isso com clareza e oferecem o seu WhatsApp (ou o e-mail), no lugar do "Em breve." e de um formulário que não dava para enviar; na página não encontrada, no lugar de "Conhecer as casas", aparecem esse aviso e "Voltar ao início". Os textos novos estão em Configurações → Textos do site, já preenchidos: os títulos e as frases da página não encontrada vêm do estudo aprovado; o aviso de quando não há casa publicada é um texto novo, escrito agora, para você revisar (é ele que aparece hoje no site de verdade). Você não precisa fazer nada além dessa revisão, quando quiser (seção 2). Antes, também em 14/10, **páginas pessoais e internas fora do Google (M7.10):** o Google e os outros buscadores passam a receber o pedido de não listar as páginas que são de uma pessoa ou só da equipe: a cotação de cada hóspede, Minha reserva, o link do convite, as etapas do cadastro do proprietário (inclusive a de digitar o código, que mostra o e-mail da pessoa), a entrada, o painel, o portal e a tela da equipe. Os buscadores sérios atendem esse pedido. A aparência não muda. As páginas públicas (início, casas, consulta, página para proprietários e páginas legais) ficam como estão: se elas aparecem no Google continua decisão sua. A entrada, o convite e a tela da equipe deixaram de mostrar a descrição interna "Sistema de gestão" na aba e na prévia do link, e o convite usa o nome da empresa de Configurações → Empresa. Nada para você fazer (seção 2). Antes, também em 14/10, **teste do pagamento pronto para você e acesso ao banco com regras:** a prévia da Vercel foi publicada de novo depois das suas chaves de teste da conta negócio nova, e o banco das prévias, que estava vazio, recebeu dados fictícios para o teste (um imóvel de teste com preço, contrato, páginas legais e o pagamento e o cartão ligados). A consulta do imóvel de teste já oferece o Pix no site, o que mostra que o Mercado Pago conferiu as suas chaves como de teste. O passo a passo do Pix e do cartão está na página de pendências e na seção 6, item 37, que ganhou o Redeploy depois das chaves e o aviso de que a prévia tem um banco só dela. Você liberou em 14/10 o acesso de Claude e Codex ao Neon, com regras: no banco de verdade, só leitura e mudanças pelo próprio sistema, e correção à mão só com o seu "pode" (regras do projeto, seção "Banco de dados no Neon"; seção 5, linha do Neon). Corrigido também um erro meu: o "não mexer no Neon" que eu repeti como pedido seu era uma anotação minha de 4/10, não uma decisão sua. Antes, em 11/10, **disputa do pagamento (contestação), em teste (M8.2e):** quando alguém pede ao banco para desfazer a cobrança de uma reserva paga pelo site (a contestação no cartão), pede a devolução de um Pix pelo mecanismo do Banco Central (o MED) ou abre uma reclamação no Mercado Pago, o sistema registra a disputa, avisa a equipe no Início e por e-mail e segura a parte do proprietário dessa reserva que ainda não foi repassada, sem descontar nada de ninguém, até você registrar quem arca: o proprietário, a SCL ou cada um na proporção da sua parte (o sistema nunca escolhe). Com a decisão, o valor do proprietário fica segurado nos próximos repasses até o resultado: se a SCL ganhar, volta; se perder, fica definitivo. O resultado é sempre você quem confirma: o sistema mostra o que o Mercado Pago diz, mas não decide sozinho, porque as páginas do Mercado Pago já deram sentidos opostos ao mesmo código. Antes da entrada, dá para "Cancelar a reserva contestada" sem devolução pelo sistema (o dinheiro volta a quem pagou, pela disputa, se ele ganhar). O proprietário vê a disputa no extrato, no portal e no e-mail do repasse; o hóspede só vê "pagamento em conferência", e nenhuma mensagem automática sai. O Mercado Pago de teste não cria disputas: no teste, você registra uma à mão num pagamento de teste (seção 2; o que fazer no item 46 da seção 6, o texto do "Como funciona" no item 42 e o evento novo dos avisos no item 37; 14 decisões novas na seção 7). **Com isso, as cinco partes do pagamento pelo site estão prontas no teste**; o pagamento de verdade continua desligado e espera as suas decisões marcadas com ★ (seção 7). Antes, em 10/10, **alteração de reserva paga pelo site, em teste (M8.2d):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) muda as datas, o número de pessoas ou o valor **antes da entrada**: o sistema mostra antes o valor novo, a diferença e o que acontece com o dinheiro, e segura as noites novas por um tempo que você escolhe. Se o valor sobe, o hóspede paga a diferença por Pix ou cartão na página da reserva e a alteração vale sozinha; se desce, a diferença segue a Política de cancelamento que ele aceitou, contando da entrada original ou da nova, a que vier primeiro: dentro do prazo, volta; fora, fica e é dividida como uma reserva normal. O financeiro é refeito sozinho, e a devolução de parte do valor só é pedida ao Mercado Pago depois que ele libera o pagamento (no teste, registre a liberação à mão). Também ficou pronto o que faltava das devoluções: mais de uma devolução no mesmo pagamento, o restante de um pagamento já devolvido em parte e a devolução que o Mercado Pago fez a menos. Nada é escrito no Beds24: o Início avisa quando mudar o bloqueio nas OTAs, mesmo com o envio ao Beds24 ligado (o envio manda só os bloqueios do SCL, nunca as datas das reservas; o mesmo vale para os avisos de reserva paga e cancelada). Como o Pix, o cartão e o cancelamento, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 44 e 45 da seção 6 e as frases novas da política no item 42; decisões novas na seção 7). Antes, também em 10/10, **cancelamento de reserva paga pelo site, em teste (M8.2c):** na ficha de uma reserva paga pelo site, quem cuida do financeiro (hoje, só você) calcula o cancelamento pela Política de cancelamento que o hóspede aceitou, vê o resultado antes (devolução integral ou nada, e por quê) e cancela; o sistema pede a devolução ao Mercado Pago, acompanha até ela sair e acerta o financeiro sozinho: reserva, comissão, parte do proprietário, a taxa que não voltar (despesa da empresa) e, se a parte do proprietário já tinha sido paga, o desconto no próximo repasse dele. Sem devolução, o valor fica e é dividido como uma reserva normal. O hóspede pode pedir o cancelamento em Minha reserva (ele só pede, e a hora fica registrada; quem cancela é a equipe), a página da reserva mostra a situação e há três mensagens novas ao hóspede, prontas para copiar, que saem sozinhas quando você ligar as mensagens. Como o Pix e o cartão, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago (seção 2; o que fazer nos itens 41 a 43 da seção 6; decisões novas na seção 7). Também em 10/10, **conferências com dados fictícios:** equipe (senha provisória, troca da própria senha, cidades e avisos) e cartão (liberação imediata, em 14 e em 30 dias). A previsão não vira dinheiro recebido: precisa da confirmação do provedor, e o proprietário espera também o check-in. Não houve criação de contas reais, envio de avisos reais nem cobrança. **Visual:** componentes atuais renderizados localmente em computador (1512 px) e celular (390 px), comparados com o acervo do Sage; sem estouro horizontal, imagens carregadas e campos de no mínimo 44 px. Essa conferência de aparência não valida navegação, autenticação ou pagamentos no site publicado.
 > **Entregas de 9/10/2026:** **pagamento com cartão no site, em teste (M8.2b):** depois de segurar as datas, o hóspede escolhe entre o Pix (recomendado, já marcado) e o cartão de crédito; o formulário do cartão é do Mercado Pago (os dados do cartão nunca passam pelo nosso sistema), aceita só crédito e parcela com os juros pagos pelo hóspede; quando o banco pede, a verificação do banco aparece na própria página. A reserva confirma sozinha quando o cartão é aprovado, e um cartão em análise no Mercado Pago segura as datas por mais um tempo que você escolhe. Contra quem testa cartões roubados, toda recusa mostra a mesma mensagem e, com muitas recusas, o cartão desliga sozinho (o Pix continua). O cartão vem **desligado**: você liga em Configurações → Pagamento no site. Como o Pix, roda só nas prévias da Vercel e com a conta de teste do Mercado Pago: nada é cobrado de verdade (seção 2; o que fazer no item 40 da seção 6; decisões novas na seção 7: verificação do banco, prazo de liberação do cartão, e-mail do formulário e devolução por fora). Também em 9/10, **páginas legais do site prontas (M7.4):** o site ganhou as três páginas que a lei pede para vender pela internet — Termos de uso, Política de privacidade e Política de cancelamento —, com links no rodapé de todas as páginas. Você revisa e publica cada uma em Configurações → Páginas legais do site, com prévia, versão datada e histórico; os dados da empresa entram sozinhos (preencha antes o novo campo "encarregado" em Configurações → Empresa). Antes de gerar o Pix, o hóspede lê o resumo da política de cancelamento, vê até que dia tem o reembolso integral daquela reserva e marca que aceita; na ficha da reserva você vê o que ele aceitou. Os textos são um texto-base que eu escrevi a partir da lei: leve ao contador e, de preferência, a um advogado antes de publicar. **Atenção: enquanto as três não estiverem publicadas, o site não oferece o Pix — nem nas prévias da Vercel**, que usam outro banco e precisam ter as três publicadas lá também para o teste do pagamento continuar (seção 2; o que fazer no item 39 da seção 6). Também em 9/10, **sobras de feriado e evento com reserva (M3.10):** quando um feriadão ou evento já tem uma reserva confirmada, as noites livres dele passam a pedir o mínimo normal da semana (1 noite de domingo a quinta, 2 na sexta e no sábado), sem baixar o preço do evento, como você decidiu em 6/10. A regra vem ligada; desligue, evento por evento, em Configurações → Calendário e preços, nas temporadas longas como a alta temporada (seção 2; o que fazer no item 38 da seção 6). Também em 9/10, **pagamento por Pix no site, em teste (M8.2a):** depois de segurar as datas, a página da cotação mostra o Pix (copia e cola, QR e prazo) e confirma a reserva sozinha quando o pagamento é aprovado; no painel, a ficha da reserva ganha o quadro "Pagamento no site", há a lista em Financeiro → Pagamentos do site e a aba Configurações → Pagamento no site, onde você liga e desliga. Tudo roda só nas prévias da Vercel e só com a conta de teste do Mercado Pago: nada é cobrado de verdade (seção 2; o que fazer no item 37 da seção 6). Em 8/10, **página para proprietários pronta (M7.7):** "Anuncie seu imóvel" no site virou uma página completa, no visual do estudo: as duas formas de trabalhar (gestão completa e marketplace), como gerimos, a vitrine dos imóveis, o "Como funciona" publicado e um pedido de contato para a gestão completa, que chega em Proprietários → Pedidos de contato, com aviso no Início do painel e por e-mail; o cadastro do marketplace continua igual. Os textos começam com um texto-base para você revisar em Configurações → Página para proprietários, e os números de mercado só aparecem quando você digitar dados reais (seção 2; o que fazer no item 36 da seção 6). Em 7/10, **a equipe entra sem e-mail (M6.8):** em Limpezas → Profissionais você cria para cada pessoa um usuário e uma senha provisória (o sistema pode criar a senha), copia a mensagem pronta e manda pelo WhatsApp; ela entra em "Entrar com usuário e senha" e troca a senha no acesso dela. Na mesma tela você escolhe a cidade da agenda de cada uma: quem é de Búzios vê só Búzios, quem é do Rio vê só o Rio (seção 2; o que fazer no item 7 da seção 6). Também em 7/10, **site do hóspede no visual do estudo (M7.6):** a página inicial ganhou a foto de capa que você escolher em Configurações → Site (sem foto, fica o fundo verde), a legenda vertical, a vitrine "Seu endereço no Leblon" em carrossel com setas e botão de pausa, cartões com selo e ícones das comodidades, e "Por que reservar direto" com um texto-base para você revisar; a página do imóvel ganhou "O bairro à sua porta" (lugares que você cadastra no painel, com foto opcional); as datas são escolhidas num calendário próprio, com as noites ocupadas marcadas; a consulta ficou em duas colunas com o "Resumo da viagem"; a marca do logotipo aparece no topo e no rodapé (seção 2; o que fazer no item 35 da seção 6). Também em 7/10, **pesos do marketplace no padrão 6/3/3 (M12.5):** quem nunca salvou a aba Marketplace e desconto do site já usa hóspede 1, proprietário 1 e SCL 2 (desconto do site de cerca de 3%); se o que está salvo é o 1/1/1 antigo, a aba avisa e oferece o botão "Usar o padrão novo" (seção 6, item 24). Também em 7/10, **fotos reais dos imóveis prontas (M7.3):** na ficha de cada imóvel, no painel, há a parte **Fotos**: você sobe várias de uma vez (pode ser a original do celular, o sistema reduz antes de subir), escolhe a capa, muda a ordem e escreve a legenda; o site mostra a capa nos cartões e a galeria na página do imóvel, e a capa do relatório mensal usa a mesma foto (seção 2; o que fazer no item 34 da seção 6). Também em 7/10, **Beds24 fora do que o proprietário e o hóspede leem (M5.9, pronto):** o portal passa a falar de "nosso sistema", "os canais" e "sua ferramenta de preços"; o site, quando o preço de uma data ainda não foi lido, diz só que o preço é confirmado na conversa; o painel continua dizendo Beds24 (seção 2). Também em 7/10, **sua segunda rodada de respostas de 7/10 no plano** (seção 7): a equipe entra de vários jeitos (conta Google, e-mail com senha ou usuário e senha criados por você), sem verificação em duas etapas, e cada pessoa vê só a agenda da cidade dela (M6.8 sai de "bloqueado"); no reembolso integral do site, a taxa que o Mercado Pago não devolver fica com a empresa; a posição sobre o arrependimento de 7 dias eu escrevo e você confere com o contador; dois itens novos para o site: o site do hóspede pronto pelas referências do Sage (M7.6) e a página para proprietários (M7.7). Antes, **suas respostas de 7/10 registradas no plano** (seção 7): no marketplace, relatório e extrato mostram só o que passa pela SCL (as reservas do site e o dinheiro que a empresa receber); o Beds24 fica nos bastidores, sem aparecer para proprietário e hóspede (item novo M5.9); contestação perdida fica com quem deu causa ao motivo, decidido caso a caso; cancelamento do site com a base de 14 dias; pesos 6/3/3 confirmados (item novo M12.5); fotos liberadas (M7.3 sai de "bloqueado"); só o Leblon no site público no começo; e-mail não serve para a equipe (item novo M6.8, espera você decidir como a equipe entra); ideia de serviços à parte com valor mensal fixo (item novo M4.14, espera a sua lista). **O que depende de você agora fica na página "Pendências do Diego"** (https://claude.ai/artifact/PVim3wJVrYgsRVvzabUv6K), onde você marca o que fez e pergunta; esta seção 6 continua como referência completa. Você fez em 7/10: início do sistema e acerto por fora, recebimentos de outubro, chaves Pix, "Como funciona" versão 1 publicada e o remetente do e-mail. Antes, em 5/10: **relatório mensal com os ajustes que você pediu (M5.8):** o quadro diz "noites ocupadas", entraram "receita por noite disponível" (o RevPAN do setor) e "reservas e estadia média", e o segundo gráfico é a ocupação por mês com a diária média sobre cada barra — a opção 1, que você escolheu em 5/10 (seção 2); **dia do fechamento passou para o dia 2 (M4.13, sua decisão de 5/10):** o fechamento mensal, o repasse mensal e o e-mail do relatório saem sozinhos no dia 2 do mês seguinte (o Airbnb só paga no dia 1º a reserva com check-in no último dia do mês); dá para mudar de 1 a 5 em Configurações → Repasses, valendo do fechamento do mês atual em diante; no dia 1º você ainda pode fechar e enviar à mão, e o proprietário baixa o PDF no portal a qualquer hora (seção 2; item 33 da seção 6); **relatório mensal no modelo oficial pronto (M5.7):** o PDF do portal, do painel e do e-mail do fechamento saiu em quatro páginas (capa com o resultado e "como chega até você", números e reservas do mês com o gráfico de 12 meses, conciliação e repasses, extratos dos canais no fim), com os ajustes que você pediu (quadros dois a dois, nada com rolagem lateral no celular); **antes do fechamento de outubro, guarde os extratos dos canais em Financeiro → Repasses → "Extratos dos canais"** para irem no e-mail (item 32 da seção 6); os e-mails do fechamento e do repasse ganharam a versão bonita (HTML) na mesma ordem do texto; **documento "Como funciona" para o proprietário pronto (M5.6):** texto por seção em Configurações → Como funciona (proprietário), versão datada a cada publicação, aceite registrado no convite e no portal (quem, quando, qual versão) — **nada aparece no portal até você revisar o rascunho e publicar a versão 1** (seção 6, item 31); **reserva paga antes do início é acertada inteira por fora (M4.12):** o corte do início do sistema passou a ser pela data em que o canal pagou a reserva, não por noite — a reserva de 29/9 a 2/10 paga em 30/9 é toda de antes, com a noite de outubro; a paga a partir de 1/10 entra inteira; Booking, site e direta que atravessam 30/9→1/10 precisam do recebimento registrado **com a data em que o canal pagou** antes da marcação (item 29 da seção 6); Configurações → Regras financeiras ganhou "em quantos dias depois do check-in o canal paga" (Airbnb: 1) — seção 2; **antes do fechamento de outubro (o primeiro no sistema), faça o item 29 da seção 6: defina o início do sistema (1/10/2026) em Configurações → Repasses e clique em "Marcar como acertado por fora" em Financeiro → Repasses (M4.11) — nada de setembro entra de novo e o fechamento sai sem tratamento à mão;** **modelo oficial do relatório mensal especificado (M5.7, a implementar):** o relatório de setembro que a Lia montou com você virou o padrão, no visual novo, com números do mês e os extratos das OTAs no fim — veja o protótipo com dados fictícios e me diga o que mudar (seção 2 e seção 7); **portal do proprietário marketplace pronto (M12.4):** quem tem contrato marketplace edita no portal os preços e as regras de venda do próprio imóvel (com a conta do site ao vivo), vê se a mudança já foi ao Beds24, marca as limpezas como feitas e registra os consertos por conta própria (seção 2); **atenção ao fechamento de outubro — o primeiro no sistema: checklist no item 29 da seção 6 (setembro já acertado por fora não pode entrar de novo);** **extrato e repasses por periodicidade prontos (M4.10):** o proprietário vê no portal a parte dele em cada reserva (a liberar, disponível, repassada), escolhe como quer receber (mensal, quinzenal, semanal, assim que disponível) e pode pedir um repasse; você registra o recebimento do canal na reserva, marca o repasse pago com o comprovante e o e-mail sai sozinho (seção 2); **identidade visual nova implementada (M7.5):** site, portais e painel estão no visual do estudo que você aprovou (verdes, off-white de papel, grão sutil nos fundos, busca translúcida, serifa nos títulos; painel mais denso), com três textos novos da capa editáveis em Configurações → Site (seção 2); **acervo visual do Sage guardado e especificação de design escrita (M7.5):** o visual que você aprovou está em `prototipos/acervo-visual-2026-10` (e o código dele já estava em `prototipos/scl-publico`); os tokens e os ajustes combinados estão em `requisitos/product/DESIGN.md`; falta só implementar; **fonte de preços por imóvel pronta (M3.9):** cada imóvel escolhe, na ficha, se os preços são automáticos do SCL, definidos no Beds24 (o SCL só lê) ou digitados no cadastro; site, envio ao Beds24, prévia e portal seguem a escolha (seção 2); item novo de **identidade visual** (M7.5, aprovado por você); **referência do sistema antigo cruzada com o plano (M0.6):** o museu que você mandou foi percorrido tela a tela e comparado com o que já existe, com uma lista de ideias para você decidir (seção 2 e `arquivo/sistema-antigo`); **desconto do site e simulação do marketplace prontos (M12.1):** nova aba Configurações → Marketplace e desconto do site, com as taxas de referência e os três pesos editáveis e a simulação Airbnb × Booking × site; o site passa a mostrar valor cheio, desconto e total em toda consulta e cotação (seção 2); recebimento do site decidido (M8.0: empresa recebe e repassa, Mercado Pago; repasse na periodicidade que o proprietário escolher, item novo M4.10), modelo do marketplace decidido (B, partes iguais; M12.1 liberado), marketplace recebendo pela empresa como o site, fonte de preços por imóvel no plano (M3.9), backup do repositório ativado por você (M0.7), publicação de homologação dada por fechada por você (M0.5), pedido do checkout com Pix e cartão registrado (M8.2, com parcelamento pago pelo hóspede) e decisão de não cobrar nada sobre as reservas das OTAs do dono do marketplace; correção do robô de backup depois da sua primeira rodada (ele passa a gravar com uma chave da própria conta de backup e guarda o que vem da origem fora de branches e tags, onde nenhuma automação roda; item 23, passos 4, 5 e 7) e passo a passo mais detalhado (passos 5 e 7); conferência automática de cada PR mais rápida (M0.8); backup automático do repositório ativo na conta separada (M0.7, seção 6, item 23) e backup do banco no Neon ampliado (7 dias de histórico, snapshots diário e semanal); cotação e "segurar as datas" no site (M8.1), proprietário bloqueia datas de uso próprio pelo portal (M5.5), disponibilidade e valor reais no site (M7.2) e envio de calendário e preços ao Beds24 (M3.7) pronto para o teste no 103. **Nada é enviado** enquanto você não ligar `BEDS24_ESCRITA` na Vercel e marcar o imóvel em Configurações → Calendário e preços. A conferência das reservas é parcial; agosto/setembro podem ter histórico incompleto na origem.
 
 ---
@@ -30,19 +30,737 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; referência do sistema antigo cruzada com o plano em 4/10 (M0.6). **M0 concluído** |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; referência do sistema antigo cruzada com o plano em 4/10 (M0.6); avisos de erro pelo Sentry, sem dados pessoais (M0.9, 16/10); menu do painel no celular pronto (M0.10, 16/10). **M0 concluído** |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta; sobras de feriado e evento com reserva usam o mínimo normal da semana (M3.10, 9/10) |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); início do sistema e acerto por fora do que é de antes (M4.11); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago; reserva paga antes do início acertada inteira por fora, pela data em que o canal pagou (M4.12); dia do fechamento no dia 2, editável de 1 a 5 (M4.13, 5/10) |
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto e com a versão 1 publicada por você em 7/10 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail; ajustes de 5/10 no relatório prontos (M5.8: noites ocupadas, receita por noite disponível, estadia média, gráfico de ocupação); Beds24 fora dos textos do portal e do site (M5.9, 7/10) pronto; nomes da empresa e do proprietário sempre como estão no cadastro, no "Como funciona" e no e-mail do fechamento (M5.10, 16/10) |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento; a equipe entra sem e-mail e vê só a agenda da cidade dela (M6.8, 7/10); aviso pelo WhatsApp depende do M10 |
-| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais prontas (M7.4, 9/10): você revisa e publica; fotos reais prontas (M7.3, 7/10: você sobe na ficha do imóvel); site do hóspede no visual do estudo pronto (M7.6, 7/10); página para proprietários pronta (M7.7, 8/10); páginas de "não encontrada" e de erro em português e aviso de quando não há casa publicada prontos (M7.8, 14/10); busca das datas em todas as casas de uma vez pronta (M7.9, 14/10, com as regras de acessibilidade do M7.11); páginas pessoais e internas fora do Google (M7.10, 14/10); acessibilidade do site pronta (M7.11, 14/10: contorno do teclado visível nas partes verdes, "Pular para o conteúdo", aviso dos links que abrem outra janela e ordem dos títulos); faixa "Prévia de teste" no topo das prévias pronta (M7.12, 15/10: duas perguntas para você); prévia dos links no WhatsApp e nas redes, com a foto e a frase de cada página, pronta (M7.13, 15/10: confira o campo Site, seção 6, item 47); registro da autorização dos proprietários nos formulários de "Anuncie seu imóvel" pronto (M7.14, 15/10: data e hora do envio e texto exato da caixa, no painel); texto das caixas de autorização editável no painel, com versão nova a cada mudança, pronto (M7.15, 15/10: Configurações → Autorização dos proprietários); títulos e frases que estavam fixos no site editáveis em Textos do site (M7.16, 15/10: com o texto de hoje; as sugestões do estudo estão nesta seção); frase de abertura de cada casa, escrita na ficha do imóvel, pronta (M7.17, 15/10: você escreve as frases, seção 6, item 48); ícone da aba e do atalho no celular com a marca do site, e a barra do navegador no celular no verde do site, prontos (M7.18, 15/10); foto em destaque da página da casa mais leve quando a tela permite (M7.19, 15/10: nada para você; a capa da página inicial continua com a foto grande) |
-| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, com a prévia preparada em 14/10 para o seu primeiro teste com as chaves da conta negócio nova (antes disso, nenhum teste com as suas chaves tinha acontecido); **cartão em teste pronto (M8.2b, 9/10)**, desligado até você ligar; **cancelamento de reserva paga pelo site em teste pronto (M8.2c, 10/10)**, pela política que o hóspede aceitou; **alteração de reserva paga pelo site em teste pronta (M8.2d, 10/10)**, antes da entrada, com a diferença paga pelo site ou devolvida pela política, e a devolução de parte do valor; **disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10)**: as cinco partes estão prontas no teste, e o pagamento de verdade espera as suas decisões ★ (seção 7) |
+| M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais prontas (M7.4, 9/10): você revisa e publica; fotos reais prontas (M7.3, 7/10: você sobe na ficha do imóvel); site do hóspede no visual do estudo pronto (M7.6, 7/10); página para proprietários pronta (M7.7, 8/10); páginas de "não encontrada" e de erro em português e aviso de quando não há casa publicada prontos (M7.8, 14/10); busca das datas em todas as casas de uma vez pronta (M7.9, 14/10, com as regras de acessibilidade do M7.11); páginas pessoais e internas fora do Google (M7.10, 14/10); acessibilidade do site pronta (M7.11, 14/10: contorno do teclado visível nas partes verdes, "Pular para o conteúdo", aviso dos links que abrem outra janela e ordem dos títulos); faixa "Prévia de teste" no topo das prévias pronta (M7.12, 15/10: duas perguntas para você); prévia dos links no WhatsApp e nas redes, com a foto e a frase de cada página, pronta (M7.13, 15/10: confira o campo Site, seção 6, item 47); registro da autorização dos proprietários nos formulários de "Anuncie seu imóvel" pronto (M7.14, 15/10: data e hora do envio e texto exato da caixa, no painel); texto das caixas de autorização editável no painel, com versão nova a cada mudança, pronto (M7.15, 15/10: Configurações → Autorização dos proprietários); títulos e frases que estavam fixos no site editáveis em Textos do site (M7.16, 15/10: com o texto de hoje; as sugestões do estudo estão nesta seção); frase de abertura de cada casa, escrita na ficha do imóvel, pronta (M7.17, 15/10: você escreve as frases, seção 6, item 48); ícone da aba e do atalho no celular com a marca do site, e a barra do navegador no celular no verde do site, prontos (M7.18, 15/10); foto em destaque da página da casa mais leve quando a tela permite (M7.19, 15/10: nada para você; a capa da página inicial continua com a foto grande); horários e regras da casa na página da cotação, antes do pagamento, com o link de volta para a casa (M7.20, 16/10: salve o cadastro completo de cada casa publicada); consulta no celular abrindo direto no resultado e link da casa com aviso do que não serve (M7.21, 16/10); datas e horas no padrão do Brasil: hora sempre como 15:00, campos de hora sem AM/PM, datas sem formato de máquina e semana começando na segunda (M7.22, 16/10) |
+| M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, com a prévia preparada em 14/10 para o seu primeiro teste com as chaves da conta negócio nova (antes disso, nenhum teste com as suas chaves tinha acontecido); **cartão em teste pronto (M8.2b, 9/10)**, desligado até você ligar; **cancelamento de reserva paga pelo site em teste pronto (M8.2c, 10/10)**, pela política que o hóspede aceitou; **alteração de reserva paga pelo site em teste pronta (M8.2d, 10/10)**, antes da entrada, com a diferença paga pelo site ou devolvida pela política, e a devolução de parte do valor; **disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10)**: as cinco partes estão prontas no teste, e o pagamento de verdade espera as suas decisões ★ (seção 7); **reserva paga pelo site no Beds24 (M8.3) autorizada por você em 16/10**, com uma chave própria, separada da do calendário, que só você liga, e dividida em quatro partes: **a base pronta e integrada, ainda sem envio (M8.3a, 16/10)**, com o bloco "No Beds24" e o "Simular" na ficha e a parte nova em Integrações; **as tarefas das plataformas num lugar só, no sistema desde 17/10 (M8.3b, PR #156; até 17/10, esta linha dizia "em revisão")**: os avisos do Início e o bloco da ficha com uma regra só e os textos certos ("mude para Cancelado (não apague)"), também para a operação, o botão "Datas fechadas nas OTAs" e o aviso do pedido confirmado à mão; **o envio de verdade pronto e desligado, na branch e em revisão (M8.3c, 17/10)**: cria, muda e cancela no Beds24 a reserva paga pelo site, confere e marca sozinho, avisa no Início e por e-mail quando algo não bate, com os botões novos da ficha e o ensaio em Integrações; só escreve depois do seu passo a passo (seção 6, item 51); falta o que depende do suporte do Beds24 (M8.3d, parado até a resposta do suporte, com a pergunta pronta no mesmo item); só vai ao Beds24 a reserva paga pelo site (sua decisão de 16/10). Até 17/10, esta linha dizia "faltam o envio de verdade (M8.3c, a fazer)" |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto; desde 10/10, o hóspede pede o cancelamento da reserva paga pelo site em Minha reserva, e há três mensagens novas do cancelamento (M8.2c); também em 10/10, Minha reserva avisa a alteração que espera o hóspede, e há duas mensagens novas da alteração (M8.2d) |
-| M10 WhatsApp | Caixa de entrada do WhatsApp no painel | ⚪ aguardando |
+| M10 WhatsApp | Caixa de entrada do WhatsApp no painel | 🟡 caixa de entrada pronta e no sistema desde 17/10 (M10.1a, PR #158; até 17/10, esta linha dizia "pronta na branch e em revisão"), ainda sem conexão: só leitura, só você vê, e nada chega até a conexão; a conexão com a Meta (M10.1b) está aguardando você (o caminho na Meta e a data) |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando |
-| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2) dependem do pagamento (M8.2) e do extrato (M4.10); pesos 6/3/3 no padrão do sistema (M12.5, 7/10) |
+| M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2): o pagamento (M8.2) e o extrato (M4.10) já estão prontos, falta a reserva no Beds24 (M8.3); pesos 6/3/3 no padrão do sistema (M12.5, 7/10); **marketplace confirmado como o modelo principal do negócio (16/10)** |
+| M13 MCP do SCL | Consultar o SCL pelo Claude e, como saída, pelo ChatGPT ou pelo Codex | ⚪ desenho pronto e revisado (M13.1, 16/10): só consulta na primeira fase, regras da fase 2 e histórico protegido registrados; nada construído; 14 decisões com padrão (seção 7) |
+
+### Reserva paga pelo site no Beds24: o envio automático pronto e desligado (M8.3c, 17/10)
+
+Esta é a terceira das quatro partes do M8.3. **Ela está pronta na branch e em revisão; ainda não entrou no sistema.** E,
+mesmo depois de entrar, **ela começa desligada**: nada é escrito no Beds24 até você seguir o passo a passo da seção 6,
+item 51. Para fazer esta parte, nada foi escrito no Beds24 de verdade: tudo foi testado com uma versão de mentira do
+Beds24, sem internet.
+
+Na produção, o envio só começa com quatro coisas juntas, todas suas: a chave das reservas ligada na Vercel, uma
+credencial nova do Beds24 com as permissões certas, um ensaio conferido por você em Integrações e um imóvel ligado por
+você. Hoje nenhuma delas existe. Mesmo com tudo ligado, o envio só vai ter o que mandar quando você ligar o pagamento de
+verdade: na produção, nenhuma reserva foi paga pelo site ainda. Nas prévias e no computador, o sistema nunca lê nem
+escreve no Beds24; o "Simular" da ficha continua mostrando o que seria enviado.
+
+- **O que o sistema faz sozinho, com tudo ligado,** de 10 em 10 minutos (nos minutos 2, 12, 22, 32, 42 e 52 de cada
+  hora), fora dos horários da importação e do envio de calendário diários do Beds24 (das 06:05 às 06:30 e das 06:50 às
+  07:15, no horário de Brasília):
+  - **reserva paga pelo site:** cria a reserva no Beds24, no quarto do imóvel, com as datas, o número de pessoas e uma
+    marca com o código da reserva (SCL-…), nunca com o nome, o contato ou o valor. Depois lê de novo para conferir que
+    ficou igual e marca sozinho "Datas fechadas nas OTAs" (a ficha diz "pelo sistema"). O aviso dela some do Início;
+  - **reserva alterada:** muda as datas e o número de pessoas no mesmo registro do Beds24 (nunca troca o quarto). Antes,
+    confere se as noites novas estão livres no Beds24; depois, confere e marca "Datas atualizadas nas OTAs";
+  - **reserva cancelada** (pela política, a contestada ou a do hóspede que não apareceu): muda a reserva para Cancelado no
+    Beds24 (nunca apaga), confere e marca "Datas reabertas nas OTAs". Se sobrou um bloqueio feito à mão sobre as noites,
+    ele não marca, e o Início pede para mudar esse bloqueio para Cancelado, com as datas dele;
+  - **reserva cancelada antes de o sistema criar:** confere que nada ficou no Beds24 e marca as datas reabertas;
+  - **as reservas que ele já criou:** confere de 10 em 10 minutos se alguém as mudou, cancelou ou apagou no Beds24 e, se
+    sim, avisa. Quando a leitura volta a bater (por exemplo, depois de a equipe desfazer a mudança no Beds24), o aviso some;
+  - depois da saída do hóspede, deixa de acompanhar a reserva.
+- **O que ele nunca faz sozinho:** cancelar, mudar ou devolver dinheiro por causa de noites ocupadas; criar por cima de
+  um bloqueio feito à mão; apagar qualquer coisa no Beds24; seguir uma mudança feita no Beds24 (o SCL continua dono da
+  reserva, e a diferença vira aviso); mandar o pedido confirmado à mão sem pagamento (sua decisão de 16/10) ou as datas
+  seguradas enquanto o hóspede paga.
+- **O que continua à mão:** o pedido confirmado à mão sem pagamento; as reservas dos imóveis que não estiverem ligados;
+  as reservas confirmadas antes de o imóvel ser ligado (ficam com a equipe; o botão "Passar ao sistema" as entrega ao
+  sistema); tudo enquanto a chave estiver desligada ou o envio estiver pausado; e o que o sistema não conseguir fazer
+  (aí fica o aviso).
+- **Quando algo não bate, ele avisa em vez de supor.** No Início, quem edita reservas vê, nesta ordem:
+  1. **possível venda dupla:** as noites estão ocupadas por outra reserva no Beds24, e o sistema não criou nada;
+  2. **diferente no Beds24:** alguém mudou, cancelou ou apagou no Beds24 uma reserva que o sistema criou;
+  3. **envio de reservas parado:** uma linha só, com o motivo (por exemplo, falta o ensaio, ou as permissões da
+     credencial não estão em ordem), com o link para Integrações só para você; a operação vê o mesmo texto, sem o link;
+  4. **falhas, envio sem confirmação, recusa do Beds24, aguardando a equipe e envio atrasado;**
+  5. as tarefas à mão de sempre (as da parte anterior, M8.3b);
+  6. os informativos, como "sendo enviadas pelo sistema: não feche à mão".
+
+  A linha que junta várias reservas leva à lista de reservas, já filtrada só nas reservas do site que pedem atenção no
+  Beds24; a linha de uma reserva leva à ficha. Com o envio e o imóvel ligados, a linha das atrasadas e a ficha dizem "o
+  sistema faz isso sozinho; este aviso fica quando ele não consegue". Os 30 minutos antes de um envio contar como
+  atrasado passam a contar também desde o "Retomar" da pausa e desde a ligação do imóvel.
+- **E-mail à equipe,** para o e-mail da empresa (Configurações, Empresa), nos casos que pedem alguém logo: possível venda
+  dupla; o Beds24 informando mais reservas do que o quarto comporta numa noite (o overbooking); reserva cancelada, mudada
+  ou apagada no Beds24; o Beds24 recusou o envio; o envio falhou 5 vezes seguidas; uma reserva voltou do Beds24 sem a
+  marca do sistema. O e-mail leva só o código da reserva, o imóvel e as datas, nunca dados do hóspede nem valores. O
+  hóspede e o proprietário nunca recebem esses e-mails, e nada do que eles leem cita o Beds24.
+- **Os botões novos da ficha,** no bloco "No Beds24" (todos pedem confirmação, menos os dois primeiros):
+  - **Conferir agora** (quem edita reservas): só lê o Beds24 e atualiza a situação da reserva; nunca envia nada;
+  - **Tentar de novo** (quem edita reservas): depois de uma falha, de uma recusa ou de noites ocupadas que a equipe
+    resolveu; põe a reserva na fila, e a rotina envia em até 10 minutos;
+  - **Deixar à mão** (quem edita reservas): a equipe passa a cuidar da reserva à mão, e o sistema não escreve mais nela;
+  - **Reenviar o que está no SCL** (quem edita reservas): quando alguém mudou as datas ou as pessoas no Beds24; manda de
+    novo o que está no SCL, com a conferência antes;
+  - **Não existe, pode criar** (só você): quando o envio ficou sem confirmação e você conferiu no Beds24 que nada foi
+    criado; só vale 5 minutos depois do envio;
+  - **Já existe, vincular o id** (só você): quando a reserva foi criada no Beds24, mas a resposta se perdeu; você digita o
+    número dela no Beds24, e o sistema confere antes de ligar;
+  - **Passar ao sistema** (só você): para a reserva confirmada antes de ligar o imóvel, quando não há bloqueio feito à mão
+    sobre as noites e a equipe não marcou as datas fechadas à mão.
+- **Em Configurações, Integrações, "Reservas do site no Beds24":** a última recusa do Beds24 à credencial ("sem permissão
+  de escrever reservas" ou "credencial recusada"); as permissões da credencial ("Conferir os escopos"; a rotina confere de
+  novo a cada 23 horas, antes de escrever); o motivo, quando o envio está parado; a pausa; os imóveis ligados; o ensaio
+  (logo abaixo); e as contagens das reservas acompanhadas, com as que pedem atenção levando à lista filtrada.
+- **O ensaio,** o primeiro teste de verdade (decisão 7), em três botões, só para você:
+  - **"Criar o ensaio"** cria no Beds24 uma reserva de teste (1 pessoa, sem hóspede, sem valor, com a marca SCL-ENSAIO)
+    no imóvel e nas datas que você escolher (de 1 a 7 noites, a partir de hoje, sem reserva nem bloqueio no SCL) e
+    confere que ela volta com a marca. Aí você confere no Beds24 e nas OTAs que as datas fecharam (cerca de 1 minuto);
+  - **"Cancelar o ensaio"** muda a reserva de teste para Cancelado (nunca apaga) e confere. Aí você confere que as datas
+    reabriram;
+  - **"Conferir o ensaio"** serve para o ensaio que parou no meio (só lê o Beds24).
+
+  Só o ensaio conferido com a credencial de agora libera o botão "Ligar" dos imóveis. O ensaio não cria reserva no SCL
+  nem mexe no financeiro; enquanto ele existir, as datas dele ficam fechadas nas OTAs.
+- **No Sistema,** a rotina "Reservas pagas do site no Beds24" deixa de aparecer como planejada e passa a ativa. Ela roda
+  de 10 em 10 minutos só na produção; com a chave desligada, só confere se há algo em curso e registra "Nada feito". Com
+  a chave pronta, a lista dos serviços mostra quando o envio está parado e por quê.
+- **Noite com mais reservas que o quarto:** o Beds24 pode mostrar unidades negativas numa noite quando ela foi vendida
+  duas vezes. Antes, o sistema descartava essa leitura como valor estranho; agora ele conta a noite como fechada (também
+  no site) e mostra o aviso no plano do calendário e, para a reserva do site, no Início e por e-mail.
+- **Por alguns minutos, enquanto uma reserva está sendo enviada:** mudar um bloqueio, o vínculo de um imóvel com o
+  Beds24 ou a fonte de preços pode pedir para esperar alguns minutos e tentar de novo, na empresa toda; o proprietário que
+  bloqueia datas pelo portal vê o mesmo pedido, sem citar o Beds24. Cada envio leva no máximo poucos minutos.
+- **O que ficou para a última parte (M8.3d),** que espera a resposta do suporte do Beds24 à pergunta pronta na seção 6,
+  item 51: assumir no sistema um bloqueio feito à mão; voltar a confirmar uma reserva cancelada no Beds24; e criar a
+  reserva depois de a equipe mudar o bloqueio para Cancelado.
+- **O que ainda não se sabe,** até o ensaio ou a resposta do suporte: em que campo o Beds24 devolve o número da reserva
+  criada, como ele recusa por falta de disponibilidade, os nomes do aviso de créditos que ele manda e que canal a reserva
+  criada recebe. Na dúvida, o sistema fica do lado seguro (o envio fica "sem confirmação" e espera a equipe), e o ensaio
+  guarda o que vir, sem nenhum dado pessoal.
+- **Limites:**
+  - a chave ligada na Vercel não tem hora registrada: os 30 minutos contam do pagamento, do cancelamento ou da alteração,
+    do "Retomar" ou da ligação do imóvel;
+  - se a credencial for trocada por outra conta do Beds24 com um ensaio sem confirmação no meio, o "Conferir o ensaio"
+    pode não conseguir encerrar esse ensaio, e ele impede um ensaio novo. Se acontecer, me chame: a saída é uma decisão
+    sua.
+- **Como foi testado:** pelos testes automáticos, com a versão de mentira do Beds24 e sem internet; um teste confere que
+  nenhuma chamada sai numa volta inteira da rotina. Nenhuma chamada foi feita ao Beds24 de verdade. Os horários das
+  rotinas diárias foram conferidos no banco da produção só com horários e contagens: a importação começa sempre às 06:15
+  e o envio de calendário às 07:00 (horário de Brasília), e a rotina nova nunca coincide com elas. Resultado de 17/10: os
+  4.996 testes automáticos do sistema (361 arquivos) passaram, e a versão de produção foi montada sem erro.
+- **Para você:** nada agora. Quando quiser ligar, o passo a passo está na seção 6, item 51, com a pergunta ao suporte do
+  Beds24 pronta para colar. As decisões 6, 7, 10 e 11 (seção 7) apontam para lá.
+
+### Caixa de entrada do WhatsApp, ainda sem conexão (M10.1a, 17/10)
+
+Esta é a primeira parte do WhatsApp no sistema. **Ela entrou no sistema em 17/10 (PR #158).** Até 17/10, esta linha dizia
+que ela estava pronta na branch e em revisão, ainda fora do sistema.
+Em 17/10 você aprovou só esta parte: receber as mensagens e testar com mensagens fictícias. A conexão de verdade com a Meta
+é a parte 2 (M10.1b), que continua aguardando você. **Nada foi feito na Meta:** o sistema não escreve nada lá, não manda
+mensagem e não marca nada como lido no celular.
+
+- **O que você vai ver:**
+  - **Mensagens, no menu do painel:** a caixa de entrada, com a conversa mais recente no alto e os filtros "Todas", "Sem
+    resposta" e "Sem vínculo". Cada conversa mostra o nome, o começo da última mensagem e os selos "Não lida", "Sem
+    resposta" e o vínculo. Ao abrir uma conversa, você lê as mensagens do cliente e as respostas dadas pelo celular. Não
+    dá para responder pelo painel: responda pelo celular. A resposta pelo painel é uma etapa futura (M10.2).
+  - **Configurações, Integrações, parte "WhatsApp (Meta)":** se o recebimento está ligado; se a senha de verificação e a
+    chave secreta do app estão na Vercel (nunca o valor); o endereço para colar no app da Meta, com o botão "Copiar
+    endereço"; a situação da conta; as contas do dia; e os últimos avisos da conta, com o que aconteceu com o e-mail de
+    cada um. Ali ficam também os formulários "Identificação na Meta" (os números da conta e do número, que não são
+    senhas) e "Quem vê as conversas". Numa prévia, o endereço não funciona: ali, use só números fictícios.
+  - **Início:** a linha "N conversa(s) do WhatsApp sem resposta", com o link para elas. Se a conexão com a Meta cair,
+    aparece um aviso de atenção e chega um e-mail no e-mail da empresa (Configurações, Empresa), sem nome, telefone ou
+    trecho de conversa.
+  - **Ficha da reserva:** o bloco "Conversa no WhatsApp", com as conversas ligadas àquela reserva e as últimas mensagens.
+- **Hoje nada chega.** As conversas só aparecem depois da conexão (M10.1b) e com o recebimento ligado
+  (`WHATSAPP_RECEBIMENTO`), que só você liga. Até lá, Mensagens mostra "Nenhuma conversa ainda." e o aviso de que o
+  WhatsApp ainda não está conectado.
+- **Quem vê:** só você, como você decidiu em 17/10. É uma escolha que você muda, não uma regra fixa: em Configurações,
+  Integrações, WhatsApp, "Quem vê as conversas". Ao escolher "Admin e operação", o sistema pede confirmação, porque a
+  operação passa a ver todas as conversas, inclusive com proprietários e interessados. Proprietários, equipe de limpeza e
+  hóspedes nunca veem, qualquer que seja a escolha. Com a escolha de hoje, a operação não vê Mensagens no menu, nem o
+  bloco da ficha, nem a linha do Início.
+- **Na tabela de Usuários** (Configurações, Usuários): a linha "Ver mensagens" continua marcada para a operação, porque
+  vem das permissões gerais, que não mudaram. A linha logo abaixo, "Ver as conversas do WhatsApp", é a que vale: com a
+  escolha de hoje, só você está marcado.
+- **Anexos ficam "ver no celular".** Fotos, áudios, vídeos, documentos, figurinhas, localizações e contatos
+  compartilhados aparecem só com o tipo e, quando há, a legenda. O sistema não baixa nenhum anexo. Algumas mensagens
+  vindas de aparelhos ligados ao celular podem não chegar, porque a Meta não as manda.
+- **O sistema só sugere o vínculo.** Na conversa, ele sugere a reserva ou a cotação pelo código escrito na conversa
+  (SCL-… ou COT-…) e pelo telefone: do hóspede, de um pedido de contato, de um cadastro pelo site, de um proprietário ou
+  de um representante. Nada se liga sozinho: você confirma no botão "Vincular" ou procura pelo código. "Desfazer vínculo"
+  pede confirmação. O vínculo nunca copia o telefone nem o nome para a reserva ou para outro cadastro, e o nome do
+  contato no WhatsApp nunca serve de sugestão.
+- **Os grupos continuam como hoje.** A Meta não traz as mensagens de grupo para o sistema; as agendas nos grupos do Rio
+  e de Búzios seguem do jeito de sempre.
+- **A tela Mensagens é a proposta de visual.** Ela foi feita com capricho, no visual do painel, para você avaliar no
+  computador e no celular. As outras telas do painel não mudam agora: só depois que você aprovar esta. Com o PR aberto,
+  o próximo passo é te mandar fotos da tela no computador e no celular, só com conversas fictícias: com conversas, vazia e
+  como a operação vê.
+- **O que você viu na Meta em 17/10** ficou registrado, sem nenhum número: em "Configurações do negócio", a conta aparece
+  como "Conectado"; no "Gerenciador do WhatsApp", como "Offline". De onde essa conta veio ainda não se sabe. Isso não
+  muda esta parte.
+- **O número final 0322 continua no WhatsApp Business do celular** (a coexistência). Os números da Meta (da conta, do app
+  e do número) nunca vão para o GitHub nem para estes documentos: ficam só no painel, em Configurações, ou na Vercel.
+- **Limite de 7 dias:** com o recebimento desligado, a Meta guarda e manda de novo os avisos por até 7 dias. Uma pausa
+  curta não perde nada. Acima de 7 dias, as mensagens daquele período não chegam ao painel (continuam no celular).
+- **O que você precisa fazer agora:** nada na Meta. Se quiser, responda às perguntas abaixo; sem resposta, vale o padrão.
+- **No dia combinado da conexão** (depois da parte 2, M10.1b), nesta ordem:
+  1. Na Vercel, só no ambiente Production, crie `WHATSAPP_VERIFY_TOKEN`, a senha de verificação. Gere um valor aleatório
+     só para isso, com pelo menos 32 caracteres (nunca uma senha usada em outro lugar): a Meta manda esse valor no
+     endereço, e ele aparece no registro de acessos da Vercel. Também só no Production, crie `WHATSAPP_APP_SECRET`, com a
+     chave secreta do app da Meta. Nunca cole nenhuma das duas no chat. Depois, faça uma publicação nova (Redeploy): uma
+     variável nova só vale numa publicação nova.
+  2. No painel, em Configurações, Integrações, WhatsApp, preencha "Identificação na Meta" com os dois números.
+  3. No app da Meta, cole o endereço que aparece em Integrações e a mesma senha de verificação, e deixe o app em modo
+     Live: em modo de desenvolvimento, a Meta não manda alguns avisos.
+  4. Só então crie `WHATSAPP_RECEBIMENTO` com o valor `ligada` e faça outra publicação nova.
+- **Perguntas para você** (vale o padrão até você responder):
+  1. A equipe de limpeza deve aparecer nas sugestões de vínculo pelo telefone? Padrão: não.
+  2. O e-mail da conta desconectada vai para o e-mail da empresa (padrão) ou para o e-mail de cada administrador?
+  3. As conversas trazidas do histórico do celular devem contar como "sem resposta"? Padrão: não.
+  4. Por quanto tempo guardar as conversas? Vai junto com as perguntas para o advogado. Padrão: o sistema não apaga
+     sozinho.
+  5. Da agenda do celular, guardar só o nome de quem já conversa com a empresa (padrão) ou nada? A agenda só pode ser
+     pedida uma vez. Por isso, na parte 2, o sistema pede o histórico antes da agenda. Se a Meta exigir a ordem dela, os
+     nomes de quem ainda não conversou se perdem.
+  6. Quando liberar à operação, deve valer também para as conversas com proprietários e interessados? Hoje a opção
+     libera tudo.
+  7. Para a parte 2: o caminho na Meta (o seu próprio app ou um parceiro), de onde veio a conta e a data combinada.
+
+### Tarefas das plataformas num lugar só (M8.3b, 17/10)
+
+Esta é a segunda das quatro partes do M8.3. **Ela entrou no sistema em 17/10 (PR #156).** Até 17/10, esta linha dizia
+que ela estava pronta na branch e em revisão, ainda fora do sistema. Ela
+junta num lugar só o que a equipe faz à mão no Airbnb e no Booking, pelo Beds24, com as reservas do site: os avisos do
+Início e o bloco "No Beds24" da ficha saem da mesma regra e mostram o mesmo texto. **Continua sem escrever nada no
+Beds24**: o envio de verdade é a próxima parte (M8.3c). Na produção, hoje, com o envio desligado, tudo é à mão, então só
+aparecem as tarefas à mão descritas abaixo.
+
+- **Quem vê:** quem edita reservas, ou seja, você e o papel "operação", com as reservas de todos os imóveis (o filtro de
+  imóveis do Início não esconde esses avisos), sem nenhum valor nos textos.
+  Antes, o aviso da reserva paga só aparecia para quem vê o financeiro (hoje, só você); os da cancelada e da alterada a
+  operação já via. Proprietário, limpeza e hóspede não veem nada disso, e nenhum texto que o hóspede ou o proprietário
+  lê cita o Beds24.
+- **Os avisos do Início**, cada um com o link para a ficha (quando é uma reserva) ou para a lista de reservas (quando são
+  várias):
+  - **reserva do site paga**, todas numa linha, com até cinco códigos e "e mais N": "N reserva(s) do site paga(s)
+    (SCL-…): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.";
+  - **pedido do site confirmado à mão pela equipe, sem pagamento pelo site**, numa linha separada, com a mesma
+    instrução: "N reserva(s) do site confirmada(s) à mão, sem pagamento pelo site (SCL-…): feche as datas no Beds24 como
+    bloqueio e marque Datas fechadas nas OTAs." É a sua decisão de 16/10: esse pedido nunca vai ao Beds24 pelo sistema,
+    nem com a chave ligada;
+  - **reserva cancelada**, uma linha por reserva, com as datas: "Reserva SCL-X, cancelada: mude o bloqueio de dd/mm a
+    dd/mm para Cancelado (não apague).";
+  - **reserva alterada**, uma linha por reserva, com as datas novas: "Reserva SCL-X, alterada: mude as datas do bloqueio
+    para dd/mm a dd/mm (não apague nem crie outro).";
+  - como antes, cada aviso some quando a estadia já passou. Uma reserva paga, ainda sem a marca "Datas fechadas nas
+    OTAs", que também foi alterada aparece nos dois avisos: o sistema não sabe se as datas antigas já tinham sido
+    fechadas antes de existir o botão. Deixe um bloqueio só, nas datas novas, e marque os dois na ficha: "Datas fechadas
+    nas OTAs" (no bloco "No Beds24") e "Datas atualizadas nas OTAs" (no quadro da alteração).
+- **Na ficha, o mesmo texto:** o bloco "No Beds24" mostra o que fazer à mão com aquela reserva (o mesmo texto do
+  Início), com o botão da marca na reserva paga e no pedido confirmado à mão (na cancelada e na alterada pagas pelo
+  site, o bloco mostra só o texto; o botão fica no quadro do cancelamento ou da alteração, como abaixo), ou "Nada a fazer
+  à mão nas OTAs para esta reserva agora.", e a linha "Datas fechadas nas OTAs", com o dia e a hora da marca ("marcado
+  pela equipe"), ou "não marcado". No quadro do cancelamento pago pelo site, o texto da tarefa aparece ao lado do botão
+  "Datas reabertas nas OTAs" (que existe desde o M8.2c); no da alteração, ao lado de "Datas atualizadas nas OTAs"
+  (M8.2d). A pergunta de confirmação do cancelamento pelo site também passou a dizer "nas OTAs, siga o aviso do Início
+  (no Beds24, mude para Cancelado; não apague)"; a da alteração com diferença a pagar, quando muda as datas, diz "mude
+  as datas no Beds24 como o Início mostrar (não apague nem crie outro)", e a prévia de toda alteração que muda as datas
+  avisa "Depois de aplicada, mude as datas no Beds24 como o Início mostrar (no mesmo bloqueio: não apague nem crie
+  outro)." O histórico
+  da reserva mostra em português, com o dia e quem marcou, as marcas "Datas fechadas nas OTAs" e "Datas reabertas nas
+  OTAs" (por exemplo, "marcou as datas fechadas nas OTAs"). A marca "Datas atualizadas nas OTAs" aparece no quadro da
+  alteração ("bloqueio mudado em dd/mm por …"), não no histórico da reserva.
+- **Por que "não apague":** um bloqueio apagado no Beds24 nunca sai do SCL: quando ele some de lá, a importação só avisa
+  que guardou o registro anterior. Só o que volta do Beds24 como **Cancelado** sai. Quem seguia o texto antigo ("apague o
+  bloqueio") podia deixar as noites fechadas no site: a importação só mostra o aviso "O registro anterior foi preservado"
+  e não reabre nada. Por isso, cancelar é mudar o bloqueio para Cancelado, e alterar é mudar as datas do mesmo bloqueio,
+  sem apagar e sem criar outro. Isso vale já, com ou sem o envio automático.
+- **O botão "Datas fechadas nas OTAs"** (a decisão 8: sem resposta sua, valeu o padrão, seção 7): na ficha, no bloco "No
+  Beds24", para quem edita reservas, com a pergunta de confirmação "Confirmar que as datas desta reserva (dd/mm a dd/mm)
+  já foram fechadas nas OTAs (no Beds24, como bloqueio)? Depois disso o sistema nunca cria esta reserva no Beds24."
+  - Serve para a reserva paga que o sistema não criou no Beds24 e para o pedido confirmado à mão, sem pagamento. Só
+    aparece quando a tarefa daquela reserva é fechar as datas à mão.
+  - Ao marcar, o sistema guarda o dia e quem marcou, a situação no bloco passa a "A equipe cuida à mão" e o aviso da
+    reserva some do Início.
+  - Depois da marca, o sistema nunca cria essa reserva no Beds24, nem quando o envio de verdade existir (na reserva paga,
+    o "Simular" passa a dizer que a equipe cuida dela à mão), e a importação não apaga a marca.
+  - O sistema recusa, com a explicação na ficha, quando não é caso de fechar à mão: por exemplo, a reserva cancelada, a
+    estadia que já passou, a reserva criada pelo sistema, noites ocupadas por outra reserva no Beds24, um envio dela em
+    andamento, ou uma importação ou um envio do Beds24 rodando naquele momento (aí é esperar alguns minutos e tentar de
+    novo). Depois da marca, o botão some da ficha; quem clicar nele numa ficha aberta desde antes da marca (por exemplo,
+    duas pessoas ao mesmo tempo) vê "As datas já foram marcadas como fechadas em dd/mm."
+- **O pedido confirmado à mão e depois cancelado pelo "Cancelar reserva":** se a equipe marcou "Datas fechadas nas OTAs"
+  e depois cancela a reserva pelo botão de sempre (não pelo cancelamento da reserva paga pelo site), a pergunta do
+  "Cancelar reserva" avisa antes: "As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o
+  bloqueio de dd/mm a dd/mm para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha." Depois, o
+  Início mostra "Reserva SCL-X, cancelada: mude o bloqueio de dd/mm a dd/mm para Cancelado (não apague)." até a equipe
+  clicar **"Datas reabertas nas OTAs"** na ficha (com confirmação; fica no histórico da reserva). Aí a ficha mostra
+  "Datas reabertas nas OTAs: marcado pela equipe" e o aviso some. A reserva paga pelo site não tem o "Cancelar reserva"
+  de sempre (a ficha não mostra esse botão para ela): ela é cancelada pelo cancelamento pela política, com o aviso da
+  reserva cancelada e o botão "Datas reabertas nas OTAs" do quadro do cancelamento.
+- **Reserva paga alterada e cancelada antes da marca "Datas atualizadas nas OTAs":** o sistema não confere o Beds24;
+  ele se guia pelas marcas da equipe. Por isso, o aviso da cancelada mostra as datas em que o bloqueio deveria estar
+  pela última marca: as de antes da primeira mudança de datas feita depois da última marca, "Datas atualizadas nas OTAs"
+  ou "Datas fechadas nas OTAs" (sem marca nenhuma, as de antes da primeira mudança). As duas marcas valem porque cada
+  uma registra o bloqueio nas datas da reserva daquela hora: quem marca "Datas fechadas" depois de uma alteração fechou
+  as datas novas. Sem mudança depois da última marca, mostra as datas atuais da reserva. Confira no Beds24 antes de mudar
+  o bloqueio para Cancelado.
+- **O que você e a equipe fazem** (o mesmo passo a passo está na seção 6, item 50). **Já, mesmo antes desta parte
+  entrar:** no Beds24, nunca apague o bloqueio de uma reserva do site; para cancelar, mude o bloqueio para Cancelado;
+  para mudar as datas, mude o mesmo bloqueio, sem criar outro. **Depois que esta parte entrar no sistema:**
+  - cada reserva do site paga e cada pedido confirmado à mão sem pagamento, com a saída depois de hoje (estadia por vir
+    ou em curso), aparece no Início até a marca. Na produção, hoje, só podem aparecer os confirmados à mão, porque
+    nenhuma reserva foi paga pelo site. Para os que já foram fechados no Beds24 como bloqueio, abra a ficha e clique
+    "Datas fechadas nas OTAs"; para os que ainda não
+    foram, feche no Beds24 como bloqueio e marque;
+  - cancelada: no Beds24, mude o bloqueio para Cancelado (nunca apague) e marque "Datas reabertas nas OTAs" na ficha;
+  - alterada: no Beds24, mude as datas do mesmo bloqueio (nunca apague nem crie outro) e marque "Datas atualizadas nas
+    OTAs" na ficha;
+  - se alguém já apagou no Beds24 o bloqueio de uma reserva do site (por costume, ao cancelar um pedido confirmado à
+    mão, ou seguindo o texto antigo), as noites podem ter ficado fechadas no site: me avise, com o código da reserva, que
+    eu confiro. A importação só guarda o registro anterior; ela não reabre nada sozinha;
+  - avise a operação que agora ela também vê o aviso da reserva paga e o do pedido confirmado à mão (os da cancelada e
+    da alterada ela já via).
+- **O que ficou de fora:**
+  - fica para o envio de verdade (M8.3c): a frase "o sistema faz isso sozinho; este aviso fica quando ele não consegue"
+    (hoje ela nunca seria verdade, porque o sistema ainda não envia nada), o e-mail à equipe quando algo pede atenção, o
+    filtro da lista de reservas que mostra só as reservas do site que pedem atenção no Beds24, os botões "Deixar à
+    mão", "Tentar de novo" e "Conferir agora" e as marcas feitas pelo próprio sistema. As linhas de atenção (noites ocupadas por outra reserva no Beds24, reserva diferente no Beds24,
+    reserva aguardando a equipe, envio atrasado) já existem, mas só podem aparecer quando o envio existir. Desde 17/10,
+    tudo isso está feito no envio de verdade (M8.3c), na branch e em revisão, e começa desligado (seção acima);
+  - o pedido confirmado à mão e cancelado pelo "Cancelar reserva" **sem** a marca das datas fechadas não gera aviso,
+    porque o sistema não sabe se a equipe tinha fechado as datas; nesse caso, a equipe muda o bloqueio para Cancelado por
+    conta própria;
+  - as datas dos avisos vêm do que está registrado no SCL (as da reserva agora ou, na cancelada depois de uma alteração
+    ainda não marcada, as da última marca, como acima): datas mudadas à mão na ficha depois da marca, sem uma alteração
+    registrada, não são acompanhadas;
+  - o envio automático continua desligado: nada é criado, mudado ou cancelado no Beds24.
+- **Como foi testado:** pelos testes automáticos, com uma versão de mentira do Beds24 e sem internet; os testes conferem
+  que nenhuma chamada sai para a internet. Nenhuma chamada foi feita ao Beds24 de verdade. Todas as conferências
+  automáticas passaram (quase 4 mil testes).
+- **Para você:** já, a regra de nunca apagar um bloqueio no Beds24 (acima); depois que esta parte entrar, o item 50 da
+  seção 6. A decisão 8 ficou com o padrão (seção 7).
+
+### Reserva paga pelo site no Beds24: a base, ainda sem envio (M8.3a, 16/10)
+
+A reserva paga pelo site precisa fechar as datas no Airbnb e no Booking. Hoje a equipe faz isso à mão, no Beds24. O
+M8.3 vai fazer isso sozinho, em quatro partes. Esta é a primeira: prepara o sistema e mostra a situação, **mas ainda
+não manda nada ao Beds24**.
+
+Na produção, hoje, nenhuma reserva foi paga pelo site, porque o pagamento ainda é só de teste, nas prévias. Por isso,
+mesmo depois do envio de verdade (M8.3c) e com a chave ligada, o envio só passa a ter o que mandar quando você ligar o
+pagamento de verdade. Até lá, a equipe continua fechando as datas à mão, como faz hoje com os pedidos que confirma
+(desde o M8.3b, de 17/10, com os avisos do Início e a marca "Datas fechadas nas OTAs" na ficha: seção acima). As
+reservas do marketplace vendidas pelo site ficam de fora até a parte do marketplace que cuida do financeiro (M12.2); o
+"Simular" diz isso nelas.
+
+- **Na ficha de cada reserva do site** (só para a equipe, nunca para o hóspede nem para o proprietário), um bloco novo,
+  "No Beds24":
+  - diz se o envio automático ao Beds24 está ligado ou desligado e por quê (por exemplo, "a chave
+    BEDS24_ESCRITA_RESERVAS não está ligada" ou "aqui não é o deploy de produção");
+  - diz o que a equipe faz à mão enquanto isso: hoje, "feche e abra as datas à mão, como hoje". Para um pedido com as
+    datas seguradas, avisa que ele não vai ao Beds24 e que as datas não devem ser fechadas à mão nas plataformas
+    enquanto estiverem seguradas. Desde o M8.3b (17/10), no lugar do "feche e abra as datas à mão, como hoje", o
+    bloco mostra a tarefa daquela reserva, com o mesmo texto do Início e o botão da marca, ou "Nada a fazer à mão nas
+    OTAs para esta reserva agora." (seção acima); o aviso do pedido com as datas seguradas continua igual;
+  - quando o envio de verdade existir, o mesmo bloco vai mostrar a situação da reserva no Beds24 em palavras simples
+    (por exemplo, "Conferida: o Beds24 está igual ao SCL" ou "Noites ocupadas por outra reserva"), o número dela no
+    Beds24, a última conferência, se as datas já foram fechadas nas plataformas e um histórico curto do que foi feito
+    (desde o M8.3b, de 17/10, a linha "Datas fechadas nas OTAs" já aparece na reserva paga e no pedido confirmado à
+    mão, com "não marcado" ou o dia e a hora da marca da equipe, e, depois da marca, a situação "A equipe cuida à mão":
+    seção acima).
+- **O botão "Simular"**, no mesmo bloco, para quem edita reservas: mostra exatamente o que o sistema mandaria ao Beds24
+  para aquela reserva (o quarto, as datas, o número de pessoas, a situação e a marca com o código da reserva), montado
+  só com o que está no SCL. Nada é enviado e nada muda na reserva. O resultado fica no histórico do bloco. Se a reserva
+  não iria ao Beds24, ele diz por quê, por exemplo: "não há pagamento pelo site que confirmou a reserva (confirmada à
+  mão: feche as datas à mão)" (desde o M8.3b, de 17/10: "(confirmada à mão: feche as datas no Beds24 como bloqueio e
+  marque Datas fechadas nas OTAs)"). Ele funciona nas prévias e, na produção, enquanto a chave das reservas estiver
+  desligada.
+- **Em Configurações, Integrações**, uma parte nova, "Reservas do site no Beds24":
+  - se a chave das reservas está ligada, se aquele endereço é a produção e qual credencial do Beds24 existe;
+  - a prontidão, só para ler: as permissões da credencial, a marca do SCL, o último ensaio e se a importação
+    automática está ligada (ela não é obrigatória, porque o envio vai fazer a própria conferência);
+  - a pausa geral das reservas do site: o botão "Pausar as reservas do site", com a pergunta de confirmação, já existe
+    e guarda a pausa (e "Retomar" a tira). Hoje não há envio para parar. Quando o envio de verdade existir (M8.3c), ela
+    vai parar na hora todo o envio das reservas do site, inclusive os cancelamentos, sem esperar uma publicação nova.
+    Ela não para o envio de calendário e preços, que tem a chave e o envio automático dele;
+  - os imóveis, cada um com o quarto do Beds24 a que está ligado. Ligar um imóvel ainda não é possível: exige um
+    ensaio (uma reserva de teste criada, conferida e cancelada no Beds24, que você acompanha), e o ensaio chega com o
+    envio de verdade (M8.3c);
+  - quantas reservas o sistema acompanha em cada situação.
+- **No Sistema**, as duas chaves do Beds24 aparecem separadas: a do calendário e preços e a das reservas do site. Se a
+  credencial que escreve no Beds24 aparecer numa prévia, onde não deveria estar, aparece um aviso. A rotina das
+  reservas aparece na lista como planejada. Uma linha nova pode aparecer na lista das rotinas: quando a importação ou
+  o envio diário do Beds24 encontra outra operação do Beds24 em andamento, a rotina não roda, para não atrapalhar, e
+  fica como "Não rodou:" seguido do motivo, na cor de aviso. Antes, esse caso aparecia como se tivesse dado certo. Não é
+  erro: no dia seguinte a rotina roda de novo. Hoje as duas rotinas estão desligadas na produção, então essa linha só
+  pode aparecer depois que você ligar alguma delas.
+- **Nos bastidores:** a importação do Beds24 passa a proteger a reserva do site. Ela nunca muda os dados, os valores
+  nem a situação de uma reserva do site. Quando o registro do Beds24 está ligado a ela ou traz o código dela, a
+  importação também não cria outra reserva por cima: avisa. Uma diferença vira aviso, e o registro ligado sem a marca
+  do SCL (o código da reserva) também. Quando a resposta do Beds24 vem estranha (um registro que não dá para ler, o
+  mesmo registro duas vezes, ou um registro que não foi pedido), a importação não conclui nada sobre a reserva do site:
+  avisa e deixa como estava, ou para sem mudar nada. Uma reserva digitada à mão no
+  Beds24, sem o código, ainda vira uma reserva nova no SCL; por isso, continue fechando as datas no Beds24 como
+  **bloqueio**, nunca como reserva, como o guia já pede. A importação automática está desligada na produção, mas a
+  proteção já vale para a importação feita pelo botão. Também foi corrigida uma situação em que trocar a fonte de
+  preços de um imóvel enquanto a importação rodava podia deixar as duas esperando uma pela outra.
+- **O que ainda não acontece:** nada é criado, mudado ou cancelado no Beds24. Continue fechando e abrindo as datas à
+  mão, com os avisos do Início, como hoje. Desde 17/10, e já valendo hoje, mesmo antes de o M8.3b entrar, "abrir" as
+  datas é mudar o bloqueio para Cancelado, nunca apagar; mudar as datas é mudar o mesmo bloqueio, sem apagar nem criar
+  outro. Desde o M8.3b (17/10), cada reserva fechada à mão também ganha a marca "Datas fechadas nas
+  OTAs" na ficha (seção acima). O M8.3b também não escreve nada no Beds24.
+- **Sua decisão de hoje (16/10):** só vai ao Beds24 a reserva **paga pelo site**. O pedido que a equipe confirma à mão,
+  sem pagamento, não vai: as datas dele a equipe fecha à mão, e o aviso para isso chega na próxima parte (M8.3b; desde
+  o M8.3b (17/10), ele existe numa linha própria do Início, com a mesma marca da reserva paga: seção acima). Nas
+  suas palavras: "eu acho que tem que ir pro [Beds24] só depois de pago, resolvido pelo site". O motivo que você deu:
+  no Airbnb o hóspede tem 24 horas para pagar, e fechar as datas em todos os canais para quem depois não paga é uma
+  trabalheira e faz a empresa deixar de receber reservas; e "não vai ser um número grande de vezes que vai acontecer".
+  Você perguntou se a minha proposta era igual à sua, e eu confirmei: era, e você tinha entendido certo. Pelo mesmo
+  motivo, as datas seguradas no site enquanto o hóspede paga continuam sem fechar as plataformas. Antes, este guia
+  dizia, na parte da cotação (M8.1), que o pedido confirmado pela equipe também iria ao Beds24; essa frase é
+  corrigida no M8.3b, junto com os outros textos dos avisos (em 17/10, a frase ficou como registro na parte
+  da cotação, M8.1, seguida do que vale agora).
+- **Próximas partes:**
+  - **M8.3b, as tarefas das plataformas num lugar só:** os três avisos do Início (reserva paga, cancelada e alterada)
+    também para quem cuida das reservas sem ver o financeiro; o botão "Datas fechadas nas OTAs", para marcar o que a
+    equipe fechou à mão; o aviso do pedido confirmado à mão; e os textos certos, como "mude para Cancelado (não
+    apague)". **Feita em 17/10, em revisão** (seção acima; no sistema desde 17/10, pelo PR #156). Correção: a operação já via os avisos da cancelada e da
+    alterada; o que passou a aparecer para ela foi o da reserva paga. O aviso do pedido confirmado à mão ficou numa
+    linha própria do Início, e entrou também o pedido confirmado à mão, marcado e depois cancelado pelo "Cancelar
+    reserva", com o botão "Datas reabertas nas OTAs".
+  - **M8.3c, o envio de verdade:** o sistema cria, muda e cancela a reserva no Beds24 e confere se ficou igual. Só
+    escreve na produção, com a chave das reservas que só você liga, depois de um ensaio e com o imóvel ligado por você
+    em Integrações. Na produção, ele só vai ter o que mandar depois que você ligar o pagamento de verdade. O passo a
+    passo para ligar vem nessa parte, junto com as decisões que pedem um passo seu (seção 7). Também entram, em
+    Integrações, a última recusa da credencial do Beds24 e o link de cada contagem para a lista das reservas que pedem
+    atenção. **Feito em 17/10, na branch e em revisão, e desligado até o seu passo a passo** (seção "Reserva paga pelo
+    site no Beds24: o envio automático pronto e desligado", acima; o passo a passo está na seção 6, item 51).
+  - **M8.3d, o que depende do suporte do Beds24:** assumir no sistema um bloqueio que a equipe fez à mão e voltar a
+    confirmar uma reserva cancelada. Para essa parte, mais tarde, você manda ao suporte do Beds24 uma pergunta que eu
+    preparo junto com o envio de verdade (M8.3c), e me traz a resposta. Só você pode falar com eles, porque a conta é
+    sua. Até a resposta, essa parte fica parada. Desde 17/10, a pergunta está pronta para colar na seção 6, item 51.
+- **Como foi testado:** pelos testes automáticos, com uma versão de mentira do Beds24 e sem internet; um teste que
+  tente falar com o Beds24 de verdade é derrubado na hora. Nenhuma chamada foi feita ao Beds24 de verdade.
+- **Para você:** nada agora. Quando quiser, as decisões do envio ao Beds24, cada uma com um padrão, estão na seção 7.
+
+### MCP do SCL e decisões de 16/10 — M13.1 (16/10)
+
+Você pediu um "MCP do SCL" para consultar o sistema de forma prática pelo Claude e, se os créditos acabarem, pelo
+ChatGPT ou pelo Codex, sem pagar à parte. O desenho completo está em `requisitos/product/MCP-SCL.md`. **Nada foi
+construído ainda.**
+
+- **Fase 1, só de consulta:** você cola um endereço no assistente uma vez, entra com o login de sempre e confirma
+  numa tela do SCL. Depois pergunta em linguagem comum: "quem chega no 302 esta semana?", "qual a ocupação de
+  novembro?", "o que falta repassar em outubro?", "tem alguma pendência no Início?".
+  - O assistente vê o que você veria no painel, mas sem nomes, contatos ou textos livres de hóspedes e
+    proprietários. Recebe códigos, valores (se aquela conexão puder ver valores) e o link da tela do painel, que só
+    abre com login. Antes eu tinha falado em mostrar o nome do hóspede abreviado; depois das revisões de
+    segurança, a primeira fase fica sem nomes. Os nomes são a decisão 2 (seção 7), e ela traz mais do que o nome do
+    hóspede: o primeiro nome e a inicial do hóspede, o nome inteiro do proprietário, o código da reserva na
+    plataforma (Airbnb, Booking) e a busca por nome e por esse código. Dá para escolher só uma parte.
+  - Só você conecta, pelo nome. Cada conexão nova gera um aviso no Início, com um botão para desconectar, e um e-mail
+    com o "não fui eu". Uso estranho (de madrugada, em volume grande, depois de dias parado) também avisa. O botão
+    "Desconectar todos", no painel, desconecta tudo na hora; desligar a chave só suspende.
+  - Se um dia algo parecer estranho, o plano tem poucos passos: desconectar todos e desligar a chave, encerrar os
+    seus logins abertos do painel (um botão novo) e trocar a senha e ligar a verificação em duas etapas no e-mail ou
+    no Google com que você entra no SCL e na conta do assistente. Eu deixo esse passo a passo pronto aqui no guia no
+    M13.7.
+  - Nada muda pelo assistente nesta fase.
+- **Fase 2, para um dia o assistente fazer mudanças:** ficou registrada só como regras, que não autorizam construir
+  nada. Valem todas juntas:
+  - ações pequenas e com nome, que passam pelas mesmas regras da tela;
+  - permissão de alterar separada da de consultar, desligada por padrão, que você liga e corta pelo painel, e uma
+    chave geral que desliga tudo;
+  - prévia exata e aprovação antes de mudar; o que mexe em dinheiro é aprovado no painel do SCL, não só na conversa;
+  - limites de valor e de quantidade, e nada de apagar;
+  - histórico e aviso de cada ação, com "desfazer" quando der;
+  - ensaio nas prévias, com dados fictícios, antes de valer no sistema de verdade.
+- **Histórico que ninguém apaga (M13.12):** o histórico das mudanças do sistema já é só de acréscimo pelas regras
+  do código, mas nada no banco impede apagar uma linha. O M13.12 põe essa trava no próprio banco: o sistema e um
+  erro de programa não conseguem mais alterar nem apagar o histórico; uma correção vira um registro novo. Um
+  limite, dito com franqueza: quem tem o acesso de dono do banco ainda consegue desligar a trava de propósito. Por
+  isso ela só muda por uma mudança revisada, que fica registrada, e a trava completa vem depois, num item próprio
+  (M13.15), com o seu "pode" no Neon. O histórico entra no backup do banco e fica para sempre. Para isso não brigar com a
+  Política de privacidade, que promete apagar dados quando o prazo acaba e quando a pessoa pede, antes da trava o
+  histórico passa a registrar só que um nome ou um contato mudou, sem guardar o valor. Os nomes e contatos que ele
+  já guardou são trocados por "(anonimizado)" só depois de o advogado responder, num passo próprio (M13.14), com uma
+  cópia de segurança do banco tirada antes, porque essa troca não tem volta. O prazo e o jeito de atender os pedidos
+  vão ao advogado. O registro do que o assistente consultou é outra coisa e fica 6 meses.
+- **A ordem:** o M13 só começa depois da reserva no Beds24 (M8.3) e do cálculo do marketplace (M12.2), e não
+  atrasa a entrada no ar (M11). São 17 itens, M13.1 a M13.15, contando o 2a, o 2b, o 4a e o 4b; cada um é um PR.
+  Os que dependem de você ficam bloqueados até a sua decisão. Na produção, o MCP só liga no M13.7, com todas as
+  defesas prontas.
+- **Decisões de 16/10 que entraram no plano:**
+  - o marketplace é o modelo principal do negócio; os cálculos financeiros pensam primeiro nele;
+  - primeiro validar a Sua Casa Leblon no ar; depois, talvez, Ipanema como segundo piloto; só então a marca
+    principal (o domínio genérico, que você registrou só como exemplo, ou o domínio que você já tem com o nome da
+    empresa). As suítes para outros gestores e a captação de proprietários ficam
+    para depois, como ideias (`requisitos/growth/ROADMAP.md`), com o Giro Temporada como referência;
+  - reserva paga pelo site no Beds24 (M8.3) autorizada, com uma chave própria das reservas, separada da do
+    calendário. Hoje nenhuma das duas existe na Vercel (conferido em 16/10), então nada é escrito no Beds24.
+- **O que você precisa fazer:** nada agora. Quando quiser, as 14 decisões do MCP, cada uma com um padrão (seção 7).
+  Antes de ligar com os dados de verdade: o campo Site (seção 6, item 47), o advogado, as contas, uma tentativa de
+  conectar o Claude com o acesso ainda desligado e, se for preciso, a configuração das sessões de trabalho (seção 6,
+  item 49).
+
+### Datas e horas no padrão do Brasil (M7.22, 16/10)
+
+Suas decisões de 16/10, depois de ver "alguma coisa ... de hora que estava PM" e a semana começando no domingo: "Pode ser
+igual nas duas, é bom sim. Acho que o mais padrãozão é [15:00] aqui, como a gente usa no Brasil" e "colocar para começar
+na segunda-feira".
+
+- **A hora, sempre como 15:00:** em todas as telas, mensagens, e-mails e PDFs, a hora sai com dois dígitos e
+  dois-pontos, de 00:00 a 23:59: "15:00", "09:00", "15:30". Antes, a cotação e Minha reserva escreviam "15h" e a página
+  da casa, "15:00"; a agenda tinha "15h" e "11h"; alguns textos e o texto-base da Política de cancelamento diziam "23h59"
+  e "0h". Agora a página da casa, a cotação e Minha reserva escrevem igual: "Entrada a partir das 15:00" e "Saída até as
+  11:00".
+- **Campos de hora sem "PM":** os campos de hora do sistema (horários da casa na ficha do imóvel e no portal do
+  proprietário marketplace, horários combinados com o hóspede, horário padrão da agenda e as horas do cancelamento e da
+  alteração de reserva paga pelo site) eram o campo de hora do navegador, que num celular ou computador em inglês ou em
+  12 horas mostrava "03:00 PM". Agora são um campo de texto no formato 15:00, igual em qualquer aparelho, com o exemplo
+  "Ex.: 15:00" embaixo. Dá para digitar "15:00" ou "9:00" (vira "09:00"). Uma hora que não existe, como "25:00", não
+  chega a ser enviada: o próprio navegador segura o botão e mostra um balão que pede o formato certo, com o aviso "Use o
+  formato 15:00 (24 horas)."; o mesmo aviso aparece em todos os formulários quando o sistema recusa a hora.
+- **Dia e hora juntos:** no painel, nos PDFs e nos e-mails à equipe, "16/10/2026 às 15:05" (antes "16/10/2026, 15:05", e
+  em cinco lugares com os segundos). O PDF diz "Posição extraída do sistema em 16/10/2026 às 15:05". No site, o prazo das
+  datas seguradas sai como "até 01/10 às 12:30, horário de Brasília" na cotação e "até 01/10 às 12:30 (horário de
+  Brasília)" no Pix. Tudo no horário de São Paulo, e nenhuma tela mostra mais a data no formato de máquina
+  ("2026-10-16"): horários combinados, convites, histórico de alterações e avisos do financeiro. No histórico da ficha da
+  reserva, os horários gravados (o pedido de cancelamento, a conferência resolvida, as datas seguradas de uma cotação, a
+  desistência do hóspede) saem como "16/10/2026 às 14:10", no horário de Brasília, também nos registros antigos; antes
+  apareciam em formato de máquina, 3 horas adiantados.
+- **Relatório do proprietário:** o dia e o mês saem sempre com dois dígitos no PDF inteiro: "parcial até 05/03", "7
+  noites ocupadas até 05/03", "Saldo do acerto em 31/03" e as datas curtas das tabelas, como "29/09". Antes, a mesma data
+  aparecia como "05/03" na capa e "5/3" na página 2.
+- **A semana começa na segunda:** o calendário de datas do site, em que o hóspede escolhe a entrada e a saída, passa a
+  ter as colunas de segunda a domingo ("seg ter qua qui sex sáb dom"). As listas de dias também vão de segunda a domingo:
+  os dias de entrada e de saída permitidos na ficha do imóvel e no portal do proprietário marketplace, o mínimo de noites
+  por dia em Configurações, Calendário e preços, o dia do repasse semanal em Configurações, Repasses, e a prévia do
+  calendário. As frases "Entrada só em" e "Saída só em" que o hóspede lê seguem a mesma ordem. Nenhuma regra salva mudou:
+  os dias já escolhidos continuam os mesmos.
+- **Os nomes dos dias, iguais em todo lugar:** "sex 16/10" na agenda, em Limpezas e na tela da profissional; "sex,
+  16/10/2026" em Minha reserva (antes "sex., 16/10/2026", com ponto); as letras D S T Q Q S S no calendário do mês do
+  painel e do portal.
+- **Repasse semanal:** a frase do portal e da ficha do proprietário diz "semanal, todo sábado" e "todo domingo" (antes
+  "toda sábado"). No portal, saiu o "(segundas)" ou "(dia configurado pela empresa)" que vinha depois da frase e
+  repetia o dia.
+- **Rotinas:** o selo "Esta semana" passa a se chamar "Nos próximos 7 dias", que é o que ele conta (pergunta na seção 7).
+- **A agenda e a tela da limpeza:** a agenda continua com o horário padrão próprio, editável em Painel, Agenda; agora ele
+  começa em 15:00 e 11:00, igual ao da casa, e vale só para a casa sem horário na ficha (pergunta na seção 7). A tela da
+  profissional de limpeza mostra o horário da casa: o combinado com o hóspede, quando houver; senão, o da ficha do
+  imóvel; senão, o padrão.
+- **O que não muda:**
+  - a agenda salva com "15h" é lida como 15:00 e passa a ser gravada como 15:00 no próximo salvar; nada foi convertido à
+    mão no banco;
+  - o que já está gravado como texto fica como estava: observações de bloqueios e de pedidos ("até 16/10, 15:05"), o
+    histórico dos convites ("vale até 2026-10-23") e as observações de cadastro do marketplace; quando o prazo de um
+    pedido muda, a observação dele passa a ser escrita no formato novo; no histórico de alterações, as datas soltas já
+    aparecem como 23/10/2026 e os horários gravados, como 16/10/2026 às 14:10;
+  - a Política de cancelamento já publicada continua com "23h59" e "0h" até você publicar uma versão nova pelo painel
+    (seção 6, item 42, passo 7);
+  - os modelos de mensagem já salvos continuam com "10h" e "14h" no campo "quando"; os criados daqui em diante já vêm com
+    "10:00" e "14:00".
+- **Conferido:** pelos testes automáticos, sem abrir o sistema num navegador: a hora em todas as horas do dia, sem AM/PM;
+  os meses de outubro, fevereiro, junho e novembro de 2026 no calendário com a semana na segunda; a ordem dos dias, com
+  os mesmos dias guardados, na ficha do imóvel, no portal do marketplace, no mínimo por dia, no dia do repasse semanal e
+  na prévia do calendário; o relatório de março, com o zero no dia e no mês; e um teste que falha se alguém voltar a
+  escrever "15h", um campo de hora do navegador, uma data ou hora formatada fora do lugar único (o caminho que mostrava
+  "PM" ou a hora 3 horas adiantada) ou uma lista de dias fora do lugar único. Depois, uma revisão interna achou 14 pontos
+  (os horários do histórico, o "5/3" do relatório, o aviso da hora e partes do teste de guarda, entre outros), todos
+  corrigidos neste mesmo item.
+- **O que você precisa fazer:** na próxima publicação da Política de cancelamento, trocar a escrita da hora (seção 6,
+  item 42, passo 7); se quiser, trocar "10h" e "14h" no campo "quando" dos modelos de mensagem já salvos, em
+  Configurações, Modelos de mensagem; e responder às três perguntas da seção 7.
+- **Ficou de fora:** os campos de data e de mês do navegador (por exemplo, as datas de um bloqueio, de uma despesa ou de
+  um período especial no painel e no portal, e o mês em Apartamentos): o calendário que abre neles é o do aparelho e pode
+  começar no domingo (pergunta na seção 7). Também ficaram para depois os outros problemas de texto que o levantamento
+  achou e que não são de data ou hora: o login com Google que falha sem mensagem, mensagens técnicas em inglês na página
+  Sistema e nas falhas de e-mail, valores sem separador de milhar nos avisos de repasse, a comissão com ponto decimal e o
+  mês no formato de máquina nas descrições do financeiro, o idioma do PDF para o leitor de tela, o aviso do campo do
+  código do hóspede, os telefones sem um formato único e alguns campos do histórico da ficha da reserva, que ainda
+  aparecem com o nome interno (por exemplo, "recebidoEm: 16/10/2026 às 14:10").
+
+### Menu do painel no celular (M0.10, 16/10)
+
+Pedido seu de 16/10: no celular, você não encontrou o menu do painel ("não dá para eu ver o painel lateral") e por isso
+não chegou a Configurações.
+
+- **Antes:** no celular, o menu da lateral virava uma faixa no topo que rolava para o lado. Nada mostrava que dava para
+  rolar, e as últimas seções, como Configurações, ficavam fora da tela.
+- **Agora:** logo abaixo do nome da empresa, aparece o botão "Menu", com o nome da tela em que você está ao lado (por
+  exemplo, "Menu · Reservas"). Ao tocar nele, abre a lista inteira das seções que o seu perfil pode abrir, em grade
+  (duas colunas com o celular em pé; com ele deitado, ou com a letra aumentada, o número de colunas muda, e a lista
+  nunca passa da largura da tela), com a atual marcada. Ao escolher uma seção, a lista fecha sozinha; ela também começa
+  fechada em cada página nova. Cada item tem altura confortável para o dedo.
+- **No computador:** nada muda. O menu continua na lateral, sempre à vista.
+- **Cabeçalho no celular:** o selo "Homologação · dados fictícios" e o botão Sair passam para uma segunda linha, em vez
+  de espremer o texto em duas linhas dentro do selo. Se a letra do celular estiver aumentada nos ajustes, o selo quebra
+  em duas linhas dentro dele, sem passar da borda da tela. O botão Sair e o nome da empresa no topo do menu ganharam a
+  mesma altura confortável para o dedo dos itens do menu, para um toque não pegar no lugar errado.
+- **Teclado:** quem navega pela tecla Tab vê o contorno creme em volta do botão "Menu", como nos links do menu. Os
+  outros botões de abrir e fechar do sistema (como "Avisos" ou "Entrar com usuário e senha") passam a ter o mesmo
+  contorno dos links e botões; antes, tinham o do navegador.
+- **Conferido:** pelos testes automáticos e num navegador sem tela (Chromium, o motor do Chrome), numa página montada
+  com o mesmo visual do painel, nas larguras de 320, 360, 390 e 760 pixels e na de um computador, com a letra normal e
+  aumentada (175% e 200%): o menu abre e fecha, as 17 seções aparecem, nada passa da largura da tela, o Sair e o nome
+  da empresa têm a altura do dedo e o contorno do teclado aparece. No computador, o cabeçalho e o menu ficaram iguais. O painel de verdade, com login,
+  não foi aberto num celular aqui, e o Safari do iPhone não foi testado.
+- **Para você:** nada. Se quiser, confira no seu celular depois da publicação.
+
+### Avisos de erro do sistema — M0.9 (16/10)
+
+Você autorizou em 16/10 ligar o Sentry, com a condição de não mandar nome, e-mail nem dado de pagamento. O Sentry é o
+serviço que avisa a equipe quando algo dá errado no sistema, para corrigir antes que alguém precise reclamar.
+
+- **Quando avisa:** quando acontece um erro no site, no painel, nos portais do proprietário e do hóspede, nas rotinas
+  automáticas (inclusive as que trocam dados com o sistema de reservas), no aviso de pagamento que chega do Mercado Pago,
+  ou no navegador de quem está usando. O aviso de uma rotina vem com o nome dela, o mesmo da página Sistema (por
+  exemplo, "agenda-diaria"), e só com o resumo do que deu errado: quantas falhas e de que tipo (por exemplo, "1
+  repasse(s) antecipado(s) não gerado(s)"), sem nomes e sem a mensagem original, e onde ver o detalhe. O detalhe, com o
+  nome do proprietário quando for o caso, continua onde já ficava: na página Sistema; na importação de reservas do Beds24,
+  em Configurações → Integrações, nas últimas importações (a página Sistema só diz "consulte Integrações"); nas mensagens
+  ao hóspede, em Configurações → Modelos de mensagem, na última execução (a página Sistema só tem as contagens). O aviso
+  de pagamento do Mercado Pago leva o tipo do erro, o ponto do código e, quando a falha foi do Mercado Pago, qual foi
+  (chave recusada, Mercado Pago fora do alcance, resposta incerta ou limite de chamadas). Desse aviso o sistema não guarda
+  outro detalhe: o aviso recebido fica marcado com erro, e a rotina dos pagamentos confere de novo depois. Sem erro, nada
+  é enviado: ele não mede visitas, não grava a tela e não conta quantas pessoas entraram.
+- **O que o Sentry recebe:** a mensagem técnica do erro (por exemplo, "não deu para ler o valor"; nas rotinas e no aviso
+  do Mercado Pago, só o resumo descrito acima), o ponto do código onde ele aconteceu, a página em que aconteceu (sem os códigos pessoais do endereço: o código da cotação vira "[código]" e o
+  do convite vira "[convite]"), o caminho até o erro (as páginas abertas, os botões tocados e as chamadas feitas logo
+  antes, sem o que foi digitado e com os endereços limpos do mesmo jeito), o navegador e o aparelho (por exemplo, Safari
+  num iPhone), a hora, a versão do sistema e o código do erro que a tela mostra (para achar o aviso). O idioma e o fuso
+  do aparelho não vão.
+- **O que nunca recebe:** nome, e-mail, telefone, CPF ou CNPJ, dados de cartão ou de Pix, os códigos das cotações e dos
+  convites, senhas e chaves, o que a pessoa digitou nos formulários e o que foi gravado no banco. Antes de sair, o próprio
+  sistema troca esses dados por marcadores (como "[e-mail]" ou "[CPF]") e corta o resto.
+- **O IP de quem usa:** o sistema não manda o IP e pede ao Sentry para não descobri-lo pela conexão. Como garantia a mais,
+  você ligou em 16/10, nas configurações da organização no Sentry, a opção que impede guardar o IP ("Prevent Storing of IP
+  Addresses"), e conferiu que a limpeza de dados do próprio Sentry está ligada ("Data Scrubber"). O Sentry ainda anota o
+  país de onde o aviso veio (no teste de 16/10, "Estados Unidos", onde fica a máquina de testes), sem guardar o IP.
+- **Teste de 16/10, na prévia:** um erro de teste com um e-mail, um CPF, um telefone e um código fictícios chegou ao
+  Sentry como "[e-mail] CPF [CPF] tel [telefone] id [id]"; o endereço da página chegou como "/reservar/[código]", sem
+  o resto; sem a pessoa e sem o IP; dos cabeçalhos, só o do navegador.
+- **Nomes:** um nome não tem um formato que dê para reconhecer sozinho (como um e-mail ou um CPF têm). Por isso a
+  proteção é não deixar o nome entrar: os dados da pessoa, os formulários e o que vai para o banco são cortados antes, e as
+  mensagens de erro das telas não levam nomes. Nas rotinas automáticas, o texto do que deu errado pode ter um nome (por
+  exemplo, o do proprietário cujo repasse antecipado não saiu) ou o código de um imóvel: por isso o Sentry recebe só o
+  resumo com as contagens, e o texto completo fica no próprio sistema, no registro que o aviso indica. Quando o erro vem
+  do banco de dados, o valor que ele repete na mensagem (por exemplo, um nome que chegou no lugar de uma data) também é trocado por "[valor]". Esta
+  proteção das rotinas entrou em 16/10, na revisão do Codex: antes dela, o nome do proprietário podia ir no aviso da
+  rotina de repasses.
+- **Onde fica:** na conta `sua-casa-leblon` do Sentry, nos Estados Unidos (projeto `javascript-nextjs`). Os erros das
+  prévias ficam separados dos do site de verdade.
+- **Quando começa:** o endereço de envio do Sentry já está na Vercel desde 16/10, na produção e nas prévias, posto por
+  Claude com a sua autorização. Ele só passa a valer quando esta mudança entrar e o sistema for publicado de novo. Sem
+  esse endereço, nada é enviado; os testes e o desenvolvimento nunca enviam. A página Sistema (e Configurações →
+  Integrações) tem uma linha "Avisos de erro (Sentry)": "Configurado" quando está ligado, "Falta configurar" sem o
+  endereço e "Com problema" se o endereço tiver sido colado com a forma errada (o valor nunca aparece na tela).
+- **Limite de hoje:** o ponto do código aparece como está no sistema publicado, e não exatamente como no arquivo original
+  (para isso o Sentry precisaria de uma chave a mais para receber o mapa do código; fica para depois, se fizer falta).
+- **Política de privacidade:** o texto-base passa a citar o Sentry na lista de fornecedores e em "Dados fora do Brasil",
+  dizendo também que o aviso leva o caminho até o erro. Se você já publicou a Política, a próxima versão deve incluir essa
+  frase (seção 6, item 39).
+- **O que você precisa fazer:** nada, a não ser incluir a frase na próxima versão da Política de privacidade, se ela já
+  estiver publicada.
+
+### Consulta com o resultado à vista e avisos no link da casa — M7.21 (16/10)
+
+Do levantamento do site de 16/10, dentro do seu pedido de 14/10 (avançar o site no que não depende de você).
+
+- **Antes:** no celular, ao tocar em "Continuar" (na consulta ou no cartão "Planeje sua estadia" da página da casa) ou
+  em "Consultar" (na busca da página inicial), a página recarregava e voltava para o topo. O resultado ficava lá
+  embaixo, fora da tela, e parecia que nada tinha acontecido.
+- **Agora:** a página já abre no resultado. Na consulta de uma casa, no quadro "Resumo da viagem", com a situação e o
+  valor. Na busca em todas as casas, na lista "N casas na sua busca" (ou no aviso de que nenhuma casa recebe o grupo).
+  O foco vai para o quadro, para que o leitor de tela (programa que lê a página em voz alta) leia o nome dele; isso não
+  foi testado com um leitor de tela. No computador, a página desce um pouco e mostra o formulário e o resumo lado a
+  lado.
+- **Com algum campo errado** (por exemplo, uma data que já passou), a página continua no topo, onde aparecem os avisos
+  de cada campo.
+- **Link da casa enviado pelo WhatsApp:** quando as datas ou as pessoas do link não servem (entrada que já passou,
+  saída antes da entrada ou no mesmo dia, mais pessoas do que a casa recebe, ou sem o número de pessoas), a página da
+  casa mostra o quadro "Confira os dados" com o motivo, e o mesmo aviso aparece no campo certo do cartão "Planeje sua
+  estadia". Antes, não aparecia nada, e quem abria o link não sabia por que não via o valor. Nesses casos nada é
+  consultado e o botão de segurar as datas não aparece.
+- **Link sem o número de pessoas** (ou com um número que não serve, como 0): o aviso diz "Informe quantas pessoas.", e
+  o campo "Hóspedes" do cartão fica em "Escolha", sem número marcado. A pessoa escolhe e toca em "Continuar"; sem
+  escolher, o navegador não envia e pede a escolha. O mesmo vale para um grupo grande demais para a lista do campo
+  (100 pessoas, por exemplo), ao lado do aviso de quantas pessoas a casa recebe. Na primeira versão deste item, o
+  campo vinha marcado em 2 pessoas ao lado do aviso, como se alguém tivesse escolhido; a revisão feita antes de
+  publicar trocou isso, para o sistema não supor. Numa visita sem pessoas no link (e sem aviso), o campo continua
+  começando em 2, como antes.
+- **Link sem datas:** a página da casa continua como antes, sem aviso.
+- **Textos:** os avisos são os mesmos que a consulta já usava. O único texto novo é "Escolha", no campo "Hóspedes". Ele
+  fica fixo, como os outros nomes do formulário; a pergunta sobre poder mudar esses textos pelo painel continua na
+  seção 7.
+- **Conferido:** num navegador de verdade (Chromium, o mesmo motor do Chrome, no tamanho de um iPhone e de um
+  computador), com dados de teste: a consulta e a busca abrem no resultado; com uma data errada, a página fica no topo
+  com o aviso; os quatro tipos de link errado mostram o quadro e o aviso no campo. O Safari do iPhone, o Firefox e os
+  leitores de tela não foram testados aqui. O campo em "Escolha" foi conferido só pelos testes automáticos, não no
+  navegador.
+- **O que você precisa fazer:** nada.
+- **Ficou de fora:** tocar de novo em "Continuar" (ou "Consultar") sem mudar nada, com o resultado já na tela, só leva
+  de volta ao resultado já mostrado, sem consultar de novo; para atualizar, recarregue a página ou mude algum campo
+  (nenhum valor antigo é cobrado: ao segurar as datas, o sistema confere tudo de novo). Escolher outra casa no cartão
+  "Planeje sua estadia" continua abrindo a página dessa outra casa no topo, como antes; e o link antigo do site
+  anterior ("/property/" seguido do código), com datas erradas, continua respondendo com uma linha de texto (como
+  ficou no M7.9).
+
+### Horários e regras da casa na página da cotação — M7.20 (16/10)
+
+Do levantamento do site de 16/10, pelo seu pedido de 14/10 (avançar o site no que não depende de você). Quem segurava as
+datas pela consulta chegava à página da cotação e pagava sem ter visto, em momento nenhum, o horário de entrada e de
+saída nem as regras da casa: isso só aparecia na página de cada casa.
+
+- **O que muda:** na página da cotação (o link com o código COT- que o hóspede recebe), logo abaixo das datas, aparecem
+  "Entrada a partir das 15h · Saída até as 11h" e, sob o título "Regras da casa", as mesmas regras da página da casa:
+  animais, fumo, festas e o texto das regras que você escreve na ficha do imóvel. Ficam antes do Pix e do cartão, para o
+  hóspede ler antes de pagar.
+- **Quando aparecem:** na cotação aberta e válida, com as datas seguradas, com o pagamento oferecido ou em andamento e na
+  reserva feita (confirmada pela equipe ou paga pelo site). Somem quando a cotação venceu, foi cancelada ou mudou, e
+  quando o pagamento ficou sem as datas, foi devolvido ou a reserva foi cancelada (também a reserva que a equipe
+  confirmou sem pagamento no site e cancelou depois).
+- **De onde vêm:** da ficha de cada imóvel, no quadro "Regras da casa e horários" do cadastro completo (horário de
+  entrada e de saída, animais, fumo, festas e o texto das regras), o mesmo que a página da casa usa: mudou na ficha, muda
+  nas duas. Casa sem horário cadastrado: entrada às 15h e saída às 11h, como na página da casa, em Minha reserva e na
+  política de cancelamento (o horário padrão agora fica num lugar só). Casa publicada sem o cadastro completo salvo:
+  a página da casa, como já fazia, e agora a cotação mostram "Não aceita animais", "Proibido fumar" e "Sem festas ou
+  eventos", que é o que a ficha em branco diz; o painel ainda não avisa disso. Uma reserva já feita numa casa que saiu
+  do site continua mostrando os horários e as regras.
+- **A hora:** a frase é a mesma nas duas páginas ("Entrada a partir das …", "Saída até as …"); na cotação, a hora vem
+  escrita como em Minha reserva ("15h"). A página da casa continua como estava ("15:00"), porque o pedido era não mexer
+  nela. Se quiser a mesma escrita nas duas, é só dizer. **Mudou em 16/10 (M7.22):** você respondeu que pode ser igual nas
+  duas, no formato 15:00; agora a cotação, Minha reserva e a página da casa escrevem "15:00" e "11:00".
+- **Volta para a casa:** o nome da casa, na cotação, vira um link para a página dela enquanto ela estiver no site; fora do
+  site, fica só o nome. Na cotação aberta, vencida, cancelada ou que mudou, o link já leva as datas e as pessoas. Com as
+  datas seguradas, em pagamento ou já reservadas, ele abre a casa sem as datas: com elas, a página da casa diria
+  "Indisponível nessas datas", porque as noites estão com o próprio hóspede.
+- **Mudar as datas:** na cotação aberta, válida e ainda não segurada, aparece também o link "Mudar as datas". Ele abre a
+  página da casa no quadro da consulta, com as datas da cotação, para consultar de novo.
+- **Página da casa e Minha reserva:** continuam iguais.
+- **Termos de uso:** o texto-base diz que a entrada e a saída seguem "os horários informados na página do imóvel e na
+  confirmação da reserva". Agora os horários aparecem na página do imóvel, na página da reserva confirmada (a da
+  cotação) e em Minha reserva. A mensagem automática de confirmação da reserva ainda não tem um campo para o horário:
+  um horário escrito à mão no modelo não acompanha a casa.
+- **O que você precisa fazer:** salvar o cadastro completo de cada casa publicada que ainda não tenha sido salva
+  (Painel → Imóveis → abrir a casa → botão "Salvar cadastro completo"), para o hóspede não ler as três proibições da
+  ficha em branco sem você ter escolhido. E conferir, no quadro "Regras da casa e horários" da ficha de cada casa, os
+  horários e as regras, porque agora o hóspede lê isso antes de pagar.
+- **Ficou de fora:** a estadia mínima na cotação; "Mudar as datas" depois de segurar as datas ou de pagar (depois do
+  pagamento, quem muda as datas é a equipe, pela alteração da reserva); um campo de horário nas mensagens automáticas. O
+  título "Regras da casa" e os nomes dos links ficam fixos, como os outros títulos da ficha da casa: a pergunta sobre
+  editar os nomes do menu, do rodapé e dos botões continua na seção 7. Também ficaram para depois: um aviso no painel
+  para a casa no site sem o cadastro completo salvo; e o título da cotação de uma reserva que a equipe confirmou e
+  cancelou depois, que ainda diz "Reserva confirmada" (já era assim antes; os horários e as regras já somem nesse caso).
 
 ### Nomes nos textos do proprietário — M5.10 (16/10)
 
@@ -723,7 +1441,17 @@ nas prévias da Vercel e com a conta de teste do Mercado Pago (item 44 da seçã
   Beds24, feche as novas datas e reabra as antigas)" e, depois de mudar, você marca **"Datas atualizadas nas OTAs"** na
   ficha. O aviso aparece mesmo com o envio ao Beds24 ligado, porque o envio manda só os bloqueios que você cria no
   SCL e nunca mexe nas datas das reservas (isso fica para o M8.3). Mudar só o número de pessoas ou o valor não mexe
-  no bloqueio.
+  no bloqueio. **Mudança de 17/10 (M8.3b):** antes, o aviso juntava as reservas alteradas numa linha só e
+  pedia "feche as novas datas e reabra as antigas", o que podia levar a apagar o bloqueio antigo e criar outro. Agora,
+  cada reserva tem a sua linha, com as datas: "Reserva SCL-X, alterada: mude as datas do bloqueio para dd/mm a dd/mm
+  (não apague nem crie outro).", e a ficha mostra o mesmo texto ao lado de "Datas atualizadas nas OTAs"; a pergunta da
+  alteração com diferença a pagar, quando muda as datas, diz "mude as datas no Beds24 como o Início mostrar (não apague
+  nem crie outro)", e a prévia de toda alteração que muda as datas avisa "Depois de aplicada, mude as datas no Beds24
+  como o Início mostrar (no mesmo bloqueio: não apague nem crie outro)." (antes: "Depois de aplicada, mude o bloqueio no
+  Beds24: feche as novas datas e reabra as antigas."). Motivo: um bloqueio apagado no Beds24 nunca sai do SCL, e as
+  noites antigas podiam continuar fechadas no site (M8.3b, no começo
+  desta seção 2). Objetivo final: com o envio de verdade ligado (M8.3c), o sistema muda sozinho a reserva que ele criou
+  no Beds24; o bloqueio feito à mão continua com a equipe, com o texto certo, até a marca.
 - **No Início:** as alterações com as datas seguradas (até que horas e esperando o quê), o bloqueio a mudar nas OTAs,
   as mensagens a mandar, as devoluções de parte esperando a liberação (e as atrasadas), as devoluções feitas a menos e
   o pagamento da diferença aprovado sem a alteração (para devolver).
@@ -754,7 +1482,7 @@ site, com a devolução pela Política de cancelamento que ele aceitou ao pagar*
   para desfazer. Se algo mudar entre a prévia e o clique (o pagamento, um pedido, um repasse), o sistema pede
   para calcular de novo.
 - **A regra é a da política que o hóspede aceitou, no momento em que recebemos o pedido:**
-  - pedido até as 23h59 do último dia do prazo (14 dias antes da entrada, na versão 1): devolução integral;
+  - pedido até as 23:59 do último dia do prazo (14 dias antes da entrada, na versão 1): devolução integral;
   - arrependimento: até 7 dias depois do pagamento, devolução integral mesmo com menos de 14 dias, mas só
     até o horário de entrada;
   - a SCL cancela: devolução integral, sempre;
@@ -824,7 +1552,16 @@ site, com a devolução pela Política de cancelamento que ele aceitou ao pagar*
   apague o bloqueio)" e, depois de reabrir, você marca "Datas reabertas nas OTAs" na ficha. Nada é escrito no
   Beds24 por esta parte. **Mudança de 10/10:** antes, esse aviso sumia com o envio automático ao Beds24 ligado;
   agora ele aparece sempre, até o M8.3, porque o envio manda só os bloqueios que você cria no SCL e nunca reabre
-  as datas de uma reserva. O mesmo vale para os avisos de reserva paga e de reserva alterada.
+  as datas de uma reserva. O mesmo vale para os avisos de reserva paga e de reserva alterada. **Mudança de 17/10
+  (M8.3b):** antes, o Início pedia "reabra as datas nas OTAs (no Beds24, apague o bloqueio)", e a
+  pergunta do botão confirmava que "o bloqueio foi apagado". Agora, cada reserva tem a sua linha, com as datas: "Reserva
+  SCL-X, cancelada: mude o bloqueio de dd/mm a dd/mm para Cancelado (não apague).", a ficha mostra o mesmo texto ao lado
+  de "Datas reabertas nas OTAs", a pergunta do botão diz "mudadas para Cancelado, sem apagar" e a do cancelamento diz
+  "nas OTAs, siga o aviso do Início (no Beds24, mude para Cancelado; não apague)". Motivo: um bloqueio apagado no
+  Beds24 nunca sai do SCL (a importação só avisa e guarda o registro anterior); só o que volta como Cancelado sai. Quem
+  seguiu o texto antigo pode ter deixado as noites fechadas no site: se isso aconteceu, me avise (seção 6, item 50).
+  Objetivo final: com o envio de verdade ligado (M8.3c), o sistema cancela sozinho a reserva que ele criou no Beds24; o
+  bloqueio feito à mão continua com a equipe, com o texto certo, até a marca.
 - **No Início:** os pedidos de cancelamento esperando (com a data do pedido e da entrada; ficam em destaque
   depois de 24 horas ou a 3 dias da entrada), as datas a reabrir nas OTAs, as mensagens a mandar ao hóspede, as
   devoluções que o Mercado Pago fez a menos, as reservas devolvidas fora do sistema e o desconto de proprietário
@@ -926,7 +1663,7 @@ O site agora tem as três páginas que a lei pede para vender pela internet: **T
   o CNPJ estiverem preenchidos, a identificação da empresa (razão social, CNPJ e endereço). Enquanto
   você não publicar, cada página diz só que está **em preparação** — nada do texto-base aparece.
 - **Antes de gerar o Pix:** o hóspede vê o **resumo da política de cancelamento**, a data-limite do
-  reembolso integral **daquela reserva** ("até 23h59 de 28/09/2026", por exemplo) e marca a caixa
+  reembolso integral **daquela reserva** ("até 23:59 de 28/09/2026", por exemplo) e marca a caixa
   "Li e aceito os Termos de uso e a Política de cancelamento, e li a Política de privacidade", com o
   link de cada uma. Sem marcar, o Pix não sai. Quem já aceitou vê só a linha "Você aceitou… em
   dd/mm às hh:mm"; na reserva confirmada, essa linha fica com a data-limite.
@@ -1003,6 +1740,13 @@ contestação de cartão (M8.2e). O dinheiro de verdade só liga com as cinco pa
   avisa "reserva do site paga: feche as datas nas OTAs" (feche como **bloqueio** no Beds24, nunca
   como reserva, senão a importação cria uma segunda reserva). Desde 10/10 o aviso aparece mesmo com o
   envio ao Beds24 ligado: o envio manda só os bloqueios que você cria no SCL, não as datas das reservas.
+  **Mudança de 17/10 (M8.3b):** antes, o aviso dizia "N reserva(s) do site paga(s): feche as datas nas OTAs
+  (no Beds24, como bloqueio)", sem os códigos, só para quem vê o financeiro, e só sumia quando a estadia passava ou a
+  reserva era cancelada. Agora ele diz "N reserva(s) do site paga(s) (SCL-…): feche as datas no Beds24 como bloqueio e
+  marque Datas fechadas nas OTAs.", a operação também vê (sem valores) e cada reserva sai do aviso quando a equipe marca
+  "Datas fechadas nas OTAs" na ficha. Motivo: quem fecha as datas é a equipe, que não via o aviso, e não havia como dizer
+  "já fechei". Objetivo final: com o envio de verdade ligado (M8.3c), o sistema cria sozinho no Beds24 a reserva paga
+  pelo site; o aviso fica para o que continuar à mão (M8.3b, no começo desta seção 2).
 - **O dinheiro:** a taxa real do Mercado Pago entra na reserva. A parte do proprietário só fica
   disponível depois do check-in **e** de o Mercado Pago liberar o dinheiro. A data de liberação que
   o Mercado Pago mostra é só uma previsão; a liberação conta quando ele disser que liberou (o
@@ -1739,6 +2483,14 @@ Depois de ver "Disponível" (ou "a confirmar") com valor, o visitante pode **seg
   lá, o visitante fecha a reserva com a equipe pelo WhatsApp, usando o botão da página da cotação,
   e o Airbnb/Booking só fecham as datas quando a reserva confirmada for enviada (M8.3) — por isso,
   confirme ou cancele os pedidos do site com rapidez.
+  **Mudança de 17/10 (M8.3b):** a frase acima fica como registro, mas não vale mais: ela dava a entender
+  que o pedido confirmado pela equipe também iria ao Beds24 pelo M8.3. Agora, pela sua decisão de 16/10 (decisão 3,
+  seção 7), só vai ao Beds24 a reserva **paga pelo site**: o pedido que a equipe confirma à mão, sem pagamento, nunca vai. As datas dele a equipe fecha à mão, no Beds24,
+  como bloqueio, e marca "Datas fechadas nas OTAs" na ficha; até a marca, o Início avisa numa linha própria (M8.3b, no
+  começo desta seção 2). Motivo: no Airbnb o hóspede tem 24 horas para pagar, e fechar todos os canais para quem depois
+  não paga é uma trabalheira e tira reservas da empresa. Objetivo final: a reserva paga pelo site vai sozinha ao Beds24
+  (M8.3c); o pedido confirmado à mão fica com a equipe, com o aviso e a marca. Confirmar ou cancelar os pedidos com
+  rapidez continua valendo.
 
 ### Portal do proprietário: bloqueio de uso próprio — M5.5
 
@@ -2198,14 +2950,14 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   - quando você confirma uma limpeza com ela, ela recebe um **e-mail** avisando (o WhatsApp entra
     quando o M10 estiver ligado);
   - **"Tirar acesso"** (ou arquivar a profissional) corta a entrada na hora.
-- M6.3 e M6.7: **agenda diária da equipe** (Painel → **Agenda**). Todo dia às **20h** quem você
+- M6.3 e M6.7: **agenda diária da equipe** (Painel → **Agenda**). Todo dia às **20:00** quem você
   escolher recebe por e-mail a agenda, com **Rio e Búzios separados** (cada seção é a cidade do
   cadastro do imóvel; nada é somado). O texto segue o **modelo que você definiu em 23/09** e o
   **pedido de 2/10** (Rio 5 dias, Búzios 30 dias):
   - **Rio (vários apartamentos), 5 dias:** um dia por linha, **só com as limpezas** (limpeza =
     dia de checkout). Nos dias vazios aparece "nenhuma limpeza". Limpeza já marcada como
     realizada, sem uso do imóvel depois, não volta para a lista. Quando alguém entra no mesmo
-    dia, sai o horário-limite ("pronto até 15h, entra Ana, 2 hóspedes"). As **entradas, saídas e
+    dia, sai o horário-limite ("pronto até 15:00, entra Ana, 2 hóspedes"). As **entradas, saídas e
     chaves** vão num bloco separado, com primeiro nome, nº de hóspedes, horários e telefone
     operacional do hóspede (só quando está no cadastro da reserva; nunca tirado da conversa);
   - **Búzios (casa única), 30 dias:** todas as reservas do período, uma por linha, com entrada,
@@ -2220,7 +2972,7 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   - **Rio e Búzios têm formato fixo** pela sua decisão de 2/10 (a tela mostra os dois travados);
     outra cidade que venha a existir pode ter o formato escolhido na tela (sem escolha, casa
     única vai por reserva e vários apartamentos por limpezas). Os horários padrão de entrada e
-    saída (15h e 11h) continuam editáveis e valem só quando o imóvel não tem horário no
+    saída (15:00 e 11:00) continuam editáveis e valem só quando o imóvel não tem horário no
     cadastro. A tela mostra **o mesmo texto que a equipe vai receber**;
   - vêm também as **reservas novas desde a última agenda**, mesmo as de datas mais distantes;
   - termina com a frase padrão "Essa é a agenda atual e ainda pode mudar…". A agenda **só
@@ -2228,9 +2980,9 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   - do hóspede vai só o **primeiro nome** e o número de pessoas, **sem código de reserva**.
     Quando o número de pessoas não está na reserva, a agenda avisa em vez de adivinhar;
   - na mesma tela você cadastra **quem recebe** e, para cada pessoa, as cidades que ela
-    recebe (sem cidade marcada = todas). Também liga ou desliga o envio das 20h e tem o botão
+    recebe (sem cidade marcada = todas). Também liga ou desliga o envio das 20:00 e tem o botão
     **"Enviar agora"** (pede confirmação).
-  - Cada pessoa recebe **uma vez por dia**. O envio das 20h aparece em **Sistema →
+  - Cada pessoa recebe **uma vez por dia**. O envio das 20:00 aparece em **Sistema →
     Automações**, com "falhou" quando não deu certo; o "Enviar agora" fica no histórico de
     alterações e mostra na tela quantos saíram e quantos falharam.
 - M5.4: **e-mail do fechamento aos proprietários** (Painel → Financeiro → **Repasses**, no
@@ -2579,7 +3331,7 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   - ele vê **só as próprias reservas**: apartamento, bairro, datas, horários de entrada e
     saída, noites, pessoas e o contato da empresa (WhatsApp/e-mail de Configurações →
     Empresa). **Valores e dados de outras pessoas nunca aparecem**;
-  - o **endereço completo** (com complemento) só aparece **2 dias antes da entrada, às 10h**
+  - o **endereço completo** (com complemento) só aparece **2 dias antes da entrada, às 10:00**
     (horário de São Paulo), e some no horário de saída do imóvel. Estar logado não antecipa;
   - só contam as reservas da empresa do site (se um dia houver outra empresa no sistema, uma
     não vê as reservas da outra);
@@ -2592,9 +3344,9 @@ Não precisa preencher descrições dos apartamentos para importar. A melhoria n
   no alto da página):
   - quatro mensagens, cada uma com o **modelo que você escolher** (os modelos continuam
     editáveis ali mesmo): **confirmação** (logo depois de confirmada), **check-in** (2 dias
-    antes da entrada, às 10h — o mesmo momento em que o endereço aparece em "Minha reserva"),
-    **check-out** (1 dia antes da saída, às 14h) e **agradecimento** (3 dias depois da saída,
-    às 10h). Horário de São Paulo; o sistema confere de hora em hora (cada mensagem sai até
+    antes da entrada, às 10:00 — o mesmo momento em que o endereço aparece em "Minha reserva"),
+    **check-out** (1 dia antes da saída, às 14:00) e **agradecimento** (3 dias depois da saída,
+    às 10:00). Horário de São Paulo; o sistema confere de hora em hora (cada mensagem sai até
     cerca de 1 hora depois do momento previsto);
   - vem **desligado**: você liga com a caixinha "Envio automático ligado". Vale **daquele
     momento em diante** — nada previsto para antes é mandado atrasado;
@@ -2689,16 +3441,17 @@ e escreva normalmente.
 | **Claude Code** | Programa o sistema; rotina a cada 3h | ✅ ativo | — |
 | **Codex** (revisor automático) | Revisa cada PR | ✅ ativo no repositório | — |
 | **Neon** | Banco de dados (Postgres) | ✅ projeto `scl-sistema` com duas branches: `main` (produção) e `preview` (versões de teste dos PRs); as 41 migrações até o M5.5 aplicadas nas duas, conferido em 3/10. **Acesso de Claude e Codex liberado por você em 14/10, com regras** (no banco de verdade, só leitura e mudanças pelo próprio sistema; correção à mão só com o seu "pode"; nunca apagar nem restaurar sem perguntar). Em 14/10, o banco das prévias, que estava vazio, recebeu dados fictícios para o teste do pagamento | **Backup:** desde 3/10, 7 dias de histórico e snapshots diário (14 dias) e semanal (35 dias) da `main`, dentro do Neon (seção 6, item 23b). Cópia fora do Neon e checklist ficam para o M11.3 |
-| **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador e, desde 14/10, as chaves de teste do Mercado Pago (só no ambiente Preview). Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3). **Uma variável nova só vale numa publicação nova:** depois de criar ou mudar uma, faça o Redeploy de uma prévia (ou me peça) |
-| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado** | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3) |
+| **Vercel** | Publica o sistema na internet (homologação e depois produção) | ✅ site acessível (27/09); conferido em 3/10 que produção usa a branch `main` do Neon e as previews dos PRs usam a branch `preview` — bancos separados | Variáveis já presentes: banco, login Google, Beds24 (leitura), Resend, agendador e, desde 14/10, as chaves de teste do Mercado Pago (só no ambiente Preview). Faltam só as que ligam coisas novas (`BEDS24_ESCRITA`, item 3; desde 17/10, também o envio das reservas do site: o refresh token novo do Beds24 em `BEDS24_REFRESH_TOKEN` e `BEDS24_ESCRITA_RESERVAS` = `ligada`, os dois **só no ambiente Production**, com o Preview ficando só com a `BEDS24_API_KEY`, que só lê; item 51). **Uma variável nova só vale numa publicação nova:** depois de criar ou mudar uma, faça o Redeploy de uma prévia (ou me peça) |
+| **Sentry** | Avisos de erro do sistema (site, painel, portais, rotinas, aviso de pagamento do Mercado Pago e navegador), para a equipe corrigir | 🟡 conta `sua-casa-leblon` criada por você (região dos EUA, projeto `javascript-nextjs`); o sistema manda os avisos sem dados pessoais (M0.9, 16/10); o endereço de envio (`NEXT_PUBLIC_SENTRY_DSN`) está na Vercel desde 16/10, na produção e nas prévias; a opção de não guardar o IP foi ligada por você em 16/10 | Depois do merge, Claude confere um aviso de teste. Nada para você |
+| **Beds24** | Channel manager (Airbnb/Booking), reservas, calendário e preços | 🟡 importação feita por Diego (1 e 2/10); envio de calendário/preços pronto e **desligado**; reservas do site no Beds24: a base pronta (M8.3a, 16/10) e as tarefas das plataformas num lugar só (M8.3b, 17/10), as duas já no sistema e sem escrever nada lá; o envio de verdade (M8.3c, 17/10) pronto e **desligado**, na branch e em revisão | Testar o envio no 103 (simular → `BEDS24_ESCRITA=ligada` com refresh token de inventário → enviar → conferir no Beds24/Airbnb) e só então ligar o automático (seção 6, item 3). Reservas do site no Beds24 (M8.3): autorizado em 16/10, com a chave própria `BEDS24_ESCRITA_RESERVAS`, base pronta (M8.3a, 16/10); nenhuma das duas chaves existe hoje na Vercel. A base ainda não escreve nada no Beds24, e o M8.3b (em revisão) também não: ele só organiza os avisos do que a equipe faz à mão lá (bloqueio, Cancelado, nunca apagar). Só você liga a das reservas, mais tarde, quando o envio de verdade (M8.3c) ficar pronto, com o passo a passo no guia. Mais tarde também, a pergunta ao suporte do Beds24 que eu preparo (M8.3d). **Atualização de 17/10 (M8.3c):** o M8.3b já entrou no sistema (PR #156), e o envio de verdade está pronto, na branch e em revisão, desligado. Para ligar: credencial nova do Beds24 com as sete permissões, só no Production da Vercel, a chave `BEDS24_ESCRITA_RESERVAS`, o ensaio e um imóvel ligado, nesta ordem (seção 6, item 51). No mesmo item está a pergunta ao suporte do Beds24, pronta para colar, de que a última parte (M8.3d) depende |
 | **Mercado Pago** | Pagamentos da reserva direta | 🟡 Conta Negócio no CNPJ aberta por você (8/10) e, em 14/10, uma conta negócio nova, separada da sua pessoal, com a aplicação e as chaves de teste (conferidas pelo Mercado Pago como de teste em 14/10); nada do sistema dependia da conta anterior; Pix em teste pronto (M8.2a); cartão em teste pronto (M8.2b, 9/10); cancelamento com devolução em teste pronto (M8.2c, 10/10); alteração e devolução de parte do valor em teste prontas (M8.2d, 10/10); disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10) | Testar um Pix e um cartão na prévia preparada em 14/10 (passo a passo na página de pendências e na seção 6, item 37); depois, o cartão (item 40), o cancelamento (item 41), a alteração (item 44), a disputa (item 46), o evento "Contestações" nos avisos (item 37) e os ajustes da conta logo abaixo |
-| **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado | Entrar no Meta (o login voltava para a tela de entrada, 8/10) e decidir qual número o sistema vai usar; a verificação da empresa pode esperar o site no ar (seção 6, item 4) |
+| **Meta / WhatsApp Business** | Atendimento pelo WhatsApp da empresa | ⚪ não conectado; a caixa de entrada do painel já está pronta, sem conexão (M10.1a, 17/10, no sistema desde 17/10 pelo PR #158; até 17/10, esta linha dizia "em revisão") | Nada na Meta agora. O número final 0322 fica no WhatsApp Business do celular (coexistência): ele continua lá e passa a aparecer também no painel depois da conexão. Falta escolher o caminho (o seu próprio app como Tech Provider ou um parceiro) e combinar a data da conexão (M10.1b). A verificação da empresa continua valendo no caminho Tech Provider e pode esperar o site no ar (seção 6, item 4). Até 17/10, esta linha pedia para entrar no Meta (o login voltava para a tela de entrada, 8/10) e decidir qual número o sistema usaria; com a coexistência, é o próprio número final 0322 |
 | **Google Cloud (login)** | Botão "Entrar com Google" | ✅ login confirmado por Diego em 27/09 | — |
 | **Resend** (envio de e-mail) | E-mails do sistema: código de login, convites, agenda da equipe, relatórios, mensagens ao hóspede | 🟡 conta criada (e conector no Claude) | Cadastrar o domínio e pôr a chave na Vercel (seção 6, item 5) |
 | **Cloudflare** | Domínio e e-mail | ⚪ não conectado | Só no final (M11) |
 
-**Páginas legais (M7.4):** a Política de privacidade cita o Mercado Pago, a Vercel e o Neon; se
-trocar algum desses serviços, publique uma versão nova dela.
+**Páginas legais (M7.4):** a Política de privacidade cita o Mercado Pago, a Vercel e o Neon e, no
+texto-base desde 16/10, o Sentry (M0.9); se trocar algum desses serviços, publique uma versão nova dela.
 
 **Mercado Pago e o cartão (M8.2b):** a chave pública que você pôs na Vercel no item 37 passa a ser usada
 pelo formulário do cartão. Na conta do Mercado Pago (se não achar alguma opção, me chame que eu te
@@ -2813,6 +3566,15 @@ ambiente).
    - As variáveis precisam estar no ambiente do deploy que será testado (Production no
      endereço principal; Preview se for testar um PR). Alteração de variável exige novo
      deploy. Chaves nunca vão no chat, Git ou tela do sistema.
+     **Correção de 17/10 (M8.3c):** no Preview, só a **`BEDS24_API_KEY`**, que só lê. O
+     **`BEDS24_REFRESH_TOKEN`** e as chaves que ligam a escrita (`BEDS24_ESCRITA` e
+     `BEDS24_ESCRITA_RESERVAS`) ficam **só no Production**. Antes, esta linha mandava pôr as
+     variáveis do Beds24 também no Preview para testar um PR. Motivo: as prévias usam dados
+     de teste, mas a conta do Beds24 é a de verdade, e o envio de calendário não tem trava
+     própria de ambiente: com o refresh token e a chave do calendário numa prévia, ela
+     poderia escrever no Beds24 de verdade. Numa prévia com o refresh token, Integrações e o Sistema avisam "Credencial de
+     escrita presente fora da produção". Objetivo: só a produção escreve no Beds24 (passo a
+     passo no item 51).
    - **Envio de calendário e preços (M3.7):** pronto e desligado. Você prefere esperar (7/10); eu te lembro antes da entrada no ar. O passo a passo do teste no
      103 está na seção 2 ("Calendário e preços no Beds24"). Resumo: regras e feriados em
      Configurações → Calendário e preços; pisos na ficha do imóvel; simular na prévia; só
@@ -2823,13 +3585,22 @@ ambiente).
    - **Histórico do acesso:** o teste de 27/09 falhou; após salvar novamente a variável,
      Diego confirmou a leitura. Isso não comprova qual foi a causa da falha anterior.
      Caso reapareça, informe só a mensagem sanitizada do painel, nunca a chave.
-4. **Meta / WhatsApp (atualizado em 8/10):** para o WhatsApp do sistema, o caminho é o site de
+4. **Meta / WhatsApp (atualizado em 8/10 e em 17/10):** para o WhatsApp do sistema, o caminho é o site de
    desenvolvedores do Meta (developers.facebook.com), com o login do Facebook: empresa com endereço
-   no Brasil não consegue criar a conta do WhatsApp pelo Business Suite. Antes de cadastrar número,
-   decida qual o sistema vai usar (o número que entra sai do aplicativo WhatsApp do celular). A
-   verificação da empresa não é necessária para começar e pode esperar o site no ar: com o
-   suacasaleblon.com fora do ar, ela seria recusada. Os passos para o login que volta para a tela de
-   entrada estão na página de pendências.
+   no Brasil não consegue criar a conta do WhatsApp pelo Business Suite. Com a coexistência, o número
+   final 0322 continua no WhatsApp Business do celular e passa a aparecer também no painel: não é
+   preciso escolher outro número. Nunca use o registro do número por SMS ou por ligação: esse é o
+   caminho que tira o número do aplicativo do celular. A conexão é feita pelo QR code, no próprio
+   aplicativo, no dia combinado (M10.1b). A verificação da empresa não é necessária para começar e
+   pode esperar o site no ar: com o suacasaleblon.com fora do ar, ela seria recusada. No caminho do
+   seu próprio app (Tech Provider), ela continua valendo antes da conexão. Os passos para o login que
+   volta para a tela de entrada estão na página de pendências.
+   **Registro (17/10/2026):** antes, este item dizia "Antes de cadastrar número, decida qual o sistema
+   vai usar (o número que entra sai do aplicativo WhatsApp do celular)". Agora: com a coexistência, o
+   número final 0322 continua no celular, e nunca se usa o registro por SMS ou por ligação. Motivo: a
+   coexistência deixa o mesmo número no WhatsApp Business do celular e no sistema ao mesmo tempo, e
+   você decidiu em 17/10 manter o número final 0322 no celular. Objetivo: todas as conversas no painel,
+   sem tirar o número do celular.
 5. **E-mail do sistema (Resend) — feito:** domínio `suacasaleblon.com` verificado no Resend e com envio liberado
    (conferido em 5/10) e remetente `contato@suacasaleblon.com` posto por você na Vercel em 7/10. Falta só
    o teste: peça um código em `/entrar` com um e-mail que não seja o seu. Passos originais, para referência:
@@ -2838,7 +3609,7 @@ ambiente).
       (Cloudflare) — eu te guio nessa hora.
    2. Crie uma *API key* e coloque na Vercel como `RESEND_API_KEY`, e crie
       `EMAIL_REMETENTE` = `Sua Casa Leblon <acesso@seudominio.com.br>`. **Não cole no chat.**
-6. **Agenda da equipe (20h) — e-mail não serve para a equipe (você, 7/10):** a agenda já está no acesso
+6. **Agenda da equipe (20:00) — e-mail não serve para a equipe (você, 7/10):** a agenda já está no acesso
    próprio de cada pessoa, só da cidade dela (M6.8, item 7); o aviso pelo WhatsApp entra quando ele
    ligar. Não ligue o envio diário por e-mail para a equipe. Referência do que existe (se um dia quiser
    o e-mail para alguém da empresa; depois da Vercel e do Resend, itens 1 e 5):
@@ -2846,7 +3617,7 @@ ambiente).
       longo e aleatório. É a senha que o agendador da Vercel usa para chamar a agenda; sem
       ela, a chamada é recusada. **Não cole no chat.**
    2. No painel, em **Agenda**, cadastre os e-mails da equipe (marque Rio ou Búzios para cada
-      pessoa), marque "Enviar todo dia às 20h" e salve.
+      pessoa), marque "Enviar todo dia às 20:00" e salve.
    3. Use "Enviar agora" uma vez para conferir como o e-mail chega.
 7. **Profissionais de limpeza pelo celular (M6.8, pronto em 7/10):** em **Limpezas → Profissionais**,
    para cada profissional:
@@ -2927,7 +3698,10 @@ ambiente).
 22. **Pedidos do site (M8.1):** quando aparecer em **Reservas** uma linha com origem "site" e
    situação "pedido", é um visitante que segurou datas pela cotação. Fale com ele (contato na
    ficha) e **confirme ou cancele antes do prazo** das observações; se não, o pedido vence sozinho.
-   O prazo padrão é de 30 minutos, em Configurações → Calendário e preços → Site público.
+   O prazo padrão é de 30 minutos, em Configurações → Calendário e preços → Site público. Depois que o M8.3b entrar no
+   sistema (em revisão desde 17/10): ao confirmar um pedido à mão, sem pagamento pelo site, feche as datas no Beds24
+   como bloqueio e marque **Datas fechadas nas OTAs** na ficha; o Início lembra até a marca (item 50). Até lá, feche as
+   datas como bloqueio, como hoje, e nunca apague um bloqueio: para cancelar, mude para Cancelado.
 
 23. **Backup do repositório (M0.7) — ativado por você em 4/10; passo a passo mantido para
    consulta e para renovar as chaves.** Pode fazer pelo celular. Guarde
@@ -3287,8 +4061,20 @@ ambiente).
     - **Encarregado** pelo nome, ou a dispensa para pequeno porte.
     - **Por quanto tempo guardar os dados dos hóspedes** (hoje ficam para sempre): uma regra, por
       exemplo tantos anos depois da saída.
-    - **Servidores fora do Brasil** (Vercel e Neon): conferir as regiões nas contas e a base legal da
-      transferência.
+    - **Servidores fora do Brasil** (Vercel e Neon e, desde 16/10, o Sentry, nos EUA): conferir as regiões nas
+      contas e a base legal da transferência.
+    - **Avisos de erro (Sentry, M0.9, 16/10):** o texto-base passou a citar o Sentry na lista de com quem compartilhamos e
+      a incluir "registro de erros técnicos" em "Dados fora do Brasil". Se você já publicou a Política de privacidade, a
+      próxima versão deve incluir, em "Com quem compartilhamos", logo depois da linha da Vercel e do Neon: "Sentry, que
+      registra os erros técnicos do site para a gente corrigir: recebe a descrição técnica do erro, a página em que ele
+      aconteceu, o caminho até ele (as páginas abertas, os botões tocados e as chamadas feitas pela página logo antes, sem
+      o que foi digitado) e o tipo de navegador e de aparelho, sempre sem os códigos pessoais dos endereços; não recebe
+      seu nome, seus contatos, seus documentos nem seus dados de pagamento, e não guarda o seu IP." (Em 16/10, à tarde, a
+      frase deixou de dizer "recebe só": o aviso também leva o caminho até o erro.) **Perguntas:** a frase basta, ou é
+      preciso dizer por quanto tempo o Sentry guarda os avisos (é o prazo do plano da conta) e a base legal (a política
+      cita o legítimo interesse para prevenir fraude e abuso; a correção de erros seria o mesmo caso?); e o navegador e o
+      aparelho e o caminho até o erro (páginas e botões), que o aviso leva, contam como dado pessoal que precisa ser citado de
+      outro jeito?
     - **Registros de acesso por 6 meses** (Marco Civil da Internet): se a empresa precisa guardar.
     - **Fornecedores citados por categoria** (o serviço de e-mail e o sistema de reservas, sem nome):
       se o advogado pede os nomes.
@@ -3410,6 +4196,13 @@ ambiente).
 
        É uma escolha sua (decisão 10 da disputa). A Política de privacidade já fala de "contestações de pagamento":
        nada muda nela.
+    7. **Hora no padrão do Brasil (M7.22, 16/10), na mesma publicação da Política de cancelamento:** em Configurações,
+       Páginas legais do site, Política de cancelamento, troque "23h59" por "23:59" duas vezes (no prazo do reembolso
+       integral e no fim do prazo do arrependimento) e "da 0h" por "das 00:00" (fica "A partir das 00:00 do dia
+       seguinte"). O texto do site só muda quando você publicar uma versão nova pelo painel, e ela vale para as reservas
+       feitas a partir dela: quem já aceitou fica com a versão que aceitou. Se a política ainda não foi publicada, o
+       texto-base já vem certo. Se quiser, troque também "10h" e "14h" no campo "quando" dos modelos de mensagem já
+       salvos, em Configurações, Modelos de mensagem (os modelos novos já vêm com "10:00" e "14:00").
 43. **Revise as mensagens e os textos novos do cancelamento (M8.2c):**
     - Em **Configurações → Modelos de mensagem**, no quadro das mensagens automáticas ao hóspede, leia o texto-base
       de "Cancelamento: pedido recebido", "Cancelamento: decisão" e "Cancelamento: devolução feita" (cada um tem
@@ -3461,7 +4254,13 @@ ambiente).
        devolução do cancelamento", e o valor inteiro volta de uma vez.
     9. **OTAs, mensagens e página do hóspede:** veja no Início "mude o bloqueio nas OTAs" e marque **Datas atualizadas
        nas OTAs** na ficha; copie as mensagens e use **Mensagem enviada ao hóspede**; abra a página da reserva e Minha
-       reserva para ver o que o hóspede vê.
+       reserva para ver o que o hóspede vê. **Mudança de 17/10 (M8.3b):** antes, o aviso do Início era
+       "mude o bloqueio nas OTAs (no Beds24, feche as novas datas e reabra as antigas)". Agora, numa prévia da Vercel
+       que já tenha o M8.3b (a do PR do M8.3b ou, depois que ele entrar no sistema, qualquer prévia nova), procure
+       "Reserva SCL-…, alterada: mude as datas do bloqueio para dd/mm a dd/mm (não apague nem crie outro)." e o mesmo
+       texto na ficha, ao lado de **Datas atualizadas nas OTAs**; numa prévia sem o M8.3b, o Início ainda mostra o
+       texto antigo. Motivo: um bloqueio apagado no Beds24 nunca sai do SCL (M8.3b, seção 2). Objetivo final: o mesmo texto no Início e na ficha, sem nunca apagar
+       um bloqueio.
     10. **Me conte o que viu:** quanto tempo o Mercado Pago levou para confirmar a devolução de parte, se a taxa dessa
         parte voltou e qualquer passo que não bateu com este roteiro. Eu ajusto antes da produção.
 45. **Revise as mensagens, os textos e o prazo novos da alteração (M8.2d):**
@@ -3533,12 +4332,334 @@ ambiente).
     de "Anuncie seu imóvel", lida por proprietários: escreva pensando nos dois públicos. Se quiser, comece pelas frases do
     estudo (lista na seção 2, em "Frase de abertura de cada casa") e ajuste. Com a casa publicada no site, abra a página
     dela e confira no celular. Sem pressa: em branco, o site fica como está.
+49. **MCP do SCL (M13, desenho de 16/10), sem pressa:** nada para fazer agora; isto vale para quando o M13.7
+    estiver pronto (o passo 5, bem antes, no M13.4a; o 6, um pouco antes; o 8 e o 9, bem depois). Antes de conectar
+    o Claude, o ChatGPT ou o Codex com os dados de verdade:
+    1. **Campo Site:** o item 47, logo acima. O endereço do MCP sai dele.
+    2. **Advogado:** mesmo sem nomes, códigos e valores das reservas vão para empresas de fora do Brasil. Estas
+       perguntas entram no dossiê único para o advogado e o contador que combinamos em 16/10 (tudo de uma vez,
+       perto do fim da construção). Eu monto o dossiê; você não precisa abrir o arquivo técnico (decisão D4).
+    3. **Contas:** ligue a verificação em duas etapas nas contas do Claude, do ChatGPT e do e-mail ou do Google com
+       que você entra no SCL e que recebe os avisos, e desligue o uso das conversas para treino, se houver a opção.
+       E me diga quais são os seus planos do Claude e do ChatGPT (decisão D5). Vale também bloquear a tela do
+       computador quando sair: com o seu Google ou o seu e-mail abertos, quem sentar ali consegue entrar no SCL e
+       conectar um assistente, e o SCL não tem como saber que não é você.
+    4. **Sessões de trabalho (decisão D12):** as sessões em que eu e o Codex trabalhamos no código não podem ter o
+       conector do SCL. Só ele sai: os outros conectores, como o do Neon, que você liberou em 14/10 para o trabalho,
+       continuam. A ideia é tirar o SCL dessas sessões por uma regra do próprio projeto, mas ainda vou conferir no
+       M13.7 se essa regra funciona com um conector do Claude; se só der por uma configuração da sua conta ou do
+       ambiente, eu te digo onde. Não vou usar a opção que desliga todos os conectores de uma vez, porque ela levaria
+       junto o acesso ao banco. O MCP só liga na produção depois de eu conferir numa sessão que o SCL não aparece e
+       que o Neon continua lá. Se não houver jeito nenhum de tirar só o SCL, ele não fica ligado no Claude, e eu te
+       trago as opções que houver (por exemplo, usar o SCL só pelo ChatGPT) para você escolher. Se a saída for pelo
+       Codex, o SCL fica numa configuração separada da usada no código. Se o seu plano for o Plus, o ChatGPT no site
+       não aceitar o SCL e o Codex não tiver como separar essa configuração, não sobra saída pela OpenAI; eu te digo
+       isso no M13.7.
+    5. **Google (opcional):** se o Google precisar de uma opção ligada para dizer ao SCL a hora do seu login, eu te
+       digo onde no M13.4a. Sem ela, para conectar um assistente você entra com a senha ou com o código por e-mail.
+    6. **Conferir o Claude antes de ligar:** quando o endereço do MCP já estiver no ar, com o acesso ainda desligado,
+       eu te peço para tentar uma vez adicionar o SCL no Claude (eu te passo o caminho na hora). O certo é a tela do
+       SCL dizer que o acesso por assistentes está desligado: isso mostra que o SCL reconhece o Claude, e nenhum dado
+       sai. Se aparecer uma página de erro, eu ajusto e te peço de novo. Sem essa
+       tentativa, a produção não liga, mesmo que você já tenha testado na versão de teste (decisão 10).
+    7. **Um programa por vez:** use cada conexão do SCL num só programa de cada vez. No Codex, ou o aplicativo ou a
+       linha de comando, não os dois abertos ao mesmo tempo; no Claude Code, uma sessão por vez. Dois programas
+       renovando a mesma conexão juntos parecem uma cópia e derrubam a conexão; aí é só conectar de novo. Isso vale
+       desde o começo, para todos os assistentes. Eu acompanho quantas vezes uma conexão cai assim; se acontecer com
+       frequência, inclusive no Claude ou no ChatGPT, eu te trago as opções. E se o assistente disser que o limite do
+       dia acabou, no dia seguinte peça para ele continuar de onde parou: a última resposta que veio cortada diz
+       como continuar.
+    8. **Mais tarde, a trava extra no banco (decisão 11, M13.11):** o seu "pode" vem antes. O resto vem depois que o
+       M13.11 estiver no ar e eu avisar, porque no banco de verdade a base desse acesso só existe depois que a
+       mudança entra no sistema:
+       - você roda no editor de SQL do Neon um comando que eu te passo, uma vez no banco de verdade e outra no das
+         prévias, com uma senha que você cria e não me mostra;
+       - guarda o endereço de conexão numa variável da Vercel com dois valores: o do banco de verdade só no ambiente
+         Production e o do banco das prévias só no Preview. Nunca o endereço do banco de verdade nas prévias, porque
+         elas passariam a ler dados reais;
+       - liga a opção "Usar o acesso só de leitura do banco" em Configurações, na aba Assistentes, uma vez no sistema de
+         verdade e outra na prévia. Ela só liga se o acesso passar na conferência. Até lá, o MCP continua funcionando
+         como antes, e o painel avisa que a trava extra ainda não está ligada.
+
+       Não use o botão de criar papel do Neon: o acesso criado por ali vira dono de tudo, e a trava não vale. Se o
+       acesso tiver poder a mais, o MCP para de responder e avisa no painel. Se os nomes (decisão 2, M13.9) vierem
+       também, o mesmo passo se repete uma vez para um segundo acesso, o dos nomes, com outra senha e outra
+       variável.
+    9. **Mais tarde, a trava completa do histórico (M13.15):** o seu "pode" no Neon, para o sistema usar um acesso
+       ao banco que não consegue mexer no histórico. Eu te explico o passo a passo quando esse item chegar.
+50. **Tarefas das plataformas (M8.3b, no sistema desde 17/10).** A regra de nunca apagar dos passos 3 e 4 vale já: no
+    Beds24, cancelar é mudar o bloqueio para Cancelado, e mudar as datas é mudar o mesmo bloqueio. O resto vale depois
+    que esta parte entrar no sistema: a partir daí, o Início mostra numa linha os códigos de até cinco reservas do site
+    pagas (e, noutra linha, de até cinco pedidos do site confirmados à mão, sem pagamento), com "e mais N" para as
+    outras, com a saída depois de hoje (estadia por vir ou em curso), até alguém marcar **Datas fechadas nas OTAs** na
+    ficha. Na produção, hoje, só podem aparecer os confirmados à mão, porque nenhuma reserva foi paga pelo site (seção
+    2, M8.3b).
+    1. **Marque as que já foram fechadas:** para cada reserva do aviso que a equipe já fechou no Beds24 como bloqueio,
+       abra a ficha, confira as datas da reserva (a pergunta de confirmação do botão repete as datas) e clique **Datas
+       fechadas nas OTAs**. O código dela sai do aviso do Início e o próximo entra no lugar: o aviso mostra até cinco
+       códigos ("e mais N" para o resto), então repita até o aviso sumir.
+    2. **Feche as que ainda não foram:** no Beds24, feche as datas como **bloqueio** (nunca como reserva) e marque na
+       ficha.
+    3. **Cancelada:** no Beds24, mude o bloqueio para **Cancelado**; nunca apague. Depois, marque **Datas reabertas nas
+       OTAs** na ficha.
+    4. **Alterada:** no Beds24, mude as datas do mesmo bloqueio; nunca apague nem crie outro. Depois, marque **Datas
+       atualizadas nas OTAs** na ficha.
+    5. **Bloqueio apagado no passado:** se você ou a equipe já apagaram no Beds24 o bloqueio de uma reserva do site (por
+       costume, ao cancelar um pedido confirmado à mão, ou seguindo o texto antigo, "apague o bloqueio"), as noites podem
+       ter ficado fechadas no site. Me avise, com o código da reserva (SCL-…), que eu confiro e te digo o que fazer. A
+       importação não reabre nada sozinha.
+    6. **Avise a operação:** quem tem o papel "operação" passa a ver também o aviso da reserva paga, o do pedido
+       confirmado à mão e o botão **Datas fechadas nas OTAs**, sem nenhum valor (os avisos da cancelada e da alterada ela
+       já via). Passe para a equipe as três regras: fechar como bloqueio, nunca apagar, marcar na ficha.
+51. **Ligar o envio das reservas pagas pelo site ao Beds24 (M8.3c, pronto em 17/10), sem pressa, e só depois que esta
+    parte entrar no sistema.** Enquanto você não fizer estes passos, nada é escrito no Beds24, e a equipe segue com os
+    avisos à mão (item 50). Faça na ordem: cada passo diz o que conferir. Na produção ainda não há reserva paga pelo site;
+    os passos 1 a 6 podem ser feitos antes, e o envio só terá o que mandar depois que você ligar o pagamento de verdade
+    (seção 2, "Reserva paga pelo site no Beds24: o envio automático pronto e desligado").
+    1. **Credencial nova no Beds24 (decisão 10).** Na parte de API das configurações da conta do Beds24 (onde você gerou
+       o convite da primeira vez), gere um convite novo com exatamente estas sete permissões, e nenhuma outra:
+       - reservas (bookings): ler e escrever (read e write);
+       - dados pessoais das reservas (bookings-personal): só ler (read);
+       - dados financeiros das reservas (bookings-financial): só ler (read);
+       - imóveis (properties): só ler (read);
+       - calendário (inventory): ler e escrever (read e write).
+
+       Nunca marque "all" (ele inclui apagar), nunca a escrita de dados pessoais (ela deixaria mandar mensagens ao
+       hóspede pelo Beds24) e nenhuma outra permissão: com uma permissão a mais, o sistema não escreve nada. Se a tela não
+       deixar marcar ler e escrever juntos na mesma área, pare e me avise (é a pergunta 6 ao suporte, abaixo). Troque o
+       convite pelo refresh token como da primeira vez: o convite não vai direto na variável. Nunca cole nada disso no
+       chat.
+    2. **Vercel, só no ambiente Production.** Em *Settings → Environment Variables*, ponha o refresh token novo em
+       `BEDS24_REFRESH_TOKEN` **só no Production** (se a variável já existir lá, troque o valor). No **Preview**, deixe só a
+       `BEDS24_API_KEY` (o token que só lê): se houver um `BEDS24_REFRESH_TOKEN` no Preview, tire-o de lá (item 3). Faça
+       o Redeploy da produção. Confira: em Configurações → Integrações, "Testar conexão com Beds24" lê os quartos; numa
+       prévia, Integrações não mostra o aviso "Credencial de escrita presente fora da produção".
+    3. **Importação e calendário com a credencial nova.** A credencial nova passa a valer também para a importação e para
+       o envio de calendário. Em Configurações → Integrações, faça uma importação ("Importar agora", como no item 3) e
+       confira que ela não trouxe nada estranho. Se o envio de calendário estiver em uso, faça um envio ("Enviar agora ao
+       Beds24") e confira.
+    4. **Regras automáticas da conta do Beds24 (decisão 11).** No Beds24, em Auto Actions, confira:
+       - as que mandam e-mail (interno, ao proprietário ou à limpeza) para reservas com origem "All" ou "Direct": as
+         reservas que o sistema cria entram como diretas, e essas regras disparariam para elas. Desligue ou mude a origem
+         das que não devem disparar;
+       - as que põem ou tiram info codes das reservas: tire delas o info code SCL (e o SCL-ENSAIO, do ensaio). Senão, a
+         marca do sistema some, e as reservas novas param ("uma reserva voltou do Beds24 sem a marca do SCL").
+
+       Como nenhum e-mail do hóspede vai ao Beds24, nenhuma regra escreve ao hóspede.
+    5. **Ligar a chave.** Na Vercel, crie `BEDS24_ESCRITA_RESERVAS` com o valor `ligada` **só no Production** e faça o
+       Redeploy. Sozinha, ela não cria nada: sem o ensaio e sem um imóvel ligado, nenhuma reserva é criada (decisão 6).
+       Depois, em Integrações, "Reservas do site no Beds24", clique em **"Conferir os escopos"** até aparecer "Em ordem"
+       (o botão só lê o Beds24 com a chave ligada; por isso ele vem depois dela). Se aparecer "Permissões demais" ou
+       "Faltam escopos do convite", pare e me avise.
+    6. **O ensaio (decisão 7).** Em Integrações, "Ensaio": escolha um imóvel e datas sem procura (a minha proposta é o
+       103), de 1 a 7 noites, sem reserva nem bloqueio no SCL nessas datas. Enquanto o ensaio existir, essas datas ficam
+       fechadas no Airbnb e no Booking.
+       1. **"Criar o ensaio".** Confira no Beds24 a reserva de teste (1 pessoa, sem nome, com SCL-ENSAIO nos info items)
+          e, depois de cerca de 1 minuto, que as datas fecharam no Airbnb e no Booking.
+       2. **"Cancelar o ensaio".** Confira no Beds24 que a reserva de teste ficou Cancelada (não apagada) e, depois de
+          cerca de 1 minuto, que as datas reabriram no Airbnb e no Booking.
+       3. Integrações deve mostrar "conferido e cancelado" e, em "Último ensaio", "com a credencial atual". Só então o
+          botão "Ligar" dos imóveis fica liberado.
+
+       Se o ensaio parar no meio (a tela diz "Ensaio criado e não cancelado"), mude a reserva de teste para Cancelado no
+       Beds24, **sem apagar**, e use **"Conferir o ensaio"** (fica disponível 5 minutos depois do envio). Se ele terminar
+       "não concluído", me chame antes de tentar de novo. Me conte também o que você viu nas OTAs.
+    7. **Ligar o primeiro imóvel (decisão 6).** Em Integrações, "Imóveis ligados", clique em "Ligar" no imóvel que você
+       escolher. Valem só as reservas pagas pelo site confirmadas a partir daí; as de antes ficam com a equipe (na ficha,
+       "Passar ao sistema", se quiser entregá-las). Quando chegar a primeira reserva paga pelo site (depois de ligar o
+       pagamento de verdade), confira: a ficha (no bloco "No Beds24", "conferida", com o número no Beds24 e "Datas
+       fechadas nas OTAs" pelo sistema), o Início (o aviso some), o Beds24 (a reserva com o código SCL-… nos info items) e
+       o Airbnb e o Booking (as datas fechadas).
+    8. **Como parar.** Na hora: em Integrações, "Pausar as reservas do site". Vale na hora e para tudo, inclusive os
+       cancelamentos; o calendário e os preços não param. "Retomar" tira a pausa. Um imóvel só: "Desligar" (para só as
+       reservas novas dele; as que o sistema já criou continuam sendo mudadas e canceladas). De vez: tire
+       `BEDS24_ESCRITA_RESERVAS` da Vercel e faça o Redeploy. Isso só vale depois da publicação nova; numa urgência, pause
+       primeiro.
+
+    **Cuidados:**
+    - nunca copie as variáveis da produção da Vercel para rodar o sistema num computador: ali, o sistema pode se achar na
+      produção e escrever no Beds24;
+    - trocar a credencial do Beds24 de novo pede os passos 1 a 6 de novo: até um ensaio novo, as reservas novas param (o
+      motivo aparece em Integrações e no Início);
+    - os créditos do Beds24 (100 a cada 5 minutos) são divididos com a importação e o envio de calendário: quando eles
+      ficam baixos, o sistema para e continua na volta seguinte.
+
+    **A pergunta ao suporte do Beds24 (para a última parte, M8.3d).** Só você pode mandar, porque a conta é sua. A
+    pergunta diz o que o sistema faz e pede que o Beds24 confirme o que a documentação deles não deixa claro. As duas
+    primeiras são as de que a última parte depende: criar a reserva por cima de um bloqueio feito à mão e voltar a
+    confirmar uma reserva cancelada. As outras são pontos que o ensaio não responde. O texto está em inglês, a língua da
+    documentação da API do Beds24; se preferir mandar em português, me diga. Não ponha nele o número da conta, o convite
+    nem o token. Quando eles responderem, cole aqui a resposta (sem esses dados), e a última parte sai do "bloqueado".
+
+    Texto para colar:
+
+    > Hello, Beds24 support team.
+    >
+    > We are connecting our own booking system to our Beds24 account through API V2, with a refresh token. For bookings
+    > paid on our own website, our system will create, modify and cancel bookings with POST /bookings (one booking per
+    > request, never DELETE), so that Airbnb and Booking.com close and reopen the dates. We send only the room, the dates,
+    > the number of guests, the status and an info item with our booking code (no guest name, contact or price). Before we
+    > turn it on, could you please confirm the points below?
+    >
+    > 1. Booking over a block: if some nights of a room are blocked by a booking with status "black", or closed in the
+    >    calendar with the "blackout" override, can a confirmed booking be created over them with POST /bookings? What
+    >    does the "overbookingProtection" setting change in this case?
+    > 2. Reactivation: what happens when we change a booking from "cancelled" back to "confirmed" with POST /bookings? Are
+    >    the dates closed again on the channels? Is availability checked?
+    > 3. checkAvailability: when we send "checkAvailability": true in "actions" and the room is not available, what
+    >    exactly does the response look like (HTTP status, "success", "errors", "warnings" and message)? Does this check
+    >    take into account the minimum stay, nights without a price and blocked nights?
+    > 4. Modifications: is it correct that availability is not checked when we change the arrival or departure of an
+    >    existing booking (sent with its "id")?
+    > 5. Basic data: is an info item (code "SCL") basic booking data, covered by the "bookings" scope without
+    >    "bookings-personal"? Is the "notes" field basic data, and can it appear in any e-mail template sent to guests?
+    >    Does writing "firstName" and "lastName" require write access to "bookings-personal"?
+    > 6. Scopes: we will request exactly read and write on "bookings", read on "bookings-personal", read on
+    >    "bookings-financial", read on "properties", and read and write on "inventory". Does write access already include
+    >    read access for the same area? What is the exact format of the scopes in the response of GET
+    >    /authentication/details?
+    > 7. Price: when a booking is created without "price" and without invoice items, what price is stored for it?
+    > 8. Notifications: what are the default values of "notifyGuest", "notifyHost" and "allowWebhooks" in "actions" when
+    >    they are not sent? (We always send "notifyGuest": false and "notifyHost": false.)
+    > 9. Guests: what happens if "numAdult" is higher than the maximum number of guests of the room?
+    > 10. API address: which base URL should we use, https://beds24.com/api/v2 or https://api.beds24.com/v2?
+    > 11. Arrival filter: on GET /bookings, does an explicit "arrivalFrom" (for example 1900-01-01) turn off the default
+    >     filter that returns only current and future bookings?
+    > 12. Credits: how many credits does each of these calls use: GET /bookings with "includeInfoItems=true", GET
+    >     /bookings by "id", POST /bookings with one booking, GET /inventory/rooms/calendar and the token refresh?
+    >
+    > If it is easy for you, these would also help (our first test booking will show them too): in which key inside
+    > "new" the id of a created booking is returned; which "channel", "referer" and "apiSource" a booking created through
+    > the API receives; the exact names of the response headers with the remaining credits ("x-five-min-limit-remaining"
+    > or "X-FiveMinCreditLimit-Remaining"); and the time zone and format of "bookingTime".
+    >
+    > Thank you!
+
+    O que cada pergunta quer dizer:
+    1. **Reserva por cima de um bloqueio:** se o Beds24 aceita criar uma reserva confirmada sobre noites bloqueadas à
+       mão (o bloqueio do tipo "black" ou o fechamento do calendário) e o que a proteção contra venda dupla dele muda. É
+       o que a última parte precisa para "assumir" um bloqueio feito à mão.
+    2. **Voltar a confirmar:** o que acontece ao mudar uma reserva de Cancelada para Confirmada e se as datas fecham de
+       novo nas plataformas. Também é da última parte.
+    3. **A recusa por falta de disponibilidade:** como a resposta vem e se a conferência deles considera o mínimo de
+       noites, as noites sem preço e os bloqueios.
+    4. **Mudar as datas:** se é verdade que, ao mudar as datas de uma reserva, o Beds24 não confere se as noites novas
+       estão livres (por isso o sistema confere antes).
+    5. **Dado básico ou pessoal:** se a marca com o código, as notas e o nome contam como dado básico, e se as notas
+       aparecem nos e-mails ao hóspede. Decide se dá para pôr o código também no nome ou numa nota (decisão 1).
+    6. **As permissões:** se escrever já inclui ler na mesma área e como o Beds24 mostra as permissões.
+    7. **O preço:** que valor fica gravado na reserva criada sem valor.
+    8. **Os avisos do próprio Beds24:** o que ele faz quando não dizemos se avisa o hóspede, o anfitrião e os outros
+       sistemas ligados à conta.
+    9. **Pessoas a mais:** o que acontece quando o número de pessoas passa do máximo do quarto.
+    10. **O endereço da API:** qual dos dois endereços é o certo.
+    11. **As reservas antigas:** se o filtro de data de chegada, dito de forma explícita, faz vir também as reservas que
+        já passaram.
+    12. **Os créditos:** quanto cada chamada gasta.
+
+    O último parágrafo pede, se for fácil para eles, o que o próprio ensaio também vai mostrar: onde vem o número da
+    reserva criada, que canal ela recebe, o nome do aviso de créditos e o fuso da hora da reserva.
 
 ---
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
 **Preciso de você (sem pressa):**
+- **MCP do SCL (M13.1, 16/10) — 14 decisões, cada uma com um padrão** (detalhes em `requisitos/product/MCP-SCL.md`,
+  "Decisões em aberto para Diego"). Sem resposta, vale o padrão, menos nas que pedem um passo ou um "pode" seu
+  (4, 5, 10, 11, 12 e 14): essas esperam por você, e os itens do M13 que dependem delas ficam bloqueados. Nada disso
+  trava o que vem antes do M13:
+  1. **Quem conecta:** só você, pelo nome. A operação fica como opção desligada; o proprietário vem depois.
+  2. **O que o assistente vê:** o padrão é sem nomes, contatos ou textos livres; só códigos, valores e o link da tela
+     do painel. O nível seguinte, se você quiser, traz junto: o primeiro nome e a inicial do hóspede (o que eu tinha
+     proposto e você gostou), o nome inteiro do proprietário, o código da reserva na plataforma (Airbnb, Booking) e a
+     busca por nome e por esse código. Isso vem depois, no M13.9, com a Política de privacidade nova conferida pelo
+     advogado. Dá para escolher só uma parte (por exemplo, só o nome do hóspede), e eu ligo só o que você escolher;
+     o acesso do banco para os nomes também libera só essa parte. Uma parte nova depois pede outra resposta sua.
+  3. **Login:** o do próprio SCL, o mesmo do painel, sem serviço de fora.
+  4. **LGPD:** levar as perguntas ao advogado, no dossiê único, antes de ligar com os dados de verdade (seção 6,
+     item 49).
+  5. **Seus planos do Claude e do ChatGPT:** me diga quais são; antes de conectar, desligue o treino e ligue a
+     verificação em duas etapas. No Plus, se o ChatGPT no site não aceitar o SCL e o Codex não tiver como separar a
+     configuração do SCL da usada no código, não sobra saída pela OpenAI (seção 6, item 49.4).
+  6. **Endereço:** começar no endereço da Vercel e reconectar uma vez quando o domínio próprio entrar.
+  7. **Validade de uma conexão:** 30 dias no Claude; 7 no ChatGPT e no Codex.
+  8. **Avisos:** no Início e por e-mail a cada conexão nova, alertas de uso fora do padrão (a janela da madrugada
+     se ajusta ou se desliga) e um resumo semanal.
+  9. **Registro do que o assistente consultou:** 6 meses.
+  10. **Teste antes:** uma versão de teste fixa, com dados fictícios, para você experimentar antes do sistema de
+      verdade. Pede o seu "pode", porque muda uma configuração da Vercel.
+  11. **Trava extra no banco:** mais tarde, um acesso ao banco só de leitura para o MCP. Pede o seu "pode" antes e,
+      depois que essa parte estiver no ar e eu avisar, um passo seu: rodar no editor de SQL do Neon um comando que eu
+      te passo, nas duas versões do banco, com uma senha sua; guardar o endereço na Vercel com dois valores, o do
+      banco de verdade só em Production e o das prévias só em Preview; e ligar a opção no painel, que só liga se o
+      acesso passar na conferência (seção 6, item 49.8). Nunca pelo botão de criar papel do Neon, que daria a esse
+      acesso o poder de dono. Se os nomes (decisão 2) vierem, o mesmo passo se repete para o acesso dos nomes, com
+      outra senha e outra variável.
+  12. **Sessões de trabalho:** as do Claude e do Codex no código não usam o conector do SCL; só ele sai delas, e o
+      do Neon e os outros continuam. Você usa o SCL numa conversa só para ele. A ideia é uma regra do próprio
+      projeto, que eu ainda vou conferir no M13.7. Se tirar o SCL dessas sessões depender de uma configuração sua, eu
+      te digo onde, e a produção só liga depois disso. Se não houver jeito de tirar só o SCL, ele não fica ligado no
+      Claude, e eu te trago as opções (por exemplo, usar o SCL só pelo ChatGPT) para você escolher (seção 6, item
+      49.4).
+  13. **Histórico das mudanças:** fica para sempre, protegido no banco, mas sem nomes e contatos: antes da trava, ele
+      passa a registrar só que algo mudou. Os nomes e contatos que já guardou são anonimizados só depois da resposta
+      do advogado (decisão 4), num passo próprio (M13.14), com uma cópia de segurança do banco antes, porque a troca
+      não tem volta. O prazo e os pedidos das pessoas também vão ao advogado.
+  14. **Fase 2:** nada antes de a fase 1 estar em uso. Depois, você escolhe a primeira ação; a sugestão é uma sem
+      dinheiro e sem sistema externo, como bloquear datas no SCL.
+- **Reservas do site no Beds24 (M8.3, 16/10): dez decisões, cada uma com um padrão** (detalhes no desenho do M8.3,
+  decisões 1 a 11; a decisão 3 você já tomou em 16/10, nas respostas abaixo; a decisão 8 ficou com o padrão e foi
+  entregue no M8.3b, no sistema desde 17/10). Sem resposta, vale o padrão, e as
+  próximas partes seguem com ele. As decisões 6, 7, 10 e 11 pedem um passo seu, mas só antes de ligar o envio de
+  verdade (M8.3c), que traz o passo a passo; até lá, nada é escrito no Beds24. **Atualização de 17/10 (M8.3c):** o envio
+  de verdade ficou pronto e desligado, com as decisões 1, 2, 4, 5 e 9 no padrão; o passo a passo das decisões 6, 7, 10 e
+  11 está na seção 6, item 51, em ordem e com o que conferir em cada passo:
+  - **Decisão 1, dados do hóspede:** nenhum dado pessoal vai ao Beds24. Vai só uma marca com o código da reserva do
+    site. Pôr também o código no nome ou numa nota ("Site SCL-XXXXXX, não altere aqui") depende da resposta do suporte
+    do Beds24.
+  - **Decisão 2, valor:** o valor da reserva não vai ao Beds24. O financeiro fica só no SCL.
+  - **Decisão 4, hóspede que não aparece:** o sistema cancela a reserva no Beds24, como nos outros cancelamentos, para
+    as noites que sobram voltarem à venda nas plataformas.
+  - **Decisão 5, datas que a equipe já fechou à mão:** o sistema não mexe nelas sozinho. Assumir esses bloqueios fica
+    para o M8.3d, depois da resposta do suporte; até lá, a equipe segue cuidando delas à mão.
+  - **Decisão 6, imóveis ligados:** nenhum, até você escolher em Integrações, e só depois do ensaio. Desligar um imóvel
+    para só as reservas novas dele; as que o sistema já criou continuam sendo mudadas e canceladas. A pausa geral para
+    tudo. Desde 17/10 (M8.3c): o botão "Ligar" só fica liberado depois do ensaio conferido com a credencial de agora
+    (seção 6, item 51, passo 7).
+  - **Decisão 7, primeiro teste de verdade:** o Beds24 não tem um ambiente de teste igual ao de verdade. O padrão é o
+    ensaio em Integrações: uma reserva de teste criada, conferida nas plataformas e cancelada, num imóvel e numa data
+    sem procura que você escolhe (a minha proposta é o 103), com você acompanhando. Desde 17/10 (M8.3c): o ensaio ficou
+    em dois botões, "Criar o ensaio" e "Cancelar o ensaio", para você conferir nas plataformas entre um e outro (o envio
+    às plataformas leva cerca de 1 minuto), mais "Conferir o ensaio" para o que parar no meio. A decisão não muda; se
+    preferir um botão só, sem a conferência nas plataformas, me diga. O passo a passo está na seção 6, item 51, passo 6.
+  - **Decisão 8, botão "Datas fechadas nas OTAs":** o padrão é criar o botão, como dizia o texto de 10/10, para a
+    equipe marcar na ficha o que fechou à mão. Ele chega no M8.3b. Se preferir sem o botão, me diga antes disso.
+    **Atualização de 17/10 (M8.3b):** sem resposta sua, valeu o padrão: o botão foi feito, na ficha, no
+    bloco "No Beds24", para quem edita reservas, com confirmação e registro no histórico da reserva. Ele serve para a
+    reserva paga que o sistema não criou no Beds24 e para o pedido confirmado à mão, sem pagamento; depois da marca, o
+    sistema nunca cria aquela reserva no Beds24 (seção 2, M8.3b). Se preferir outro jeito, me diga.
+  - **Decisão 9, fechar as plataformas enquanto as datas estão só seguradas no site:** não, como já está no plano. O
+    seu argumento das 24 horas, na decisão 3, vai no mesmo sentido. O risco de duas vendas para as mesmas noites
+    nesse intervalo continua registrado.
+  - **Decisão 10, credencial nova do Beds24:** a chave das reservas não faz nada até você gerar uma credencial nova,
+    que escreve reservas, só com as permissões que o passo a passo vai listar, e guardá-la só na produção da Vercel.
+    Desde 17/10 (M8.3c): as sete permissões estão na seção 6, item 51, passo 1, e a credencial vai só no Production
+    (passo 2).
+  - **Decisão 11, regras automáticas da conta do Beds24:** antes de ligar, conferir com você as regras da conta que
+    mandam e-mails (internos, ao proprietário, à limpeza) nas reservas diretas e as que põem ou tiram marcas das
+    reservas, para nenhuma delas disparar um e-mail indevido nem apagar a marca do SCL. Eu levo a lista no M8.3c.
+    Desde 17/10 (M8.3c): a lista está na seção 6, item 51, passo 4.
+- **Datas e horas no padrão do Brasil (M7.22, 16/10): três perguntas** (detalhes na seção 2). (1) A agenda da equipe
+  ainda tem um horário padrão próprio de entrada e de saída, editável em Painel, Agenda. Agora ele começa igual ao da
+  casa (15:00 e 11:00) e vale só para a casa sem horário na ficha. Os dois campos continuam, ou saem e fica só o horário
+  da ficha de cada casa e o padrão do sistema? Até você decidir, ficam. (2) Os campos de data do navegador (as datas de
+  um bloqueio, de uma despesa ou de um período especial, no painel e no portal) e o de mês em Apartamentos abrem o
+  calendário do próprio aparelho, que pode começar no domingo ou aparecer em inglês, conforme o aparelho. O calendário de
+  datas do site é nosso e já começa na segunda. Esses campos ficam como estão, ou trocamos por um calendário próprio,
+  como o do site? (3) Em Rotinas, o selo que dizia "Esta semana" conta os próximos 7 dias corridos e agora se chama "Nos
+  próximos 7 dias". Fica assim, ou você prefere a semana do calendário, de segunda a domingo (uma rotina da semana que
+  vem passaria a mostrar "Em dia")?
 - **Textos do site que continuam fixos (M7.16, 15/10) — duas perguntas:** (1) os títulos e as frases listados na seção 2 (M7.16) já se editam em Configurações → Textos do site. Continuam fixos os nomes do menu ("Nossas casas", "Planeje sua estadia"), do rodapé e dos botões ("Ver todas as casas", "Continuar", "Conhecer as casas") e os textos do formulário da consulta (o título "Consultar disponibilidade" no alto do formulário, os nomes dos campos e as dicas abaixo do botão). Quer poder mudar esses também pelo painel? (2) A prévia do link de Nossas casas (no WhatsApp e nas redes) usa a frase da vitrine de casas da página inicial. Quer que ela passe a usar a frase da própria página Nossas casas, que agora você edita? Enquanto você não responde, tudo fica como está.
 - **Faixa "Prévia de teste" (M7.12, 15/10) — duas perguntas** (detalhes na seção 2): (1) quer uma faixa também no site de verdade até a entrada no ar (por exemplo "Site em preparação")? Hoje ela aparece só nas prévias. (2) O selo "Homologação · dados fictícios" do cabeçalho do painel, que aparece também no painel de verdade (que usa o banco de verdade): sai, fica, ou a faixa toma o lugar dele? Enquanto você não responde, nada muda no site e no painel de verdade.
 - **Busca em todas as casas (M7.9, 14/10): mostrar ou esconder as casas sem vaga.** Padrão (como no estudo): a página
@@ -3797,6 +4918,26 @@ ambiente).
   do estudo não entram, porque os direitos não foram liberados: você sobe as suas pelo painel.
 
 **Respostas:**
+- **Reserva do site no Beds24 (M8.3), 16/10:** você autorizou, com uma chave separada só para as reservas (opção B).
+  Conferido em 16/10: hoje nenhuma chave de escrita do Beds24 existe na Vercel, nem a do calendário, então o sistema
+  não escreve nada lá. A chave nova vai começar desligada; só você liga, depois de o M8.3 ficar pronto, com o passo a
+  passo no guia (desde 17/10, na seção 6, item 51). Como a pergunta foi feita para destravar o marketplace, a autorização vale também para as reservas
+  do marketplace vendidas pelo site (M12.2).
+- **Pedido confirmado à mão e o Beds24 (M8.3), 16/10: decidido.** Só vai ao Beds24 a reserva paga pelo site; o pedido
+  que a equipe confirma à mão, sem pagamento, não vai, e as datas dele a equipe fecha à mão, com o aviso do Início
+  (M8.3b). Nas suas palavras: "eu acho que tem que ir pro [Beds24] só depois de pago, resolvido pelo site", porque no
+  Airbnb o hóspede tem 24 horas e fechar tudo para quem não paga é uma trabalheira e tira reservas da empresa. Era
+  igual à minha proposta: você perguntou se era igual à sua, e eu confirmei que você tinha entendido certo.
+  Registrado no desenho do M8.3 (decisão 3) e no ROADMAP ("Decisões registradas"). Desde o M8.3b (17/10), o
+  aviso existe: numa linha própria do Início, com a mesma instrução e a mesma marca "Datas fechadas nas OTAs" da reserva
+  paga; e, se a equipe marcou as datas fechadas e depois cancela o pedido pelo "Cancelar reserva", o Início pede para
+  mudar o bloqueio para Cancelado, até a marca "Datas reabertas nas OTAs". Sem a marca das datas fechadas, esse
+  cancelamento não gera aviso, porque o sistema não sabe se a equipe tinha fechado as datas (seção 2, M8.3b). A frase
+  antiga da parte da cotação (M8.1) ficou como registro, seguida do que vale agora.
+- **Estratégia, 16/10:** de acordo com a ordem proposta: "vamos validar o Leblon e depois a gente pensa no resto".
+  Ipanema fica, talvez, como segundo piloto e depois vem a marca principal. O marketplace é o principal: a gestão total deve
+  ficar perto dos seis imóveis de hoje. As suítes para outros gestores (com o Giro Temporada como referência) e a
+  captação ficam para depois. Registrado no ROADMAP ("Decisões registradas") e em `requisitos/growth/ROADMAP.md`.
 - **Segundo gráfico do relatório e indicadores (5/10):** você achou "19 noites" ambíguo, lembrou o
   RevPAR/RevPAN e escolheu, entre as três opções que te mandei, a **ocupação por mês nos 12 meses
   com a diária média sobre cada barra**. Feito no M5.8 (seção 2), junto com "noites ocupadas", a

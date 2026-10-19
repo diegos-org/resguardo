@@ -12,7 +12,7 @@ import { NumerosDoRepasse } from "@/components/repasses/NumerosDoRepasse";
 import { type DonoAntecipavel, RepassesAntecipados } from "@/components/repasses/RepassesAntecipados";
 import { getDb } from "@/db/client";
 import { imoveis, proprietarios } from "@/db/schema";
-import { hojeISO } from "@/lib/datas";
+import { dataBr, dataHoraNoFuso, hojeISO } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { enviarFechamentoAcao, salvarFechamentoEmailAcao } from "@/fechamento/acoes";
 import { listarExtratos } from "@/relatorios/extratos";
@@ -25,7 +25,6 @@ import { periodicidadeDoProprietario } from "@/repasses/proprietario";
 import { lerInicioDoSistema, lerRegrasRepasses } from "@/repasses/regras-config";
 import { itensDoRepasse, limitesDoMes, listarRepassesDaOrganizacao, meioDiaDe, mesAFechar, nomeMes, somarMes } from "@/repasses/repasses";
 
-const dataBr = (d: string) => d.split("-").reverse().join("/");
 const SUCESSO: Record<string, string> = {
   fechado: "Mês fechado: repasse gerado.",
   pago: "Repasse marcado como pago.",
@@ -116,7 +115,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
 
       <details className={styles.form} aria-label="E-mail do fechamento">
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-          E-mail do fechamento aos proprietários · {configEmail.ativo ? `ligado (todo dia às 9h, a partir do dia ${proximoFechamento(regrasRepasses, hoje).dia})` : "desligado"}
+          E-mail do fechamento aos proprietários · {configEmail.ativo ? `ligado (todo dia às 09:00, a partir do dia ${proximoFechamento(regrasRepasses, hoje).dia})` : "desligado"}
         </summary>
         <p style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem", margin: 0 }}>
           Cada proprietário recebe o relatório do mês em PDF, uma vez, depois de o mês dele ser fechado (repasse gerado, ou nada a repassar e sem
@@ -193,7 +192,7 @@ export default async function Repasses({ searchParams }: PageProps<"/painel/fina
             <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--scl-texto-2)" }}>
               E-mail do fechamento:{" "}
               {p.situacao === "enviado"
-                ? `enviado${p.enviadoEm ? ` em ${new Date(p.enviadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}` : ""} para ${p.enviadoPara.join(", ") || "—"}`
+                ? `enviado${p.enviadoEm ? ` em ${dataHoraNoFuso(new Date(p.enviadoEm))}` : ""} para ${p.enviadoPara.join(", ") || "—"}`
                 : p.situacao === "aguardando"
                   ? `tentativa sem confirmação do provedor para ${p.destinos.join(", ")}: o mesmo e-mail é repetido depois de 15 minutos`
                   : p.situacao === "incerto"

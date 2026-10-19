@@ -46,6 +46,12 @@ describe("convites", () => {
     expect((await historicoDe(db, org, "proprietario", dono)).map((h) => h.acao)).toContain("convite.criar");
   });
 
+  it("o histórico diz até quando o convite vale no horário de Brasília (16/10 às 22:30 + 7 dias, não o dia em UTC)", async () => {
+    await convite("dona@example.com", new Date("2026-10-17T01:30:00Z"));
+    const [linha] = (await historicoDe(db, org, "proprietario", dono)).filter((h) => h.acao === "convite.criar");
+    expect(linha.mudancas.convite).toEqual([null, "para dona@example.com, vale até 23/10/2026 às 22:30"]);
+  });
+
   it("aceite: cria o acesso de proprietário ligado aos imóveis dele, uma vez só", async () => {
     const r = await convite();
     const uid = await aceitarConvite(db, r.token, "DONA@example.com", dias(1));

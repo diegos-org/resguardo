@@ -46,9 +46,19 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     const form = screen.getByRole("form", { name: "Preços e regras de venda do 403" });
     expect((within(form).getByLabelText(/Preço da noite/) as HTMLInputElement).value).toBe("300,00");
     expect((within(form).getByLabelText(/Estadia mínima/) as HTMLInputElement).value).toBe("2");
+    // Horários no formato 15:00 em qualquer aparelho (M7.22): campo de texto, nunca o nativo, que mostra AM/PM em inglês.
+    for (const [rotulo, valor] of [["Entrada a partir das", "15:00"], ["Saída até as", "11:00"]]) {
+      const campo = within(form).getByRole("textbox", { name: rotulo }) as HTMLInputElement;
+      expect([campo.type, campo.value, campo.placeholder, campo.required], rotulo).toEqual(["text", valor, "15:00", false]);
+    }
     // Dois grupos de dias (entrada e saída): só a segunda da entrada está marcada.
     const segundas = within(form).getAllByLabelText("segunda") as HTMLInputElement[];
     expect(segundas.map((c) => c.checked)).toEqual([true, false]);
+    // Os dias aparecem de segunda a domingo (M7.22), cada um com o número guardado (0 = domingo).
+    const entrada = within(form).getByRole("group", { name: /Entrada só nestes dias/ });
+    expect(within(entrada).getAllByRole("checkbox").map((c) => [c.parentElement?.textContent?.trim(), (c as HTMLInputElement).value])).toEqual([
+      ["segunda", "1"], ["terça", "2"], ["quarta", "3"], ["quinta", "4"], ["sexta", "5"], ["sábado", "6"], ["domingo", "0"],
+    ]);
     // Simulação com o preço cadastrado: no site o hóspede paga menos e o proprietário recebe mais que no Airbnb.
     expect(form.textContent).toContain(textoDaSimulacao(30000, PRECOS_MARKETPLACE_PADRAO, "Sua Casa Exemplo"));
     expect(form.textContent).toContain("no Airbnb você receberia R$ 252,00");
@@ -103,13 +113,13 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     const envio = (over: Partial<SituacaoEnvio> = {}): SituacaoEnvio => ({ naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: feito, ...over });
     expect(textoDoEnvio(envio({ naLista: false }), "SCL")).toContain("até a SCL incluir este imóvel no envio de calendário");
     expect(textoDoEnvio(envio({ automatico: false }), "SCL")).toContain("O envio aos canais é feito pela SCL");
-    expect(textoDoEnvio(envio(), "SCL")).toMatch(/roda todo dia.*Último envio: 01\/10\/2026, 07:00 \(concluído\)/);
+    expect(textoDoEnvio(envio(), "SCL")).toMatch(/roda todo dia.*Último envio: 01\/10\/2026 às 07:00 \(concluído\)/);
     // Sem nenhum envio real que tenha incluído o imóvel, ou com o imóvel deixado de fora no último (quarto inacessível, moeda), nada é prometido.
     expect(textoDoEnvio(envio({ ultimo: null }), "SCL")).toContain("até o primeiro envio aos canais confirmar este imóvel");
     expect(textoDoEnvio(envio({ ultimo: null }), "SCL")).not.toContain("roda todo dia");
     // O motivo técnico da falha (com nomes internos) fica no painel e nem chega ao portal; o proprietário vê que falhou e quando.
     const comFalha = textoDoEnvio(envio({ ultimo: { ...feito, falhou: true } }), "SCL");
-    expect(comFalha).toContain("a última (01/10/2026, 07:00) não conseguiu, e a SCL vê o motivo no painel");
+    expect(comFalha).toContain("a última (01/10/2026 às 07:00) não conseguiu, e a SCL vê o motivo no painel");
     expect(comFalha).not.toContain("credencial");
     expect(textoSalvo(envio({ ultimo: { ...feito, falhou: true } }), "SCL")).not.toContain("próximo envio");
     // Vínculo trocado depois do último envio: o veredito antigo não vale para o quarto novo.

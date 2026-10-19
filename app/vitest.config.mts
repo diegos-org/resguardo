@@ -12,5 +12,7 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     // Gera o banco de teste migrado uma vez por rodada (M0.8); cada teste parte desse retrato.
     globalSetup: ["src/db/testing.setup.ts"],
+    // M8.3 e M10.1a: nenhum teste chega ao Beds24 nem à Meta (WhatsApp) pela rede (a sessão pode ter credenciais reais no ambiente).
+    setupFiles: ["src/beds24/barreira-de-rede.setup.ts"],
   },
 });

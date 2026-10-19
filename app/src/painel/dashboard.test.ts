@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, getTableName, type Table } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { criarContrato } from "@/contratos/repositorio";
-import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { bloqueios, cadastrosMarketplace, cotacoes, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas, whatsappConta } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { registrarAjuste } from "@/ajustes/ajustes";
 import { criarCategoria } from "@/despesas/categorias";
@@ -15,8 +15,9 @@ import { autorizacaoDeOrigem } from "@/proprietarios/autorizacao";
 import { arquivarPedido, registrarPedidoContato } from "@/proprietarios/pedidos-contato";
 import { conferirTentativa } from "@/pagamentos/conferencia";
 import { ProvedorFalso } from "@/pagamentos/falso";
-import { minutos, montarCenario, pagarEConfirmar, pedir, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
-import { carregarDashboard, contaDeTesteParaInicio } from "./dashboard";
+import { alterar, cancelar, entradaPadrao, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, pedir, TOTAL, usuarioDeTeste } from "@/pagamentos/testes";
+import { confirmarReserva } from "@/reservas/repositorio";
+import { carregarDashboard, contaDeTesteParaInicio, type Dashboard } from "./dashboard";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -346,5 +347,124 @@ describe("Início: avisos do cancelamento pela política (M8.2c)", () => {
     expect((await carregarDashboard(db, c.org, base)).alertas.some((a) => a.texto.includes("Pedido de cancelamento"))).toBe(false);
     // Outra empresa não vê.
     expect((await carregarDashboard(db, org, { ...base, verCancelamentos: true })).alertas.some((a) => a.texto.includes("Pedido de cancelamento"))).toBe(false);
+  });
+});
+
+describe("Início: as tarefas das OTAs (M8.3b, seção 10, teste 14)", () => {
+  it("a operação (reserva:editar, sem o financeiro) vê a paga, a D3, a cancelada e a alterada, sem valores; sem a permissão, nada; o admin vê a paga uma vez; outra empresa, nada", async () => {
+    const c = await montarCenario(db);
+    const equipe = await usuarioDeTeste(c);
+    const x = await pagarEConfirmar(c);
+    const y = await pagarEConfirmar(c, { entrada: "2026-11-02", saida: "2026-11-05", email: "y@example.com" });
+    const z = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "z@example.com", liberar: true });
+    const h = await c.segurar({ entrada: "2026-11-20", saida: "2026-11-23", email: "d3@example.com" }, minutos(1));
+    expect((await confirmarReserva(db, c.org, h.reservaId, equipe, minutos(2))).ok).toBe(true);
+    const d3 = (await c.reserva(h.reservaId)).codigo;
+    expect((await cancelar(c, y.reservaId, entradaPadrao({ quemCancela: "empresa", motivoEmpresa: "forca_maior" }), equipe, minutos(60))).resultado.ok).toBe(true);
+    const { resultado } = await alterar(c, z.reservaId, { checkout: "2026-10-24" }, minutos(20), { autorId: equipe });
+    if (!resultado.ok || !("alteracaoId" in resultado)) throw new Error("alteração não segurada");
+    await pagarDiferenca(c, z.cotacaoId, resultado.alteracaoId, { quando: minutos(25) });
+    const base = { imoveis: await listarImoveis(db, c.org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: false, agora: minutos(90) };
+    const otas = (d: Dashboard) => d.alertas.filter((a) => /Datas fechadas nas OTAs|para Cancelado \(não apague\)|não apague nem crie outro/.test(a.texto));
+    const pagas = [x.reservaCodigo, z.reservaCodigo].sort((a, b) => a.localeCompare(b)).join(", ");
+    const operacao = await carregarDashboard(db, c.org, { ...base, verCancelamentos: true, verPagamentos: false });
+    expect(otas(operacao)).toEqual([
+      { nivel: "info", texto: `2 reserva(s) do site paga(s) (${pagas}): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.`, link: "/painel/reservas" },
+      { nivel: "info", texto: `1 reserva(s) do site confirmada(s) à mão, sem pagamento pelo site (${d3}): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.`, link: `/painel/reservas/${h.reservaId}` },
+      { nivel: "info", texto: `Reserva ${y.reservaCodigo}, cancelada: mude o bloqueio de 02/11 a 05/11 para Cancelado (não apague).`, link: `/painel/reservas/${y.reservaId}` },
+      { nivel: "info", texto: `Reserva ${z.reservaCodigo}, alterada: mude as datas do bloqueio para 20/10 a 24/10 (não apague nem crie outro).`, link: `/painel/reservas/${z.reservaId}` },
+    ]);
+    for (const a of operacao.alertas) expect(a.texto).not.toContain("R$");
+    // Sem reserva:editar, nada das OTAs (nem para quem só lê o financeiro: a paga saiu dos avisos do pagamento).
+    expect(otas(await carregarDashboard(db, c.org, base))).toEqual([]);
+    expect(otas(await carregarDashboard(db, c.org, { ...base, verFinanceiro: true, verPagamentos: true }))).toEqual([]);
+    const admin = await carregarDashboard(db, c.org, { ...base, verFinanceiro: true, verPagamentos: true, verCancelamentos: true });
+    expect(admin.alertas.filter((a) => a.texto.includes("reserva(s) do site paga(s)"))).toHaveLength(1);
+    expect(otas(await carregarDashboard(db, org, { ...base, verCancelamentos: true }))).toEqual([]);
+  });
+
+  it("M8.3c (bloco G): a linha \"Envio de reservas parado\" com a chave ligada no deploy de produção, e o link para Integrações só com verConfiguracao", async () => {
+    const c = await montarCenario(db);
+    const base = { imoveis: await listarImoveis(db, c.org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-01", verFinanceiro: false, agora: minutos(90), verCancelamentos: true };
+    // A chave ligada no deploy de produção sem o refresh token de escrita (valores fictícios; nada vai ao Beds24).
+    const env = { VERCEL_ENV: "production", NODE_ENV: "production", BEDS24_ESCRITA_RESERVAS: "ligada" } as NodeJS.ProcessEnv;
+    const parado = (d: Dashboard) => d.alertas.filter((a) => a.texto.startsWith("Envio de reservas parado"));
+    const texto = "Envio de reservas parado: falta o refresh token de escrita (BEDS24_REFRESH_TOKEN); nada é escrito.";
+    expect(parado(await carregarDashboard(db, c.org, { ...base, env, verConfiguracao: true }))).toEqual([{ nivel: "atencao", texto, link: "/painel/configuracoes/integracoes" }]);
+    expect(parado(await carregarDashboard(db, c.org, { ...base, env }))).toEqual([{ nivel: "atencao", texto }]);
+    // Sem o ambiente (ou fora da produção), nada é enviado de propósito: sem a linha.
+    expect(parado(await carregarDashboard(db, c.org, { ...base, verConfiguracao: true }))).toEqual([]);
+    expect(parado(await carregarDashboard(db, c.org, { ...base, env: { ...env, VERCEL_ENV: "preview" }, verConfiguracao: true }))).toEqual([]);
+  });
+});
+
+/**
+ * As tabelas que o dashboard lê pelo `select().from(...)` (um espião em volta do banco de teste), para provar que ele
+ * nunca consulta as conversas do WhatsApp: a contagem vem pronta de quem chama (`contarConversasSemResposta`).
+ */
+function espiarTabelas(alvo: Db): { banco: Db; tabelas: string[] } {
+  const tabelas: string[] = [];
+  const nome = (t: unknown) => {
+    try {
+      return getTableName(t as Table) ?? "?";
+    } catch {
+      return "?";
+    }
+  };
+  const comFrom = <T extends object>(construtor: T): T =>
+    new Proxy(construtor, {
+      get(t, p, r) {
+        const v = Reflect.get(t, p, r);
+        if (p === "from" && typeof v === "function") return (tabela: unknown, ...resto: unknown[]) => (tabelas.push(nome(tabela)), v.call(t, tabela, ...resto));
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+  const banco = new Proxy(alvo, {
+    get(t, p, r) {
+      const v = Reflect.get(t, p, r);
+      if ((p === "select" || p === "selectDistinct" || p === "selectDistinctOn") && typeof v === "function") return (...a: unknown[]) => comFrom(v.apply(t, a));
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+  });
+  return { banco, tabelas };
+}
+
+describe("WhatsApp no Início (M10.1a)", () => {
+  const base = async () => ({ imoveis: await listarImoveis(db, org), todos: true, periodo: { inicio: "2026-10-01", fim: "2026-11-01" }, ano: 2026, hoje: "2026-10-17", verFinanceiro: false, agora: new Date("2026-10-17T15:00:00Z") });
+  const doWhatsapp = (d: Dashboard) => d.alertas.filter((a) => a.texto.includes("WhatsApp"));
+
+  it("o número de conversas sem resposta vira o aviso com o texto exato e o link do filtro; 0 ou ausente, nada; o dashboard não consulta as conversas", async () => {
+    const { banco, tabelas } = espiarTabelas(db);
+    expect(doWhatsapp(await carregarDashboard(banco, org, { ...(await base()), conversasSemResposta: 2 }))).toEqual([
+      { nivel: "info", texto: "2 conversa(s) do WhatsApp sem resposta.", link: "/painel/mensagens?filtro=sem_resposta" },
+    ]);
+    expect(doWhatsapp(await carregarDashboard(banco, org, { ...(await base()), conversasSemResposta: 0 }))).toEqual([]);
+    expect(doWhatsapp(await carregarDashboard(banco, org, await base()))).toEqual([]);
+    // A espia vê as consultas do dashboard (as reservas, ao menos) e nenhuma às conversas ou às mensagens.
+    expect(tabelas).toContain("reservas");
+    expect(tabelas.filter((t) => t.startsWith("whatsapp_"))).toEqual([]);
+  });
+
+  it("a conta desconectada, aguardando reconexão ou suspensa avisa quem edita as configurações, com o texto exato, sem dado nenhum; conectada ou não conectada, nada", async () => {
+    const { banco, tabelas } = espiarTabelas(db);
+    const conta = async (situacao: "conectada" | "desconectada" | "aguardando_reconexao" | "suspensa") => {
+      await db.insert(whatsappConta).values({ organizacaoId: org, situacao, motivo: situacao === "desconectada" ? "PRIMARY_INACTIVITY" : null, situacaoEm: new Date("2026-10-17T12:00:00Z") }).onConflictDoUpdate({ target: whatsappConta.organizacaoId, set: { situacao } });
+      return doWhatsapp(await carregarDashboard(banco, org, { ...(await base()), verContaWhatsapp: true }));
+    };
+    // Antes do primeiro aviso: não conectado, sem aviso no Início (Integrações e a caixa de entrada mostram).
+    expect(doWhatsapp(await carregarDashboard(banco, org, { ...(await base()), verContaWhatsapp: true }))).toEqual([]);
+    const link = "/painel/configuracoes/integracoes";
+    expect(await conta("desconectada")).toEqual([{ nivel: "atencao", texto: "A conexão do WhatsApp com o sistema caiu: as mensagens novas não chegam ao painel.", link }]);
+    expect(await conta("aguardando_reconexao")).toEqual([{ nivel: "atencao", texto: "O WhatsApp está aguardando reconexão (troca de aparelho ou reinstalação).", link }]);
+    expect(await conta("suspensa")).toEqual([{ nivel: "atencao", texto: "A Meta suspendeu ou vai suspender a conta do WhatsApp.", link }]);
+    expect(await conta("conectada")).toEqual([]);
+    // Sem `verContaWhatsapp` (a operação), nada, e a conta nem é lida.
+    await conta("desconectada");
+    const lidas = tabelas.length;
+    expect(doWhatsapp(await carregarDashboard(banco, org, await base()))).toEqual([]);
+    expect(tabelas.slice(lidas)).not.toContain("whatsapp_conta");
+    // Só a situação da conta é lida; as conversas, nunca.
+    expect(tabelas).toContain("whatsapp_conta");
+    expect(tabelas.filter((t) => t.startsWith("whatsapp_") && t !== "whatsapp_conta")).toEqual([]);
   });
 });

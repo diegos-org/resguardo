@@ -54,7 +54,7 @@ import { dadosDoMotor } from "@/financeiro/aplicar";
 import { calcularReserva, type PendenciaDoCalculo } from "@/financeiro/motor";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { hojeISO, instanteLocal } from "@/lib/datas";
+import { diaHoraNoFuso, hojeISO, horaNoFuso, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { acordoVigente, lerHorariosReservas } from "@/reservas/horarios";
@@ -288,11 +288,8 @@ const FOLGA_MOMENTO_MS = 59_000;
 const VALOR_MAXIMO = 1_000_000_000;
 const ZERO: Componentes = { bruto: 0, taxa: 0, comissao: 0, parte: 0 };
 
-const fmt = (d: Date, fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
-const horaBr = (d: Date, fuso = FUSO_PAGAMENTO) => fmt(d, fuso, { hour: "2-digit", minute: "2-digit" });
 /** Um prazo: "HH:MM" quando acaba hoje (no fuso), senão "dd/mm às HH:MM" (o prazo das datas vai até 48 horas). */
-export const prazoBr = (d: Date, agora: Date, fuso = FUSO_PAGAMENTO) =>
-  hojeISO(fuso, d) === hojeISO(fuso, agora) ? horaBr(d, fuso) : `${fmt(d, fuso, { day: "2-digit", month: "2-digit" })} às ${horaBr(d, fuso)}`;
+export const prazoBr = (d: Date, agora: Date, fuso = FUSO_PAGAMENTO) => (hojeISO(fuso, d) === hojeISO(fuso, agora) ? horaNoFuso(d, fuso) : diaHoraNoFuso(d, fuso));
 /** O prazo das datas seguradas de uma alteração nova: o tempo da configuração, nunca depois do limite (D1, a entrada). */
 export const prazoDasDatas = (agora: Date, minutos: number, limite: Date | null | undefined) => {
   const ate = new Date(agora.getTime() + minutos * 60_000);
@@ -810,7 +807,7 @@ async function completarPrevia(
     const horarios = (await lerHorariosReservas(db, organizacaoId, [r.id])).get(r.id);
     if (acordoVigente(horarios, "entrada", r) || acordoVigente(horarios, "saida", r)) avisos.push("O combinado de horário de entrada e saída desta reserva deixa de valer com as datas novas: registre de novo, se for o caso.");
     if (x.depois.checkout !== antes.checkout) avisos.push(`A limpeza de saída muda para ${dataBr(x.depois.checkout)} (a já confirmada volta a pedida).`);
-    avisos.push("Depois de aplicada, mude o bloqueio no Beds24: feche as novas datas e reabra as antigas.");
+    avisos.push("Depois de aplicada, mude as datas no Beds24 como o Início mostrar (no mesmo bloqueio: não apague nem crie outro).");
   }
   if (x.origemValor !== "cotacao" && x.cotacao.total !== null)
     avisos.push(`Cotação do site para as novas datas: ${formatBRL(x.cotacao.total)}; valor usado: ${formatBRL(x.depois.valor)} (${x.motivoValor ? NOMES_MOTIVO_VALOR[x.motivoValor] : NOMES_ORIGEM_VALOR[x.origemValor]}).`);
@@ -908,7 +905,7 @@ export function perguntaDaAlteracao(p: PreviaAlteracao, fuso: string, agora: Dat
       `Segurar as novas datas (${depois}, ${nNoites(noites(p.depois.checkin, p.depois.checkout))}, ${pessoas(p.depois.hospedes)}) até ${prazoBr(ate, agora, fuso)} e liberar para o hóspede pagar a diferença de ${formatBRL(p.diferenca)} na página da reserva?`,
       ...(p.quemPede === "empresa" ? ["A alteração é proposta pela SCL: confirme que o hóspede paga a diferença."] : []),
       `Até o pagamento, a reserva continua como está (${dataBr(p.antes.checkin)} a ${dataBr(p.antes.checkout)}).`,
-      mudaDatas ? "Quando ele pagar, a alteração vale sozinha; depois, mude o bloqueio nas OTAs (no Beds24)." : "Quando ele pagar, a alteração vale sozinha.",
+      mudaDatas ? "Quando ele pagar, a alteração vale sozinha; depois, mude as datas no Beds24 como o Início mostrar (não apague nem crie outro)." : "Quando ele pagar, a alteração vale sozinha.",
     ].join(" ");
   }
   if (p.rumo === "reducao" && p.direito === "integral") {
@@ -1319,7 +1316,7 @@ async function gravarAlteracao(tx: Db, organizacaoId: string, m: Montada, autorI
         taxaCanal: null,
         valorLiquido: null,
         codigoCanal: "",
-        observacoes: `Datas seguradas para a alteração da reserva ${r.codigo} até ${fmt(holdAte, c.fuso, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}; somem sozinhas se a alteração não for concluída.`,
+        observacoes: `Datas seguradas para a alteração da reserva ${r.codigo} até ${diaHoraNoFuso(holdAte, c.fuso)}; somem sozinhas se a alteração não for concluída.`,
       },
       autorId,
       agora,
@@ -1497,7 +1494,10 @@ export async function decidirAprovacaoDaAlteracao(tx: Db, organizacaoId: string,
 
 type Resultado = { ok: true } | { ok: false; erro: string };
 
-/** "Datas atualizadas nas OTAs" (reserva:editar): uma vez, na alteração aplicada. O M8.3 grava sozinho quando chegar. */
+/**
+ * "Datas atualizadas nas OTAs" (reserva:editar): uma vez, na alteração aplicada. O texto do que fazer é da tarefa das OTAs
+ * (M8.3b, `beds24/reservas-site-tarefas.ts`); o M8.3c grava a marca sozinho (`por` nulo) quando a atualização for conferida.
+ */
 export async function marcarOtaAtualizada(db: Db, organizacaoId: string, alteracaoId: string, autorId: string | null, agora: Date = new Date()): Promise<Resultado> {
   if (!uuidValido(alteracaoId)) return { ok: false, erro: "Alteração não encontrada." };
   const [a] = await db.select().from(alteracoesReserva).where(and(eq(alteracoesReserva.id, alteracaoId), eq(alteracoesReserva.organizacaoId, organizacaoId)));

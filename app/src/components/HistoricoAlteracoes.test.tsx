@@ -32,3 +32,157 @@ describe("histórico da ficha do imóvel", () => {
     for (const c of campos) expect(itens.some((t) => t.startsWith(`${c}:`)), `campo sem nome: ${c}`).toBe(false);
   });
 });
+
+describe("datas no histórico (M7.22)", () => {
+  const de = (acao: string, mudancas: LinhaHistorico["mudancas"]): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao });
+
+  it("as datas AAAA-MM-DD saem em dd/mm/aaaa e os carimbos ISO no horário de Brasília, também nos registros antigos; o UUID e o quando ficam certos", () => {
+    render(
+      <HistoricoAlteracoes
+        linhas={[
+          de("reserva.sincronizar", { checkin: ["2026-10-16", "2026-10-18"], checkout: ["2026-10-20", "2026-10-21"] }),
+          de("recebimento.registrar", { recebimento: [null, "150000 em 2026-10-16"] }),
+          de("bloqueio.remover", { bloqueio: ["2026-10-16 a 2026-10-20", null] }),
+          de("contrato.encerrar", { contrato: ["Gestão completa até sem fim", "até 2026-12-31"] }),
+          de("imovel.periodo.excluir", { "período Réveillon": ["2026-12-28 a 2027-01-02", null] }),
+          de("adiantamento.quitar", { Pix: [null, "150000 em 2026-10-16"] }),
+          de("imovel.editar", { carimbo: [null, "2026-10-16T18:05:00.000Z"], id: [null, "00000000-0000-4000-8000-000000002026"] }),
+          // Os carimbos que a ficha da reserva mostra: pedido de cancelamento, conferência, cotação segurada e desistência.
+          de("reserva.cancelamento_pedido", { recebidoEm: [null, "2026-10-16T17:10:00.000Z"], conferenciaResolvidaEm: [null, "2026-10-16T02:30:00Z"] }),
+          de("cotacao.segurar", { cotacao: [null, "COT-1 até 2026-10-01T15:30:00.000Z"] }),
+          de("reserva.cancelamento_descartado", { desistencia: [null, "whatsapp em 2026-10-16T18:05:00-03:00"] }),
+        ]}
+      />,
+    );
+    const itens = [...document.querySelectorAll("li li")].map((li) => li.textContent ?? "");
+    expect(itens).toEqual([
+      "Entrada: 16/10/2026 → 18/10/2026",
+      "Saída: 20/10/2026 → 21/10/2026",
+      "Quem recebe do canal: — → 150000 em 16/10/2026",
+      "bloqueio: 16/10/2026 a 20/10/2026 → —",
+      "Contrato: Gestão completa até sem fim → até 31/12/2026",
+      "período Réveillon: 28/12/2026 a 02/01/2027 → —",
+      "Pix: — → 150000 em 16/10/2026",
+      "carimbo: — → 16/10/2026 às 15:05",
+      "id: — → 00000000-0000-4000-8000-000000002026",
+      "recebidoEm: — → 16/10/2026 às 14:10",
+      // Perto da meia-noite, o dia também é o de Brasília (02:30 em UTC ainda é o dia 15 aqui).
+      "conferenciaResolvidaEm: — → 15/10/2026 às 23:30",
+      "cotacao: — → COT-1 até 01/10/2026 às 12:30",
+      "desistencia: — → whatsapp em 16/10/2026 às 18:05",
+    ]);
+    expect(document.body.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T|\.000Z/);
+    // O quando de cada linha: dia e hora no horário de Brasília, sem vírgula nem segundos.
+    expect(document.body.textContent).toContain("Pessoa Fictícia removeu o bloqueio · 15/10/2026 às 12:00");
+    expect(document.body.textContent).not.toMatch(/15\/10\/2026, |12:00:00/);
+  });
+});
+
+describe("as marcas das OTAs no histórico da reserva (M8.2c, M8.2d e M8.3b)", () => {
+  it("as ações e os campos das marcas aparecem em português, sem o nome da coluna nem o código da ação", () => {
+    const de = (acao: string, mudancas: LinhaHistorico["mudancas"]): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao });
+    render(
+      <HistoricoAlteracoes
+        linhas={[
+          de("beds24.reserva.ota_fechada", { otaFechadaEm: [null, "2026-10-16T18:05:00.000Z"], situacaoNoBeds24: [null, "manual"] }),
+          de("beds24.reserva.ota_reaberta", { situacaoNoBeds24: ["manual", "encerrada"] }),
+          de("reserva.ota_liberada", { otaLiberadaEm: [null, "2026-10-16T18:05:00.000Z"] }),
+          de("alteracao.ota_atualizada", { otaAtualizadaEm: [null, "2026-10-16T18:05:00.000Z"] }),
+          de("beds24.reserva.adotar", { beds24Id: [null, "90001"] }),
+        ]}
+      />,
+    );
+    const texto = document.body.textContent ?? "";
+    for (const frase of [
+      "Pessoa Fictícia marcou as datas fechadas nas OTAs",
+      "Pessoa Fictícia marcou as datas reabertas nas OTAs",
+      "Pessoa Fictícia marcou o bloqueio mudado nas OTAs",
+      "Pessoa Fictícia ligou a reserva ao registro do Beds24",
+    ])
+      expect(texto).toContain(frase);
+    expect([...document.querySelectorAll("li li")].map((li) => li.textContent ?? "")).toEqual([
+      "Datas fechadas nas OTAs: — → 16/10/2026 às 15:05",
+      "Situação no Beds24: — → manual",
+      "Situação no Beds24: manual → encerrada",
+      "Datas reabertas nas OTAs: — → 16/10/2026 às 15:05",
+      "Bloqueio mudado nas OTAs: — → 16/10/2026 às 15:05",
+      "Id no Beds24: — → 90001",
+    ]);
+    expect(texto).not.toMatch(/ota_|otaFechadaEm|situacaoNoBeds24|beds24\.reserva/);
+  });
+});
+
+describe("histórico da reserva do site no Beds24 (M8.3c)", () => {
+  it("a escrita do sistema e os botões da ficha aparecem como frase, com os campos em português", () => {
+    const de = (acao: string, mudancas: LinhaHistorico["mudancas"], autor: string | null = "Pessoa Fictícia"): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao, autor });
+    render(
+      <HistoricoAlteracoes
+        linhas={[
+          de("beds24.reserva.criar", { beds24Id: [null, "900001"] }, null),
+          de("beds24.reserva.conferir", { situacaoNoBeds24: ["divergente", "conferida"], motivoNoBeds24: ["cancelada_no_beds24", null], otaFechadaPeloSistema: [false, true] }),
+          de("beds24.reserva.tentar_de_novo", { situacaoNoBeds24: ["conflito", "pendente"], operacao: ["conflito", "pendente"] }),
+          de("beds24.reserva.deixar_a_mao", { situacaoNoBeds24: ["aguardando_equipe", "manual"], operacoesSuperadas: [null, 1] }),
+          de("beds24.reserva.reenviar", { situacaoNoBeds24: ["divergente", "pendente"] }),
+          de("beds24.reserva.nao_existe", { operacao: ["incerta", "falhou"] }),
+          de("beds24.reserva.passar_ao_sistema", { situacaoNoBeds24: ["manual", "pendente"] }),
+          de("beds24.reserva.atualizar", {}, null),
+          de("beds24.reserva.cancelar", {}, null),
+          de("beds24.reserva.encerrar", {}, null),
+        ]}
+      />,
+    );
+    const frases = [...document.querySelectorAll("section > ul > li")].map((li) => (li.textContent ?? "").split(" · ")[0]);
+    expect(frases).toEqual([
+      "Sistema criou a reserva no Beds24",
+      "Pessoa Fictícia conferiu a reserva no Beds24",
+      "Pessoa Fictícia pediu de novo o envio ao Beds24",
+      "Pessoa Fictícia deixou a reserva à mão no Beds24",
+      "Pessoa Fictícia reenviou ao Beds24 o que está no SCL",
+      "Pessoa Fictícia confirmou que a reserva não existe no Beds24",
+      "Pessoa Fictícia passou a reserva ao sistema no Beds24",
+      "Sistema atualizou a reserva no Beds24",
+      "Sistema cancelou a reserva no Beds24",
+      "Sistema encerrou o acompanhamento no Beds24",
+    ]);
+    expect(document.body.textContent).not.toMatch(/beds24\.reserva|motivoNoBeds24|otaFechadaPeloSistema|operacoesSuperadas/);
+  });
+});
+
+describe("histórico do WhatsApp (M10.1a)", () => {
+  const de = (acao: string, mudancas: LinhaHistorico["mudancas"], autor: string | null = "Diego"): LinhaHistorico => ({ ...linha(mudancas), id: acao, acao, autor });
+
+  it("os rótulos são verbos, lidos como frase depois do autor, e os campos novos têm nome em português", () => {
+    render(
+      <HistoricoAlteracoes
+        linhas={[
+          de("whatsapp.conversa.vincular", { vinculo: [null, "reserva:00000000-0000-4000-8000-000000002026"] }),
+          de("whatsapp.conversa.desvincular", { vinculo: ["proprietario:00000000-0000-4000-8000-000000002027", null] }),
+          { ...de("whatsapp.conversa.vincular", { vinculo: ["tipo-desconhecido:00000000-0000-4000-8000-000000002028", "cotacao:00000000-0000-4000-8000-000000002029"] }), id: "vincular-2" },
+          de("whatsapp.conta.situacao", { situacao: ["conectada", "desconectada"], motivo: [null, "PRIMARY_INACTIVITY"] }, null),
+          de("configuracao.whatsapp", { quemVeConversas: ["so_admin", "admin_e_operacao"], wabaId: [null, "200000000000002"], numeroId: [null, "100000000000001"] }),
+        ]}
+      />,
+    );
+    const frases = [...document.querySelectorAll("section > ul > li")].map((li) => (li.textContent ?? "").split(" · ")[0]);
+    expect(frases).toEqual([
+      "Diego vinculou a conversa do WhatsApp",
+      "Diego desfez o vínculo da conversa do WhatsApp",
+      "Diego vinculou a conversa do WhatsApp",
+      "Sistema mudou a situação da conta do WhatsApp",
+      "Diego alterou a configuração do WhatsApp",
+    ]);
+    const itens = [...document.querySelectorAll("li li")].map((li) => li.textContent ?? "");
+    expect(itens).toEqual([
+      // O vínculo (gravado "tipo:id") sai só pelo tipo, nunca o id; tipo fora da lista, "—".
+      "Vínculo: — → uma reserva",
+      "Vínculo: um proprietário → —",
+      "Vínculo: — → uma cotação",
+      "Situação: conectada → desconectada",
+      "Motivo: — → PRIMARY_INACTIVITY",
+      "Quem vê as conversas: so_admin → admin_e_operacao",
+      "Id da conta (WABA): — → 200000000000002",
+      "Id do número: — → 100000000000001",
+    ]);
+    expect(document.body.textContent).not.toMatch(/00000000-0000-4000-8000/);
+  });
+});

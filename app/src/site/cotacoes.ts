@@ -6,17 +6,19 @@
  * pedido vence sozinho (rotina) e a equipe confirma ou cancela no painel; o pagamento online (M8.2) vai
  * usar este mesmo hold. Nada é escrito no Beds24 aqui (M8.3).
  */
-import { randomInt } from "node:crypto";
-import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { lerRegrasCalendario } from "@/calendario/regras-config";
 import { travaOcupada, violouUnicidade } from "@/db/erros";
-import { cotacoes, type EstadoCotacao, imoveis, pagamentos, reservas } from "@/db/schema";
+import { cotacoes, type EstadoCotacao, imoveis, imoveisDetalhes, pagamentos, reservas, whatsappContatos } from "@/db/schema";
 import type { Db } from "@/db/types";
+import { dataBr, diaHoraNoFuso } from "@/lib/datas";
 import { expirarAlteracoesVencidas } from "@/pagamentos/alteracao-prazo";
 import { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS, cotacaoEmCarencia, PRAZO_CARTAO_SEM_RESPOSTA_DIAS } from "@/pagamentos/andamento";
 import { cancelarReserva, sincronizarReserva } from "@/reservas/repositorio";
+import { codigoCotacaoValido, gerarCodigoCotacao } from "./codigo-cotacao";
 import { consultarDisponibilidade, type Disponibilidade } from "./disponibilidade";
+import { type RegrasDaCasa, regrasDaCasa } from "./regras-da-casa";
 import type { PedidoConsulta } from "./site";
 
 export type Cotacao = typeof cotacoes.$inferSelect;
@@ -37,14 +39,9 @@ export const GUARDAR_COTACAO_SEM_PEDIDO_DIAS = 30;
  */
 export { CARENCIA_PAGAMENTO_MINUTOS, CARENCIA_PAGAMENTO_MS };
 
-const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/1/I
-/** Código público da cotação, ex.: COT-7K2QXM9A. Não é credencial. */
-export function gerarCodigoCotacao(): string {
-  let s = "";
-  for (let i = 0; i < 8; i++) s += ALFABETO[randomInt(ALFABETO.length)];
-  return `COT-${s}`;
-}
-export const codigoCotacaoValido = (c: string) => /^COT-[A-HJ-NP-Z2-9]{8}$/.test(c);
+// Código público da cotação: puro, em ./codigo-cotacao (M10.1a: o vínculo do WhatsApp lê os códigos sem importar este
+// módulo, que grava cotações e reservas). Reexportado aqui para quem já importava daqui.
+export { codigoCotacaoValido, codigosDeCotacaoNoTexto, gerarCodigoCotacao } from "./codigo-cotacao";
 
 const MENSAGEM_ESTADO: Record<EstadoCotacao, string> = {
   aberta: "",
@@ -178,6 +175,29 @@ export async function obterCotacao(db: Db, organizacaoId: string, codigo: string
   return c ? { ...c.cotacao, imovelCodigo: c.imovelCodigo, imovelNome: c.imovelNome, fuso: c.fuso } : null;
 }
 
+/**
+ * Horários e regras de convivência da casa da cotação (M7.20), para a página da cotação: a mesma cotação de `obterCotacao`
+ * (que o pagamento também usa e fica como está), com a ficha do imóvel. Não olha se a casa está no site: a reserva feita
+ * numa casa que saiu do site ainda mostra os horários e as regras. Sem ficha, os horários padrão (`regrasDaCasa`).
+ */
+export async function regrasDaCasaDaCotacao(db: Db, organizacaoId: string, codigo: string): Promise<RegrasDaCasa | null> {
+  if (!codigoCotacaoValido(codigo)) return null;
+  const [l] = await db
+    .select({
+      checkinAPartirDe: imoveisDetalhes.checkinAPartirDe,
+      checkoutAte: imoveisDetalhes.checkoutAte,
+      aceitaAnimais: imoveisDetalhes.aceitaAnimais,
+      permiteFumar: imoveisDetalhes.permiteFumar,
+      permiteFestas: imoveisDetalhes.permiteFestas,
+      regrasCasa: imoveisDetalhes.regrasCasa,
+    })
+    .from(cotacoes)
+    .innerJoin(imoveis, eq(imoveis.id, cotacoes.imovelId))
+    .leftJoin(imoveisDetalhes, eq(imoveisDetalhes.imovelId, imoveis.id))
+    .where(and(eq(cotacoes.organizacaoId, organizacaoId), eq(cotacoes.codigo, codigo)));
+  return l ? regrasDaCasa(l) : null;
+}
+
 const pedidoDa = (c: Cotacao & { imovelCodigo: string }): PedidoConsulta => ({ imovel: c.imovelCodigo, entrada: c.checkin, saida: c.checkout, hospedes: String(c.hospedes) });
 
 export type CotacaoVista = {
@@ -227,13 +247,12 @@ export type ResultadoHold =
   | { ok: true; cotacao: Cotacao; reservaCodigo: string; holdAte: Date }
   | { ok: false; erro: string; erros?: ErrosContato; motivos?: string[]; estado?: EstadoCotacao };
 
-const dataBr = (d: string) => d.split("-").reverse().join("/");
 /** Mesmo texto para reserva ou pagamento em andamento com o e-mail: não revela nada do pedido de outra pessoa. */
 export const ERRO_EMAIL_EM_ANDAMENTO = "Já existe uma reserva ou um pagamento em andamento com este e-mail. Use o link daquela cotação ou fale com a equipe pelo WhatsApp.";
 /** A observação do pedido diz até quando as datas estão seguradas (e se um pagamento estendeu); aceita o texto antigo. */
 const OBSERVACAO_PRAZO = /Datas seguradas até [^;.]+(?: \(estendido pelo (?:Pix|pagamento)\))?;/;
 const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const horaBr = (d: Date, fuso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
+const horaBr = (d: Date, fuso: string) => diaHoraNoFuso(d, fuso);
 
 /**
  * Segura as datas de uma cotação aberta: numa só transação, trava o imóvel, vence os holds atrasados dele,
@@ -379,8 +398,9 @@ async function fecharHold(tx: Db, c: { id: string; organizacaoId: string; reserv
 /**
  * Fecha o ciclo dos holds (ver `fecharHold`). Sem `imovelId` (rotina), cada hold vence numa transação curta
  * própria, travando o imóvel primeiro (a ordem única: imóvel → reserva → cotação → pagamentos), e a rotina
- * também apaga cotações que nunca viraram pedido depois de 30 dias. Com `imovelId` (antes de segurar), roda na
- * transação de quem chama, que já travou o imóvel. `organizacaoId` null = todas as empresas (rotina).
+ * também apaga cotações que nunca viraram pedido depois de 30 dias (menos as vinculadas a uma conversa do WhatsApp,
+ * M10.1a). Com `imovelId` (antes de segurar), roda na transação de quem chama, que já travou o imóvel.
+ * `organizacaoId` null = todas as empresas (rotina).
  */
 export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null, agora = new Date(), imovelId?: string): Promise<ResumoExpiracao> {
   const resumo: ResumoExpiracao = { expiradas: 0, convertidas: 0, canceladas: 0, removidas: 0, falhas: 0 };
@@ -431,6 +451,8 @@ export async function expirarHoldsVencidos(db: Db, organizacaoId: string | null,
         inArray(cotacoes.estado, ["aberta", "desatualizada"]),
         isNull(cotacoes.reservaId),
         lt(cotacoes.criadaEm, new Date(agora.getTime() - GUARDAR_COTACAO_SEM_PEDIDO_DIAS * 86_400_000)),
+        // M10.1a: cotação vinculada a uma conversa do WhatsApp não é apagada (a FK não deixaria, e o vínculo é histórico).
+        notExists(db.select({ um: sql`1` }).from(whatsappContatos).where(eq(whatsappContatos.cotacaoId, cotacoes.id))),
       ),
     )
     .returning({ id: cotacoes.id });

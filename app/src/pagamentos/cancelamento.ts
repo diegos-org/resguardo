@@ -61,7 +61,7 @@ import {
 import type { Db } from "@/db/types";
 import { travarMotorDaReserva } from "@/financeiro/trava";
 import { ERRO_DADOS_PESSOAIS, textoSemDadosPessoais } from "@/lib/dados-pessoais";
-import { hojeISO, instanteLocal } from "@/lib/datas";
+import { diaHoraNoFuso as diaHoraBr, diaMesBr, diaMesNoFuso as diaBr, hojeISO, instanteLocal } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { formatBRL } from "@/lib/money";
 import { repasseAPagarDaReservaDados } from "@/repasses/recebimentos";
@@ -257,12 +257,9 @@ const FOLGA_MOMENTO_MS = 59_000;
 /** Um pedido registrado mais de 48 h depois de chegar pede conferência. */
 const REGISTRO_TARDIO_MS = 48 * 3_600_000;
 
-const fmt = (d: Date, fuso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("pt-BR", { timeZone: fuso, ...o }).format(d);
-/** "dd/mm" no fuso. */
-export const diaBr = (d: Date, fuso = FUSO_PAGAMENTO) => fmt(d, fuso, { day: "2-digit", month: "2-digit" });
-/** "dd/mm às HH:MM" no fuso. */
-export const diaHoraBr = (d: Date, fuso = FUSO_PAGAMENTO) => `${diaBr(d, fuso)} às ${fmt(d, fuso, { hour: "2-digit", minute: "2-digit" })}`;
-const dataIsoBr = (d: string) => d.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
+/** "dd/mm" e "dd/mm às HH:MM" no fuso (padrão: São Paulo, o fuso do pagamento): as escritas únicas de lib/datas. */
+export { diaBr, diaHoraBr };
+const dataIsoBr = diaMesBr;
 const minuto = (d: Date) => Math.floor(d.getTime() / 60_000);
 const emVigor = () => and(isNull(lancamentos.estornoDe), sql`not exists (select 1 from ${lancamentos} e where e.estorno_de = ${lancamentos.id})`);
 
@@ -773,7 +770,7 @@ export function perguntaDoCancelamento(x: {
   const prefixo = x.quemCancela === "nao_comparecimento" ? "Confirme que o hóspede não chegou e não avisou de atraso. " : "";
   const base = NOMES_BASE_CANCELAMENTO[x.base];
   if (x.direito === "nenhum")
-    return `${prefixo}Cancelar a reserva ${x.codigo} sem devolução? Base: ${base}. O valor pago (${formatBRL(x.valorRetido)}) fica retido e é dividido como uma reserva normal: a parte do proprietário fica disponível depois da data de entrada original (${dataIsoBr(x.checkin)}) e da liberação do Mercado Pago. As datas voltam à venda no site; reabra-as nas OTAs. O cancelamento não pode ser desfeito.`;
+    return `${prefixo}Cancelar a reserva ${x.codigo} sem devolução? Base: ${base}. O valor pago (${formatBRL(x.valorRetido)}) fica retido e é dividido como uma reserva normal: a parte do proprietário fica disponível depois da data de entrada original (${dataIsoBr(x.checkin)}) e da liberação do Mercado Pago. As datas voltam à venda no site; nas OTAs, siga o aviso do Início (no Beds24, mude para Cancelado; não apague). O cancelamento não pode ser desfeito.`;
   const como = x.rota === "pedida" ? " pelo Mercado Pago" : x.rota === "fora_do_prazo" ? " — a devolução sai pelo painel do Mercado Pago ou por fora" : x.rota === "ja_devolvida" ? " — o Mercado Pago já devolveu" : "";
   return [
     `${prefixo}Cancelar a reserva ${x.codigo} e devolver ao hóspede ${formatBRL(x.valorADevolver)} (o valor integral pago)${como}?`,
@@ -781,7 +778,7 @@ export function perguntaDoCancelamento(x: {
     `A parte do proprietário (${formatBRL(x.parteProprietario)}) e a comissão (${formatBRL(x.comissao)}) saem do financeiro; a taxa do Mercado Pago que não voltar fica com a SCL.`,
     ...(x.perdaDoProprietario > 0 ? [`O proprietário deixa de receber ${formatBRL(x.perdaDoProprietario)} que receberia pela política.`] : []),
     ...(x.descontoJaRepassado > 0 ? [`${formatBRL(x.descontoJaRepassado)} já repassados ao proprietário são descontados no próximo repasse dele.`] : []),
-    "As datas voltam à venda no site; reabra-as nas OTAs (no Beds24, apague o bloqueio). O cancelamento não pode ser desfeito.",
+    "As datas voltam à venda no site; nas OTAs, siga o aviso do Início (no Beds24, mude para Cancelado; não apague). O cancelamento não pode ser desfeito.",
   ].join(" ");
 }
 
@@ -1163,7 +1160,11 @@ export async function descartarPedidoDeCancelamento(
   }
 }
 
-/** "Datas reabertas nas OTAs" (reserva:editar): uma vez, no cancelamento decidido. O M8.3 grava sozinho quando chegar. */
+/**
+ * "Datas reabertas nas OTAs" (reserva:editar): uma vez, no cancelamento decidido. O texto do que fazer é da tarefa das OTAs
+ * (M8.3b, `beds24/reservas-site-tarefas.ts`); o M8.3c grava a marca sozinho (`por` nulo) quando o cancelamento da reserva
+ * criada pelo sistema for conferido.
+ */
 export async function marcarOtaLiberada(db: Db, organizacaoId: string, reservaId: string, autorId: string | null, agora: Date = new Date()): Promise<Resultado> {
   if (!uuidValido(reservaId)) return { ok: false, erro: "Reserva não encontrada." };
   const [c] = await db
@@ -1329,7 +1330,7 @@ async function montarContestada(db: Db, organizacaoId: string, t: Travado, agora
   const pergunta = [
     `Cancelar a reserva ${r.codigo} sem devolução pelo sistema?`,
     `O pagamento está em disputa: o valor pago (${formatBRL(valorRetido)}) fica retido e é dividido como uma reserva cancelada sem devolução; se o hóspede ganhar a disputa, o dinheiro volta a ele por ela (e a decisão de quem arca vale sobre o valor perdido).`,
-    "As datas voltam à venda no site; reabra-as nas OTAs (no Beds24, apague o bloqueio). O cancelamento não pode ser desfeito.",
+    "As datas voltam à venda no site; nas OTAs, siga o aviso do Início (no Beds24, mude para Cancelado; não apague). O cancelamento não pode ser desfeito.",
   ].join(" ");
   return { ok: true, m: { t, p, ativo, alteracaoADesistir: segurada, previa: { valorPago, valorRetido, disputas, avisos, assinatura, pergunta } } };
 }
@@ -1350,9 +1351,9 @@ export async function previaDoCancelamentoContestado(db: Db, organizacaoId: stri
  * conferidos por quem chama; `BotaoConfirmar` com a pergunta da prévia e nota obrigatória). Grava um cancelamento com o
  * motivo `contestacao` (quem cancela: a SCL; base `contestacao`), sem decisão pela política: a reserva fica `cancelada` com
  * `valor_retido` (o pago menos o devolvido realizado) e nenhuma devolução é criada — o dinheiro volta ao titular pela
- * disputa, se ele ganhar. O motor divide o retido como no M8.2c ("Dinheiro retido (sem devolução)"). A tarefa "reabra as
- * datas nas OTAs" do M8.2c entra no Início sozinha (o cancelamento sem a marca das OTAs) e a página do hóspede mostra a
- * reserva cancelada "em conferência" (`canceladaPelaDisputa`). A disputa segue igual: perdida, a decisão de quem arca vale
+ * disputa, se ele ganhar. O motor divide o retido como no M8.2c ("Dinheiro retido (sem devolução)"). A tarefa das OTAs
+ * (M8.3b: mudar para Cancelado no Beds24, sem apagar) entra no Início sozinha (o cancelamento sem a marca) e a página do
+ * hóspede mostra a reserva cancelada "em conferência" (`canceladaPelaDisputa`). A disputa segue igual: perdida, a decisão de quem arca vale
  * sobre o valor perdido; ganha, o banco deu a cobrança por válida e o retido continua dividido como numa reserva cancelada
  * sem devolução. Assinatura da prévia diferente = `previa_mudou`; trava ocupada = `ocupado`.
  */

@@ -13,7 +13,8 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 const SITUACAO: Record<SituacaoRotina, [string, string]> = {
   atrasada: ["Atrasada", "var(--scl-erro)"],
   hoje: ["Vence hoje", "var(--scl-aviso)"],
-  esta_semana: ["Esta semana", "var(--scl-info)"],
+  // A conta é de 7 dias corridos a partir de amanhã (rotinas.ts), não a semana do calendário: o rótulo diz isso (M7.22).
+  esta_semana: ["Nos próximos 7 dias", "var(--scl-info)"],
   em_dia: ["Em dia", "var(--scl-ok)"],
   arquivada: ["Arquivada", "var(--scl-texto-2)"],
 };

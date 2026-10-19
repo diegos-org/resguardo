@@ -1,5 +1,18 @@
 import { sql } from "drizzle-orm";
 import { type AnyPgColumn, boolean, check, customType, date, foreignKey, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import type {
+  DetalheOperacaoBeds24,
+  EscoposLidosBeds24,
+  EsperadoBeds24,
+  LidoBeds24,
+  ModoOperacaoBeds24,
+  MotivoAcompanhamentoBeds24,
+  PedidoBeds24,
+  SituacaoAcompanhamentoBeds24,
+  SituacaoOperacaoBeds24,
+  TipoOperacaoBeds24,
+} from "@/beds24/reservas-site-regras";
+import type { RespostaBeds24 } from "@/beds24/tipos";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import type { CodigoDevolucao, ModoTresDS, StatusTresDS } from "@/pagamentos/provedor";
 import type {
@@ -18,6 +31,19 @@ import type {
 } from "@/pagamentos/contestacao-regras";
 import type { PeriodicidadeRepasse } from "@/repasses/periodicidade";
 import type { SituacaoDisponibilidade } from "@/site/disponibilidade";
+import type {
+  CampoAviso,
+  Direcao,
+  EventoConta,
+  IniciadoPor,
+  MotivoDesconexao,
+  Origem,
+  ResultadoEmail,
+  ResultadoEvento,
+  Sincronizacao,
+  SituacaoConta,
+  TipoMensagem,
+} from "@/whatsapp/regras";
 
 /**
  * Esquema do banco (Drizzle). Novas tabelas entram aqui e geram migração com
@@ -2260,5 +2286,310 @@ export const eventosPagamento = pgTable(
 export const pagamentosAvisosDia = pgTable("pagamentos_avisos_dia", {
   dia: date("dia", { mode: "string" }).primaryKey(),
   assinaturasRecusadas: integer("assinaturas_recusadas").notNull().default(0),
+  ultimoValidoEm: timestamp("ultimo_valido_em", { withTimezone: true }),
+});
+
+// ---------------------------------------------------------------------------
+// Reserva paga do site no Beds24 (M8.3, desenho em requisitos/product/RESERVA-SITE-BEDS24.md): o acompanhamento de cada
+// reserva do site e a fila/histórico das operações. Listas fechadas em beds24/reservas-site-regras.ts; colunas de texto
+// sem CHECK, como as do M8.2. Nenhum dado pessoal nem valor: só códigos, ids do Beds24, quarto, datas, número de pessoas,
+// situação e a impressão da credencial (nunca a credencial). O id final do Beds24 mora num lugar só,
+// `reservas.beds24_id`; até a fase 3 ele fica na operação.
+// ---------------------------------------------------------------------------
+
+/**
+ * Acompanhamento: uma linha por reserva do site que o M8.3 acompanha. Nasce pela rotina (chave pronta e imóvel ligado),
+ * pela marca manual ou por "Deixar à mão". `versao` sobe a cada intenção nova (chaves `<tipo>:<reservaId>:<versao>`).
+ */
+export const beds24ReservasSite = pgTable(
+  "beds24_reservas_site",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    reservaId: uuid("reserva_id").notNull().references(() => reservas.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    /** O quarto onde a reserva foi (ou vai ser) criada: atualizar e cancelar vão sempre a ele. Vazio antes da primeira intenção. */
+    propertyId: text("property_id"),
+    roomId: text("room_id"),
+    /** `impressaoCredencialBeds24` da criação, nunca a credencial em si. */
+    credencial: text("credencial").notNull().default(""),
+    /** `reservas.codigo` (ex.: SCL-7K2QXM), a marca gravada no Beds24. */
+    referencia: text("referencia").notNull(),
+    situacao: text("situacao").$type<SituacaoAcompanhamentoBeds24>().notNull().default("pendente"),
+    motivo: text("motivo").$type<MotivoAcompanhamentoBeds24>(),
+    versao: integer("versao").notNull().default(0),
+    /** O que o SCL quer no Beds24, e a assinatura dele (a régua compara a de agora com esta). */
+    esperado: jsonb("esperado").$type<EsperadoBeds24>(),
+    assinaturaEsperada: text("assinatura_esperada"),
+    /** A última leitura do Beds24 (só uma leitura mais nova sobrescreve); serve para detectar divergência, nunca para decidir o envio. */
+    lido: jsonb("lido").$type<LidoBeds24>(),
+    lidoEm: timestamp("lido_em", { withTimezone: true }),
+    /** A última conferência que bateu. */
+    conferidaEm: timestamp("conferida_em", { withTimezone: true }),
+    /** Marca do aviso "reserva paga": `por` nulo = o sistema; preenchido = a marca manual (D8). */
+    otaFechadaEm: timestamp("ota_fechada_em", { withTimezone: true }),
+    otaFechadaPor: uuid("ota_fechada_por").references(() => usuarios.id, { onDelete: "set null" }),
+    /** Falhas antes do POST e o atraso até a próxima. */
+    tentativas: integer("tentativas").notNull().default(0),
+    proximaTentativaEm: timestamp("proxima_tentativa_em", { withTimezone: true }),
+    /** Contador próprio da incerteza: "Tentar de novo" não zera. */
+    buscasSemConclusao: integer("buscas_sem_conclusao").notNull().default(0),
+    avisadaEm: timestamp("avisada_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("beds24_reservas_site_reserva").on(t.organizacaoId, t.reservaId)],
+);
+
+/**
+ * Uma operação (criar, atualizar, cancelar, vincular ou ensaio; real ou simulação). A chave dá a idempotência; no
+ * máximo uma operação ativa (pendente, enviando, incerta) por reserva. `iniciado_em` vem do relógio do banco; `enviado_em`
+ * é gravado logo antes do POST e `beds24_id` logo depois da resposta, antes da fase 3. `erro` é sempre uma mensagem segura.
+ */
+export const beds24ReservasOperacoes = pgTable(
+  "beds24_reservas_operacoes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    /** Nulo no ensaio. */
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    /** Nulo na simulação e no ensaio. Chave estrangeira com nome próprio (abaixo): o automático passaria de 63 caracteres. */
+    acompanhamentoId: uuid("acompanhamento_id"),
+    tipo: text("tipo").$type<TipoOperacaoBeds24>().notNull(),
+    chave: text("chave").notNull(),
+    modo: text("modo").$type<ModoOperacaoBeds24>().notNull(),
+    situacao: text("situacao").$type<SituacaoOperacaoBeds24>().notNull().default("pendente"),
+    /** Resumo do que foi ou seria enviado: quarto, datas, pessoas, situação e referência. */
+    pedido: jsonb("pedido").$type<PedidoBeds24>(),
+    /** Ids das alterações `aplicada` sem a marca das OTAs, lidos na fase 1 (só esses são marcados depois). */
+    alteracoes: jsonb("alteracoes").$type<string[]>().notNull().default([]),
+    /** Leituras do Beds24 antes e depois, nos mesmos campos. */
+    antes: jsonb("antes").$type<LidoBeds24>(),
+    depois: jsonb("depois").$type<LidoBeds24>(),
+    beds24Id: text("beds24_id"),
+    credencial: text("credencial").notNull().default(""),
+    /** null = a rotina. */
+    autorId: uuid("autor_id").references(() => usuarios.id, { onDelete: "set null" }),
+    tentativas: integer("tentativas").notNull().default(0),
+    iniciadoEm: timestamp("iniciado_em", { withTimezone: true }).notNull().defaultNow(),
+    enviadoEm: timestamp("enviado_em", { withTimezone: true }),
+    respondidoEm: timestamp("respondido_em", { withTimezone: true }),
+    terminadoEm: timestamp("terminado_em", { withTimezone: true }),
+    erro: text("erro").notNull().default(""),
+    /**
+     * M8.3c (migração 0074): a classificação da resposta do Beds24 ao POST (desenho 3.8; lista fechada `RESPOSTAS_BEDS24`),
+     * que decide a saída da incerteza na volta seguinte. Nula antes do POST. O `erro` é o texto fixo dela, nunca o do Beds24.
+     */
+    resposta: text("resposta").$type<RespostaBeds24>(),
+    /** M8.3c: detalhes seguros de forma fechada (`DetalheOperacaoBeds24`: o id sugerido, as duplicadas, o bloqueio achado, o que o ensaio observou). */
+    detalhe: jsonb("detalhe").$type<DetalheOperacaoBeds24>().notNull().default({}),
+  },
+  (t) => [
+    uniqueIndex("beds24_reservas_operacoes_chave").on(t.organizacaoId, t.chave),
+    uniqueIndex("beds24_reservas_operacoes_uma_ativa").on(t.reservaId).where(sql`${t.situacao} in ('pendente', 'enviando', 'incerta')`),
+    index("beds24_reservas_operacoes_situacao").on(t.organizacaoId, t.situacao, t.iniciadoEm),
+    index("beds24_reservas_operacoes_beds24").on(t.organizacaoId, t.beds24Id).where(sql`${t.beds24Id} is not null`),
+    // M8.3c: o último 403 ou 401 de reservas em Integrações (`ultimaRecusaDeReservas`), também do ensaio, sem acompanhamento.
+    index("beds24_reservas_operacoes_resposta").on(t.organizacaoId, t.resposta, t.respondidoEm).where(sql`${t.resposta} is not null`),
+    foreignKey({ columns: [t.acompanhamentoId], foreignColumns: [beds24ReservasSite.id], name: "beds24_reservas_operacoes_acompanhamento_fk" }),
+  ],
+);
+
+/**
+ * O estado da rotina das reservas do site no Beds24 por organização (M8.3c, migração 0074; desenho 4.5, 7 e 9). Não é
+ * configuração editável (essa é a `reservas_beds24`, com auditoria): é estado operacional, escrito pela rotina e pelo botão
+ * de Integrações — a última leitura dos escopos (só nomes de escopo e a impressão da credencial, nunca a credencial) e as
+ * marcas de tempo da conferência contínua. Nenhum dado pessoal nem valor.
+ */
+export const beds24ReservasRotina = pgTable("beds24_reservas_rotina", {
+  organizacaoId: uuid("organizacao_id").primaryKey().references(() => organizacoes.id),
+  /** A avaliação dos escopos lida em GET /authentication/details (`EscoposLidosBeds24`); null = nunca lida. */
+  escopos: jsonb("escopos").$type<EscoposLidosBeds24>(),
+  /** `impressaoCredencialBeds24` da credencial que leu os escopos: outra credencial = sem leitura válida. */
+  escoposCredencial: text("escopos_credencial").notNull().default(""),
+  escoposLidosEm: timestamp("escopos_lidos_em", { withTimezone: true }),
+  /** A última leitura por `modifiedFrom` que concluiu (4.5): a próxima lê desde 15 min antes. */
+  conferenciaEm: timestamp("conferencia_em", { withTimezone: true }),
+  /** A última releitura por id que concluiu (de hora em hora). */
+  releituraEm: timestamp("releitura_em", { withTimezone: true }),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// M10.1a: WhatsApp (recebimento; desenho em requisitos/product/WHATSAPP.md). Não guarda mídia, url, id de mídia, sha256,
+// nome de arquivo, coordenadas, contato compartilhado nem system.body. Listas fechadas em whatsapp/regras.ts; colunas de
+// texto sem CHECK de lista, como as do M8.2 e do M8.3; CHECK só para a estrutura. Telefone (`wa_id`), BSUID, nomes, texto
+// e `wamid` só existem em `whatsapp_contatos` e `whatsapp_mensagens`; eventos, contadores e a situação da conta não levam
+// nenhum dado pessoal. Nada aqui escreve na Meta.
+// ---------------------------------------------------------------------------
+
+/**
+ * Situação da conta do WhatsApp da organização, escrita só pelos avisos (`account_update`, histórico, agenda). Uma linha
+ * por organização, criada no primeiro aviso; sem linha = "não conectada". A configuração editável (ids da Meta e quem vê
+ * as conversas) mora no armazém `configuracoes`, chave "whatsapp".
+ */
+export const whatsappConta = pgTable(
+  "whatsapp_conta",
+  {
+    organizacaoId: uuid("organizacao_id").primaryKey().references(() => organizacoes.id),
+    situacao: text("situacao").$type<SituacaoConta>().notNull().default("nao_conectada"),
+    ultimoEvento: text("ultimo_evento").$type<EventoConta>(),
+    motivo: text("motivo").$type<MotivoDesconexao>(),
+    iniciadoPor: text("iniciado_por").$type<IniciadoPor>(),
+    /** Hora da Meta (`entry.time`) do último evento aplicado: só um evento mais novo muda a situação. */
+    situacaoEm: timestamp("situacao_em", { withTimezone: true }),
+    /** PARTNER_ADDED: começa o prazo de 24 h para pedir os contatos e o histórico (M10.1b). */
+    conectadoEm: timestamp("conectado_em", { withTimezone: true }),
+    sincronizacaoContatos: text("sincronizacao_contatos").$type<Sincronizacao>().notNull().default("nao_pedida"),
+    /** Último aviso de agenda aceito, mesmo que tudo nele tenha sido descartado: a Meta não manda sinal de fim. */
+    contatosRecebidosEm: timestamp("contatos_recebidos_em", { withTimezone: true }),
+    sincronizacaoHistorico: text("sincronizacao_historico").$type<Sincronizacao>().notNull().default("nao_pedida"),
+    /** Maior `progress` recebido do histórico (0 a 100). */
+    progressoHistorico: integer("progresso_historico"),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("whatsapp_conta_progresso", sql`${t.progressoHistorico} is null or (${t.progressoHistorico} between 0 and 100)`)],
+);
+
+/**
+ * A conversa: um cliente do WhatsApp da empresa. O BSUID (`user_id`) é a chave principal; o `wa_id` (só dígitos, com DDI)
+ * é a segunda, opcional. Troca de identidade não funde conversas: se colidir, as duas ficam com `conflito_identidade`.
+ * O vínculo (reserva, cotação, pedido de contato, cadastro pelo site ou proprietário) é no máximo um e só existe
+ * confirmado à mão: ter um alvo e ter `vinculo_confirmado_em` andam juntos (CHECK). Sugestões não são guardadas.
+ */
+export const whatsappContatos = pgTable(
+  "whatsapp_contatos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    waId: text("wa_id"),
+    bsuid: text("bsuid"),
+    nomePerfil: text("nome_perfil").notNull().default(""),
+    /** Só de quem já tem conversa (agenda do celular, `smb_app_state_sync`); nunca cria conversa. */
+    nomeAgenda: text("nome_agenda").notNull().default(""),
+    nomeAgendaEm: timestamp("nome_agenda_em", { withTimezone: true }),
+    /** Qualquer mensagem, de qualquer origem: ordena a lista. */
+    ultimaMensagemEm: timestamp("ultima_mensagem_em", { withTimezone: true }),
+    /** Só `recebida` em tempo real ("sem resposta" e "não lida"; o histórico não conta). */
+    ultimaRecebidaEm: timestamp("ultima_recebida_em", { withTimezone: true }),
+    /** Só `enviada_*` em tempo real (a resposta pelo celular conta). */
+    ultimaEnviadaEm: timestamp("ultima_enviada_em", { withTimezone: true }),
+    /** Estado interno: nada é marcado como lido na Meta. */
+    lidaAte: timestamp("lida_ate", { withTimezone: true }),
+    conflitoIdentidade: boolean("conflito_identidade").notNull().default(false),
+    reservaId: uuid("reserva_id").references(() => reservas.id),
+    cotacaoId: uuid("cotacao_id").references(() => cotacoes.id),
+    /** Chaves estrangeiras com nome próprio (abaixo): o automático passaria de 63 caracteres. */
+    pedidoContatoId: uuid("pedido_contato_id"),
+    cadastroMarketplaceId: uuid("cadastro_marketplace_id"),
+    proprietarioId: uuid("proprietario_id").references(() => proprietarios.id),
+    vinculoConfirmadoPor: uuid("vinculo_confirmado_por").references(() => usuarios.id, { onDelete: "set null" }),
+    vinculoConfirmadoEm: timestamp("vinculo_confirmado_em", { withTimezone: true }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_contatos_wa_id").on(t.organizacaoId, t.waId).where(sql`${t.waId} is not null`),
+    uniqueIndex("whatsapp_contatos_bsuid").on(t.organizacaoId, t.bsuid).where(sql`${t.bsuid} is not null`),
+    // Na ordem da lista (mais recente primeiro, conversa sem mensagem no fim): só assim o índice serve à ordenação.
+    index("whatsapp_contatos_ultima").on(t.organizacaoId, t.ultimaMensagemEm.desc().nullsLast()),
+    index("whatsapp_contatos_reserva").on(t.reservaId).where(sql`${t.reservaId} is not null`),
+    // A limpeza de cotações de 30 dias (site/cotacoes.ts) não apaga a cotação vinculada: consulta por esta coluna.
+    index("whatsapp_contatos_cotacao").on(t.cotacaoId).where(sql`${t.cotacaoId} is not null`),
+    foreignKey({ columns: [t.pedidoContatoId], foreignColumns: [pedidosContatoProprietario.id], name: "whatsapp_contatos_pedido_contato_fk" }),
+    foreignKey({ columns: [t.cadastroMarketplaceId], foreignColumns: [cadastrosMarketplace.id], name: "whatsapp_contatos_cadastro_fk" }),
+    // "is not null" explícito porque um CHECK que dá null passa.
+    check("whatsapp_contatos_identidade", sql`${t.waId} is not null or ${t.bsuid} is not null`),
+    check("whatsapp_contatos_wa_id_digitos", sql`${t.waId} is null or ${t.waId} ~ '^[0-9]{6,20}$'`),
+    check(
+      "whatsapp_contatos_um_vinculo",
+      sql`num_nonnulls(${t.reservaId}, ${t.cotacaoId}, ${t.pedidoContatoId}, ${t.cadastroMarketplaceId}, ${t.proprietarioId}) <= 1 and ((num_nonnulls(${t.reservaId}, ${t.cotacaoId}, ${t.pedidoContatoId}, ${t.cadastroMarketplaceId}, ${t.proprietarioId}) = 1) = (${t.vinculoConfirmadoEm} is not null))`,
+    ),
+  ],
+);
+
+/**
+ * Uma mensagem (recebida, ou enviada pelo celular). Única por organização e `wamid` (tratado como dado pessoal): repetição,
+ * eco e histórico do mesmo `wamid` viram uma linha só. Só texto e legenda; da mídia, só o tipo e o mime. Apagada não tem
+ * texto (CHECK). `situacao` só existe para as enviadas pelo painel (M10.2) e fica nula aqui.
+ */
+export const whatsappMensagens = pgTable(
+  "whatsapp_mensagens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    contatoId: uuid("contato_id").notNull().references(() => whatsappContatos.id),
+    wamid: text("wamid").notNull(),
+    direcao: text("direcao").$type<Direcao>().notNull(),
+    origem: text("origem").$type<Origem>().notNull(),
+    tipo: text("tipo").$type<TipoMensagem>().notNull(),
+    texto: text("texto").notNull().default(""),
+    anexoMime: text("anexo_mime"),
+    /** `context.id` (a mensagem respondida), sem exigir formato. */
+    respostaA: text("resposta_a"),
+    /** `timestamp` da Meta. */
+    enviadaEm: timestamp("enviada_em", { withTimezone: true }).notNull(),
+    recebidaEm: timestamp("recebida_em", { withTimezone: true }).notNull().defaultNow(),
+    /** Hora da edição aplicada (só uma edição mais nova muda o texto). */
+    editadaEm: timestamp("editada_em", { withTimezone: true }),
+    apagadaEm: timestamp("apagada_em", { withTimezone: true }),
+    /** Emoji da reação; null = sem reação (ou retirada). */
+    reacao: text("reacao"),
+    reacaoEm: timestamp("reacao_em", { withTimezone: true }),
+    situacao: text("situacao"),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_mensagens_wamid").on(t.organizacaoId, t.wamid),
+    index("whatsapp_mensagens_contato").on(t.contatoId, t.enviadaEm),
+    // Apagamento é absorvente: nada depois devolve o texto.
+    check("whatsapp_mensagens_apagada_sem_texto", sql`${t.apagadaEm} is null or ${t.texto} = ''`),
+    // 256 = LIMITE_WAMID (whatsapp/regras.ts).
+    check("whatsapp_mensagens_wamid_tamanho", sql`char_length(${t.wamid}) between 1 and 256`),
+  ],
+);
+
+/**
+ * Um bloco (`change`) processado, sem nada do corpo: campo, quantos itens mudaram e o resultado; nos eventos de conta,
+ * o código, o motivo, a hora da Meta e o e-mail. A `chave` (só `account_update`) dá a idempotência e nunca leva wamid,
+ * telefone, BSUID nem id da Meta: `account_update:<event>:<entry.time>:<reason ou ->:<ban_state ou ->`. Apagado depois
+ * de 90 dias.
+ */
+export const whatsappEventos = pgTable(
+  "whatsapp_eventos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    campo: text("campo").$type<CampoAviso>().notNull(),
+    /** Código do evento de conta validado, ou vazio. */
+    tipo: text("tipo").$type<EventoConta | "">().notNull().default(""),
+    motivo: text("motivo").$type<MotivoDesconexao>(),
+    chave: text("chave").notNull().default(""),
+    /** Linhas novas ou alteradas do bloco. */
+    itens: integer("itens").notNull().default(0),
+    resultado: text("resultado").$type<ResultadoEvento>().notNull(),
+    /** `entry.time` do account_update. */
+    ocorridoEm: timestamp("ocorrido_em", { withTimezone: true }),
+    recebidoEm: timestamp("recebido_em", { withTimezone: true }).notNull().defaultNow(),
+    avisarPorEmail: boolean("avisar_por_email").notNull().default(false),
+    /** Só com o e-mail enviado; sem ele, a rotina tenta de novo. */
+    emailAvisoEm: timestamp("email_aviso_em", { withTimezone: true }),
+    /** Último resultado do envio (Integrações mostra a causa certa de um e-mail não enviado). */
+    emailResultado: text("email_resultado").$type<ResultadoEmail>(),
+  },
+  (t) => [uniqueIndex("whatsapp_eventos_chave").on(t.organizacaoId, t.chave).where(sql`${t.chave} <> ''`), index("whatsapp_eventos_recebido").on(t.recebidoEm)],
+);
+
+/**
+ * Contas agregadas dos avisos do WhatsApp por dia (São Paulo), como `pagamentos_avisos_dia`: sem organização (a
+ * assinatura inválida chega antes de saber de quem é) e sem nenhum dado do aviso. Apagadas depois de 90 dias, menos o
+ * último dia com aviso válido.
+ */
+export const whatsappAvisosDia = pgTable("whatsapp_avisos_dia", {
+  dia: date("dia", { mode: "string" }).primaryKey(),
+  assinaturasRecusadas: integer("assinaturas_recusadas").notNull().default(0),
+  ilegiveis: integer("ilegiveis").notNull().default(0),
+  outraConta: integer("outra_conta").notNull().default(0),
+  desconhecidos: integer("desconhecidos").notNull().default(0),
+  ignorados: integer("ignorados").notNull().default(0),
   ultimoValidoEm: timestamp("ultimo_valido_em", { withTimezone: true }),
 });

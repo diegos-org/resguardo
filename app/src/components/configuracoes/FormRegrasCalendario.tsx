@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import type { EstadoRegrasCalendario } from "@/calendario/acoes";
 import { APLICACOES_ULTIMA_HORA, centesimosParaMultiplicador, dataBr, LIMITES_MINUTOS_HOLD_ALTERACAO, type RegrasCalendario } from "@/calendario/regras-config";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
-import { DIAS_SEMANA } from "@/imoveis/regras-venda";
+import { DIAS_NA_ORDEM, DIAS_SEMANA } from "@/lib/datas";
 import styles from "../formularios.module.css";
 
 export type ImovelOpcao = { id: string; codigo: string; nome: string; vinculado: boolean; /** Fonte de preços (M3.9): com "beds24" o SCL envia só calendário. */ fontePrecos?: FontePrecos };
@@ -41,7 +41,7 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
       <legend style={legenda}>Semana normal e limites</legend>
       <p style={nota}>Estadia mínima pela noite de entrada. O cadastro de cada imóvel pode exigir mais (vale o maior); períodos especiais do imóvel substituem.</p>
       <div className={styles.linha}>
-        {DIAS_SEMANA.map((d, n) => <label key={d} style={{ minWidth: 80, flex: "0 1 100px" }}>{d}<input name={`minimo_${n}`} type="number" min={1} max={30} defaultValue={campo(`minimo_${n}`, String(regras.minimoPorDia[n]))} {...invalido(`minimo_${n}`)} />{erro(`minimo_${n}`)}</label>)}
+        {DIAS_NA_ORDEM.map((n) => <label key={n} style={{ minWidth: 80, flex: "0 1 100px" }}>{DIAS_SEMANA[n]}<input name={`minimo_${n}`} type="number" min={1} max={30} defaultValue={campo(`minimo_${n}`, String(regras.minimoPorDia[n]))} {...invalido(`minimo_${n}`)} />{erro(`minimo_${n}`)}</label>)}
       </div>
       <div className={styles.linha}>
         <label>Estadia máxima padrão (noites)<input name="estadiaMaxima" type="number" min={1} max={364} defaultValue={campo("estadiaMaxima", String(regras.estadiaMaxima))} {...invalido("estadiaMaxima")} />{erro("estadiaMaxima")}</label>
@@ -71,7 +71,7 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
       <legend style={legenda}>Envio ao Beds24</legend>
       <p style={nota}>Só os imóveis marcados recebem calendário e preços do SCL — comece pelo imóvel de teste (103). Imóvel com preços definidos no Beds24 (fonte escolhida no cadastro do imóvel) recebe só calendário, mínimos e bloqueios: o SCL não escreve preço nele. Mesmo marcados, nada é enviado enquanto a variável BEDS24_ESCRITA não estiver &quot;ligada&quot; na Vercel. Simular e enviar ficam em Calendário → Conferir calendário e preços.</p>
       {listaImoveis("envioImoveis", regras.envio.imoveis)}
-      <label className={styles.check}><input type="checkbox" name="envioAutomatico" defaultChecked={marcado("envioAutomatico", regras.envio.automatico)} /> Enviar automaticamente todo dia às 7h (depois da importação do Beds24)</label>
+      <label className={styles.check}><input type="checkbox" name="envioAutomatico" defaultChecked={marcado("envioAutomatico", regras.envio.automatico)} /> Enviar automaticamente todo dia às 07:00 (depois da importação do Beds24)</label>
       <p style={nota}>Deixe desligado até o teste manual no imóvel escolhido estar conferido. O envio automático respeita a mesma lista de imóveis e o mesmo sinal da Vercel.</p>
     </fieldset>
     <fieldset style={grupo}>

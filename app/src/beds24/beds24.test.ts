@@ -53,6 +53,15 @@ describe("normalização", () => {
         codigoCanal: "HMFAKE123",
         modificadoEm: "2026-09-20T10:00:00Z",
         reservadaEm: null,
+        // M8.3a: sem info item nem código no nome/notas, sem marca do SCL; não é ensaio.
+        referenciaScl: null,
+        ensaio: false,
+        // M8.3c (a comparação exata muda junto, desenho 3.5 e 5.2): de onde veio a marca, a marca ambígua, o id da operação
+        // do ensaio e a origem pela API — nada disso no registro.
+        marcaFonte: null,
+        marcaAmbigua: false,
+        ensaioOperacaoId: null,
+        origemApi: null,
       },
     });
   });
@@ -111,11 +120,14 @@ describe("normalização", () => {
   });
 
   it("calendário: faixas expandidas em dias, recortadas ao período; sem numAvail = desconhecido", () => {
+    // M8.3c (muda junto, desenho 4.4): `numAvail: -1` deixou de ser divergência — é o overbooking, e vem como está. A faixa
+    // com `numAvail` fracionário continua inválida, no lugar dela, para a conta das divergências seguir a mesma.
     const { itens, divergencias } = normalizarCalendario(
       [
         { roomId: 200, calendar: [{ from: "2026-10-01", to: "2026-10-03", numAvail: 1, price1: 450, minStay: 2, maxStay: 27, override: "blackout" }, { from: "2026-10-04", price1: 500 }] },
         { roomId: 201, calendar: [{ from: "2026-10-05", to: "2026-10-01" }] },
-        { roomId: 202, calendar: [{ from: "2026-10-02", price1: -100 }, { from: "2026-10-02", minStay: -1 }, { from: "2026-10-02", numAvail: -1 }, { from: "2026-10-02", maxStay: 1.5 }, { from: "2026-10-02", override: "voodoo" }] },
+        { roomId: 202, calendar: [{ from: "2026-10-02", price1: -100 }, { from: "2026-10-02", minStay: -1 }, { from: "2026-10-02", numAvail: 0.5 }, { from: "2026-10-02", maxStay: 1.5 }, { from: "2026-10-02", override: "voodoo" }] },
+        { roomId: 203, calendar: [{ from: "2026-10-03", numAvail: -1 }] },
         { semRoom: true },
       ],
       "2026-10-02",
@@ -125,6 +137,7 @@ describe("normalização", () => {
       { roomId: "200", data: "2026-10-02", livres: 1, preco: 45000, minimoNoites: 2, maximoNoites: 27, bloqueio: "blackout" },
       { roomId: "200", data: "2026-10-03", livres: 1, preco: 45000, minimoNoites: 2, maximoNoites: 27, bloqueio: "blackout" },
       { roomId: "200", data: "2026-10-04", livres: null, preco: 50000, minimoNoites: null, maximoNoites: null, bloqueio: null },
+      { roomId: "203", data: "2026-10-03", livres: -1, preco: null, minimoNoites: null, maximoNoites: null, bloqueio: null },
     ]);
     expect(divergencias).toHaveLength(7);
   });
@@ -224,7 +237,10 @@ describe("cliente HTTP (rede simulada)", () => {
     const { f, chamadas } = fetchFalso([json([{ success: true }, { success: false, errors: [{ action: "update", field: "price1", message: "Preço inválido" }] }], 201)]);
     const c = new ClienteBeds24Http({ token: "k", fetchImpl: f });
     const metodos = Object.getOwnPropertyNames(Object.getPrototypeOf(c)).filter((m) => !m.startsWith("constructor"));
-    expect(metodos.sort()).toEqual(["calendario", "chamar", "escreverCalendario", "get", "quartos", "reservas", "todas"]);
+    // M8.3a: `credencial` é leitura (GET /authentication/details); a escrita continua sendo só o calendário.
+    // M8.3c (muda junto): `chamar` foi dividido — `requisitar` devolve a resposta de qualquer status, sem lançar por HTTP. A
+    // escrita de reservas (`gravarReservas`, `prepararToken`) só existe em `ClienteReservasBeds24Http`, nunca aqui.
+    expect(metodos.sort()).toEqual(["calendario", "chamar", "credencial", "escreverCalendario", "get", "quartos", "requisitar", "reservas", "todas"]);
     const r = await c.escreverCalendario([
       { roomId: "200", faixas: [{ from: "2026-10-01", to: "2026-10-03", preco: 45050, minimo: 2, maximo: 27 }, { from: "2026-10-04", to: "2026-10-04", bloqueio: "blackout" }] },
       { roomId: "201", faixas: [{ from: "2026-10-01", to: "2026-10-01", preco: 100 }] },

@@ -1,0 +1,428 @@
+/* Caixa de entrada do WhatsApp (M10.1a): lista, conversa e avisos. Cores só pelos tokens de globals.css. No celular
+   (360px), nada rola para o lado: nomes e prévias cortam com reticências, selos e mensagens quebram linha. */
+
+.cabecalho {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 820px;
+}
+
+.cabecalho h1,
+.cabecalho p {
+  margin: 0;
+}
+
+.avisos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 820px;
+}
+
+.aviso {
+  /* O mesmo desenho do .alerta e do .sucesso de formularios.module.css (sem borda, raio do campo): em Integrações eles
+     ficam empilhados na mesma seção. */
+  margin: 0;
+  max-width: 820px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-aviso-fundo);
+  color: var(--scl-aviso-texto);
+  font-size: 0.875rem;
+}
+
+.avisoGrave {
+  background: var(--scl-erro-fundo);
+  color: var(--scl-erro-texto);
+}
+
+.avisoInfo {
+  background: var(--scl-info-fundo);
+  color: var(--scl-texto);
+}
+
+.nota {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--scl-texto-2);
+}
+
+/* O texto de apoio sob o título (Mensagens, nome da conversa, carregando). */
+.subtitulo {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--scl-texto-2);
+}
+
+/* Filtros: links como abas, quebram linha no celular. */
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.filtros a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--scl-borda);
+  border-radius: 999px;
+  background: var(--scl-papel);
+  color: var(--scl-texto);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.filtros a[aria-current="page"] {
+  background: var(--scl-areia);
+  border-color: var(--scl-dourado-escuro);
+  font-weight: 600;
+}
+
+/* A lista de conversas: um cartão só, uma linha por conversa. */
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 820px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
+  /* O fundo do hover da primeira e da última linha não passa por cima dos cantos arredondados. */
+  overflow: hidden;
+}
+
+.item + .item {
+  border-top: 1px solid var(--scl-borda);
+}
+
+.linkConversa {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 16px;
+  color: var(--scl-texto);
+  text-decoration: none;
+}
+
+.linkConversa:hover {
+  background: var(--scl-neutro-fundo);
+}
+
+/* As linhas ficam coladas (e o cartão corta o que passa da borda): o contorno do foco fica por dentro, como nos dias do
+   calendário (DESIGN.md, desvio 6). */
+.linkConversa:focus-visible {
+  outline-offset: -3px;
+}
+
+.topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.nome {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.naoLida .nome {
+  font-weight: 700;
+}
+
+.hora {
+  flex: none;
+  font-size: 0.8125rem;
+  color: var(--scl-texto-2);
+}
+
+.previa {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  color: var(--scl-texto-2);
+}
+
+.selos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.selo {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--scl-areia);
+  color: var(--scl-texto);
+}
+
+.seloNaoLida {
+  background: var(--scl-info-fundo);
+  color: var(--scl-info);
+  font-weight: 600;
+}
+
+.seloSemResposta {
+  background: var(--scl-aviso-fundo);
+  color: var(--scl-aviso-texto);
+}
+
+.seloConflito {
+  background: var(--scl-erro-fundo);
+  color: var(--scl-erro-texto);
+}
+
+/* Pílula só com borda: continua visível no hover da linha (que pinta o neutro). Texto 2 sobre papel 5,9:1 e sobre o
+   neutro 5,5:1. */
+.seloVazio {
+  background: transparent;
+  color: var(--scl-texto-2);
+  box-shadow: inset 0 0 0 1px var(--scl-borda);
+}
+
+.vazio {
+  margin: 0;
+  padding: 20px 16px;
+  color: var(--scl-texto-2);
+}
+
+.paginacao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 0.875rem;
+  color: var(--scl-texto-2);
+}
+
+/* A conversa abre na mensagem mais recente, sem JavaScript: uma coluna invertida com um filho só começa rolada no fim,
+   e a ordem no HTML (a de envio, a que o leitor de tela lê) não muda. O vínculo fica logo abaixo da última mensagem. */
+.rolagemConversa {
+  display: flex;
+  flex-direction: column-reverse;
+  max-width: 820px;
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  background: var(--scl-neutro-fundo);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
+}
+
+.rolagemConversa > .mensagens {
+  flex: none;
+  border: 0;
+  border-radius: 0;
+}
+
+/* A conversa: balões, o do cliente à esquerda e a resposta pelo celular à direita. */
+.mensagens {
+  list-style: none;
+  margin: 0;
+  padding: 12px;
+  max-width: 820px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--scl-neutro-fundo);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
+}
+
+.balao {
+  max-width: min(85%, 560px);
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: var(--scl-raio-cartao);
+  border: 1px solid var(--scl-borda);
+  background: var(--scl-papel);
+  align-self: flex-start;
+}
+
+.enviada {
+  align-self: flex-end;
+  background: var(--scl-ok-fundo);
+}
+
+.quem {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 0.75rem;
+  color: var(--scl-texto-2);
+}
+
+.conteudo {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* O texto do sistema no lugar do conteúdo ("Mensagem apagada", "Foto — ver no celular"…), diferente do que o cliente
+   escreveu. */
+.marcador {
+  font-style: italic;
+  color: var(--scl-texto-2);
+}
+
+/* Aviso do WhatsApp no meio da conversa (troca de número): centralizado, sem balão e sem "Cliente". Texto 2 sobre a
+   areia: 4,8:1. */
+.avisoNaConversa {
+  align-self: center;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--scl-areia);
+  color: var(--scl-texto-2);
+  font-size: 0.75rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.detalhe {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: var(--scl-texto-2);
+}
+
+/* Painel do vínculo e o bloco da ficha da reserva. */
+.cartao {
+  max-width: 820px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--scl-papel);
+  border: 1px solid var(--scl-borda);
+  border-radius: var(--scl-raio-cartao);
+  overflow-wrap: anywhere;
+}
+
+.cartao h2 {
+  /* O mesmo tamanho do "Histórico" logo abaixo e das seções da ficha da reserva. */
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.cartao p {
+  margin: 0;
+}
+
+.candidatos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.candidato {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.candidato form {
+  flex: none;
+}
+
+.busca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.busca label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 220px;
+  font-size: 0.8125rem;
+  color: var(--scl-texto-2);
+}
+
+.busca input {
+  width: 100%;
+}
+
+/* "Abrir" e "Desfazer vínculo" do vínculo confirmado, alinhados pelo meio. */
+.acoesVinculo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+/* Link solto numa coluna flex ("← Mensagens", "Abrir a conversa"): só a largura do texto, sem esticar (o toque no vazio
+   à direita não navega e o contorno do foco não vira uma faixa). */
+.link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Campo do código: com classe, o padrão do painel (.conteudo input…:not([class])) não vale; o estilo é o mesmo dele. */
+.campo {
+  font: inherit;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--scl-borda-campo);
+  border-radius: var(--scl-raio-campo);
+  background: var(--scl-branco);
+  color: var(--scl-tinta);
+}
+
+/* Esqueleto do carregamento: só a forma da lista, sem dado nenhum. */
+.esqueleto {
+  display: block;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--scl-areia);
+}
+
+/* Celular: alvos de toque de 44px, como o menu e o Sair do painel (M0.10). Só nas telas desta etapa. */
+@media (max-width: 760px) {
+  .filtros a,
+  .link,
+  .campo,
+  .acoesVinculo a,
+  .acoesVinculo button {
+    min-height: 44px;
+  }
+
+  .paginacao a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* (0,2,2): vence o .conteudo button:not([class]) (0,2,1) do painel. */
+  .cartao form button,
+  .cartao form button:not([class]) {
+    min-height: 44px;
+  }
+}

@@ -9,7 +9,7 @@ import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull
 import { registrarAuditoria } from "@/auditoria/auditoria";
 import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
-import { chaveTravaBeds24, envioEmAndamento, tentarTravaBeds24 } from "@/beds24/trava";
+import { CAUSA_EM_ANDAMENTO, type CausaEscritaBeds24, chaveTravaBeds24, escritaBeds24EmAndamento, MENSAGEM_ENVIO_EM_ANDAMENTO, MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE, tentarTravaBeds24 } from "@/beds24/trava";
 import { type DiaCalendario, type Divergencia, ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioImoveis, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -33,6 +33,8 @@ export type ResultadoEnvio = {
   totalAvisos: number;
   /** A execução que refez os imóveis cujas reservas mudaram durante esta (ver `OpcoesEnvio.refazendo`). */
   refeito?: ResultadoEnvio;
+  /** Só na "ocupada": a causa em poucas palavras (a rotina diária registra "não rodou: <causa>"). */
+  causa?: string;
 };
 /** `credencial` = impressão da credencial Beds24 usada (`impressaoCredencialBeds24`), gravada na execução: o veredito por imóvel só vale para ela. */
 export type OpcoesEnvio = {
@@ -95,8 +97,13 @@ const assinaturaDaOcupacao = (xs: readonly { checkin: string; checkout: string; 
  * quarto não ligado a outro imóvel — a mesma regra da importação. Vínculo ausente, repetido ou ambíguo = null:
  * nenhuma leitura nem estado enviado descreve o imóvel até o cadastro ser corrigido.
  */
-async function quartoVinculado(db: Db, org: string, imovelId: string): Promise<string | null> {
-  const validos = (await listarMapeamentosBeds24(db, org)).filter(m => m.ativo && /^\d+$/.test(m.propertyId) && /^\d+$/.test(m.roomId));
+export async function quartoVinculado(db: Db, org: string, imovelId: string): Promise<string | null> {
+  return quartoDoVinculo(await listarMapeamentosBeds24(db, org), imovelId);
+}
+
+/** A mesma régua de `quartoVinculado`, sobre os vínculos já lidos (M8.3: a lista de imóveis em Integrações lê uma vez só). */
+export function quartoDoVinculo(mapas: readonly VinculoBeds24[], imovelId: string): string | null {
+  const validos = mapas.filter(vinculoValidoParaEnvio);
   const doImovel = validos.filter(m => m.imovelId === imovelId);
   if (doImovel.length !== 1) return null;
   return validos.some(m => m.imovelId !== imovelId && m.roomId === doImovel[0].roomId) ? null : doImovel[0].roomId;
@@ -253,7 +260,14 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
   let totalAvisos = 0;
   const aviso = (s: string) => { totalAvisos++; if (avisos.length < 100) avisos.push(s.slice(0, 300)); };
   const dataBr = (d: string) => d.split("-").reverse().join("/");
-  const ocupada = () => ({ pronto: { ...base("ocupada", "Já há um envio ou uma importação do Beds24 em andamento. Aguarde e atualize a página."), ok: false } });
+  // "Ocupada" diz a causa: a trava (outra importação ou envio) ou uma escrita fora da trava (calendário ou reserva do site).
+  const ocupada = (causa: CausaEscritaBeds24 | "trava") => ({
+    pronto: {
+      ...base("ocupada", causa === "trava" ? "Já há um envio ou uma importação do Beds24 em andamento. Aguarde e atualize a página." : causa === "reserva" ? MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE : MENSAGEM_ENVIO_EM_ANDAMENTO),
+      ok: false,
+      causa: CAUSA_EM_ANDAMENTO[causa],
+    },
+  });
   // Instantes distintos dentro da execução: leitura inicial (agora) < envio (agora+1) < releitura (agora+2).
   // Assim a leitura feita antes da escrita nunca passa por leitura posterior ao envio.
   const instanteEnvio = new Date(agora.getTime() + 1);
@@ -267,9 +281,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
     const fase1 = await db.transaction(async (tx): Promise<Fase1> => {
       await tx.execute(sql`set local lock_timeout = '15s'`);
       // Mesma trava da importação: importação e envio nunca rodam ao mesmo tempo sobre o calendário local.
-      if (!(await tentarTravaBeds24(tx, org))) return ocupada();
-      // Outra execução entre a escrita externa e o registro final (ou interrompida há pouco) também bloqueia.
-      if (await envioEmAndamento(tx, org, agora, exec.id)) return ocupada();
+      if (!(await tentarTravaBeds24(tx, org))) return ocupada("trava");
+      // Outra execução entre a escrita externa e o registro final (ou interrompida há pouco) também bloqueia, e também uma
+      // reserva do site sendo enviada (M8.3): dois escritores no Beds24 nunca ao mesmo tempo.
+      const emAndamento = await escritaBeds24EmAndamento(tx, org, { agora, excetoEnvioId: exec.id });
+      if (emAndamento) return ocupada(emAndamento);
       await tx.update(beds24Envios).set({ situacao: "executando" }).where(eq(beds24Envios.id, exec.id));
 
       const regras = await lerRegrasCalendario(tx, org);
