@@ -241,14 +241,14 @@ Texto: "Sinto muito pelo transtorno! Já estou falando com a equipe e te retorno
 
 **Formato Rio:**
 ```
-AGENDA RIO — dd/mm, HHhMM — SUBSTITUI A ANTERIOR
+AGENDA RIO — dd/mm, HH:MM — SUBSTITUI A ANTERIOR
 MUDANÇAS: (o que mudou desde a última)
 URGÊNCIAS DE HOJE: (se houver)
 LIMPEZAS POR DIA (amanhã a D+5)
   Segunda 09/11
-  • 10X — saída até 11h — arrumar para 2 hóspedes (próxima entrada 12/11)
+  • 10X — saída até 11:00 — arrumar para 2 hóspedes (próxima entrada 12/11)
 ENTRADAS (separadas das limpezas)
-  • 10Y — Ter 10/11 ~18h — 2 adultos — primeiro nome, telefone operacional
+  • 10Y — Ter 10/11 ~18:00 — 2 adultos — primeiro nome, telefone operacional
 A agenda pode mudar com novas reservas ou cancelamentos. Aviso aqui quando mudar.
 Obrigada! — Mia / Sua Casa Leblon
 ```
@@ -262,7 +262,7 @@ Obrigada! — Mia / Sua Casa Leblon
 
 **Como enviar:**
 - Pelo WhatsApp do Mac, numa **única mensagem por agenda**. Já houve fragmentação quando o texto foi digitado em partes: conferir antes de enviar.
-- **Legibilidade (reforço de 22/10):** revisar o texto completo com espaços entre palavras, datas e horários; cabeçalhos curtos, linhas em branco entre blocos e um item por limpeza/entrada. Não colar palavras, usar tabelas largas ou comprimir tudo numa linha. Conferir a mensagem renderizada no destino após o envio, sem repetir uma entrega apenas por dúvida visual.
+- **Legibilidade (reforço de 22/10):** revisar o texto completo com espaços entre palavras, datas e horários; cabeçalhos curtos, linhas em branco entre blocos e um item por limpeza/entrada. Nas mensagens, usar horários no formato HH:MM (decisão de 16/10 registrada no ROADMAP). Não colar palavras, usar tabelas largas ou comprimir tudo numa linha. Conferir a mensagem renderizada no destino após o envio, sem repetir uma entrega apenas por dúvida visual.
 - Se não houver acesso: texto pronto + link `wa.me/?text=…` para Diego enviar.
 - Registrar o estado como aparece na tela: Enviada, Entregue ou Lida.
 
