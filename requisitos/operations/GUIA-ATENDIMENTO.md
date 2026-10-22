@@ -1,6 +1,6 @@
 # Guia de Atendimento — Sua Casa Leblon
 
-**Versão 1 · consolidada em 22/10/2026 (Claude, a pedido de Diego).**
+**Versão 2 · consolidada e revisada em 22/10/2026, a pedido de Diego.**
 Reúne num só lugar as regras de atendimento, as respostas aos hóspedes e o que fazer quando algo dá errado.
 Fontes: todos os documentos de `requisitos/operations/` (até 17/10), as regras do projeto Cowork (23–24/09), as notas
 locais das rodadas da Mia/Codex (05–21/10) e os e-mails de resumo até 21/10 à noite.
@@ -8,7 +8,9 @@ Sem dados pessoais: casos individuais ficam no registro privado, fora do Git.
 
 > **Como ler:** cada seção começa pelo que vale hoje. O que mudou e por quê fica na seção 14.
 > Itens marcados **[CONFIRMAR COM DIEGO]** são regras praticadas mas sem decisão escrita, ou com versões diferentes
-> nos documentos. Até Diego responder, siga o que está escrito aqui e não invente outra coisa.
+> nos documentos. Conferir primeiro se uma decisão posterior já resolveu a dúvida; não reabrir pedidos encerrados.
+> Este guia descreve o procedimento: não substitui decisões mais recentes, autorizações vigentes nem limites de acesso.
+> Documentação mesclada não comprova envio, execução, implantação ou ativação de sistemas.
 
 ---
 
@@ -171,8 +173,9 @@ Texto: "Sinto muito pelo transtorno! Já estou falando com a equipe e te retorno
 - Avisar a equipe se o imóvel ficar vazio antes (limpeza, chaves, vistoria).
 
 ### 4.7 Pedido de alteração de datas ou noite extra
-- Conferir no calendário se há disponibilidade e qual seria o preço. Levar a Diego com os números.
-- Não aceitar nem recusar sozinho. Proposta enviada não é reserva confirmada: acompanhar com uma mensagem gentil, sem pressão.
+- Conferir a reserva, disponibilidade, número de hóspedes, valores vigentes e histórico de solicitações antes de preparar uma proposta. Não duplicar solicitação já em andamento.
+- Conferir a autorização vigente para aquela ação e canal. Quando ela cobrir a proposta, seguir seu escopo; quando não cobrir, levar a Diego com os números. Este guia não concede nem conserva permissões de outra sessão.
+- Proposta enviada não é alteração aceita ou reserva confirmada: acompanhar com mensagem cordial e conferir o resultado na plataforma, sem desconto ou condição nova por inferência.
 
 ### 4.8 Objeto esquecido
 - Acolher, perguntar o que é e como prefere receber. Diego cuida da devolução.
@@ -234,30 +237,32 @@ Texto: "Sinto muito pelo transtorno! Já estou falando com a equipe e te retorno
 - Pequenos reparos: um prestador de confiança de Diego, sempre acionado por ele.
 - Nomes completos e telefones só no cadastro privado.
 
-**Quando enviar (decisão de 15/10):** agenda **completa** dos dois destinos em cada passada, **8h30 e 17h30**. Cada envio substitui o anterior. Mudanças vêm destacadas. Nada de mensagens de rotina de madrugada.
+**Quando enviar (decisão de 15/10):** agenda **completa** dos dois destinos em cada passada, **8h30 e 17h30, mesmo sem mudança**. Cada envio substitui o anterior. Mudanças vêm destacadas; se não houve mudança, dizer isso sem omitir a agenda. Nada de mensagens de rotina de madrugada.
 
 **Formato Rio:**
 ```
-AGENDA RIO — dd/mm, hhh — SUBSTITUI A ANTERIOR
+AGENDA RIO — dd/mm, HH:MM — SUBSTITUI A ANTERIOR
 MUDANÇAS: (o que mudou desde a última)
 URGÊNCIAS DE HOJE: (se houver)
 LIMPEZAS POR DIA (amanhã a D+5)
   Segunda 09/11
-  • 10X — saída até 11h — arrumar para 2 hóspedes (próxima entrada 12/11)
+  • 10X — saída até 11:00 — arrumar para 2 hóspedes (próxima entrada 12/11)
 ENTRADAS (separadas das limpezas)
-  • 10Y — Ter 10/11 ~18h — 2 adultos — primeiro nome, telefone operacional
+  • 10Y — Ter 10/11 ~18:00 — 2 adultos — primeiro nome, telefone operacional
 A agenda pode mudar com novas reservas ou cancelamentos. Aviso aqui quando mudar.
 Obrigada! — Mia / Sua Casa Leblon
 ```
 - Organizar **por dia**. No dia, ordenar pelos horários combinados, não pelo número do apartamento.
 - "Arrumar para X hóspedes" = total da **próxima** reserva após a saída, nunca de quem sai.
-- Toda saída gera limpeza, mesmo sem nova entrada. **Antes de marcar o dia, confirmar a saída efetiva e a disponibilidade da equipe** (saída prevista não é saída feita). Com isso confirmado: saída até 12h–13h → limpeza no mesmo dia; saída no fim do dia → manhã seguinte desde cedo (~8h). Imóvel já limpo e sem uso não precisa de nova limpeza só porque alguém vai chegar.
+- Toda saída gera limpeza, mesmo sem nova entrada. **Programar os próximos dias pela saída prevista ou pelo horário efetivamente acordado**, considerando a disponibilidade da equipe: saída até 12h–13h → limpeza no mesmo dia; saída no fim do dia → manhã seguinte desde cedo (~8h). Não esperar a saída acontecer para incluí-la na agenda futura.
+- Programação não comprova saída efetiva nem limpeza realizada. Conferir o estado real quando a decisão depender do imóvel pronto, especialmente entrada antecipada no próprio dia. Imóvel já limpo e sem uso não precisa de nova limpeza só porque alguém vai chegar.
 - **Agenda correta enviada = limpeza encaminhada.** Não cobrar confirmação só porque a equipe não respondeu.
 
 **Formato Búzios:** até **5 próximas reservas confirmadas nos próximos 30 dias**, com entrada e saída (dia da semana e data), primeiro nome, nº de hóspedes, horários e troca no mesmo dia destacada. Qualquer nova reserva, alteração ou cancelamento: avisar o grupo, mesmo fora da janela.
 
 **Como enviar:**
-- Pelo WhatsApp do Mac, numa **única mensagem**. Já houve fragmentação quando o texto foi digitado em partes: conferir antes de enviar.
+- Pelo WhatsApp do Mac, numa **única mensagem por agenda**. Já houve fragmentação quando o texto foi digitado em partes: conferir antes de enviar.
+- **Legibilidade (reforço de 22/10):** revisar o texto completo com espaços entre palavras, datas e horários; cabeçalhos curtos, linhas em branco entre blocos e um item por limpeza/entrada. Nas mensagens, usar horários no formato HH:MM (decisão de 16/10 registrada no ROADMAP). Não colar palavras, usar tabelas largas ou comprimir tudo numa linha. Conferir a mensagem renderizada no destino após o envio, sem repetir uma entrega apenas por dúvida visual.
 - Se não houver acesso: texto pronto + link `wa.me/?text=…` para Diego enviar.
 - Registrar o estado como aparece na tela: Enviada, Entregue ou Lida.
 
@@ -267,9 +272,10 @@ Obrigada! — Mia / Sua Casa Leblon
 
 - Coletar o documento de **todos os ocupantes** de toda reserva do 403. Encaminhar à portaria com nome, total de hóspedes, entrada e saída.
 - **Ritmo:** pedido ao reservar → lembrete de D-7 a D-5 só do que faltar → véspera só se ainda faltar. Reserva de última hora: um pedido só, claro.
-- **Estados separados:** recebido → encaminhado → entregue/lido pela portaria → aceito. Frente e verso = 1 pessoa. Silêncio da portaria não justifica cobrar o hóspede de novo.
+- **Estados separados por ocupante:** faltante, recebido, encaminhado, entregue/lido pela portaria e aceito/cadastrado. Um estado não comprova o seguinte. Frente e verso = 1 pessoa. Antes de repetir, conferir se Diego já encaminhou manualmente e quais documentos estavam incluídos; guardar a fonte sem apresentar seu relato como releitura independente. Silêncio da portaria não justifica cobrar o hóspede de novo.
 - **Faltou no dia da entrada:** avisar a portaria com nome, datas e pendência, pedir desculpas e encaminhar assim que chegar (Diego, 15/10).
 - Reservas para daqui a meses: cobrar perto da data (ex.: uma de fevereiro só em meados de janeiro, por decisão de Diego).
+- Revisar a matriz de **todas as reservas futuras confirmadas do 403**, incluindo alterações e cancelamentos; priorizar quem chega hoje sem limitar o controle às entradas imediatas. Cancelamento confirmado encerra a cobrança daquela reserva, preservando o histórico. Revisar não significa cobrar em toda passada: manter a cadência acima.
 - A matriz atualizada (reserva × ocupantes × estado) fica **só no registro privado**. Nunca no GitHub nem no grupo da limpeza.
 
 ---
@@ -302,7 +308,7 @@ O sistema SCL ainda **não envia** preços. O envio só liga quando Diego ligar,
 | D-2 a D0 (piso absoluto) | **R$330** | **R$680** | **R$380** |
 | Fora da última hora | — | — | R$450 |
 
-**[CONFIRMAR COM DIEGO]** Os pisos absolutos de R$330, R$680 e R$380 (+R$30, decisão de 15/10) estão só nas notas da Mia e no rascunho #144. A `main` ainda mostra os antigos (R$300, R$650, R$350). Até Diego confirmar, as rodadas seguem 330/680/380, como vêm fazendo.
+**Decisão confirmada em 15/10:** Diego pediu elevar em R$30 o piso mínimo absoluto de todos os imóveis. Sobre os pisos anteriores de R$300/R$650/R$350, os pisos vigentes são **R$330/R$680/R$380**, também reconciliados documentalmente no [PR #144](https://github.com/al-life/scl-reconstrucao/pull/144). Não é decisão em aberto e não altera os pisos superiores D3–D7 nem o piso geral de Búzios. O registro da decisão não comprova preço atual na plataforma, propagação às OTAs ou proteção automática permanente; conferir essas evidências em cada rodada.
 
 **Como corrigir uma noite abaixo do piso:**
 - Só em **noite livre**, um dia por vez.
@@ -360,13 +366,13 @@ Diego está configurando. **Não mexer.** O retrato abaixo vem das capturas de t
 ## 11. A passada — passo a passo
 
 1. **Ler** este guia, o último registro da Mia (Mac) e o último e-mail de resumo. Ver se outra janela está em passada.
-2. **Urgências:** hóspede sem conseguir entrar, problema na estadia, pedido de reserva expirando.
-3. **Airbnb:** mensagens não lidas → responder o que for óbvio. Página "Hoje": pedidos, avaliações a escrever, avaliações a responder. (A página "Hoje" vira o dia às 21h, horário de Brasília.)
+2. **Urgências:** hóspede sem conseguir entrar, problema na estadia, pedido de reserva expirando. Na passada da manhã, conferir primeiro os check-ins de hoje: preparo, chaves, horários combinados e documentos pendentes. Destacar a pendência concreta como **URGENTE**, sem declarar acesso liberado ou limpeza concluída por inferência.
+3. **Airbnb:** revisar conversas recentes, novas reservas e pendências abertas, não apenas mensagens não lidas. Ler contexto e desfecho antes de responder no escopo autorizado. Página "Hoje": pedidos, avaliações a escrever, avaliações a responder. (A página "Hoje" vira o dia às 21h, horário de Brasília.)
 4. **Booking/Beds24:** mensagens e reservas novas.
-5. **WhatsApp:** hóspedes e grupos. Mensagens de empresas procurando a pessoa que usava o número antes → marcar como lidas e ignorar. Áudios ficam com Diego.
+5. **WhatsApp:** abrir e triar conversas recentes, lidas e não lidas, e retomar pendências conhecidas; o marcador não prova atendimento ou resolução. Conferir contexto e identidade para distinguir hóspede, equipe, assunto pessoal de Diego e contato sem relação. Assunto pessoal fica na passagem privada a Diego, sem convertê-lo em atendimento SCL nem responder sem autorização. Mensagens de empresas procurando a pessoa que usava o número antes → marcar como lidas e ignorar. Áudios ficam com Diego.
 6. **Agendas** Rio e Búzios (seção 6).
-7. **Documentos do 403** das próximas entradas (seção 7).
-8. **Preços de curto prazo:** Leblon D0–D7, Búzios 30 dias (seção 8).
+7. **Documentos do 403:** revisar a matriz de todas as reservas futuras confirmadas, priorizando as entradas de hoje e preservando os estados e a cadência da seção 7.
+8. **Preços, disponibilidade e curto prazo:** Leblon D0–D7, Búzios 30 dias (seção 8). Conferir preços/referências, descontos e pisos, mínimos, noites livres, reservas, cancelamentos e bloqueios; investigar divergências sem desbloquear ou alterar reserva por inferência. Consulta não autoriza escrita fora do escopo vigente. Fonte inacessível ou parcial fica como lacuna, nunca como “sem novidades” ou revisão concluída.
 9. **Fechar:** registro privado + resumo a Diego começando por **"Ação sua:"** quando houver decisão dele.
 
 **Prova de tudo:**
@@ -374,7 +380,9 @@ Diego está configurando. **Não mexer.** O retrato abaixo vem das capturas de t
 - "Enviando…" no Airbnb não prova nem falha nem entrega: **não reenviar** sem reler a conversa.
 - No WhatsApp, registrar Enviada, Entregue ou Lida, como aparece na tela.
 
-**Autonomia:**
+**Revisão de sexta, 10h (reforço de 22/10):** além da passada completa, fazer análise mais robusta de preços, disponibilidade, ocupação, ritmo de reservas, cancelamentos e pendências. Aplicar [Performance operacional](PERFORMANCE-OPERACIONAL.md): comparar snapshots com mesma janela, cobertura e denominador; separar realizado de futuro e propostas; declarar bloqueios e composição da diária média. Avaliar coerência da base e tarifas anômalas, não apenas pisos. Distinguir evidência, hipótese e proposta; lacuna não é zero, e nova estratégia depende de autorização. A análise não cria automação nem amplia o escopo de alteração.
+
+**Autonomia:** a tabela é um roteiro de triagem, não uma concessão permanente. Antes de agir, conferir o pedido e as autorizações vigentes; uma permissão específica válida não exige nova confirmação só porque o caso aparece na coluna de consulta. Restrições de segurança e instruções posteriores continuam valendo.
 
 | Pode fazer sem perguntar | Sempre pergunta a Diego |
 |---|---|
@@ -401,10 +409,12 @@ Diego está configurando. **Não mexer.** O retrato abaixo vem das capturas de t
 
 ---
 
-## 13. Decisões que Diego precisa tomar (em 22/10)
+## 13. Pendências registradas na consolidação (22/10, madrugada)
+
+**Retrato datado, não fila pronta para execução.** Antes de levar qualquer item a Diego, conferir decisões e desfechos posteriores no registro privado e na fonte acessível. Retirar da fila o que já foi resolvido ou cancelado, sem apagar o histórico; não reabrir compra, cobrança, avaliação ou proposta encerrada. Consulta de status de um recurso não comprova envio de provas complementares. Os lembretes sanitizados abaixo preservam a continuidade e os prazos; nomes, identificadores e detalhes individuais ficam somente no registro privado, que deve ser consultado para reconciliar cada pendência.
 
 1. **Assinatura "— Mia"** no fim das mensagens do Airbnb: sim ou não? (seção 2)
-2. **Pisos 330/680/380:** confirmar como oficiais. (seção 8)
+2. **Pisos 330/680/380: decisão encerrada.** Confirmados pela decisão de +R$30 em 15/10; não pedir nova aprovação dos mesmos valores. Conferir execução/proteção separadamente (seção 8).
 3. **Mofo 103/403:** resolvido ou pendente? (seção 9)
 4. **Recurso do 103:** mandar as provas extras até **23/10**.
 5. **Modelo 01 A:** autorizar a correção (documentos só no 403).
@@ -436,15 +446,18 @@ Diego está configurando. **Não mexer.** O retrato abaixo vem das capturas de t
 | 13/10 | Antecedência do 399 | 48h | **24h** |
 | 14/10 | Almoço do porteiro do 103 | volta 12h30 | **volta 14h30** |
 | 14/10 | Curto prazo | — | aproximar dos pisos as noites livres desalinhadas |
-| 15/10 | Pisos absolutos | 300 / 650 / 350 | **330 / 680 / 380** [confirmar] |
+| 15/10 | Pisos absolutos | 300 / 650 / 350 | **330 / 680 / 380**, decisão confirmada |
 | 15/10 | Horário da agenda | última passada do dia (desde 8–13/10; antes, 20h) | **8h30 e 17h30, os dois destinos** |
 | 17/10 | Búzios | — | 1 vaga de carro, sem exceção |
 | 21/10 | Booking | Mia configurando | **Diego assumiu** |
-| 22/10 | Atendimento | 6+ documentos | **este guia é a fonte única** |
+| 22/10 | Atendimento | 6+ documentos | **este guia é a fonte única**, sujeito às decisões e autorizações vigentes |
+| 22/10 | Revisão solicitada por Diego | ambiguidade entre agenda e execução; triagem por não lidas | agenda futura pela saída prevista/acordada; mensagens legíveis; triagem por contexto; passada completa e análise comparável às sextas |
 
 ---
 
 ## 15. Registro de 22/10/2026 (madrugada) — para a Mia e as outras janelas do Claude
+
+**Registro histórico da consolidação:** os próximos passos abaixo descrevem pendências daquela leitura; reconciliar com o registro privado e os desfechos posteriores antes de executar, sem repetir ações já concluídas.
 
 - **O que foi feito:**
   - Claude (Claude Code) leu tudo desde 24/09: GitHub, notas locais da Mia de 05 a 21/10 e e-mails de resumo.
@@ -461,3 +474,4 @@ Diego está configurando. **Não mexer.** O retrato abaixo vem das capturas de t
   - GitHub: `requisitos/operations/GUIA-ATENDIMENTO.md`.
   - Mac: `Documents/Claude/Sua Casa Leblon/SCL - Atendimento/GUIA-ATENDIMENTO-2026-10-22.md`.
   - Pendências com nomes (só no Mac): `PENDENCIAS-PRIVADO-2026-10-22-claude.md`, na mesma pasta e em `Documents/Codex/2026-10-22/`.
+
