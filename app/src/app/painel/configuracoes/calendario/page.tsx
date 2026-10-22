@@ -24,6 +24,9 @@ export default async function CalendarioRegras() {
     <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0, maxWidth: 820 }}>
       O SCL é a fonte oficial de calendário e preços: estas regras, mais o cadastro de cada imóvel (preço base, períodos especiais, pisos), definem o que vai ao Beds24 e dele às OTAs. Salvar aqui não envia nada: o envio é conferido e disparado em <Link href="/painel/calendario/previa">Calendário → Conferir calendário e preços</Link>. Sinal de escrita na Vercel: <strong>{escritaBeds24Ligada() ? "ligado" : "desligado"}</strong>.
     </p>
+    <p style={{ fontSize: "0.875rem", margin: 0, maxWidth: 820 }}>
+      <Link href="/painel/configuracoes/calendario/importar">Importar preços do Beds24</Link>: traz para o SCL o preço e o mínimo de cada noite, sem mudar nada nas OTAs.
+    </p>
     <FormRegrasCalendario regras={regras} imoveis={opcoes} salvar={salvarRegrasCalendarioAcao} />
     <EventosCalendario eventos={regras.eventos} imoveis={opcoes} criar={novoEventoAcao} remover={removerEventoAcao} alternarMinimoNormal={alternarMinimoNormalEventoAcao} />
   </>;

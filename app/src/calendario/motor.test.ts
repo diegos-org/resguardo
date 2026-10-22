@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DETALHES_VAZIOS, regrasDeVenda } from "@/imoveis/detalhes";
-import { elevarParaPiso, faixasDeEnvio, intervaloDasReservas, janelasDeFeriado, planejarCalendario, reduzir, resumirPlano, type EntradaPlano, type LinhaPlano } from "./motor";
+import { aplicarMultiplicador, elevarParaPiso, faixasDeEnvio, intervaloDasReservas, janelasDeFeriado, planejarCalendario, reduzir, resumirPlano, type EntradaPlano, type LinhaPlano } from "./motor";
 import { REGRAS_CALENDARIO_PADRAO, type RegrasCalendario } from "./regras-config";
 
 const IM = "11111111-1111-4111-8111-111111111111";
@@ -430,3 +430,106 @@ describe("fonte de preços por imóvel (M3.9)", () => {
   });
 });
 
+
+describe("preço importado do Beds24 (M3.11a)", () => {
+  // Importado em 1/10/2026; o mínimo é o da entrada naquela noite (null = sem mínimo importado).
+  const camada = (noites: Record<string, [number, number | null]>) => new Map(Object.entries(noites).map(([data, [preco, minimo]]) => [data, { preco, minimo, em: "2026-10-01" }]));
+  const desligada = regras({ ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "desligada" } });
+
+  it("preço: o período vence o importado; evento e feriadão vencem o importado; o importado vence a base; noite sem importado usa a base", () => {
+    // 15/10/2026 quinta → feriadão de 14/10 a 18/10 (2,5×); evento de 5/10 a 6/10 (2×); período com preço em 8/10.
+    const r = regras({
+      ...desligada,
+      eventos: [{ id: OUTRO, nome: "Evento fictício", inicio: "2026-10-05", fim: "2026-10-06", multiplicador: 200, estadiaMinima: null, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] }],
+      feriados: [{ data: "2026-10-15", nome: "Professores" }],
+      janelaFeriado: { estadiaMinima: 1, multiplicador: 250, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] },
+    });
+    const im = imovel({
+      periodos: [{ nome: "Réveillon fictício", inicio: "2026-10-08", fim: "2026-10-08", precoNoite: 300000, estadiaMinima: null }],
+      importados: camada({ "2026-10-05": [52000, null], "2026-10-08": [52000, null], "2026-10-09": [52000, null], "2026-10-14": [52000, null] }),
+    });
+    const linhas = planejarCalendario(entrada({ regras: r, imovel: im, fim: "2026-10-16" }));
+    expect(porData(linhas, "2026-10-08")).toMatchObject({ fontePreco: "periodo", precoReferencia: 300000, motivoPreco: "Período Réveillon fictício" });
+    expect(porData(linhas, "2026-10-05")).toMatchObject({ fontePreco: "evento", precoReferencia: 90000 });
+    expect(porData(linhas, "2026-10-14")).toMatchObject({ fontePreco: "feriado", precoReferencia: 112500 });
+    expect(porData(linhas, "2026-10-09")).toMatchObject({ fontePreco: "importado", precoReferencia: 52000, precoEnviar: 52000, precoFinalEsperado: 52000, motivoPreco: "Preço importado do Beds24 em 01/10/2026" });
+    expect(porData(linhas, "2026-10-09").regra).toContain("Preço importado do Beds24 em 01/10/2026");
+    expect(porData(linhas, "2026-10-10")).toMatchObject({ fontePreco: "base", precoReferencia: 45000, motivoPreco: "Preço base" });
+    // Sem preço base, o evento não tem o que multiplicar: vale o importado; sem os dois, a noite fica sem preço.
+    const semBase = planejarCalendario(entrada({ regras: r, imovel: imovel({ importados: camada({ "2026-10-05": [52000, null] }) }, { precoBase: null }), inicio: "2026-10-05", fim: "2026-10-06" }));
+    expect(semBase.map((l) => [l.fontePreco, l.precoReferencia])).toEqual([["importado", 52000], ["sem_preco", null]]);
+  });
+
+  it("preço: o importado não sofre os limites do preço dinâmico (a base sofre)", () => {
+    const limites = { precoBase: 30000, precoDinamico: true, precoMinimo: 40000, precoMaximo: 60000 };
+    const linhas = planejarCalendario(entrada({ regras: desligada, imovel: imovel({ importados: camada({ "2026-10-05": [25000, null], "2026-10-06": [80000, null] }) }, limites), inicio: "2026-10-05", fim: "2026-10-07" }));
+    expect(linhas.map((l) => [l.fontePreco, l.precoEnviar])).toEqual([["importado", 25000], ["importado", 80000], ["base", 40000]]);
+    expect(porData(linhas, "2026-10-07").motivoPreco).toBe("Preço base (limitado ao piso/teto)");
+  });
+
+  it("preço: a última hora e os pisos valem por cima do importado, com o Beds24 e com o SCL aplicando", () => {
+    const im = imovel({ importados: camada({ "2026-10-02": [39300, null], "2026-10-03": [50000, null], "2026-10-04": [39300, null], "2026-10-05": [50000, null] }) });
+    // Beds24 aplica (padrão): 4/10 é D+3 (15%, piso 350): 393 × 0,85 < 350 → a referência sobe para 411,77; 5/10, 15% sobre 500.
+    const b = planejarCalendario(entrada({ imovel: im, inicio: "2026-10-04", fim: "2026-10-05" }));
+    expect(porData(b, "2026-10-04")).toMatchObject({ fontePreco: "importado", precoReferencia: 39300, precoEnviar: 41177, precoFinalEsperado: 35000 });
+    expect(porData(b, "2026-10-04").regra).toContain("referência elevada para proteger o piso de R$ 350,00");
+    expect(porData(b, "2026-10-05")).toMatchObject({ precoEnviar: 50000, precoFinalEsperado: 42500 });
+    // SCL aplica: 2/10 é D+1 (25%, piso 300): 393 × 0,75 < 300 → envia 300; 3/10 (D+2), 25% sobre 500.
+    const scl = regras({ ultimaHora: { ...REGRAS_CALENDARIO_PADRAO.ultimaHora, aplicadoPor: "scl" } });
+    const s = planejarCalendario(entrada({ regras: scl, imovel: im, inicio: "2026-10-02", fim: "2026-10-03" }));
+    expect(porData(s, "2026-10-02")).toMatchObject({ fontePreco: "importado", precoEnviar: 30000, precoFinalEsperado: 30000 });
+    expect(porData(s, "2026-10-02").regra).toContain("SCL aplica 25% limitado ao piso de R$ 300,00");
+    expect(porData(s, "2026-10-03")).toMatchObject({ precoEnviar: 37500, precoFinalEsperado: 37500 });
+  });
+
+  it("mínimo: o importado substitui a semana normal; o cadastro e os eventos maiores vencem; o período com mínimo vence", () => {
+    // 1/10 quinta (semana 1), 2/10 sexta e 3/10 sábado (semana 2).
+    const im = (detalhes: Partial<typeof DETALHES_VAZIOS> = {}, over: Partial<EntradaPlano["imovel"]> = {}) =>
+      imovel({ importados: camada({ "2026-10-01": [45000, 3], "2026-10-02": [45000, 1], "2026-10-03": [45000, null] }), ...over }, detalhes);
+    const linhas = planejarCalendario(entrada({ imovel: im(), fim: "2026-10-04" }));
+    expect(linhas.map((l) => [l.data, l.minimoRegra, l.motivoMinimo])).toEqual([
+      ["2026-10-01", 3, "Mínimo importado do Beds24"], ["2026-10-02", 1, "Mínimo importado do Beds24"], ["2026-10-03", 2, "Semana normal"], ["2026-10-04", 1, "Semana normal"],
+    ]);
+    // O cadastro maior vence; menor, vale o importado (o maior dos dois).
+    expect(planejarCalendario(entrada({ imovel: im({ estadiaMinima: 4 }), fim: "2026-10-01" }))[0]).toMatchObject({ minimoRegra: 4, motivoMinimo: "Cadastro do imóvel" });
+    expect(planejarCalendario(entrada({ imovel: im({ estadiaMinima: 2 }), fim: "2026-10-01" }))[0]).toMatchObject({ minimoRegra: 3, motivoMinimo: "Mínimo importado do Beds24" });
+    // O evento maior vence (o preço também é dele).
+    const ev = { id: OUTRO, nome: "Carnaval fictício", inicio: "2026-10-01", fim: "2026-10-02", multiplicador: 200, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    expect(planejarCalendario(entrada({ regras: regras({ eventos: [ev] }), imovel: im(), fim: "2026-10-01" }))[0]).toMatchObject({ minimoRegra: 5, motivoMinimo: "Evento Carnaval fictício", fontePreco: "evento" });
+    // O período com mínimo vence, mesmo menor que o importado.
+    const periodo = { nome: "Período fictício", inicio: "2026-10-01", fim: "2026-10-01", precoNoite: null, estadiaMinima: 2 };
+    expect(planejarCalendario(entrada({ imovel: im({}, { periodos: [periodo] }), fim: "2026-10-01" }))[0]).toMatchObject({ minimoRegra: 2, motivoMinimo: "Período Período fictício", fontePreco: "importado" });
+  });
+
+  it("mínimo: as sobras e a regra de 6/10 continuam iguais, com o importado como mínimo normal", () => {
+    // Sobras: mínimo importado 5 nas três noites antes de uma reserva que entra em 4/10 → 3, 2, 1.
+    const cinco = camada({ "2026-10-01": [45000, 5], "2026-10-02": [45000, 5], "2026-10-03": [45000, 5] });
+    const sobras = planejarCalendario(entrada({ imovel: imovel({ importados: cinco }), reservas: [{ checkin: "2026-10-04", checkout: "2026-10-09", estado: "confirmada" }], fim: "2026-10-03", fimDados: "2026-10-20" }));
+    expect(sobras.map((l) => [l.minimoRegra, l.minimoEnviar])).toEqual([[5, 3], [5, 2], [5, 1]]);
+    expect(sobras[1].motivoMinimo).toBe("Mínimo importado do Beds24; sobra de 2 noite(s) até a próxima reserva/bloqueio");
+    // Regra de 6/10: o evento (mínimo 7) já tem reserva confirmada no período; as noites livres voltam ao mínimo normal,
+    // que nesta noite é o importado (3), e o preço do evento continua.
+    const ev = { id: OUTRO, nome: "Réveillon fictício", inicio: "2026-10-01", fim: "2026-10-10", multiplicador: 400, estadiaMinima: 7, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+    const [l] = planejarCalendario(entrada({ regras: regras({ eventos: [ev] }), imovel: imovel({ importados: camada({ "2026-10-01": [45000, 3] }) }), reservas: [{ checkin: "2026-10-06", checkout: "2026-10-09", estado: "confirmada" }], fim: "2026-10-01", fimDados: "2026-10-20" }));
+    expect(l).toMatchObject({ minimoRegra: 3, minimoEnviar: 3, fontePreco: "evento", precoReferencia: 180000 });
+    expect(l.motivoMinimo).toBe("Mínimo importado do Beds24; Evento Réveillon fictício já tem reserva confirmada: noites livres com o mínimo normal");
+  });
+
+  it("fontes: com \"manual\" e \"beds24\" a camada é ignorada (preço e mínimo)", () => {
+    const importados = camada({ "2026-10-02": [52000, 1], "2026-10-05": [52000, 4] });
+    const manual = planejarCalendario(entrada({ imovel: imovel({ fontePrecos: "manual", importados }), inicio: "2026-10-02", fim: "2026-10-05" }));
+    expect(porData(manual, "2026-10-05")).toMatchObject({ fontePreco: "base", precoEnviar: 45000, minimoRegra: 1, motivoMinimo: "Semana normal" });
+    expect(porData(manual, "2026-10-02")).toMatchObject({ fontePreco: "base", minimoRegra: 2, motivoMinimo: "Semana normal" });
+    const beds24 = planejarCalendario(entrada({ imovel: imovel({ fontePrecos: "beds24", importados }), inicio: "2026-10-02", fim: "2026-10-05", observacoes: [obs("2026-10-05", { preco: 61000 })] }));
+    expect(porData(beds24, "2026-10-05")).toMatchObject({ fontePreco: "beds24", precoEnviar: null, precoFinalEsperado: 61000, minimoRegra: 1, motivoMinimo: "Semana normal" });
+    expect(porData(beds24, "2026-10-02")).toMatchObject({ fontePreco: "beds24", minimoRegra: 2 });
+    expect([...manual, ...beds24].some((l) => l.fontePreco === "importado" || l.motivoMinimo.includes("importado"))).toBe(false);
+    // A mesma camada com a fonte scl vale (a conferência do teste).
+    expect(porData(planejarCalendario(entrada({ imovel: imovel({ importados }), inicio: "2026-10-05", fim: "2026-10-05" })), "2026-10-05")).toMatchObject({ fontePreco: "importado", minimoRegra: 4 });
+  });
+
+  it("aplicarMultiplicador é a fórmula do evento: base × centésimos, arredondada ao centavo", () => {
+    expect(aplicarMultiplicador(45001, 250)).toBe(112503);
+    expect(aplicarMultiplicador(45000, 160)).toBe(72000);
+  });
+});

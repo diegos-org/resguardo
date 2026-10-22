@@ -48,3 +48,20 @@ describe("cadastro completo: dias de entrada e de saída de segunda a domingo (M
     }
   });
 });
+
+describe("cadastro completo: os preços importados do Beds24 na ficha (M3.11a)", () => {
+  it("com noites importadas de hoje em diante, uma linha em Preço e taxas, com o link para a revisão; sem elas, nada", () => {
+    const { unmount } = render(<FormDetalhes imovelId={IMOVEL} inicial={DETALHES_VAZIOS} salvar={vi.fn()} importados={{ noites: 30, fim: "2026-11-20" }} />);
+    const linha = screen.getByText(/^Preços importados do Beds24:/);
+    expect(linha.textContent).toBe("Preços importados do Beds24: 30 noites, até 20/11/2026. Eventos, feriadões e períodos valem por cima. Revisar a importação");
+    expect(screen.getByRole("link", { name: "Revisar a importação" }).getAttribute("href")).toBe(`/painel/configuracoes/calendario/importar/${IMOVEL}`);
+    expect(linha.closest("fieldset")?.querySelector("legend")?.textContent).toBe("Preço e taxas (R$)");
+    unmount();
+    // Com outra fonte, a camada não vale: a linha diz isso.
+    const outra = render(<FormDetalhes imovelId={IMOVEL} inicial={{ ...DETALHES_VAZIOS, fontePrecos: "beds24" }} salvar={vi.fn()} importados={{ noites: 2, fim: "2026-10-23" }} />);
+    expect(screen.getByText(/^Preços importados do Beds24:/).textContent).toContain("Só valem com preços automáticos do SCL.");
+    outra.unmount();
+    render(<FormDetalhes imovelId={IMOVEL} inicial={DETALHES_VAZIOS} salvar={vi.fn()} />);
+    expect(screen.queryByText(/Preços importados do Beds24/)).toBeNull();
+  });
+});

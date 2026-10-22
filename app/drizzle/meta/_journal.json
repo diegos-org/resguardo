@@ -526,6 +526,13 @@
       "when": 1792256950071,
       "tag": "0074_m8_3c_escrita_reservas_beds24",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792638668000,
+      "tag": "0075_m3_11a_copias_precos_importados",
+      "breakpoints": true
     }
   ]
 }

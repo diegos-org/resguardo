@@ -96,6 +96,14 @@ export const dataHoraNoFuso = (d: Date, fuso = FUSO_PADRAO) => `${dataNoFuso(d, 
 /** Dia e hora de um instante no fuso, sem o ano: "16/10 às 15:05" (os prazos e os registros que o hóspede vê). */
 export const diaHoraNoFuso = (d: Date, fuso = FUSO_PADRAO) => `${diaMesBr(hojeISO(fuso, d))} às ${horaNoFuso(d, fuso)}`;
 
+/** Há quanto tempo, para o painel (M3.11a: a última leitura do Beds24): "há menos de 1 hora", "há 5 horas" até 2 dias, depois "há 3 dias". */
+export function haQuanto(d: Date, agora: Date = new Date()): string {
+  const horas = Math.floor((agora.getTime() - d.getTime()) / 3_600_000);
+  if (horas < 1) return "há menos de 1 hora";
+  if (horas < 48) return horas === 1 ? "há 1 hora" : `há ${horas} horas`;
+  return `há ${Math.floor(horas / 24)} dias`;
+}
+
 /** Como dizer o fuso ao lado de uma hora: "horário de Brasília" no padrão, "horário do local do imóvel" nos outros. */
 export const rotuloDoFuso = (fuso: string) => (fuso === FUSO_PADRAO ? "horário de Brasília" : "horário do local do imóvel");
 

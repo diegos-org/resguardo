@@ -1,21 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { CampoHora } from "@/components/CampoHora";
 import type { Detalhes } from "@/imoveis/detalhes";
 import type { EstadoDetalhes } from "@/imoveis/acoes";
 import { COMODIDADES, TIPOS_CAMA } from "@/imoveis/cadastro-opcoes";
 import { EXPLICACAO_FONTE_PRECOS, FONTES_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
-import { DIAS_NA_ORDEM, DIAS_SEMANA } from "@/lib/datas";
+import { dataBr, DIAS_NA_ORDEM, DIAS_SEMANA } from "@/lib/datas";
 import { centavosParaCampo } from "@/lib/dinheiro-form";
 import styles from "../formularios.module.css";
 
-type Props = { imovelId: string; inicial: Detalhes; salvar: (a: EstadoDetalhes, f: FormData) => Promise<EstadoDetalhes> };
+type Props = {
+  imovelId: string;
+  inicial: Detalhes;
+  salvar: (a: EstadoDetalhes, f: FormData) => Promise<EstadoDetalhes>;
+  /** Os preços importados do Beds24 de hoje em diante (M3.11a): noites e a última; null = nada importado. */
+  importados?: { noites: number; fim: string } | null;
+};
 
 const grupo = { border: "1px solid var(--scl-areia)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column" as const, gap: 12, margin: 0 };
 const legenda = { fontWeight: 500, padding: "0 6px" };
 
-export function FormDetalhes({ imovelId, inicial, salvar }: Props) {
+export function FormDetalhes({ imovelId, inicial, salvar, importados = null }: Props) {
   const [estado, enviar, enviando] = useActionState(salvar, {});
   // Depois de um erro, o React limpa o formulário: os campos voltam com o que foi digitado.
   const v = estado.valores;
@@ -146,6 +153,13 @@ export function FormDetalhes({ imovelId, inicial, salvar }: Props) {
               </li>
             ))}
           </ul>
+          {importados && (
+            <p style={{ fontSize: "0.875rem", margin: 0 }}>
+              Preços importados do Beds24: {importados.noites} noites, até {dataBr(importados.fim)}.{" "}
+              {inicial.fontePrecos === "scl" ? "Eventos, feriadões e períodos valem por cima." : "Só valem com preços automáticos do SCL."}{" "}
+              <Link href={`/painel/configuracoes/calendario/importar/${imovelId}`}>Revisar a importação</Link>
+            </p>
+          )}
           <div className={styles.linha}>
             <label>
               Preço base da noite
