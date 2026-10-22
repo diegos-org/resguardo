@@ -251,7 +251,7 @@ Obrigada! — Mia / Sua Casa Leblon
 ```
 - Organizar **por dia**. No dia, ordenar pelos horários combinados, não pelo número do apartamento.
 - "Arrumar para X hóspedes" = total da **próxima** reserva após a saída, nunca de quem sai.
-- Toda saída gera limpeza, mesmo sem nova entrada. Saída até 12h–13h → limpeza no mesmo dia. Saída no fim do dia → manhã seguinte desde cedo (~8h). Imóvel já limpo e sem uso não precisa de nova limpeza só porque alguém vai chegar.
+- Toda saída gera limpeza, mesmo sem nova entrada. **Antes de marcar o dia, confirmar a saída efetiva e a disponibilidade da equipe** (saída prevista não é saída feita). Com isso confirmado: saída até 12h–13h → limpeza no mesmo dia; saída no fim do dia → manhã seguinte desde cedo (~8h). Imóvel já limpo e sem uso não precisa de nova limpeza só porque alguém vai chegar.
 - **Agenda correta enviada = limpeza encaminhada.** Não cobrar confirmação só porque a equipe não respondeu.
 
 **Formato Búzios:** até **5 próximas reservas confirmadas nos próximos 30 dias**, com entrada e saída (dia da semana e data), primeiro nome, nº de hóspedes, horários e troca no mesmo dia destacada. Qualquer nova reserva, alteração ou cancelamento: avisar o grupo, mesmo fora da janela.
@@ -298,8 +298,8 @@ O sistema SCL ainda **não envia** preços. O envio só liga quando Diego ligar,
 
 | | Studios (102, 103, 399, 403) | 303 | Búzios |
 |---|---|---|---|
-| D-7 a D-3 | R$350 | R$700 | — |
-| D-2 a D0 (piso absoluto) | **R$330** | **R$680** | **R$380** (D0–D7) |
+| D-7 a D-3 | R$350 | R$700 | **R$380** |
+| D-2 a D0 (piso absoluto) | **R$330** | **R$680** | **R$380** |
 | Fora da última hora | — | — | R$450 |
 
 **[CONFIRMAR COM DIEGO]** Os pisos absolutos de R$330, R$680 e R$380 (+R$30, decisão de 15/10) estão só nas notas da Mia e no rascunho #144. A `main` ainda mostra os antigos (R$300, R$650, R$350). Até Diego confirmar, as rodadas seguem 330/680/380, como vêm fazendo.
@@ -309,6 +309,7 @@ O sistema SCL ainda **não envia** preços. O envio só liga quando Diego ligar,
 - Subir só a referência para `ceil(piso ÷ (1 − desconto))`. Valores típicos:
   - studios D3–7 → **411,77**
   - studios D0–2 → **440,00**
+  - Búzios D3–7 → **447,06** (só se a referência estiver abaixo disso)
   - 303 D0–2 → **906,67**
   - Búzios D0–2 → **506,67**
 - Não subir antes da hora as noites que ainda estão acima do piso. Recorrigir quando elas mudarem de faixa.
