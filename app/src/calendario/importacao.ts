@@ -332,7 +332,7 @@ export async function ultimasLeituras(db: Db, org: string, imovelIds: readonly s
 
 /** Uma linha da lista da importação: o imóvel, a fonte, a última leitura, o que já foi importado de hoje em diante e a última cópia. */
 export type ImovelNaImportacao = {
-  id: string; codigo: string; nome: string; fontePrecos: FontePrecos;
+  id: string; codigo: string; nome: string; fuso: string; fontePrecos: FontePrecos;
   lidaEm: Date | null;
   importados: (ResumoImportados & { autor: string | null }) | null;
   ultimaCopia: CopiaResumida | null;
@@ -361,7 +361,7 @@ export async function listarImportacoes(db: Db, org: string, agora = new Date())
   return lista.map((i) => {
     const r = importados.get(i.id);
     return {
-      id: i.id, codigo: i.codigo, nome: i.nome, fontePrecos: fontes.get(i.id) ?? "scl", lidaEm: leituras.get(i.id) ?? null,
+      id: i.id, codigo: i.codigo, nome: i.nome, fuso: i.fuso, fontePrecos: fontes.get(i.id) ?? "scl", lidaEm: leituras.get(i.id) ?? null,
       importados: r ? { ...r, autor: r.autorId ? (nomes.get(r.autorId) ?? null) : null } : null, ultimaCopia: copias.get(i.id) ?? null,
     };
   });
