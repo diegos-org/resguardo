@@ -29,7 +29,7 @@
 
 | Etapa | O que entrega | Situação |
 |---|---|---|
-| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; referência do sistema antigo cruzada com o plano em 4/10 (M0.6); avisos de erro pelo Sentry, sem dados pessoais (M0.9, 16/10); menu do painel no celular pronto (M0.10, 16/10). **M0 concluído** |
+| M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; referência do sistema antigo cruzada com o plano em 4/10 (M0.6); avisos de erro pelo Sentry, sem dados pessoais (M0.9, 16/10); menu do painel no celular pronto (M0.10, 16/10). **M0 concluído, menos a arrumação deste guia (M0.11, planejada em 22/10)** |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
 | M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta; sobras de feriado e evento com reserva usam o mínimo normal da semana (M3.10, 9/10); **fonte única de preços planejada (M3.11, 22/10)**: importar os preços do Beds24, conferir com você e ligar imóvel a imóvel |
@@ -52,7 +52,7 @@
   2. o modo "só disponibilidade" por imóvel: manda só os bloqueios feitos no SCL, sem preço (as reservas não vão por aí);
   3. uma lista "pronto para ligar" por imóvel, e ligar um por vez, o 103 primeiro.
 - **Sua condição:** nada liga antes de piso, mínimo de noites, preço base e eventos estarem conferidos no SCL, e de a simulação mostrar quase nada a mudar.
-- **Visual (M7.23):** fica com o Codex. Primeiro uma tela, no computador e no celular, para você aprovar; depois o resto (M7.24).
+- **Visual (M7.23):** fica com o Codex. Primeiro uma tela, no computador e no celular, para você aprovar; depois o resto, em quatro partes (M7.24a a M7.24d).
 - **Textos curtos:** uma ou duas linhas nas telas, no site e neste guia. A arrumação do guia é o M0.11, depois do primeiro passo dos preços.
 - **Para você:** avisar o Codex que pode seguir com o visual depois que este plano entrar no sistema.
 
