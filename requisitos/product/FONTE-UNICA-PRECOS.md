@@ -176,6 +176,29 @@ para o site e a cotação (M7.2, M8.1). Nada que o hóspede lê cita o Beds24; o
   - **objetivo:** cumprir a condição de Diego, nada mudar nas OTAs ao ligar, e deixar as regras dele valerem por cima,
     aos poucos.
 
+### Ajustes da implementação (22/10), em relação às §3.1 a §3.4
+
+- **Cópia por quarto:** a comparação é com a última cópia do mesmo imóvel e quarto. Imóvel com leitura de dois quartos
+  guarda uma cópia de cada.
+- **Tabelas:**
+  - a coluna `ordem` (sequência) decide qual é a última cópia, mesmo com a mesma hora;
+  - o quarto pode ficar vazio;
+  - todo preço importado aponta para a cópia de onde veio;
+  - o banco recusa cópia sem noites.
+- **Leitura vencida:** basta uma noite usada ter sido lida fora da validade, não só a mais nova.
+- **Proposta, casos de borda (sempre com aviso):**
+  - preço zero não entra;
+  - mínimo fora de 1 a 365 entra sem o mínimo, e vale o do SCL;
+  - máximo fora de 1 a 365 fica fora da proposta;
+  - empate na estadia máxima fica com a menor;
+  - máximo proposto menor que o mínimo do cadastro;
+  - noite sem preço não traz o mínimo.
+- **Conferência:**
+  - compara preço, mínimo e máximo, com o motivo da linha do plano;
+  - sem conferência quando a fonte não é SCL;
+  - as caixas "Usar como…" vêm marcadas quando o cadastro não tem o valor.
+- **Entrada da proposta:** o cadastro (o mínimo entra só para o aviso) e, das regras, só a estadia máxima de hoje.
+
 ## 5. Testes do M3.11a
 
 Com PGlite e a versão falsa do Beds24, sem rede.
@@ -240,5 +263,9 @@ Com PGlite e a versão falsa do Beds24, sem rede.
 - **Disponibilidade:** a conferência das noites fechadas é o M3.11c; a reserva direta com o aviso "feche as datas" é o
   M3.11b.
 - **Máximo de noites:** continua um só por imóvel.
+- **Tamanho das cópias:**
+  - a leitura muda todo dia, porque a janela anda;
+  - por isso, sai perto de uma cópia por imóvel a cada leitura, simulação ou envio, com uns 25 KB cada;
+  - se crescer demais, decidir com Diego quanto tempo guardar.
 - **Na produção:** a leitura de 7/10 está vencida. Antes de revisar, Diego toca em "Importar agora" em Integrações, que
   só lê o Beds24.
