@@ -32,12 +32,12 @@ Regras de convivência:
 
 | Imóvel | Nome no anúncio | Máx. hóspedes | Chave / chegada | Documentos? |
 |---|---|---|---|---|
-| **102** | Studio Inteligente | 2 | Equipe Rio | Não |
+| **102** | Studio Inteligente | 2 | Combinar com a equipe Rio (cadastro privado) | Não |
 | **103** | Studio Boutique | 2 | Porteiro Joezio · alternativa portaria 24h | Não |
-| **303 "Rita"** | Quadra Praia 2 Quartos | 6 | Equipe Rio | **Não** (deixou de exigir em 5/10) |
-| **399** | Studio Orgânico | 2 | Porteiro Raimundo · alternativa portaria 24h | Não |
+| **303 "Rita"** | Quadra Praia 2 Quartos | 6 | Combinar com a equipe Rio (cadastro privado) | **Não** (deixou de exigir em 5/10) |
+| **399** | Studio Orgânico | 2 | Porteiro Raimundo · para combinar chegada, o hóspede liga para Marluce (dias úteis) ou Niedja (fins de semana e feriados) · alternativa portaria 24h | Não |
 | **403** | Studio Mezanino | 4 | Portaria Três Irmãos (24h) | **Sim: todos os ocupantes, antes de todo check-in** |
-| **Búzios** | Casa Búzios Geribá | 12 | Equipe Búzios recebe pessoalmente | Não |
+| **Búzios** | Casa Búzios Geribá | 12 | Equipe Búzios recebe pessoalmente e entrega as chaves | Não |
 
 **Horários padrão:** entrada a partir das **15h**, saída até as **11h**. Exceções só como na seção 3.
 
@@ -56,7 +56,8 @@ Regras de convivência:
 - **103, Joezio:** seg–sáb 9h–19h, almoço 12h–14h30, domingo folga. Feriado: confirmar.
 - **399, Raimundo:** seg/qua/sex 7h–17h, ter/qui 7h–19h, sáb 7h–14h, almoço 12h–13h30, domingos e feriados folga.
 - **Alternativa para 103 e 399:** portaria 24h da Rua Aristides Espínola. Só indicar **depois de confirmar com a equipe que a chave está lá**.
-- Cópias de chave (equipe, porteiro, portaria 24h) são independentes: retirar uma não esvazia as outras.
+- Cópias de chave (equipe, porteiro, portaria 24h) são independentes: retirar uma não esvazia as outras. Onde está cada cópia agora fica no registro privado.
+- [CONFIRMAR COM DIEGO] O roteiro "ligue para Marluce/Niedja" está confirmado para o 399. Ainda não está confirmado se vale também para o 103.
 
 ---
 
@@ -65,7 +66,7 @@ Regras de convivência:
 **Identidade.**
 - Nas mensagens escritas à mão: "Aqui é a **Mia**, da equipe Sua Casa Leblon." (nome adotado em 5/10).
 - Os modelos automáticos do Airbnb continuam com a assinatura que já têm (Diego). Não mudar sem pedido.
-- **[CONFIRMAR COM DIEGO]** Desde 21/10 a Mia passou a fechar as mensagens do Airbnb com "— Mia". Não há decisão escrita. Até Diego responder, apresentar-se como Mia no começo da conversa e **não** assinar no fim.
+- **[CONFIRMAR COM DIEGO]** Há conflito: a regra de 23/09 diz que as mensagens do Airbnb saem como "Diego". O nome mudou para Mia em 5/10, e desde 21/10 a Mia assina "— Mia" no fim. Não há decisão escrita sobre a assinatura. Até Diego responder: apresentar-se como Mia no começo da conversa e **não** assinar no fim.
 - Nunca se passar por Diego. Não repetir a apresentação a cada mensagem.
 
 **Tom.**
@@ -96,10 +97,10 @@ Regras de convivência:
 |---|---|---|
 | **Entrada antecipada** | Só confirmada **na véspera**, se a saída anterior e a limpeza permitirem. Para **garantir**, só reservando a noite anterior (diária inteira). Pedido para o mesmo dia: só com limpeza confirmada e decisão de Diego. | "Nossa entrada é a partir das 15h. Se o apartamento ficar pronto antes, confirmo na véspera. Se quiser garantir chegar cedo, a forma segura é reservar a noite anterior." |
 | **Saída tardia** | Igual: só na véspera, conforme a próxima entrada. Garantia = diária adicional. Exceção pontual do 399 em 6/10 (12h30–13h) **não** é regra. | "A saída é até 11h. Na véspera consigo ver se dá para estender um pouco, conforme a próxima chegada." |
-| **Guardar malas** | Não é serviço padrão. Porteiro não guarda malas por padrão. Só com responsável, local e horário confirmados pela equipe ou por Diego. No 403 já indicamos o locker da garagem. | "Vou verificar com a equipe se conseguimos guardar suas malas nesse horário e te confirmo." (Não prometer antes da confirmação.) |
+| **Guardar malas** | Não é serviço padrão. Porteiro não guarda malas por padrão. Só com responsável, local e horário confirmados pela equipe ou por Diego. No 403 já indicamos o locker da garagem. Promessa já feita por Diego vale para aquela reserva: confirmar a logística com a equipe com antecedência (há uma em aberto, ver registro privado). | "Vou verificar com a equipe se conseguimos guardar suas malas nesse horário e te confirmo." (Não prometer antes da confirmação.) |
 | **Visitas** | Não autorizadas por padrão. Sem pernoite de quem não está na reserva. Perguntar quantas pessoas e horários e levar a Diego. | "As visitas dependem de autorização. Quantas pessoas e em que horário? Lembrando que não são permitidas festas, e o silêncio vai das 22h às 8h." |
-| **Festas, barulho** | Proibido festas e eventos. Silêncio das 22h às 8h. | — |
-| **Fumar** | Proibido dentro dos imóveis. | — |
+| **Festas, barulho** | Leblon: proibido festas e eventos, silêncio das 22h às 8h. Búzios: seguir as regras do anúncio de Búzios. | — |
+| **Fumar** | Leblon: proibido dentro dos imóveis. Búzios: seguir as regras do anúncio. | — |
 | **Animais** | Leblon: não permitidos. Búzios: o anúncio diz "não permitido", mas Diego avalia caso a caso (coleira ou colo). | "Nosso anúncio não permite animais, mas vou consultar o Diego e te retorno." Sem compromisso. |
 | **Fotos comerciais** | Não permitidas sem autorização. | — |
 | **Hóspedes a mais** | Nunca acima do máximo da tabela (seção 1). Búzios cobra hóspede extra acima de 6 (pela plataforma). | — |
@@ -133,13 +134,13 @@ Nunca discutir culpa com o hóspede. Nunca oferecer dinheiro, desconto ou reembo
 2. **103/399:** porteiro no horário? Se não, a chave está na portaria 24h da Aristides Espínola? Confirmar com a equipe **antes** de mandar o hóspede para lá.
 3. **403:** a portaria recebeu os documentos? Se faltar algum, pedir na hora ao hóspede, avisar a portaria com nome, datas e a pendência, e pedir desculpas pelo atraso.
 4. **102/303:** chamar a equipe Rio (Marluce nos dias úteis, Niedja nos fins de semana e feriados).
-5. **Búzios:** chamar Márcia ou Egeílton no grupo Búzios.
-6. Se em 15 minutos não houver solução: avisar Diego.
+5. **Búzios:** chamar a equipe no grupo Búzios.
+6. Se não houver solução rápida: avisar Diego, sem esperar a próxima passada.
 
 Texto: "Sinto muito pelo transtorno! Já estou falando com a equipe e te retorno em poucos minutos."
 
 **Prevenção:**
-- Chegada perto do fim do expediente do porteiro (até 2h antes do fechamento): combinar a alternativa com antecedência.
+- Chegada perto do fim do expediente do porteiro: combinar a alternativa com antecedência (Diego, 17/10).
 - Só informar ao hóspede uma alternativa real e já confirmada.
 
 ### 4.2 Apartamento não está pronto na chegada
@@ -155,7 +156,7 @@ Texto: "Sinto muito pelo transtorno! Já estou falando com a equipe e te retorno
 ### 4.4 Algo quebrou (ar-condicionado, chuveiro, Wi-Fi, fechadura, TV)
 1. Pedir foto ou vídeo e uma descrição curta.
 2. Tentar a solução simples: controle, disjuntor, reiniciar o roteador.
-3. Se não resolver: avisar Diego. **A Mia não contata prestadores, não contrata, não gasta.** Diego decide (Sebastião faz pequenos reparos).
+3. Se não resolver: avisar Diego. **A Mia não contata prestadores, não contrata, não gasta.** Diego decide e aciona o prestador de confiança dele.
 4. Dar ao hóspede um próximo passo com horário ("te retorno até as 18h").
 - Ruído do ar-condicionado já foi relatado no 103: registrar a queixa e avisar Diego, sem prometer troca.
 
@@ -196,7 +197,7 @@ Texto: "Sinto muito pelo transtorno! Já estou falando com a equipe e te retorno
 
 ### 4.13 Reserva direta (WhatsApp, indicação)
 - Só pelo site, com preço e disponibilidade conferidos. Nada de cobrança improvisada no WhatsApp.
-- Quando Diego confirmar uma reserva direta fora das plataformas: **fechar as datas no Beds24 na hora** como bloqueio. O sistema ainda não faz isso sozinho.
+- Reserva direta confirmada fora das plataformas: **avisar Diego na hora para fechar as datas no Beds24**. O sistema ainda não faz isso sozinho e há risco de venda dupla. [CONFIRMAR COM DIEGO] se o agente pode criar esse bloqueio ele mesmo.
 
 ### 4.14 Emergência (saúde, segurança, incêndio, inundação)
 - Orientar a ligar: **192** (SAMU), **193** (Bombeiros), **190** (Polícia).
@@ -209,7 +210,7 @@ Texto: "Sinto muito pelo transtorno! Já estou falando com a equipe e te retorno
 
 ## 5. Avaliações
 
-**Avaliar o hóspede** (até 3 dias após a saída, conferir a fila "a escrever"):
+**Avaliar o hóspede** (em toda passada, conferir as saídas recentes e a fila "a escrever"; o Airbnb dá alguns dias de prazo, então não deixar perto de expirar):
 - Positiva por padrão: 5/5 nos três critérios, recomendação "sim", sem etiquetas.
 - Texto curto e verdadeiro ("Foi um prazer receber X! Será bem-vindo(a) novamente.").
 - Comentário privado vazio.
@@ -229,9 +230,9 @@ Texto: "Sinto muito pelo transtorno! Já estou falando com a equipe e te retorno
 
 **Quem é quem:**
 - **Rio:** Marluce (dias úteis) e Niedja (fins de semana e feriados). Grupo "Sua Casa Leblon | Equipe Rio".
-- **Búzios:** Márcia e Egeílton (recebem os hóspedes e entregam as chaves). Grupo "Búzios | Equipe".
-- **Sebastião:** pequenos reparos, sempre por Diego.
-- Telefones só no cadastro privado.
+- **Búzios:** duas pessoas da equipe local recebem os hóspedes e entregam as chaves. Grupo "Búzios | Equipe".
+- Pequenos reparos: um prestador de confiança de Diego, sempre acionado por ele.
+- Nomes completos e telefones só no cadastro privado.
 
 **Quando enviar (decisão de 15/10):** agenda **completa** dos dois destinos em cada passada, **8h30 e 17h30**. Cada envio substitui o anterior. Mudanças vêm destacadas. Nada de mensagens de rotina de madrugada.
 
@@ -241,10 +242,10 @@ AGENDA RIO — dd/mm, hhh — SUBSTITUI A ANTERIOR
 MUDANÇAS: (o que mudou desde a última)
 URGÊNCIAS DE HOJE: (se houver)
 LIMPEZAS POR DIA (amanhã a D+5)
-  Sexta 23/10
-  • 403 — saída até 11h — arrumar para 1 hóspede (próxima entrada 31/10)
+  Segunda 09/11
+  • 10X — saída até 11h — arrumar para 2 hóspedes (próxima entrada 12/11)
 ENTRADAS (separadas das limpezas)
-  • 303 — Qui 22/10 ~20h — 4 adultos — primeiro nome, telefone operacional
+  • 10Y — Ter 10/11 ~18h — 2 adultos — primeiro nome, telefone operacional
 A agenda pode mudar com novas reservas ou cancelamentos. Aviso aqui quando mudar.
 Obrigada! — Mia / Sua Casa Leblon
 ```
@@ -329,29 +330,31 @@ O sistema SCL ainda **não envia** preços. O envio só liga quando Diego ligar,
 - **Mofo 103/403:**
   - Diego disse em 14/10 que os reparos foram concluídos; as notas de 19–21/10 ainda falam em "pendente". **[CONFIRMAR COM DIEGO]**
   - Enquanto isso, qualquer queixa vai direto para Diego.
-- **Booking.com:** ver a seção 10. Risco de reserva duplicada no Réveillon do 399 (caso escalado a Diego).
+- **Booking.com:** ver a seção 10. Há uma reserva duplicada no Réveillon do 399, já escalada a Diego. Ele mencionou um cancelamento, mas isso **não foi confirmado**.
 
 ---
 
 ## 10. Booking.com e Beds24 — estado em 21/10 à noite
 
-Diego está configurando. **Não mexer.** Retrato das telas de 21/10, 18h–19h:
+Diego está configurando. **Não mexer.** O retrato abaixo vem das capturas de tela de 21/10, entre 18h e 19h, conferidas pelo Claude em 22/10. Não houve conferência ao vivo.
 
-| Imóvel | Booking |
+| Imóvel | O que as telas mostram |
 |---|---|
-| 102 | Ligado ao Beds24, recebendo preços (ex.: Réveillon R$1.800). Depois foi fechado. |
-| 103 | Ligado ao Beds24. Erros ao abrir. |
-| 403 | Ligado ao Beds24. Erros ao sincronizar: falta cadastro da empresa (Legal Entity), dados fiscais e e-mail financeiro; o Booking diz que o quarto "não tem cozinha". |
-| 399 | Fechado temporariamente, **reabre sozinho em 31/12/2026**. Bloqueado até confirmar a localização. |
-| 303, Búzios | Fechados. Aguardando confirmar a localização (vídeo ou carta). |
+| 102 | No calendário do Booking: disponível de 25 a 30/12 a R$1.800 (tarifa padrão). Uma captura seguinte se chama "fechado após transmissão". |
+| 103 | Mapeamento ligado no Beds24 e reserva de teste recebida. Captura de erros ao abrir. |
+| 403 | Mapeamento ligado no Beds24. Erros ao sincronizar: o Booking pede o cadastro da empresa (Legal Entity), os dados fiscais e o e-mail financeiro, e diz que o quarto "não tem cozinha". |
+| 399 | "Propriedade bloqueada — confirme a localização" e "temporariamente fechada, volta a aceitar reservas em **31/12/2026**". |
+| 303, Búzios | Fechados, com aviso para confirmar a localização (por vídeo ou por carta). |
 
+- **[CONFIRMAR COM DIEGO]**
+  - Diego pediu às 10h18 de 21/10 que o 399 voltasse a aceitar reservas em 30/11. A tela mostra 31/12.
+  - O GUIA-DIEGO de 22/10 diz que metade dos anúncios do Booking já está no ar.
+  - Até Diego avisar, tratar o estado do Booking como incerto e conferir os dois canais antes de confirmar qualquer data.
 - Exigências de Diego:
   - pagamento do Booking cobrado por cartão no ato da reserva, nunca no apartamento;
   - não perder a gestão de "Pagamentos via Booking" na troca do Hospitable para o Beds24.
-- Ticket do suporte Beds24 nº 1067984 (diagnóstico) sem resposta registrada.
+- O ticket de suporte Beds24 nº 1067984 (diagnóstico) não tem resposta registrada.
 - **Atendimento:** consultas e reservas do Booking chegam pelo Beds24 (Messages). Responder pelo canal original.
-
----
 
 ## 11. A passada — passo a passo
 
@@ -359,7 +362,7 @@ Diego está configurando. **Não mexer.** Retrato das telas de 21/10, 18h–19h:
 2. **Urgências:** hóspede sem conseguir entrar, problema na estadia, pedido de reserva expirando.
 3. **Airbnb:** mensagens não lidas → responder o que for óbvio. Página "Hoje": pedidos, avaliações a escrever, avaliações a responder. (A página "Hoje" vira o dia às 21h, horário de Brasília.)
 4. **Booking/Beds24:** mensagens e reservas novas.
-5. **WhatsApp:** hóspedes e grupos. Mensagens para "Carla" (antiga dona do número) → marcar como lidas e ignorar. Áudios ficam com Diego.
+5. **WhatsApp:** hóspedes e grupos. Mensagens de empresas procurando a pessoa que usava o número antes → marcar como lidas e ignorar. Áudios ficam com Diego.
 6. **Agendas** Rio e Búzios (seção 6).
 7. **Documentos do 403** das próximas entradas (seção 7).
 8. **Preços de curto prazo:** Leblon D0–D7, Búzios 30 dias (seção 8).
@@ -406,7 +409,7 @@ Diego está configurando. **Não mexer.** Retrato das telas de 21/10, 18h–19h:
 5. **Modelo 01 A:** autorizar a correção (documentos só no 403).
 6. **Búzios:** pet do hóspede de novembro; base de preço; regra de Réveillon, Carnaval e feriadão.
 7. **Booking:** avisar quando terminar a configuração; decidir o caso de reserva dupla no Réveillon do 399.
-8. **Avaliação pendente** de um hóspede do 102 com saída em 12/10, que expira por volta de 25/10: avaliar ou não?
+8. **Avaliação em espera** (exceção pedida por Diego), perto de expirar: avaliar ou não? Detalhes no registro privado.
 9. **Correções de preço negadas pelo revisor** (103 e 399 em 27/10; mínimo do 399 em 24/10): autorizar ou não.
 10. **Pedido de alteração de datas** de uma reserva do 303 em dezembro.
 
@@ -416,6 +419,8 @@ Diego está configurando. **Não mexer.** Retrato das telas de 21/10, 18h–19h:
 
 | Data | Assunto | Antes | Agora |
 |---|---|---|---|
+| 23/09 | Capacidades e regras da casa | — | 102/103/399 = 2, 403 = 4, 303 = 6, Búzios = 12; Leblon sem pets, eventos, fumo e fotos comerciais; silêncio 22–8h |
+| 23/09 | Modelo 04 A (convite à avaliação) | D+3, 10h | **D+1, 10h** (o Guia Lia ainda diz D+3) |
 | 05/10 | Nome do agente | "equipe Sua Casa Leblon" / Lia | **Mia** |
 | 05/10 | Documentos | 403 e 303 | **Só 403**, todos os ocupantes |
 | 05/10 | Agenda Búzios | todas as reservas | **até 5 em 30 dias** |
@@ -428,9 +433,10 @@ Diego está configurando. **Não mexer.** Retrato das telas de 21/10, 18h–19h:
 | 13/10 | Confirmação de limpeza | cobrar a equipe | **agenda correta = encaminhada** |
 | 13/10 | Áudios | transcrição | **ficam com Diego** |
 | 13/10 | Antecedência do 399 | 48h | **24h** |
+| 14/10 | Almoço do porteiro do 103 | volta 12h30 | **volta 14h30** |
 | 14/10 | Curto prazo | — | aproximar dos pisos as noites livres desalinhadas |
 | 15/10 | Pisos absolutos | 300 / 650 / 350 | **330 / 680 / 380** [confirmar] |
-| 15/10 | Horário da agenda | 20h → última passada | **8h30 e 17h30, os dois destinos** |
+| 15/10 | Horário da agenda | última passada do dia (desde 8–13/10; antes, 20h) | **8h30 e 17h30, os dois destinos** |
 | 17/10 | Búzios | — | 1 vaga de carro, sem exceção |
 | 21/10 | Booking | Mia configurando | **Diego assumiu** |
 | 22/10 | Atendimento | 6+ documentos | **este guia é a fonte única** |
@@ -442,11 +448,15 @@ Diego está configurando. **Não mexer.** Retrato das telas de 21/10, 18h–19h:
 - **O que foi feito:**
   - Claude (Claude Code) leu tudo desde 24/09: GitHub, notas locais da Mia de 05 a 21/10 e e-mails de resumo.
   - Consolidou este guia.
-  - Fez a passada só de leitura (Gmail; WhatsApp em lista).
-- **Nada foi enviado** a hóspedes, equipes ou plataformas. Nenhum preço foi alterado. Nada foi apagado.
-- **O que aconteceu na noite de 21/10, pelos e-mails:**
-  - Uma reserva do 403 para 26–29/11 foi **cancelada pelo hóspede**. As datas voltaram a ficar livres e o documento recebido dele não precisa mais ser encaminhado.
-  - Há uma avaliação a escrever do hóspede do 303 que saiu em 21/10.
-  - As agendas da tarde de 21/10 **não foram enviadas** (Mac offline). A próxima passada deve mandar as agendas completas.
-- **Acesso:** a extensão do Chrome falhou nesta sessão ("tabs must be active"). A credencial do Beds24 na nuvem segue com erro 401. A Mia continua sendo a executora das passadas.
-- **Cópias:** este guia está no GitHub (`requisitos/operations/GUIA-ATENDIMENTO.md`) e no Mac (`Documents/Claude/Sua Casa Leblon/SCL - Atendimento/GUIA-ATENDIMENTO-2026-10-22.md`). A lista de pendências com nomes fica só no Mac.
+  - Fez uma passada só de leitura (Gmail; WhatsApp em lista).
+- **Nada foi enviado** a hóspedes, equipes ou plataformas. Nenhum preço, reserva ou configuração foi alterado. Nada foi apagado.
+- **Para a próxima passada:**
+  - As agendas da tarde de 21/10 **não foram enviadas** (Mac offline): mandar as agendas completas.
+  - Houve um cancelamento novo no 403 em 21/10. Atualizar a matriz de documentos.
+  - Há uma avaliação nova a escrever no 303.
+  - Detalhes no registro privado do Mac.
+- **Acesso nesta sessão:** a extensão do Chrome falhou ("tabs must be active") e a credencial do Beds24 configurada na nuvem do Claude deu erro 401. A importação do sistema SCL na Vercel é outra credencial e não foi testada aqui. A Mia continua sendo a executora das passadas.
+- **Cópias:**
+  - GitHub: `requisitos/operations/GUIA-ATENDIMENTO.md`.
+  - Mac: `Documents/Claude/Sua Casa Leblon/SCL - Atendimento/GUIA-ATENDIMENTO-2026-10-22.md`.
+  - Pendências com nomes (só no Mac): `PENDENCIAS-PRIVADO-2026-10-22-claude.md`, na mesma pasta e em `Documents/Codex/2026-10-22/`.
