@@ -204,6 +204,9 @@ para o site e a cotação (M7.2, M8.1). Nada que o hóspede lê cita o Beds24; o
     gravação;
   - leitura sem nenhuma noite com preço: recusa ("nada a importar"), em vez de apagar a camada;
   - repetir com a camada igual não regrava nem audita: a data "importado em" fica a da primeira aprovação.
+  - leitura parcial (revisão do Codex, 22/10): a importação do M3.3 grava a resposta parcial do Beds24 e só avisa.
+    Por isso, a revisão e a aprovação recusam quando falta noite de hoje ao fim da leitura, ou quando a leitura não traz
+    noites já importadas. Senão, aprovar apagaria esses preços. Período mais curto de propósito: desfazer antes.
 - **Guardar uma cópia agora:** pega a trava da importação sem esperar, como ela; ocupada, recusa e pede para tentar de novo.
 - **Telas:**
   - a lista mostra só os imóveis ativos;

@@ -11,7 +11,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { somarDias } from "@/imoveis/regras-venda";
 import { assinaturaDaLeitura, guardarCopia } from "./copias";
-import { bloqueiosDaImportacao, type EntradaProposta, montarRevisao, type NoiteLida, proporImportacao, resumoDosImportados } from "./importacao";
+import { bloqueiosDaImportacao, type EntradaProposta, faltasDaLeitura, montarRevisao, type NoiteLida, proporImportacao, resumoDosImportados } from "./importacao";
 import { REGRAS_CALENDARIO_PADRAO } from "./regras-config";
 
 const HOJE = "2026-10-22";
@@ -145,6 +145,25 @@ describe("proposta da importação (M3.11a, 3.3)", () => {
     expect(bloqueiosDaImportacao({ ...ok, vencida: true, validadeHoras: 12 })).toEqual([
       { motivo: "leitura_vencida", texto: "A leitura do Beds24 tem mais de 12 horas. Leia de novo em Configurações → Integrações → Importar agora, e volte aqui." },
     ]);
+  });
+
+  it("leitura com noites faltando: as lacunas de hoje ao fim dela e as já importadas que ela não traz bloqueiam a aprovação", () => {
+    const lidas = ["2026-10-22", "2026-10-23", "2026-10-25", "2026-10-26"];
+    // Sem lacuna e sem importada fora: nada falta (a de antes de hoje não conta).
+    expect(faltasDaLeitura(lidas.filter((d) => d !== "2026-10-25").concat("2026-10-24", "2026-10-25"), "2026-10-22", ["2026-10-20", "2026-10-26"])).toEqual({ lacunas: [], importadasFora: [] });
+    // A resposta parcial do Beds24: faltou o 24; hoje (22) ausente também é lacuna; uma importada depois do fim da leitura.
+    expect(faltasDaLeitura(lidas, "2026-10-22", ["2026-10-24", "2026-10-30", "2026-10-21"])).toEqual({ lacunas: ["2026-10-24"], importadasFora: ["2026-10-24", "2026-10-30"] });
+    expect(faltasDaLeitura(lidas.slice(1), "2026-10-22", [])).toEqual({ lacunas: ["2026-10-22", "2026-10-24"], importadasFora: [] });
+    expect(faltasDaLeitura([], "2026-10-22", ["2026-10-22"])).toEqual({ lacunas: [], importadasFora: ["2026-10-22"] });
+
+    const ok = { fontePrecos: "scl" as const, roomId: "20", noites: 4, vencida: false, validadeHoras: 36 };
+    expect(bloqueiosDaImportacao({ ...ok, faltas: { lacunas: [], importadasFora: [] } })).toEqual([]);
+    expect(bloqueiosDaImportacao({ ...ok, faltas: { lacunas: ["2026-10-24", "2026-10-28"], importadasFora: ["2026-10-30"] } })).toEqual([
+      { motivo: "leitura_incompleta", texto: "A leitura do Beds24 veio incompleta: faltam 2 noite(s) entre 24/10/2026 e 28/10/2026. Leia de novo em Configurações → Integrações → Importar agora, e volte aqui." },
+      { motivo: "importadas_fora_da_leitura", texto: expect.stringContaining("não traz 1 noite(s) entre 30/10/2026 e 30/10/2026 que já estão importadas: aprovar apagaria esses preços.") },
+    ]);
+    // A leitura vencida já pede uma leitura nova: as faltas não somam outro aviso.
+    expect(bloqueiosDaImportacao({ ...ok, vencida: true, faltas: { lacunas: ["2026-10-24"], importadasFora: [] } }).map((b) => b.motivo)).toEqual(["leitura_vencida"]);
   });
 });
 

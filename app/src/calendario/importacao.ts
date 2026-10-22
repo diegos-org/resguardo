@@ -154,16 +154,40 @@ export function proporImportacao(e: EntradaProposta): PropostaImportacao {
   };
 }
 
-/** Por que a aprovação está bloqueada: a fonte de preços, o vínculo com o Beds24 ou a leitura (ausente ou vencida). */
-export type BloqueioImportacao = "fonte" | "vinculo" | "sem_leitura" | "leitura_vencida";
+/**
+ * Por que a aprovação está bloqueada: a fonte de preços, o vínculo com o Beds24 ou a leitura (ausente, vencida, com noites
+ * faltando, ou sem noites que já estão importadas).
+ */
+export type BloqueioImportacao = "fonte" | "vinculo" | "sem_leitura" | "leitura_vencida" | "leitura_incompleta" | "importadas_fora_da_leitura";
+
+/**
+ * As noites que faltam na leitura: de hoje ao fim dela, as que não vieram (a importação do M3.3 grava uma resposta parcial
+ * do Beds24 e só avisa), e as já importadas de hoje em diante que ela não traz. Aprovar troca a camada inteira de hoje em
+ * diante: com qualquer uma das duas, preços importados sumiriam sem o Beds24 ter dito nada sobre aquelas noites.
+ */
+export type FaltasDaLeitura = { lacunas: string[]; importadasFora: string[] };
+export function faltasDaLeitura(datasLidas: readonly string[], hoje: string, importadas: readonly string[]): FaltasDaLeitura {
+  const lidas = new Set(datasLidas);
+  const fim = datasLidas.reduce<string | null>((m, d) => (m === null || d > m ? d : m), null);
+  const lacunas: string[] = [];
+  if (fim !== null) for (let d = hoje; d <= fim; d = somarDias(d, 1)) if (!lidas.has(d)) lacunas.push(d);
+  return { lacunas, importadasFora: importadas.filter((d) => d >= hoje && !lidas.has(d)).sort() };
+}
+
+const LER_DE_NOVO = "Leia de novo em Configurações → Integrações → Importar agora, e volte aqui.";
+const entre = (datas: readonly string[]) => `${datas.length} noite(s) entre ${dataBr(datas[0])} e ${dataBr(datas.at(-1)!)}`;
 
 /** Os bloqueios da aprovação, em linguagem simples: a tela os mostra e a ação recusa por eles. Uma regra, um lugar. */
-export function bloqueiosDaImportacao(s: { fontePrecos: FontePrecos; roomId: string | null; noites: number; vencida: boolean; validadeHoras: number }): { motivo: BloqueioImportacao; texto: string }[] {
+export function bloqueiosDaImportacao(s: { fontePrecos: FontePrecos; roomId: string | null; noites: number; vencida: boolean; validadeHoras: number; faltas?: FaltasDaLeitura }): { motivo: BloqueioImportacao; texto: string }[] {
   const b: { motivo: BloqueioImportacao; texto: string }[] = [];
   if (s.fontePrecos !== "scl") b.push({ motivo: "fonte", texto: "A importação vale para preços automáticos do SCL. Mude a fonte na ficha do imóvel." });
   if (s.roomId === null) b.push({ motivo: "vinculo", texto: "O imóvel não tem um vínculo ativo e único com um quarto do Beds24. Confira em Configurações → Integrações." });
   else if (!s.noites) b.push({ motivo: "sem_leitura", texto: "Não há leitura do Beds24 deste quarto de hoje em diante. Leia em Configurações → Integrações → Importar agora, e volte aqui." });
-  else if (s.vencida) b.push({ motivo: "leitura_vencida", texto: `A leitura do Beds24 tem mais de ${s.validadeHoras} horas. Leia de novo em Configurações → Integrações → Importar agora, e volte aqui.` });
+  else if (s.vencida) b.push({ motivo: "leitura_vencida", texto: `A leitura do Beds24 tem mais de ${s.validadeHoras} horas. ${LER_DE_NOVO}` });
+  else {
+    if (s.faltas?.lacunas.length) b.push({ motivo: "leitura_incompleta", texto: `A leitura do Beds24 veio incompleta: faltam ${entre(s.faltas.lacunas)}. ${LER_DE_NOVO}` });
+    if (s.faltas?.importadasFora.length) b.push({ motivo: "importadas_fora_da_leitura", texto: `A leitura do Beds24 não traz ${entre(s.faltas.importadasFora)} que já estão importadas: aprovar apagaria esses preços. Leia de novo em Configurações → Integrações → Importar agora. Se o período lido diminuiu de propósito, desfaça a importação antes.` });
+  }
   return b;
 }
 
@@ -250,7 +274,10 @@ export async function lerImportacao(db: Db, org: string, imovelId: string, agora
   const lidaEm = lidas.reduce<Date | null>((m, l) => (!m || l.observadoEm > m ? l.observadoEm : m), null);
   const vencida = leituraVencida(lidas, regras, agora);
   const validadeHoras = regras.site.validadeLeituraHoras;
-  const bloqueios = bloqueiosDaImportacao({ fontePrecos: detalhes.fontePrecos, roomId, noites: lidas.length, vencida, validadeHoras });
+  const p = precosImportados;
+  const importadas = (await db.select({ data: p.data }).from(p).where(and(eq(p.organizacaoId, org), eq(p.imovelId, imovel.id), gte(p.data, hoje)))).map((r) => r.data);
+  const faltas = faltasDaLeitura(lidas.map((l) => l.data), hoje, importadas);
+  const bloqueios = bloqueiosDaImportacao({ fontePrecos: detalhes.fontePrecos, roomId, noites: lidas.length, vencida, validadeHoras, faltas });
   return { imovel, hoje, detalhes, regras, roomId, lidas, cadastro, proposta, lidaEm, vencida, validadeHoras, bloqueios };
 }
 

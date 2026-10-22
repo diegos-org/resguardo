@@ -4,7 +4,7 @@
  * curso, a cópia, o cadastro pelo caminho dele (com a validação), a camada de hoje em diante, a auditoria, a repetição e a
  * conferência igual ao Beds24 depois de aprovar. PGlite, sem rede; dados fictícios.
  */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gte } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { historicoDe } from "@/auditoria/auditoria";
 import { MENSAGEM_ENVIO_EM_ANDAMENTO } from "@/beds24/trava";
@@ -39,6 +39,9 @@ const lerBeds24 = (over: (data: string) => Partial<typeof beds24Calendario.$infe
     const dia = new Date(`${data}T00:00:00Z`).getUTCDay();
     return { organizacaoId: org, imovelId: im, data, roomId: "20", livres: 1, preco: dia === 5 || dia === 6 ? 52000 : 45000, minimoNoites: 3, maximoNoites: 27, bloqueio: "none", observadoEm: lidoEm, ...over(data) };
   }));
+/** Uma noite da mesma leitura de volta (R$ 450, a de domingo a quinta). */
+const lerBeds24Noite = (data: string) =>
+  db.insert(beds24Calendario).values({ organizacaoId: org, imovelId: im, data, roomId: "20", livres: 1, preco: 45000, minimoNoites: 3, maximoNoites: 27, bloqueio: "none", observadoEm: lidoEm });
 const revisar = async (o: Parameters<typeof montarRevisao>[4] = {}) => (await montarRevisao(db, org, im, agora, o))!;
 /** Aprova o que a revisão mostra (a assinatura e as caixas dela), como a tela. */
 const aprovar = async (o: { usar?: { precoBase: boolean; estadiaMaxima: boolean }; assinatura?: string; imovel?: string; organizacao?: string; quando?: Date } = {}) => {
@@ -91,11 +94,11 @@ describe("aprovar a importação (M3.11a, 3.5)", () => {
   it("sem as caixas marcadas, o cadastro fica como está; os importados de antes de hoje ficam; repetir dá o mesmo", async () => {
     await lerBeds24();
     await db.insert(imoveisDetalhes).values({ imovelId: im, organizacaoId: org, precoBase: 40000, estadiaMaxima: 20 });
-    // Uma importação antiga: a noite de ontem (antes de hoje) e uma de hoje em diante, que a nova substitui.
+    // Uma importação antiga: a noite de ontem (antes de hoje) e uma de hoje em diante, dentro da leitura nova, que a substitui.
     const antiga = (await db.insert(beds24CalendarioCopias).values({ organizacaoId: org, imovelId: im, roomId: "20", motivo: "importacao", lidoEm, noites: 1, assinatura: "antiga", dados: [{ data: "2026-10-21", preco: 41000, minimo: null, maximo: 27, livres: 1, bloqueio: "none" }] }).returning())[0].id;
     await db.insert(precosImportados).values([
       { organizacaoId: org, imovelId: im, data: "2026-10-21", preco: 41000, copiaId: antiga, criadoEm: new Date("2026-10-15T12:00:00Z") },
-      { organizacaoId: org, imovelId: im, data: "2026-12-31", preco: 99000, copiaId: antiga, criadoEm: new Date("2026-10-15T12:00:00Z") },
+      { organizacaoId: org, imovelId: im, data: "2026-11-15", preco: 99000, copiaId: antiga, criadoEm: new Date("2026-10-15T12:00:00Z") },
     ]);
     expect(await aprovar({ usar: { precoBase: false, estadiaMaxima: false } })).toMatchObject({ ok: true, mensagem: "Preços importados: 30 noite(s), de 22/10/2026 a 20/11/2026. Nada foi enviado ao Beds24." });
     expect(await lerDetalhes(db, org, im)).toMatchObject({ precoBase: 40000, estadiaMaxima: 20 });
@@ -103,7 +106,7 @@ describe("aprovar a importação (M3.11a, 3.5)", () => {
     expect(linhas.map((l) => l.data)).toEqual(["2026-10-21", ...Array.from({ length: 30 }, (_, i) => somarDias(HOJE, i))]);
     expect(linhas[0]).toMatchObject({ preco: 41000, copiaId: antiga });
     const [importou] = await auditorias("imovel.precos.importar");
-    expect(importou.mudancas).toMatchObject({ "preços importados do Beds24": ["1 noite(s), de 2026-12-31 a 2026-12-31", "30 noite(s), de 2026-10-22 a 2026-11-20"] });
+    expect(importou.mudancas).toMatchObject({ "preços importados do Beds24": ["1 noite(s), de 2026-11-15 a 2026-11-15", "30 noite(s), de 2026-10-22 a 2026-11-20"] });
     expect(await auditorias("imovel.detalhes")).toEqual([]);
 
     // A mesma leitura de novo (mais tarde, no mesmo dia): nada muda, nem a auditoria.
@@ -150,6 +153,33 @@ describe("aprovar a importação (M3.11a, 3.5)", () => {
     expect(await retrato()).toBe(antesScl);
     expect(await camada()).toEqual([]);
     expect(await copias()).toEqual([]);
+  });
+
+  it("leitura parcial do Beds24 (noite faltando ou mais curta que a camada): recusa e não apaga nenhum preço importado", async () => {
+    await lerBeds24();
+    expect(await aprovar()).toMatchObject({ ok: true });
+    const importadas = await camada();
+    expect(importadas).toHaveLength(30);
+    // A importação seguinte voltou parcial: sem o dia 25 e sem as noites de 11/11 em diante (a do M3.3 grava assim e avisa).
+    await db.delete(beds24Calendario).where(and(eq(beds24Calendario.imovelId, im), eq(beds24Calendario.data, "2026-10-25")));
+    await db.delete(beds24Calendario).where(and(eq(beds24Calendario.imovelId, im), gte(beds24Calendario.data, "2026-11-11")));
+    const r = await revisar();
+    expect(r.bloqueios).toEqual([
+      { motivo: "leitura_incompleta", texto: "A leitura do Beds24 veio incompleta: faltam 1 noite(s) entre 25/10/2026 e 25/10/2026. Leia de novo em Configurações → Integrações → Importar agora, e volte aqui." },
+      { motivo: "importadas_fora_da_leitura", texto: expect.stringContaining("não traz 11 noite(s) entre 25/10/2026 e 20/11/2026 que já estão importadas") },
+    ]);
+    const antes = await retrato();
+    const recusa = await aprovarImportacao(db, org, im, { assinatura: r.proposta.assinatura, usar: r.usar }, autor, agora);
+    expect(recusa).toEqual({ ok: false, erro: r.bloqueios.map((b) => b.texto).join(" ") });
+    expect(await retrato()).toBe(antes);
+    expect(await camada()).toEqual(importadas);
+
+    // Período mais curto de propósito (sem lacuna): desfazer antes e aprovar a leitura nova.
+    await lerBeds24Noite("2026-10-25");
+    expect((await revisar()).bloqueios.map((b) => b.motivo)).toEqual(["importadas_fora_da_leitura"]);
+    expect(await desfazerImportacao(db, org, im, autor, agora)).toMatchObject({ ok: true });
+    expect((await revisar()).bloqueios).toEqual([]);
+    expect(await aprovar()).toMatchObject({ ok: true, mensagem: expect.stringContaining("20 noite(s), de 22/10/2026 a 10/11/2026") });
   });
 
   it("imóvel de outra organização ou id inválido: não encontrado", async () => {
