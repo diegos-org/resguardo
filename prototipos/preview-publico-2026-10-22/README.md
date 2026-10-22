@@ -47,8 +47,8 @@ direitos pendentes, não fazem parte do pacote publicado; seus espaços são gr�
 
 ## Reprodução, histórico e reversão
 `site/` é o pacote estático pronto, com `manifest.json` contendo SHA-256 de cada arquivo.
-`gerar.py` documenta as transformações; para reproduzir, ajustar SOURCE ao caminho do
-acervo imutável citado acima e executar em uma nova pasta. `verificar.py` valida o pacote.
+`gerar.py` lê a fonte visual versionada citada acima e recria `site/` e `manifest.json`.
+Execute `python3 prototipos/preview-publico-2026-10-22/gerar.py`; `verificar.py` valida o pacote.
 Publicar somente `site/`, como estático, sem install/build, variáveis ou funções.
 O projeto Vercel deve ser separado, sem domínios oficiais e sem ligação automática de Git.
 Cada nova revisão terá novo commit e deployment. Guardar URL/ID/hash no registro local
