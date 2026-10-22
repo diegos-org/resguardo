@@ -12,6 +12,7 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
    Codex); mergear os que cumprem as condições da seção "Merge". Só depois pegar item novo.
 4. Item novo: o primeiro `a fazer` (na ordem do arquivo) cujas dependências estão
    `feito` na `main` e que não está em PR. Branch nova a partir da `main` atualizada.
+   Item com "**Responsável: Claude**" ou "**Responsável: Codex**" na linha só é pego por esse agente.
 5. **Um item = um PR**, título `[ID] descrição curta`, pronto para revisão (não draft).
    No mesmo PR, mudar a linha do item no ROADMAP para `feito` **e atualizar o
    `GUIA-DIEGO.md`** (seção "Onde estamos", contas/serviços, o que Diego precisa fazer,
@@ -19,6 +20,15 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
    Branch por item: `claude/<id>-<slug>` ou `codex/<id>-<slug>` a partir da `main` atualizada (autorizado por Diego em 23/09 e 9/10).
 6. Se não houver item disponível (tudo bloqueado ou em PR), não abrir nada — encerrar.
 7. No máximo **3 PRs de roadmap abertos** ao mesmo tempo. Se já houver 3, só consertar.
+
+## Divisão entre Claude e Codex (Diego, 22/10/2026)
+
+- **Codex:** o visual (telas, componentes e estilos do painel, dos portais e do site), pelos itens M7.23 e M7.24.
+- **Claude:** o motor de preços e as integrações (Beds24, Mercado Pago, WhatsApp) e o resto do sistema.
+- Antes de abrir branch, conferir os arquivos dos PRs abertos do outro agente. Arquivo que está num PR aberto do
+  outro espera o merge dele; no ROADMAP e no guia, cada um muda só as linhas do próprio item e a data da
+  última atualização.
+- Tela nova de um item do Claude usa os componentes e as cores que já existem; o Codex refina o visual depois, no item dele.
 
 ## Descrição do PR (em português, linguagem simples)
 
@@ -69,6 +79,8 @@ financeiro, portal do proprietário, portal do hóspede, site público e integra
   preenche com um palpite.
 - **Um proprietário por imóvel** (pode ser pessoa ou empresa). Os imóveis do Diego são
   clientes como os outros.
+- **Textos curtos e claros** (Diego, 22/10/2026): nas telas, no site, nos e-mails e no guia, uma ou
+  duas linhas por ideia. O detalhe vai para os requisitos; nada de "manual de um robô".
 
 ## Merge (autorizado por Diego em 23/09/2026; ampliado em 9/10/2026)
 
