@@ -10,7 +10,11 @@
 - Conector recusou criar o projeto com HTTP 403, sem permissão. CLI não instalada.
 - Navegador autenticado permitiu preparar o formulário correto, com branch, pasta e nome;
   acionar Deploy não produziu confirmação. Consulta posterior ao conector retornou zero
-  projetos chamados `scl-sage-preview`. Portanto: **não publicado; nenhuma URL online confirmada**.
+  projetos chamados `scl-sage-preview`. A Vercel confirmou uma prévia do projeto
+  `scl-reconstrucao` em
+  [scl-reconstrucao-git-codex-sage-preview-publi-9785ec-alapesssdd.vercel.app](https://scl-reconstrucao-git-codex-sage-preview-publi-9785ec-alapesssdd.vercel.app),
+  com `rootDirectory: app`; ela não publica a pasta estática `site` deste estudo.
+  Portanto: **o estudo Sage ainda não foi publicado em um projeto separado**.
 - O formulário está aberto para retomada. Se for concluído via importação Git, revisar a
   conexão automática e manter só essa referência isolada, sem domínios oficiais ou segredos.
 - Cópia local: `work/preview-publico-20261022/site`. Servidor local de verificação na porta 4182.
