@@ -49,7 +49,7 @@
 - **Preços (M3.11):** o SCL vira o lugar onde você muda preço, mínimo de noites e regras, até pelo celular. O Beds24 só repassa.
 - **Em três passos:**
   1. guardar uma cópia dos preços de hoje do Beds24 e importar para o SCL, com uma tela para você aprovar;
-  2. o modo "só disponibilidade" por imóvel: manda só os bloqueios feitos no SCL, sem preço (as reservas não vão por aí);
+  2. o modo "só disponibilidade" por imóvel: manda só os bloqueios feitos no SCL, sem preço. A reserva direta (WhatsApp, indicação) ganha o aviso "feche as datas";
   3. uma lista "pronto para ligar" por imóvel. Depois, você liga um por vez, o 103 primeiro.
 - **Sua condição:** nada liga antes de piso, mínimo de noites, preço base, eventos e disponibilidade estarem conferidos no SCL, e de a simulação mostrar quase nada a mudar.
 - **Visual (M7.23):** fica com o Codex. Primeiro uma tela, no computador e no celular, para você aprovar; depois o resto, em quatro partes (M7.24a a M7.24d).
