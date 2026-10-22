@@ -7,31 +7,43 @@
  * Regras (requisitos/operations/CALENDARIO-PRECOS-OPERACAO.md):
  * - preço explícito de período (cadastro do imóvel) substitui qualquer automatismo;
  * - senão, preço base × o MAIOR multiplicador aplicável (eventos, feriadões), nunca somados;
- * - última hora: percentual por antecedência da noite, com piso por imóvel na diária final;
- *   a referência é sempre recalculada do cadastro — repetir a execução nunca acumula cortes;
- * - mínimo por entrada: o maior entre semana normal, cadastro do imóvel, evento e feriadão
- *   (período explícito com mínimo substitui); evento ou feriadão que já tem reserva confirmada no
- *   período deixa de contar nas noites livres dele, que voltam ao mínimo normal (regra de 6/10; o
- *   preço do evento continua); sobras: mínimo ≤ noites livres seguidas;
+ * - senão, o preço importado do Beds24 na noite (M3.11a, requisitos/product/FONTE-UNICA-PRECOS.md 3.2; só com a fonte
+ *   "preços automáticos do SCL"), sem os limites do preço dinâmico, como o período;
+ * - senão, o preço base, com os limites do preço dinâmico;
+ * - última hora: percentual por antecedência da noite, com piso por imóvel na diária final (também por cima do
+ *   importado); a referência é sempre recalculada do cadastro — repetir a execução nunca acumula cortes;
+ * - mínimo por entrada: o maior entre semana normal (ou, na noite com mínimo importado do Beds24, ele no lugar
+ *   dela), cadastro do imóvel, evento e feriadão (período explícito com mínimo substitui); evento ou feriadão que
+ *   já tem reserva confirmada no período deixa de contar nas noites livres dele, que voltam ao mínimo normal (regra
+ *   de 6/10; o preço do evento continua); sobras: mínimo ≤ noites livres seguidas;
  * - bloqueio: só o que o SCL criou vai como "blackout"; o SCL só reabre o que ele mesmo fechou.
  * Nada aqui afirma disponibilidade para venda nem preço final nas OTAs.
  */
 import type { EstadoReserva } from "@/db/schema";
 import { diaDaSemana, diasEntre, periodoDaNoite, precoDaNoite, somarDias, type Periodo, type RegrasVenda } from "@/imoveis/regras-venda";
+import { dataBr } from "@/lib/datas";
 import { formatBRL } from "@/lib/money";
 import { ocupaInventario } from "@/reservas/regras";
 import { type BloqueioEnvio, ehBloqueioEnvio, type FaixaEnvio } from "@/beds24/tipos";
 import { centesimosParaMultiplicador, type Evento, type Feriado, type RegrasCalendario } from "./regras-config";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 
-export type ImovelPlano = { id: string; regras: RegrasVenda; periodos: readonly Periodo[]; pisos: readonly [number | null, number | null]; /** Fonte de preços (M3.9): scl, beds24 ou manual. */ fontePrecos: FontePrecos };
+/** Preço importado do Beds24 numa noite (M3.11a): centavos, o mínimo da entrada (ou nenhum) e a data da importação. */
+export type PrecoImportado = { preco: number; minimo: number | null; em: string };
+export type ImovelPlano = {
+  id: string; regras: RegrasVenda; periodos: readonly Periodo[]; pisos: readonly [number | null, number | null];
+  /** Fonte de preços (M3.9): scl, beds24 ou manual. */
+  fontePrecos: FontePrecos;
+  /** A camada do preço importado do Beds24, por noite (M3.11a). Só vale com a fonte scl; nas outras é ignorada. */
+  importados?: ReadonlyMap<string, PrecoImportado>;
+};
 export type ObservacaoPlano = { data: string; preco: number | null; minimoNoites: number | null; maximoNoites: number | null; livres: number | null; bloqueio: string | null; observadoEm: Date };
 export type EnviadoPlano = { data: string; preco: number | null; minimo: number | null; maximo: number | null; bloqueio: string | null; bloqueioAnterior?: string | null; confirmado: boolean; enviadoEm: Date; envioId?: string | null };
 export type OcupacaoPlano = { checkin: string; checkout: string; estado: EstadoReserva };
 export type BloqueioPlano = { inicio: string; fim: string; fonte: string };
 export type Janela = { nome: string; inicio: string; fim: string };
 
-export type FontePreco = "periodo" | "evento" | "feriado" | "base" | "sem_preco" | "beds24";
+export type FontePreco = "periodo" | "evento" | "feriado" | "importado" | "base" | "sem_preco" | "beds24";
 export type AcaoNoite = "enviar" | "igual" | "sem_dados";
 
 export type LinhaPlano = {
@@ -67,6 +79,8 @@ export type LinhaPlano = {
 };
 
 export const reduzir = (valor: number, pct: number) => Math.round((valor * (100 - pct)) / 100);
+/** Preço base × multiplicador em centésimos (200 = 2×), arredondado ao centavo: o preço de evento e feriadão. */
+export const aplicarMultiplicador = (base: number, centesimos: number) => Math.round((base * centesimos) / 100);
 /** Menor preço de referência que, reduzido em `pct`, não fica abaixo do piso. */
 export const elevarParaPiso = (piso: number, pct: number) => Math.ceil((piso * 100) / (100 - pct));
 
@@ -168,26 +182,34 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     const antecedencia = diasEntre(e.hoje, data);
     const avisos: string[] = [];
     const periodo = periodoDaNoite(imovel.periodos, data);
-    // Preço de referência: período explícito > maior multiplicador > base. Com fonte "manual" (M3.9) vale o
-    // cadastro como está — sem multiplicadores e sem os limites mínimo/máximo do preço dinâmico, que também são
-    // um ajuste automático; com fonte "beds24" o SCL só lê (tratado mais abaixo).
+    // Preço de referência: período explícito > maior multiplicador > preço importado do Beds24 (M3.11a) > base. Com
+    // fonte "manual" (M3.9) vale o cadastro como está — sem multiplicadores, sem a camada importada e sem os limites
+    // mínimo/máximo do preço dinâmico, que também são um ajuste automático; com fonte "beds24" o SCL só lê (tratado
+    // mais abaixo) e a camada também não vale.
     const fonte = imovel.fontePrecos;
+    const importado = fonte === "scl" ? (imovel.importados?.get(data) ?? null) : null;
     const base = precoDaNoite(fonte === "manual" ? { ...imovel.regras, precoDinamico: false } : imovel.regras, imovel.periodos, data);
     let fontePreco: FontePreco = base.fonte;
     let motivoPreco = base.fonte === "periodo" ? `Período ${base.periodo}` : base.fonte === "base" ? "Preço base" : "Sem preço cadastrado";
     let precoReferencia = base.valor;
     if (fonte === "manual" && base.valor !== null) motivoPreco += " (preços digitados: sem eventos, feriadões, última hora nem limites do preço dinâmico)";
-    if (fonte === "scl" && base.valor !== null && base.fonte === "base") {
-      const candidatos = [
+    if (fonte === "scl" && base.fonte !== "periodo") {
+      // Evento e feriadão multiplicam o preço base: sem base, não há o que multiplicar (o importado ainda vale).
+      const candidatos = base.valor === null ? [] : [
         ...eventos.filter((ev) => ev.inicio <= data && data <= ev.fim).map((ev) => ({ nome: `Evento ${ev.nome}`, fonte: "evento" as const, mult: ev.multiplicador })),
         ...janelas.filter((j) => j.inicio <= data && data <= j.fim).map((j) => ({ nome: `Feriadão ${j.nome}`, fonte: "feriado" as const, mult: regras.janelaFeriado.multiplicador })),
       ].filter((c) => c.mult > 100);
       const maior = candidatos.reduce<(typeof candidatos)[number] | null>((m, c) => (!m || c.mult > m.mult ? c : m), null);
-      if (maior) {
-        precoReferencia = Math.round((base.valor * maior.mult) / 100);
+      if (maior && base.valor !== null) {
+        precoReferencia = aplicarMultiplicador(base.valor, maior.mult);
         fontePreco = maior.fonte;
         motivoPreco = `${maior.nome} (${centesimosParaMultiplicador(maior.mult)}× a base)`;
         if (candidatos.length > 1) motivoPreco += "; multiplicadores não somam, vale o maior";
+      } else if (importado) {
+        // O importado é o preço digitado no Beds24: vale como está, sem os limites do preço dinâmico (como o período).
+        precoReferencia = importado.preco;
+        fontePreco = "importado";
+        motivoPreco = `Preço importado do Beds24 em ${dataBr(importado.em)}`;
       } else if (base.ajustado) motivoPreco = "Preço base (limitado ao piso/teto)";
     }
     // Fonte "beds24": o preço é o lido do Beds24 (proprietário ou ferramenta dele); o SCL nunca envia preço.
@@ -254,8 +276,9 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
       ];
       const comReserva = especiais.filter((c) => c.ligada && temReservaConfirmada(c.inicio, c.fim)).map((c) => c.nome);
       const cedem = comReserva.length > 0;
+      // O mínimo importado do Beds24 (M3.11a) entra no lugar da semana normal: é o mínimo normal daquela entrada.
       const candidatos: { v: number; nome: string }[] = [
-        { v: regras.minimoPorDia[dia], nome: "Semana normal" },
+        importado?.minimo != null ? { v: importado.minimo, nome: "Mínimo importado do Beds24" } : { v: regras.minimoPorDia[dia], nome: "Semana normal" },
         ...(imovel.regras.estadiaMinima !== null ? [{ v: imovel.regras.estadiaMinima, nome: "Cadastro do imóvel" }] : []),
         ...especiais.filter((c) => !(cedem && c.ligada)),
       ];

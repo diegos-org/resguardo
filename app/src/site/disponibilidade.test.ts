@@ -3,8 +3,9 @@ import { PESOS_PADRAO_ANTIGO, PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/pr
 import { salvarPrecosMarketplace } from "@/marketplace/precos-config";
 import { eq } from "drizzle-orm";
 import { gravarConfig } from "@/configuracoes/armazem";
+import { guardarCopia } from "@/calendario/copias";
 import { REGRAS_CALENDARIO_PADRAO } from "@/calendario/regras-config";
-import { alteracoesReserva, beds24Calendario, beds24CalendarioEnviado, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, organizacoes, pagamentos, reservas } from "@/db/schema";
+import { alteracoesReserva, beds24Calendario, beds24CalendarioEnviado, bloqueios, cotacoes, idsExternos, imoveis, imoveisDetalhes, organizacoes, pagamentos, precosImportados, reservas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { consultarDisponibilidade, noitesLivres } from "./disponibilidade";
@@ -437,5 +438,27 @@ describe("noitesLivres com várias reservas de fora e as datas seguradas de uma 
     }
     const [orfa] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-ORFA", origem: "site", estado: "pedido", checkin: "2026-10-15", checkout: "2026-10-17", fonte: "alteracao", idFonte: "sem-alteracao" }).returning();
     expect(await livres()).toEqual({ livres: false, motivo: "ocupada", conflito: orfa.codigo });
+  });
+});
+
+describe("preço importado do Beds24 no site (M3.11a)", () => {
+  it("o site cota com o importado (preço e mínimo da entrada), como o motor; com a fonte manual, a camada não vale", async () => {
+    await observar(dias("2026-10-12", 4));
+    const copiaId = (await guardarCopia(db, org, im, { roomId: "20", noites: [{ data: "2026-10-12", preco: 45000, minimo: 1, maximo: 27, livres: 1, bloqueio: "none" }], lidoEm: agora }, "importacao", null))!;
+    await db.insert(precosImportados).values([
+      { organizacaoId: org, imovelId: im, data: "2026-10-12", preco: 50000, minimoNoites: 2, copiaId },
+      { organizacaoId: org, imovelId: im, data: "2026-10-13", preco: 52000, minimoNoites: 1, copiaId },
+    ]);
+    // 12/10 e 13/10 importados (R$ 500 e R$ 520), 14/10 no preço base (R$ 450); mais limpeza (R$ 250), 2 pessoas.
+    const r = await consultar();
+    expect(r).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 147000, limpeza: 25000, hospedeExtra: 0, valorCheio: 172000 } });
+    expect(r.cotacao!.total).toBe(172000 - r.cotacao!.desconto);
+    // O mínimo importado da entrada (2 em 12/10, uma segunda) vale no site.
+    const curta = await consultar({ saida: "2026-10-13" });
+    expect(curta).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 12/10/2026, o mínimo é de 2 noites."] });
+    // O que o hóspede lê nunca cita o Beds24 nem a importação (desenho 3.7): o motivo do plano fica no painel.
+    expect(JSON.stringify([r, curta])).not.toMatch(/beds24|importad/i);
+    await db.update(imoveisDetalhes).set({ fontePrecos: "manual" }).where(eq(imoveisDetalhes.imovelId, im));
+    expect(await consultar()).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 135000, valorCheio: 160000 } });
   });
 });

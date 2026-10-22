@@ -2593,3 +2593,69 @@ export const whatsappAvisosDia = pgTable("whatsapp_avisos_dia", {
   ignorados: integer("ignorados").notNull().default(0),
   ultimoValidoEm: timestamp("ultimo_valido_em", { withTimezone: true }),
 });
+
+// ---------------------------------------------------------------------------
+// M3.11a: cópia datada da leitura do Beds24 e preço importado por noite (desenho em
+// requisitos/product/FONTE-UNICA-PRECOS.md, 3.1 e 3.2). Só preço, mínimo, máximo, unidades e bloqueio: nada de hóspede.
+// ---------------------------------------------------------------------------
+
+/**
+ * Por que a cópia foi guardada: o botão "Guardar uma cópia agora", antes de a importação do Beds24 (M3.3) apagar a
+ * leitura, antes de a simulação ou o envio (M3.7) a regravarem, e ao aprovar uma importação de preços.
+ */
+export const MOTIVOS_COPIA_CALENDARIO = ["manual", "antes_da_leitura", "antes_da_simulacao", "antes_do_envio", "importacao"] as const;
+export type MotivoCopiaCalendario = (typeof MOTIVOS_COPIA_CALENDARIO)[number];
+/** Uma noite copiada: os campos da leitura (`beds24_calendario`), sem a hora de cada uma. Dinheiro em centavos. */
+export type NoiteCopiada = { data: string; preco: number | null; minimo: number | null; maximo: number | null; livres: number | null; bloqueio: string | null };
+
+/**
+ * Cópia datada da leitura do calendário de um imóvel, de um quarto. Só inclusão: nenhum caminho do código altera ou apaga
+ * (calendario/copias.ts). `assinatura` = SHA-256 do quarto e das noites em ordem de data (`assinaturaDaLeitura`); a cópia
+ * igual à última do imóvel e do quarto não é gravada de novo. `lido_em` = a hora da leitura mais nova entre as noites.
+ * Quarto nulo: as observações antigas, de antes de a leitura guardar o quarto.
+ */
+export const beds24CalendarioCopias = pgTable(
+  "beds24_calendario_copias",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** A ordem de gravação (as cópias de uma mesma transação têm o mesmo `criado_em`): a última cópia é a de maior ordem. */
+    ordem: integer("ordem").generatedAlwaysAsIdentity(),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    roomId: text("room_id"),
+    motivo: text("motivo").$type<MotivoCopiaCalendario>().notNull(),
+    /** null = o sistema (a importação automática, a rotina do envio). */
+    autorId: uuid("autor_id").references(() => usuarios.id, { onDelete: "set null" }),
+    criadoEm: criadoEm(),
+    lidoEm: timestamp("lido_em", { withTimezone: true }).notNull(),
+    noites: integer("noites").notNull(),
+    assinatura: text("assinatura").notNull(),
+    dados: jsonb("dados").$type<NoiteCopiada[]>().notNull(),
+  },
+  (t) => [index("beds24_calendario_copias_imovel").on(t.organizacaoId, t.imovelId, t.ordem), check("beds24_calendario_copias_noites", sql`${t.noites} > 0`)],
+);
+
+/**
+ * Preço importado do Beds24 por noite (a camada do M3.11a). Vale só com a fonte "preços automáticos do SCL": abaixo do
+ * período com preço e dos eventos e feriadões, acima do preço base (motor.ts). O mínimo importado entra no lugar da
+ * "semana normal". `copia_id` = a cópia da leitura usada na aprovação. Uma noite por imóvel.
+ */
+export const precosImportados = pgTable(
+  "precos_importados",
+  {
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    imovelId: uuid("imovel_id").notNull().references(() => imoveis.id),
+    data: date("data", { mode: "string" }).notNull(),
+    preco: integer("preco").notNull(),
+    minimoNoites: integer("minimo_noites"),
+    copiaId: uuid("copia_id").notNull().references(() => beds24CalendarioCopias.id),
+    criadoEm: criadoEm(),
+    /** null = o sistema. */
+    autorId: uuid("autor_id").references(() => usuarios.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.organizacaoId, t.imovelId, t.data] }),
+    check("precos_importados_preco", sql`${t.preco} > 0`),
+    check("precos_importados_minimo", sql`${t.minimoNoites} is null or (${t.minimoNoites} between 1 and 365)`),
+  ],
+);

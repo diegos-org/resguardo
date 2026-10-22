@@ -92,3 +92,14 @@ it("sem 103 seleciona 403; com lista vazia apresenta cadastro", async () => {
   expect(await html()).toContain("Cadastre um imóvel para começar");
   expect(m.planejar).not.toHaveBeenCalled();
 });
+it("o preço importado do Beds24 (M3.11a) aparece com o motivo dele, no preço e no mínimo, sem mudança de tela", async () => {
+  const importados = new Map([["2026-10-02", { preco: 52000, minimo: 3, em: "2026-09-30" }]]);
+  const comImportado = planejarCalendario({ imovel: { id: "i103", regras, periodos: [], pisos: [35000, 30000], fontePrecos: "scl", importados }, regras: REGRAS_CALENDARIO_PADRAO, hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03", reservas: [], bloqueios: [], enviados: [], observacoes: [] });
+  m.planejar.mockResolvedValue({ hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03", linhas: comImportado, regras, pisos: [35000, 30000], fontePrecos: "scl" });
+  const h = await html({ inicio: "2026-10-02", fim: "2026-10-03" });
+  expect(h).toContain("R$ 520,00 → R$ 520,00");
+  expect(h).toContain("Preço importado do Beds24 em 30/09/2026");
+  expect(h).toContain("Mínimo importado do Beds24");
+  // A noite sem importado continua no preço base.
+  expect(h).toContain("Preço base");
+});

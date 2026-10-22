@@ -37,7 +37,8 @@ export function periodoDaNoite(periodos: readonly Periodo[], noite: string): Per
   return periodos.find((p) => p.inicio <= noite && noite <= p.fim);
 }
 
-export type PrecoNoite = { data: string; valor: number | null; fonte: "periodo" | "base" | "evento" | "feriado" | "sem_preco" | "beds24"; periodo?: string; ajustado?: boolean };
+/** `fonte` "importado": o preço importado do Beds24 (M3.11a), que o motor de calendário põe abaixo do período e dos eventos. */
+export type PrecoNoite = { data: string; valor: number | null; fonte: "periodo" | "base" | "evento" | "feriado" | "importado" | "sem_preco" | "beds24"; periodo?: string; ajustado?: boolean };
 
 /**
  * Preço de uma noite: exceção do período, senão o preço base. Com o preço dinâmico ligado, o

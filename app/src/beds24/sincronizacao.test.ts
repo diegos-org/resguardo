@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { historicoDe } from "@/auditoria/auditoria";
 import { gravarConfig } from "@/configuracoes/armazem";
 import { criarContrato } from "@/contratos/repositorio";
-import { auditoria, beds24Calendario, beds24Envios, beds24Execucoes, beds24ExecucaoReservas, bloqueios, idsExternos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { auditoria, beds24Calendario, beds24CalendarioCopias, beds24Envios, beds24Execucoes, beds24ExecucaoReservas, bloqueios, idsExternos, imoveis, organizacoes, proprietarioImoveis, proprietarios, reservas } from "@/db/schema";
+import { assinaturaDaLeitura } from "@/calendario/copias";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { listarLancamentos, mudarEstado } from "@/financeiro/ledger";
@@ -313,4 +314,34 @@ it("vincular uma reserva CSV já cancelada ao Beds24 conta como alteração", as
   expect((await linhas())[0]).toMatchObject({ id: legado.reserva.id, estado: "cancelada", beds24Id: "123" });
   const eventos = await db.select().from(beds24ExecucaoReservas).where(eq(beds24ExecucaoReservas.organizacaoId, org));
   expect(eventos.map(e => e.tipo)).toEqual(["alterada"]);
+});
+
+describe("cópia da leitura antes de apagar (M3.11a)", () => {
+  const copias = () => db.select().from(beds24CalendarioCopias).where(eq(beds24CalendarioCopias.organizacaoId, org)).orderBy(beds24CalendarioCopias.ordem);
+
+  it("a importação guarda a leitura anterior de cada imóvel antes de apagar; sem leitura anterior, nenhuma cópia; a mesma leitura não repete", async () => {
+    expect(await rodar()).toMatchObject({ ok: true, diasCalendario: 2 });
+    expect(await copias()).toHaveLength(0);
+    // O Beds24 mudou o preço e o mínimo: a importação seguinte copia a leitura de antes (R$ 100, mínimo 2) e grava a nova.
+    leitor.calendarios = [{ roomId: 20, calendar: [{ from: "2026-09-28", to: "2026-09-29", numAvail: 1, price1: 120, minStay: 3 }] }];
+    expect(await rodar()).toMatchObject({ ok: true });
+    const [c] = await copias();
+    expect(c).toMatchObject({ imovelId: im, roomId: "20", motivo: "antes_da_leitura", autorId: null, noites: 2, lidoEm: agora });
+    expect(c.dados).toEqual(["2026-09-28", "2026-09-29"].map(data => ({ data, preco: 10000, minimo: 2, maximo: null, livres: 1, bloqueio: null })));
+    expect(c.assinatura).toBe(assinaturaDaLeitura("20", c.dados));
+    expect((await calendario()).map(l => [l.preco, l.minimoNoites])).toEqual([[12000, 3], [12000, 3]]);
+    // Importar de novo: a leitura copiada agora (R$ 120) ainda não tem cópia; na próxima, é igual à última e nada é gravado.
+    await rodar();
+    await rodar();
+    expect((await copias()).map(x => x.dados[0].preco)).toEqual([10000, 12000]);
+  });
+
+  it("a cópia é da mesma transação: a importação que falha depois de copiar desfaz a cópia e mantém a leitura de antes", async () => {
+    await rodar();
+    const antes = await calendario();
+    leitor.calendarios.push(...leitor.calendarios);
+    expect(await rodar()).toMatchObject({ ok: false, mensagem: expect.stringContaining("repetidas") });
+    expect(await copias()).toHaveLength(0);
+    expect(await calendario()).toEqual(antes);
+  });
 });

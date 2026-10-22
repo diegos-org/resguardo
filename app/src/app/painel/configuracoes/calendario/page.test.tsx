@@ -37,6 +37,8 @@ it("admin vê as regras, feriados, eventos, imóveis com vínculo e o sinal da V
   expect(h).toContain("4×");
   expect(h).toContain("buzios (sem vínculo Beds24) (preços do Beds24: o SCL envia só calendário)");
   expect(h).toContain("Sinal de escrita na Vercel: <strong>desligado</strong>");
+  // M3.11a: o caminho para a importação dos preços do Beds24.
+  expect(h).toContain('<a href="/painel/configuracoes/calendario/importar">Importar preços do Beds24</a>');
   expect(h).toContain('name="envioImoveis" checked="" value="i103"');
   expect(h).toContain('name="faixa2Pct"');
   // M3.10: regra de 6/10 visível e trocável por evento, e a opção dos feriadões no formulário geral.

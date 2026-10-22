@@ -184,6 +184,9 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
     expect(semComentarios("/* a\nb */ x\n// c\ny").split("\n")).toEqual(["    ", "     x", "    ", "y"]);
   });
 
+  // As varreduras leem todo o src/: com a suíte inteira em paralelo, passam dos 5 s padrão de um teste.
+  const VARREDURA = 60_000;
+
   it("nenhuma hora de relógio no formato antigo ('15h', '23h59', '0h') no código, fora dos comentários", () => {
     const lista = fontes();
     expect(lista.length).toBeGreaterThan(300);
@@ -193,7 +196,7 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
         .map(({ n, linha, hora }) => `${rel}:${n}: "${hora}" em ${linha.trim()}`),
     );
     expect(achados).toEqual([]);
-  });
+  }, VARREDURA);
 
   it('nenhum campo type="time": a hora se digita no CampoHora, "15:00" em qualquer aparelho', () => {
     for (const t of ['<input type="time" />', "<input type={'time'} />", '<input name="hora" type = "time" required />', 'campo("hora", "Hora", { type: "time" })', '{ nome: "hora", tipo: "time" }']) expect(CAMPO_TIME.test(t), t).toBe(true);
@@ -204,7 +207,7 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
         .flatMap((linha, i) => (CAMPO_TIME.test(linha) ? [`${rel}:${i + 1}: ${linha.trim()}`] : [])),
     );
     expect(achados).toEqual([]);
-  });
+  }, VARREDURA);
 
   it("o detector de formato pega Intl e toLocale de data e hora e deixa dinheiro, números e comentários", () => {
     for (const t of [
@@ -247,7 +250,7 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
           .map(({ n, nome, linha }) => `${rel}:${n}: ${nome} em ${linha.trim()}`),
       );
     expect(achados).toEqual([]);
-  });
+  }, VARREDURA);
 
   it("o detector da semana pega getUTCDay, getDay e listas de nomes ou letras dos dias e deixa o resto", () => {
     for (const t of [
@@ -281,7 +284,7 @@ describe("a hora e a data no padrão do Brasil (M7.22)", () => {
     // E lib/datas.ts tem a regra: segunda primeiro, com os números guardados de domingo (0) a sábado (6).
     const lib = readFileSync(join(SRC, "lib/datas.ts"), "utf8");
     expect(lib).toContain("export const PRIMEIRO_DIA_DA_SEMANA = 1;");
-  });
+  }, VARREDURA);
 
   it("cada exceção ainda existe no arquivo dela (a que não serve mais sai da lista)", () => {
     for (const e of [...EXCECOES, ...EXCECOES_FORMATO]) expect(readFileSync(join(SRC, e.arquivo), "utf8"), `${e.arquivo}: ${e.trecho} (${e.motivo})`).toContain(e.trecho);

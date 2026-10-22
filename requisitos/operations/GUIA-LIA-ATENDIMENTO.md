@@ -1,5 +1,7 @@
 # Lia — atendimento e agenda das equipes
 
+> **22/10/2026:** a fonte única de atendimento agora é o [Guia de Atendimento](GUIA-ATENDIMENTO.md), que tem precedência sobre este texto. Exemplos do que mudou: o convite à avaliação (modelo 04 A) sai 1 dia após a saída, às 10h, e não D+3; o agente se chama Mia; as agendas são completas às 8h30 e 17h30. Este guia fica como histórico e detalhe.
+
 Atualização de 6/10/2026 a partir da `main@c28dae1ea66be0749168120844c517aeb3e84c61`, após o merge do PR104. Preserva as decisões anteriores e incorpora os esclarecimentos de 6/10. As decisões abaixo são requisitos operacionais; sua presença no guia não comprova implantação no aplicativo. A situação deste texto é a do GitHub: `main` contém a versão mesclada; branch/PR contém a candidata, identificada por commit.
 
 Este é o ponto de entrada da consolidação de regras de atendimento, WhatsApp e agenda. Preserva regras úteis dos guias locais e decisões mais recentes de Diego, sem declarar o acervo inteiro migrado. Não substitui registros privados, fichas completas, autorizações da conversa ou estado real dos canais. Em 5/10 Diego pediu guias e registros tanto no GitHub quanto no Mac. Manter cópia local verificável por commit, sem substituir o mestre antigo da Lia enquanto seu caminho ativo for desconhecido. Registros com dados privados permanecem restritos; só a síntese sanitizada vai ao GitHub.

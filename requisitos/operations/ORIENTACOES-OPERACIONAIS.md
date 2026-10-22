@@ -1,5 +1,7 @@
 # Orientações operacionais — atendimento, agenda e continuidade
 
+> **22/10/2026:** o atendimento passou a ter uma fonte única, o [Guia de Atendimento](GUIA-ATENDIMENTO.md). Ele consolida este documento e os guias anteriores, com as decisões até 21/10. Em caso de diferença, vale o guia. Este texto fica como histórico e detalhe.
+
 Revisão documental de 13/10/2026, a partir das decisões confirmadas nesta revisão e da comparação com guias e registros privados recentes. Regras gerais, sem casos ou dados individuais. Este documento esclarece a operação manual e não comprova implementação no aplicativo, envio, execução física ou alteração de sistemas reais. O [índice](README.md) identifica as fontes por assunto.
 
 ## Agenda do Rio: edição completa por dia

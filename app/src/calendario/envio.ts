@@ -11,13 +11,14 @@ import { listarMapeamentosBeds24 } from "@/beds24/configuracao";
 import { mensagemSeguraBeds24 } from "@/beds24/sincronizacao";
 import { CAUSA_EM_ANDAMENTO, type CausaEscritaBeds24, chaveTravaBeds24, escritaBeds24EmAndamento, MENSAGEM_ENVIO_EM_ANDAMENTO, MENSAGEM_RESERVA_EM_ANDAMENTO_EQUIPE, tentarTravaBeds24 } from "@/beds24/trava";
 import { type DiaCalendario, type Divergencia, ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
-import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioImoveis, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, reservas } from "@/db/schema";
+import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioImoveis, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, type MotivoCopiaCalendario, precosImportados, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { somarDias } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
-import { faixasDeEnvio, intervaloDasReservas, type LinhaPlano, planejarCalendario, resumirPlano, type ResumoPlano } from "./motor";
+import { copiarLeitura } from "./copias";
+import { faixasDeEnvio, intervaloDasReservas, type LinhaPlano, planejarCalendario, type PrecoImportado, resumirPlano, type ResumoPlano } from "./motor";
 import { lerRegrasCalendario, type RegrasCalendario } from "./regras-config";
 
 export type ModoEnvio = "simulacao" | "envio";
@@ -129,12 +130,32 @@ export function bloqueiosSemAReserva<B extends { inicio: string; fim: string; fo
 }
 
 /**
- * Planeja um imóvel a partir do banco (cadastro, períodos, ocupação, observações e último envio).
+ * A camada do preço importado do Beds24 (M3.11a) de um imóvel nas noites [inicio, fim], por noite. `em` = o dia da
+ * importação no fuso do imóvel, que o motivo do plano cita.
+ */
+async function lerPrecosImportados(db: Db, org: string, imovelId: string, inicio: string, fim: string, fuso: string): Promise<Map<string, PrecoImportado>> {
+  const linhas = await db
+    .select({ data: precosImportados.data, preco: precosImportados.preco, minimo: precosImportados.minimoNoites, criadoEm: precosImportados.criadoEm })
+    .from(precosImportados)
+    .where(and(eq(precosImportados.organizacaoId, org), eq(precosImportados.imovelId, imovelId), gte(precosImportados.data, inicio), lte(precosImportados.data, fim)));
+  return new Map(linhas.map((l) => [l.data, { preco: l.preco, minimo: l.minimo, em: hojeISO(fuso, l.criadoEm) }]));
+}
+
+/**
+ * O que a revisão da importação (M3.11a) põe no lugar do cadastro (preço base e estadia máxima) e da camada importada para
+ * mostrar o plano "depois de aprovar". Só no plano: nada é gravado. Campo ausente = o que está gravado.
+ */
+export type SubstituicaoDoPlano = { precoBase?: number | null; estadiaMaxima?: number | null; importados?: ReadonlyMap<string, PrecoImportado> };
+
+/**
+ * Planeja um imóvel a partir do banco (cadastro, períodos, preços importados, ocupação, observações e último envio).
  * O estado enviado vale só para o quarto Beds24 vinculado agora (`roomId`; sem informar, é lido do vínculo):
  * o que foi enviado a outro quarto não dá posse de bloqueio neste. `o.ignorar` (M8.2d): a reserva sai da ocupação e os
  * bloqueios do Beds24 perdem as noites dela — o mínimo, as sobras e a regra de 6/10 são calculados sem ela.
  * `o.paraOBeds24` (envio e prévia do envio): as reservas-pedido das alterações (M8.2d, fonte "alteracao") ficam de fora,
  * porque nunca vão ao Beds24 e podem vencer; o site continua contando essas noites como seguradas.
+ * A camada do preço importado do Beds24 (M3.11a) é lida só com a fonte "preços automáticos do SCL" (nas outras o motor
+ * não a usa); `o.substituir`: a conferência da revisão da importação, sem gravar nada.
  */
 export async function planejarImovel(
   db: Db,
@@ -143,17 +164,27 @@ export async function planejarImovel(
   imovel: { id: string; fuso: string; roomId?: string | null },
   agora: Date,
   intervalo?: { inicio: string; fim: string },
-  o: { ignorar?: ReservaIgnorada; paraOBeds24?: boolean } = {},
+  o: { ignorar?: ReservaIgnorada; paraOBeds24?: boolean; substituir?: SubstituicaoDoPlano } = {},
 ) {
   const hoje = hojeISO(imovel.fuso, agora);
   const roomId = imovel.roomId !== undefined ? imovel.roomId : await quartoVinculado(db, org, imovel.id);
   const inicio = intervalo?.inicio && intervalo.inicio > hoje ? intervalo.inicio : hoje;
   const fim = intervalo?.fim ?? somarDias(hoje, regras.horizonteDias - 1);
   const [detalhes, periodos] = await Promise.all([lerDetalhes(db, org, imovel.id), listarPeriodos(db, org, imovel.id)]);
-  const regrasVenda = regrasDeVenda(detalhes);
+  const troca = o.substituir ?? {};
+  const regrasVenda = regrasDeVenda({
+    ...detalhes,
+    ...(troca.precoBase !== undefined ? { precoBase: troca.precoBase } : {}),
+    ...(troca.estadiaMaxima !== undefined ? { estadiaMaxima: troca.estadiaMaxima } : {}),
+  });
+  const importados = detalhes.fontePrecos !== "scl" ? undefined : (troca.importados ?? (await lerPrecosImportados(db, org, imovel.id, inicio, fim, imovel.fuso)));
   // Ocupação carregada até onde o maior mínimo aplicável alcança (mínimo 60 dias): uma reserva distante
   // ainda encurta as sobras; sem isso uma noite sairia com o mínimo cheio apesar de a janela livre ser menor.
-  const maiorMinimo = Math.max(...regras.minimoPorDia, regrasVenda.estadiaMinima ?? 0, regras.janelaFeriado.estadiaMinima, ...regras.eventos.map(e => e.estadiaMinima ?? 0), ...periodos.map(x => x.estadiaMinima ?? 0));
+  // O mínimo importado do Beds24 (M3.11a) também conta.
+  const maiorMinimo = Math.max(
+    ...regras.minimoPorDia, regrasVenda.estadiaMinima ?? 0, regras.janelaFeriado.estadiaMinima, ...regras.eventos.map(e => e.estadiaMinima ?? 0), ...periodos.map(x => x.estadiaMinima ?? 0),
+    ...[...(importados?.values() ?? [])].map(x => x.minimo ?? 0),
+  );
   const fimDados = somarDias(fim, Math.min(400, Math.max(60, maiorMinimo)));
   // Reservas também do período inteiro de cada feriadão/evento que toca as noites (regra de 6/10).
   const daRegra = intervaloDasReservas(regras, imovel.id, inicio, fim);
@@ -166,16 +197,22 @@ export async function planejarImovel(
     roomId === null ? [] : db.select().from(beds24CalendarioEnviado).where(and(eq(beds24CalendarioEnviado.organizacaoId, org), eq(beds24CalendarioEnviado.imovelId, imovel.id), eq(beds24CalendarioEnviado.roomId, roomId), gte(beds24CalendarioEnviado.data, inicio), lte(beds24CalendarioEnviado.data, fim))),
   ]);
   const linhas = planejarCalendario({
-    imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2], fontePrecos: detalhes.fontePrecos },
+    imovel: { id: imovel.id, regras: regrasVenda, periodos, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2], fontePrecos: detalhes.fontePrecos, importados },
     regras, hoje, inicio, fim, fimDados, reservas: ocupantes, bloqueios: impedimentos, observacoes, enviados,
   });
   const ocupacao: OcupacaoDoPlano = { inicio: daRegra.inicio, fim: ateReservas, assinatura: assinaturaDaOcupacao(ocupantes) };
   return { hoje, inicio, fim, linhas, regras: regrasVenda, pisos: [detalhes.pisoUltimaHora1, detalhes.pisoUltimaHora2] as const, fontePrecos: detalhes.fontePrecos, ocupacao };
 }
 
-/** Grava a leitura do calendário como observação local das noites (a mais nova vale), presa ao quarto lido. */
-async function gravarObservacoes(tx: Db, org: string, imovelId: string, roomId: string, dias: Iterable<DiaCalendario>, observadoEm: Date) {
-  for (const d of dias) {
+/**
+ * Grava a leitura do calendário como observação local das noites (a mais nova vale), presa ao quarto lido. Antes, a leitura
+ * que vai ser regravada fica numa cópia datada (M3.11a), na mesma transação: `antes_da_simulacao` ou `antes_do_envio`.
+ */
+async function gravarObservacoes(tx: Db, org: string, imovelId: string, roomId: string, dias: Iterable<DiaCalendario>, observadoEm: Date, copia: { motivo: MotivoCopiaCalendario; autorId: string | null }) {
+  const lista = [...dias];
+  if (!lista.length) return;
+  await copiarLeitura(tx, org, imovelId, copia.motivo, { autorId: copia.autorId });
+  for (const d of lista) {
     await tx.insert(beds24Calendario).values({ organizacaoId: org, imovelId, data: d.data, roomId, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm })
       .onConflictDoUpdate({ target: [beds24Calendario.organizacaoId, beds24Calendario.imovelId, beds24Calendario.data], set: { roomId, livres: d.livres, preco: d.preco, minimoNoites: d.minimoNoites, maximoNoites: d.maximoNoites, bloqueio: d.bloqueio, observadoEm } });
   }
@@ -359,7 +396,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
               aviso(motivo);
               continue;
             }
-            await gravarObservacoes(tx, org, m.imovelId, m.roomId, dias, agora);
+            await gravarObservacoes(tx, org, m.imovelId, m.roomId, dias, agora, { motivo: o.modo === "simulacao" ? "antes_da_simulacao" : "antes_do_envio", autorId: o.autorId ?? null });
           }
         } catch (e) {
           const motivo = mensagemSeguraBeds24(e);
@@ -560,7 +597,7 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
             await tx.update(beds24EnvioNoites).set({ resultado: g.resultado, detalhe: g.detalhe }).where(and(eq(beds24EnvioNoites.envioId, exec.id), eq(beds24EnvioNoites.imovelId, p.imovelId), inArray(beds24EnvioNoites.data, g.datas)));
           }
           // Observação nova para todas as noites relidas deste imóvel (mais recente que o envio).
-          await gravarObservacoes(tx, org, p.imovelId, p.roomId, porData.values(), instanteReleitura);
+          await gravarObservacoes(tx, org, p.imovelId, p.roomId, porData.values(), instanteReleitura, { motivo: "antes_do_envio", autorId: o.autorId ?? null });
         }
         // Blackout do SCL que a leitura mais nova mostra trocado ou removido no Beds24: a posse acaba (sem escrita).
         for (const p of planos) {

@@ -229,14 +229,18 @@ export function entradaDeDetalhes(d: Detalhes): Record<string, string | string[]
   };
 }
 
-async function imovelDaOrg(db: Db, organizacaoId: string, imovelId: string, travar = false) {
-  if (!uuidValido(imovelId)) return false;
+/**
+ * O imóvel da organização (id e fuso), travado com `travar` (`for update`, na transação de quem chama); de outra organização
+ * ou id inválido, null. A importação de preços (M3.11a) trava o imóvel por aqui, depois da trava do Beds24.
+ */
+export async function imovelDaOrg(db: Db, organizacaoId: string, imovelId: string, travar = false): Promise<{ id: string; fuso: string } | null> {
+  if (!uuidValido(imovelId)) return null;
   const q = db
-    .select({ id: imoveis.id })
+    .select({ id: imoveis.id, fuso: imoveis.fuso })
     .from(imoveis)
     .where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, organizacaoId)));
   const [im] = travar ? await q.for("update") : await q;
-  return Boolean(im);
+  return im ?? null;
 }
 
 export async function lerDetalhes(db: Db, organizacaoId: string, imovelId: string): Promise<Detalhes> {
@@ -332,6 +336,20 @@ async function gravarNaOrdemDasTravas(db: Db, organizacaoId: string, imovelId: s
   const segunda = await tentar(true);
   // Com a trava do Beds24 a gravação nunca pede para recomeçar.
   return segunda === REFAZER ? { ok: false, erro: "O cadastro mudou enquanto salvava. Tente de novo." } : segunda;
+}
+
+/**
+ * A gravação do cadastro dentro da transação de quem chama, que já tem as travas na ordem única (`beds24:<org>` e depois o
+ * imóvel travado): a aprovação da importação de preços (M3.11a) grava o preço base e a estadia máxima pelo caminho do
+ * cadastro — a validação vem de `preparar` (a mesma do painel), o diff e o histórico de `gravarDetalhes` —, sem abrir outra
+ * transação. Recusa de `preparar`: nada é gravado.
+ */
+export async function gravarDetalhesNaTransacao(tx: Db, organizacaoId: string, imovelId: string, preparar: PrepararDetalhes, autorId: string | null): Promise<{ ok: true } | { ok: false; erro: string; erros?: ErrosDetalhes }> {
+  const atual = await lerDetalhes(tx, organizacaoId, imovelId);
+  const prep = preparar(atual);
+  if ("erro" in prep) return { ok: false, ...prep };
+  await gravarDetalhes(tx, organizacaoId, imovelId, atual, prep, autorId);
+  return { ok: true };
 }
 
 async function gravarDetalhes(tx: Db, organizacaoId: string, imovelId: string, antes: Detalhes, dados: Detalhes, autorId: string | null): Promise<void> {

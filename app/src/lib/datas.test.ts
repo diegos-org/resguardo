@@ -18,6 +18,7 @@ import {
   DIAS_NA_ORDEM,
   DIAS_SEMANA,
   escreverHora,
+  haQuanto,
   fimDeSemana,
   FUSO_PADRAO,
   HORA_VALIDA,
@@ -195,6 +196,14 @@ describe("a semana começando na segunda (Diego, 16/10/2026)", () => {
     expect(diaDaSemanaEData("2026-10-16")).toBe("sex, 16/10/2026");
     expect(diaDaSemanaEData("2026-11-09")).toBe("seg, 09/11/2026");
     expect(diaDaSemanaEData("2026-10-17")).not.toContain(".");
+  });
+
+  it("há quanto tempo (M3.11a): menos de 1 hora, horas até 2 dias, depois dias", () => {
+    const agora = new Date("2026-10-22T15:00:00Z");
+    const antes = (min: number) => new Date(agora.getTime() - min * 60_000);
+    expect([antes(0), antes(59), antes(60), antes(150), antes(47 * 60 + 59), antes(48 * 60), antes(15 * 24 * 60)].map((d) => haQuanto(d, agora))).toEqual([
+      "há menos de 1 hora", "há menos de 1 hora", "há 1 hora", "há 2 horas", "há 47 horas", "há 2 dias", "há 15 dias",
+    ]);
   });
 
   it("os módulos que mostram dias reexportam os mesmos objetos de lib/datas.ts (uma regra, um lugar)", () => {

@@ -1,5 +1,8 @@
 # Identidade visual do SCL 2.0 — especificação (M7.5)
 
+**Responsável desde 22/10/2026:** o Codex (M7.23 e M7.24; divisão entre Claude e Codex em `CLAUDE.md`). O M7.5 foi
+implementado pelo Claude.
+
 **Situação:** implementado em `app/` em 4/10/2026 (M7.5): tokens em `app/src/app/globals.css`
 (`--scl-*`, com a textura de papel e as cores semânticas), site público em
 `app/src/components/site/site.module.css`, portais em `app/src/components/portal/portal.module.css`
