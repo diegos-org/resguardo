@@ -81,6 +81,9 @@ const ACOES: Record<string, string> = {
   "configuracao.calendario_regras": "alterou calendário e preços",
   "beds24.sincronizar": "importou do Beds24",
   "beds24.enviar": "enviou calendário e preços ao Beds24",
+  // M3.11a: a importação dos preços do Beds24 para o SCL (nada muda nas OTAs).
+  "imovel.precos.importar": "importou os preços do Beds24",
+  "imovel.precos.desfazer_importacao": "desfez a importação dos preços do Beds24",
   "reserva.ota_liberada": "marcou as datas reabertas nas OTAs",
   "alteracao.ota_atualizada": "marcou o bloqueio mudado nas OTAs",
   "beds24.reserva.ota_fechada": "marcou as datas fechadas nas OTAs",
@@ -148,7 +151,8 @@ export function HistoricoAlteracoes({ linhas }: { linhas: LinhaHistorico[] }) {
           {linhas.map((l) => (
             <li key={l.id} style={{ fontSize: "0.875rem", borderLeft: "3px solid var(--scl-areia)", paddingLeft: 10 }}>
               <strong>{l.autor ?? "Sistema"}</strong> {ACOES[l.acao] ?? l.acao} · {dataHoraNoFuso(l.criadoEm)}
-              {!/\.(criar|importar)$/.test(l.acao) && (
+              {/* A criação e a importação de uma reserva trazem o registro inteiro; a dos preços (M3.11a), só noites e intervalo. */}
+              {(!/\.(criar|importar)$/.test(l.acao) || l.acao === "imovel.precos.importar") && (
                 <ul style={{ listStyle: "none", color: "var(--scl-texto-2)" }}>
                   {Object.entries(l.mudancas).map(([campo, [antes, depois]]) => (
                     <li key={campo}>
