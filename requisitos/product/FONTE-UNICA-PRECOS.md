@@ -176,7 +176,7 @@ para o site e a cotação (M7.2, M8.1). Nada que o hóspede lê cita o Beds24; o
   - **objetivo:** cumprir a condição de Diego, nada mudar nas OTAs ao ligar, e deixar as regras dele valerem por cima,
     aos poucos.
 
-### Ajustes da implementação (22/10), em relação às §3.1 a §3.4
+### Ajustes da implementação (22/10), em relação às §3.1 a §3.6
 
 - **Cópia por quarto:** a comparação é com a última cópia do mesmo imóvel e quarto. Imóvel com leitura de dois quartos
   guarda uma cópia de cada.
@@ -198,6 +198,17 @@ para o site e a cotação (M7.2, M8.1). Nada que o hóspede lê cita o Beds24; o
   - sem conferência quando a fonte não é SCL;
   - as caixas "Usar como…" vêm marcadas quando o cadastro não tem o valor.
 - **Entrada da proposta:** o cadastro (o mínimo entra só para o aviso) e, das regras, só a estadia máxima de hoje.
+- **Aprovar:**
+  - a revisão e a aprovação leem pela mesma função, e a aprovação relê com o imóvel travado;
+  - o cadastro é gravado antes da cópia e da camada, na mesma transação: a recusa da validação volta antes de qualquer
+    gravação;
+  - leitura sem nenhuma noite com preço: recusa ("nada a importar"), em vez de apagar a camada;
+  - repetir com a camada igual não regrava nem audita: a data "importado em" fica a da primeira aprovação.
+- **Guardar uma cópia agora:** pega a trava da importação sem esperar, como ela; ocupada, recusa e pede para tentar de novo.
+- **Telas:**
+  - a lista mostra só os imóveis ativos;
+  - na ficha, com fonte diferente de SCL, a linha diz que os importados só valem com preços automáticos do SCL;
+  - o histórico do imóvel mostra as noites e o intervalo da importação (as outras importações escondem o registro).
 
 ## 5. Testes do M3.11a
 
