@@ -11,6 +11,15 @@ import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { beds24Calendario, beds24CalendarioCopias, type MotivoCopiaCalendario, type NoiteCopiada } from "@/db/schema";
 import type { Db } from "@/db/types";
 
+/** Por que a cópia foi guardada, em poucas palavras (a lista da importação, M3.11a). */
+export const NOMES_MOTIVO_COPIA: Record<MotivoCopiaCalendario, string> = {
+  manual: "guardada à mão",
+  antes_da_leitura: "antes de uma leitura",
+  antes_da_simulacao: "antes de uma simulação",
+  antes_do_envio: "antes de um envio",
+  importacao: "ao aprovar uma importação",
+};
+
 /** Uma linha da leitura (`beds24_calendario`) como noite da cópia. */
 export const paraNoiteCopiada = (l: { data: string; preco: number | null; minimoNoites: number | null; maximoNoites: number | null; livres: number | null; bloqueio: string | null }): NoiteCopiada => ({
   data: l.data, preco: l.preco, minimo: l.minimoNoites, maximo: l.maximoNoites, livres: l.livres, bloqueio: l.bloqueio,

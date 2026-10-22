@@ -8,15 +8,15 @@
  * Beds24; aprovar e desfazer (3.5 e 3.6) leem daqui as mesmas regras.
  */
 import { and, asc, count, eq, gte, inArray, max, min, sql } from "drizzle-orm";
-import { beds24Calendario, imoveis, type NoiteCopiada, precosImportados } from "@/db/schema";
+import { beds24Calendario, imoveis, type NoiteCopiada, precosImportados, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { lerDetalhes } from "@/imoveis/detalhes";
+import { type Detalhes, fontesDePrecosDosImoveis, lerDetalhes } from "@/imoveis/detalhes";
 import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { somarDias } from "@/imoveis/regras-venda";
 import { dataBr, hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { limiteDaLeitura } from "@/site/disponibilidade";
-import { assinaturaDaLeitura, paraNoiteCopiada } from "./copias";
+import { assinaturaDaLeitura, type CopiaResumida, paraNoiteCopiada, ultimasCopias } from "./copias";
 import { planejarImovel, quartoVinculado } from "./envio";
 import { aplicarMultiplicador, type PrecoImportado } from "./motor";
 import { centesimosParaMultiplicador, lerRegrasCalendario, type RegrasCalendario } from "./regras-config";
@@ -216,13 +216,29 @@ export type RevisaoImportacao = {
   bloqueios: { motivo: BloqueioImportacao; texto: string }[];
 };
 
+/** O que a revisão e a aprovação leem do banco, pela mesma régua (uma regra, um lugar: as duas nunca divergem). */
+export type LeituraDaImportacao = {
+  imovel: { id: string; codigo: string; fuso: string };
+  hoje: string;
+  detalhes: Detalhes;
+  regras: RegrasCalendario;
+  roomId: string | null;
+  /** As noites lidas do quarto vinculado, de hoje em diante, com a hora de cada leitura. */
+  lidas: (NoiteLida & { observadoEm: Date })[];
+  cadastro: RevisaoImportacao["cadastro"];
+  proposta: PropostaImportacao;
+  lidaEm: Date | null;
+  vencida: boolean;
+  validadeHoras: number;
+  bloqueios: { motivo: BloqueioImportacao; texto: string }[];
+};
+
 /**
- * A revisão da importação de um imóvel (3.4), sem gravar nada: o cadastro, a fonte, o quarto vinculado, as noites lidas
- * desse quarto de hoje em diante, a hora da leitura mais nova, a validade, a proposta, a conferência pelo motor e os
- * bloqueios da aprovação. `o.usar`: as caixas da tela (ausente, marcada se o cadastro não tiver o valor). Imóvel de outra
- * organização (ou id inválido): null.
+ * Lê o que a importação de um imóvel usa: o cadastro, a fonte, as regras, o quarto vinculado, as noites lidas desse quarto
+ * de hoje em diante (no fuso do imóvel), a hora da leitura mais nova, a validade, a proposta e os bloqueios. A revisão lê
+ * por aqui sem trava; a aprovação, na transação dela, com o imóvel travado. Imóvel de outra organização (ou id inválido): null.
  */
-export async function montarRevisao(db: Db, org: string, imovelId: string, agora = new Date(), o: { usar?: Partial<RevisaoImportacao["usar"]> } = {}): Promise<RevisaoImportacao | null> {
+export async function lerImportacao(db: Db, org: string, imovelId: string, agora: Date): Promise<LeituraDaImportacao | null> {
   if (!uuidValido(imovelId)) return null;
   const [imovel] = await db.select({ id: imoveis.id, codigo: imoveis.codigo, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.id, imovelId), eq(imoveis.organizacaoId, org)));
   if (!imovel) return null;
@@ -234,10 +250,31 @@ export async function montarRevisao(db: Db, org: string, imovelId: string, agora
   const lidaEm = lidas.reduce<Date | null>((m, l) => (!m || l.observadoEm > m ? l.observadoEm : m), null);
   const vencida = leituraVencida(lidas, regras, agora);
   const validadeHoras = regras.site.validadeLeituraHoras;
-  const usar = {
-    precoBase: proposta.precoBase !== null && (o.usar?.precoBase ?? cadastro.precoBase === null),
-    estadiaMaxima: proposta.estadiaMaxima !== null && (o.usar?.estadiaMaxima ?? cadastro.estadiaMaxima === null),
+  const bloqueios = bloqueiosDaImportacao({ fontePrecos: detalhes.fontePrecos, roomId, noites: lidas.length, vencida, validadeHoras });
+  return { imovel, hoje, detalhes, regras, roomId, lidas, cadastro, proposta, lidaEm, vencida, validadeHoras, bloqueios };
+}
+
+/**
+ * As caixas "Usar como preço base" e "Usar como estadia máxima": só com um valor proposto; sem pedido, marcada quando o
+ * cadastro não tem o valor. A conferência da tela e a aprovação decidem por aqui o que vai para o cadastro.
+ */
+export function escolherUsar(proposta: Pick<PropostaImportacao, "precoBase" | "estadiaMaxima">, cadastro: Pick<RevisaoImportacao["cadastro"], "precoBase" | "estadiaMaxima">, pedido: Partial<RevisaoImportacao["usar"]> = {}): RevisaoImportacao["usar"] {
+  return {
+    precoBase: proposta.precoBase !== null && (pedido.precoBase ?? cadastro.precoBase === null),
+    estadiaMaxima: proposta.estadiaMaxima !== null && (pedido.estadiaMaxima ?? cadastro.estadiaMaxima === null),
   };
+}
+
+/**
+ * A revisão da importação de um imóvel (3.4), sem gravar nada: o que `lerImportacao` lê, as caixas da tela, a conferência
+ * pelo motor e os bloqueios da aprovação. `o.usar`: as caixas da tela (ausente, marcada se o cadastro não tiver o valor).
+ * Imóvel de outra organização (ou id inválido): null.
+ */
+export async function montarRevisao(db: Db, org: string, imovelId: string, agora = new Date(), o: { usar?: Partial<RevisaoImportacao["usar"]> } = {}): Promise<RevisaoImportacao | null> {
+  const l = await lerImportacao(db, org, imovelId, agora);
+  if (!l) return null;
+  const { imovel, hoje, detalhes, regras, roomId, lidas, cadastro, proposta } = l;
+  const usar = escolherUsar(proposta, cadastro, o.usar);
 
   let conferencia: ConferenciaImportacao | null = null;
   if (detalhes.fontePrecos === "scl" && roomId !== null && proposta.fim !== null) {
@@ -248,23 +285,20 @@ export async function montarRevisao(db: Db, org: string, imovelId: string, agora
       paraOBeds24: true,
       substituir: { ...(usar.precoBase ? { precoBase: proposta.precoBase } : {}), ...(usar.estadiaMaxima ? { estadiaMaxima: proposta.estadiaMaxima } : {}), importados },
     });
-    const porData = new Map(lidas.map((l) => [l.data, l]));
-    const noites = plano.linhas.flatMap((l): NoiteConferida[] => {
-      const b = porData.get(l.data);
+    const porData = new Map(lidas.map((n) => [n.data, n]));
+    const noites = plano.linhas.flatMap((linha): NoiteConferida[] => {
+      const b = porData.get(linha.data);
       if (!b) return [];
       const diferencas: DiferencaConferida[] = [];
-      if (b.preco !== l.precoEnviar) diferencas.push("preco");
-      if (b.minimoNoites !== l.minimoEnviar) diferencas.push("minimo");
-      if (b.maximoNoites !== l.maximoEnviar) diferencas.push("maximo");
-      return [{ data: l.data, precoBeds24: b.preco, precoScl: l.precoEnviar, minimoBeds24: b.minimoNoites, minimoScl: l.minimoEnviar, maximoBeds24: b.maximoNoites, maximoScl: l.maximoEnviar, diferencas, motivo: diferencas.length ? l.regra : "" }];
+      if (b.preco !== linha.precoEnviar) diferencas.push("preco");
+      if (b.minimoNoites !== linha.minimoEnviar) diferencas.push("minimo");
+      if (b.maximoNoites !== linha.maximoEnviar) diferencas.push("maximo");
+      return [{ data: linha.data, precoBeds24: b.preco, precoScl: linha.precoEnviar, minimoBeds24: b.minimoNoites, minimoScl: linha.minimoEnviar, maximoBeds24: b.maximoNoites, maximoScl: linha.maximoEnviar, diferencas, motivo: diferencas.length ? linha.regra : "" }];
     });
     conferencia = { iguais: noites.filter((n) => !n.diferencas.length).length, total: noites.length, noites };
   }
 
-  return {
-    imovel, hoje, fontePrecos: detalhes.fontePrecos, roomId, lidaEm, validadeHoras, vencida, cadastro, usar, proposta, conferencia,
-    bloqueios: bloqueiosDaImportacao({ fontePrecos: detalhes.fontePrecos, roomId, noites: lidas.length, vencida, validadeHoras }),
-  };
+  return { imovel, hoje, fontePrecos: detalhes.fontePrecos, roomId, lidaEm: l.lidaEm, validadeHoras: l.validadeHoras, vencida: l.vencida, cadastro, usar, proposta, conferencia, bloqueios: l.bloqueios };
 }
 
 /** O que já foi importado num imóvel, de `desde` em diante: noites, intervalo, quando foi a última importação e por quem. */
@@ -283,4 +317,52 @@ export async function resumoDosImportados(db: Db, org: string, desde: string, im
     .where(and(eq(p.organizacaoId, org), gte(p.data, desde), imovelIds ? inArray(p.imovelId, [...imovelIds]) : undefined))
     .groupBy(p.imovelId);
   return new Map(linhas.map((l) => [l.imovelId, { noites: l.noites, inicio: l.inicio!, fim: l.fim!, em: l.em!, autorId: l.autorId }]));
+}
+
+/** A hora da leitura do Beds24 mais nova de cada imóvel da organização (de qualquer quarto, todas as noites guardadas). */
+export async function ultimasLeituras(db: Db, org: string, imovelIds: readonly string[]): Promise<Map<string, Date>> {
+  if (!imovelIds.length) return new Map();
+  const linhas = await db
+    .select({ imovelId: beds24Calendario.imovelId, lidaEm: max(beds24Calendario.observadoEm) })
+    .from(beds24Calendario)
+    .where(and(eq(beds24Calendario.organizacaoId, org), inArray(beds24Calendario.imovelId, [...imovelIds])))
+    .groupBy(beds24Calendario.imovelId);
+  return new Map(linhas.flatMap((l) => (l.lidaEm ? [[l.imovelId, l.lidaEm] as const] : [])));
+}
+
+/** Uma linha da lista da importação: o imóvel, a fonte, a última leitura, o que já foi importado de hoje em diante e a última cópia. */
+export type ImovelNaImportacao = {
+  id: string; codigo: string; nome: string; fontePrecos: FontePrecos;
+  lidaEm: Date | null;
+  importados: (ResumoImportados & { autor: string | null }) | null;
+  ultimaCopia: CopiaResumida | null;
+};
+
+/**
+ * A lista da importação (3.4): os imóveis ativos da organização, cada um com a fonte de preços, a hora da última leitura, o
+ * resumo do que foi importado de hoje em diante (no fuso do imóvel), com o nome de quem importou, e a última cópia.
+ */
+export async function listarImportacoes(db: Db, org: string, agora = new Date()): Promise<ImovelNaImportacao[]> {
+  const lista = await db.select({ id: imoveis.id, codigo: imoveis.codigo, nome: imoveis.nome, fuso: imoveis.fuso }).from(imoveis).where(and(eq(imoveis.organizacaoId, org), eq(imoveis.ativo, true))).orderBy(asc(imoveis.codigo));
+  const ids = lista.map((i) => i.id);
+  // "De hoje em diante" no fuso de cada imóvel: um resumo por dia de hoje (quase sempre um só).
+  const porHoje = new Map<string, string[]>();
+  for (const i of lista) {
+    const hoje = hojeISO(i.fuso, agora);
+    porHoje.set(hoje, [...(porHoje.get(hoje) ?? []), i.id]);
+  }
+  const [fontes, leituras, copias, ...resumos] = await Promise.all([
+    fontesDePrecosDosImoveis(db, org, ids), ultimasLeituras(db, org, ids), ultimasCopias(db, org, ids),
+    ...[...porHoje].map(([hoje, doDia]) => resumoDosImportados(db, org, hoje, doDia)),
+  ]);
+  const importados = new Map(resumos.flatMap((r) => [...r]));
+  const autorIds = [...new Set([...importados.values()].map((r) => r.autorId).filter((a): a is string => a !== null))];
+  const nomes = new Map(autorIds.length ? (await db.select({ id: usuarios.id, nome: usuarios.nome }).from(usuarios).where(and(eq(usuarios.organizacaoId, org), inArray(usuarios.id, autorIds)))).map((u) => [u.id, u.nome]) : []);
+  return lista.map((i) => {
+    const r = importados.get(i.id);
+    return {
+      id: i.id, codigo: i.codigo, nome: i.nome, fontePrecos: fontes.get(i.id) ?? "scl", lidaEm: leituras.get(i.id) ?? null,
+      importados: r ? { ...r, autor: r.autorId ? (nomes.get(r.autorId) ?? null) : null } : null, ultimaCopia: copias.get(i.id) ?? null,
+    };
+  });
 }
