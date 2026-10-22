@@ -19,6 +19,7 @@ import {
   alteracoesReserva,
   auditoria,
   beds24Calendario,
+  beds24CalendarioCopias,
   beds24ReservasOperacoes,
   beds24ReservasRotina,
   beds24ReservasSite,
@@ -36,6 +37,7 @@ import {
   lancamentos,
   organizacoes,
   pagamentos,
+  precosImportados,
   proprietarioImoveis,
   proprietarios,
   reservas,
@@ -236,6 +238,10 @@ export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: s
     await db.select().from(whatsappConta),
     // M10.1a: o resumo das execuções das rotinas é "sem dados pessoais", e até aqui ninguém conferia.
     await db.select().from(execucoesAutomacao),
+    // M3.11a: as cópias da leitura do Beds24 (quarto, motivo e as noites: preço, mínimo, máximo, unidades e bloqueio) e a
+    // camada do preço importado (preço e mínimo por noite). Nada de hóspede.
+    await db.select().from(beds24CalendarioCopias),
+    await db.select().from(precosImportados),
   ];
   const registros = await db.select().from(auditoria);
   const tudo = JSON.stringify([semAuditoria, registros]);

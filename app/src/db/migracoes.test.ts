@@ -502,4 +502,86 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0074.hash]);
     expect(await aplicarMigracoesPendentes(executar, ate0074)).toBe(1);
   }, 120_000);
+
+  it("a 0075 (M3.11a, cópias da leitura e preços importados) cria as duas tabelas vazias, com a chave, os CHECKs e a ordem do desenho, nomes até 63 caracteres, e é idempotente", async () => {
+    const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
+    const m0075 = todas[75];
+    expect(m0075.sql.join("\n")).toContain('"precos_importados"');
+    // Só até a 0075 (as seguintes terão o próprio teste).
+    const ate0075 = todas.slice(0, 76);
+    expect(await aplicarMigracoesPendentes(executar, todas.slice(0, 75))).toBe(75);
+    const um = async <T,>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows[0];
+    const { id: org } = (await um<{ id: string }>("insert into organizacoes (nome) values ('Org') returning id"))!;
+    const { id: im } = (await um<{ id: string }>("insert into imoveis (organizacao_id, codigo, nome) values ($1, '403', 'Studio Fictício') returning id", [org]))!;
+    // Uma leitura de antes (da 0035/0037), que a migração não copia nem importa.
+    await db.query("insert into beds24_calendario (organizacao_id, imovel_id, data, room_id, livres, preco, minimo_noites, maximo_noites, bloqueio, observado_em) values ($1, $2, '2026-10-22', '20', 1, 45000, 2, 27, 'none', now())", [org, im]);
+
+    expect(await aplicarMigracoesPendentes(executar, ate0075)).toBe(1);
+    const TABELAS = ["beds24_calendario_copias", "precos_importados"];
+    const linhas = async () => (await db.query<{ t: string; n: number }>(TABELAS.map((t) => `select '${t}' as t, count(*)::int as n from ${t}`).join(" union all ") + " order by 1")).rows;
+    // Nada nasce sozinho: nenhuma cópia e nenhum preço importado para a leitura de antes.
+    expect((await linhas()).every((r) => r.n === 0)).toBe(true);
+    const colunas = async () =>
+      (await db.query<{ c: string }>("select table_name || '.' || column_name || ':' || data_type || ':' || is_nullable as c from information_schema.columns where table_schema = 'public' and table_name in ('beds24_calendario_copias', 'precos_importados') order by 1")).rows.map((r) => r.c);
+    const restricoes = async () =>
+      (await db.query<{ n: string }>("select c.conname as n from pg_constraint c join pg_class t on t.oid = c.conrelid where t.relname in ('beds24_calendario_copias', 'precos_importados') order by 1")).rows.map((r) => r.n);
+    const indices = async () => (await db.query<{ n: string }>("select indexname as n from pg_indexes where tablename in ('beds24_calendario_copias', 'precos_importados') order by 1")).rows.map((r) => r.n);
+    const antes = { colunas: await colunas(), restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas() };
+    expect(antes.tabelas).toEqual(expect.arrayContaining(TABELAS));
+    expect(antes.colunas).toEqual(expect.arrayContaining([
+      "beds24_calendario_copias.ordem:integer:NO", "beds24_calendario_copias.room_id:text:YES", "beds24_calendario_copias.autor_id:uuid:YES", "beds24_calendario_copias.dados:jsonb:NO",
+      "beds24_calendario_copias.lido_em:timestamp with time zone:NO", "beds24_calendario_copias.assinatura:text:NO",
+      "precos_importados.preco:integer:NO", "precos_importados.minimo_noites:integer:YES", "precos_importados.copia_id:uuid:NO", "precos_importados.autor_id:uuid:YES",
+    ]));
+    expect(antes.restricoes).toEqual(expect.arrayContaining([
+      "beds24_calendario_copias_pkey", "beds24_calendario_copias_noites", "beds24_calendario_copias_autor_id_usuarios_id_fk",
+      "precos_importados_organizacao_id_imovel_id_data_pk", "precos_importados_preco", "precos_importados_minimo", "precos_importados_copia_id_beds24_calendario_copias_id_fk",
+    ]));
+    expect(antes.indices).toEqual(expect.arrayContaining(["beds24_calendario_copias_imovel", "precos_importados_organizacao_id_imovel_id_data_pk"]));
+    // Nenhum nome passa dos 63 caracteres do Postgres: mede os nomes escritos na 0075 (o catálogo guardaria o nome já cortado).
+    const nomesNaMigracao = [...m0075.sql.join("\n").matchAll(/conname = '([^']+)'|INDEX IF NOT EXISTS "([^"]+)"|CONSTRAINT "([^"]+)" PRIMARY KEY/g)].map((m) => m[1] ?? m[2] ?? m[3]);
+    expect(nomesNaMigracao).toHaveLength(12); // 7 chaves estrangeiras, 3 CHECKs, 1 índice e a chave composta
+    expect(nomesNaMigracao.every((n) => n.length <= 63)).toBe(true);
+    expect([...antes.restricoes, ...antes.indices]).toEqual(expect.arrayContaining(nomesNaMigracao));
+
+    // Os CHECKs (23514), a chave (23505) e a cópia de origem (23503) que o banco garante sozinho. Valores fictícios.
+    const codigo = async (sql: string, params: unknown[] = []) => {
+      try {
+        await db.query(sql, params);
+        return "ok";
+      } catch (e) {
+        return (e as { code?: string }).code;
+      }
+    };
+    const copia = (noites: number) => codigo("insert into beds24_calendario_copias (organizacao_id, imovel_id, room_id, motivo, lido_em, noites, assinatura, dados) values ($1, $2, '20', 'manual', now(), $3, 'a', '[]'::jsonb)", [org, im, noites]);
+    expect(await copia(0)).toBe("23514");
+    expect(await copia(1)).toBe("ok");
+    expect(await copia(1)).toBe("ok");
+    // A ordem de gravação vem sozinha e só cresce (a última cópia é a de maior ordem, mesmo com o mesmo `criado_em`; a
+    // recusada acima gastou um número da sequência).
+    const copias = (await db.query<{ id: string; ordem: number }>("select id, ordem from beds24_calendario_copias order by criado_em, ordem")).rows;
+    expect(copias).toHaveLength(2);
+    expect(copias[1].ordem).toBeGreaterThan(copias[0].ordem);
+    const preco = (data: string, valor: number, minimo: number | null, copiaId: string = copias[0].id) =>
+      codigo("insert into precos_importados (organizacao_id, imovel_id, data, preco, minimo_noites, copia_id) values ($1, $2, $3, $4, $5, $6)", [org, im, data, valor, minimo, copiaId]);
+    expect(await preco("2026-10-22", 0, null)).toBe("23514");
+    expect(await preco("2026-10-22", 45000, 0)).toBe("23514");
+    expect(await preco("2026-10-22", 45000, 366)).toBe("23514");
+    expect(await preco("2026-10-22", 45000, 365)).toBe("ok");
+    expect(await preco("2026-10-22", 46000, 2)).toBe("23505");
+    expect(await preco("2026-10-23", 45000, null)).toBe("ok");
+    expect(await preco("2026-10-24", 45000, 1, "6f1c2a7e-3b4d-4c5e-8f90-123456789abc")).toBe("23503");
+
+    // As instruções de novo (banco compartilhado das prévias): nada muda, nem as linhas já gravadas.
+    const gravadas = await linhas();
+    expect(gravadas).toEqual([{ t: "beds24_calendario_copias", n: 2 }, { t: "precos_importados", n: 2 }]);
+    for (const instrucao of m0075.sql) await db.exec(instrucao);
+    expect({ colunas: await colunas(), restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas(), linhas: await linhas() }).toEqual({ ...antes, linhas: gravadas });
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0075.hash]);
+    expect(await aplicarMigracoesPendentes(executar, ate0075)).toBe(1);
+    expect(await linhas()).toEqual(gravadas);
+    // A sequência continua de onde estava: a cópia nova vem depois das que ficaram.
+    expect(await copia(1)).toBe("ok");
+    expect((await db.query<{ o: number }>("select max(ordem)::int as o from beds24_calendario_copias")).rows[0].o).toBeGreaterThan(copias[1].ordem);
+  }, 120_000);
 });

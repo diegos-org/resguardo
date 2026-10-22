@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { registrarAuditoria } from "@/auditoria/auditoria";
+import { copiarLeitura } from "@/calendario/copias";
 import { beds24Calendario, beds24Execucoes, beds24ExecucaoReservas, bloqueios, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { hojeISO } from "@/lib/datas";
@@ -198,7 +199,9 @@ export async function sincronizarBeds24(db: Db, org: string, leitor: LeitorBeds2
       }
 
       // Substitui apenas a observação dos imóveis mapeados. Dias não retornados
-      // ficam sem observação (desconhecidos), nunca viram "livres" por omissão.
+      // ficam sem observação (desconhecidos), nunca viram "livres" por omissão. Antes de apagar, a leitura anterior de cada
+      // imóvel fica numa cópia datada (M3.11a), nesta mesma transação; imóvel sem noites lidas não gera cópia.
+      for (const m of mapas) await copiarLeitura(tx, org, m.imovelId, "antes_da_leitura", { autorId: o.autorId ?? null });
       await tx.delete(beds24Calendario).where(and(eq(beds24Calendario.organizacaoId, org), inArray(beds24Calendario.imovelId, mapas.map(m => m.imovelId))));
       const vistos = new Set<string>();
       const valores: typeof beds24Calendario.$inferInsert[] = [];

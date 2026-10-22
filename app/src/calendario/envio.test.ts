@@ -5,10 +5,11 @@ import { executarCronEnvioBeds24 } from "@/beds24/cron-envio";
 import { Beds24Falso } from "@/beds24/falso";
 import { ErroBeds24, type EscritorBeds24, type LeitorBeds24 } from "@/beds24/tipos";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, beds24ReservasOperacoes, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, reservas, beds24EnvioImoveis } from "@/db/schema";
+import { beds24Calendario, beds24CalendarioCopias, beds24CalendarioEnviado, beds24EnvioNoites, beds24Envios, beds24ReservasOperacoes, bloqueios, idsExternos, imoveis, imoveisDetalhes, organizacoes, precosImportados, reservas, beds24EnvioImoveis } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { ultimasExecucoes } from "@/sistema/automacoes";
+import { guardarCopia } from "./copias";
 import { bloqueiosSemAReserva, enviarCalendarioBeds24, noitesDoEnvio, planejarImovel, ultimosEnvios } from "./envio";
 import { REGRAS_CALENDARIO_PADRAO, lerRegrasCalendario, type RegrasCalendario } from "./regras-config";
 
@@ -903,5 +904,87 @@ describe("regra de 6/10 na carga do plano (M3.10)", () => {
     // Com a regra desligada no evento, o mínimo do evento volta.
     const desligada = await planejarImovel(db, org, regras({ eventos: [{ ...ev, minimoNormalComReserva: false }] }), { id: im, fuso: "America/Sao_Paulo" }, agora, { inicio: "2026-10-03", fim: "2026-10-04" });
     expect(desligada.linhas.map(l => l.minimoRegra)).toEqual([5, 5]);
+  });
+});
+
+describe("cópia da leitura antes de regravar (M3.11a)", () => {
+  const copias = () => db.select().from(beds24CalendarioCopias).where(eq(beds24CalendarioCopias.organizacaoId, org)).orderBy(beds24CalendarioCopias.ordem);
+  const precoNoBeds24 = (price1: number) => { beds.calendarios = [{ roomId: 20, calendar: [{ from: "2026-10-01", to: "2026-10-10", numAvail: 1, price1, minStay: 1, maxStay: 27, override: "none" }] }]; };
+
+  it("a simulação e as duas fases do envio guardam a leitura antes de regravá-la, com o motivo de cada uma; sem leitura anterior, nenhuma cópia", async () => {
+    // Sem leitura anterior: a simulação grava a primeira leitura (R$ 400) e nenhuma cópia.
+    expect((await enviar("simulacao")).situacao).toBe("simulacao");
+    expect(await copias()).toHaveLength(0);
+    // O Beds24 mudou (R$ 410): a simulação seguinte copia a leitura de antes.
+    precoNoBeds24(410);
+    await enviar("simulacao");
+    // De novo (R$ 420), agora o envio: a fase 1 copia a leitura de R$ 410 antes de gravar a de agora; depois da escrita, a
+    // fase 3 copia a de R$ 420 antes de gravar a releitura (o que o SCL enviou, R$ 450).
+    precoNoBeds24(420);
+    expect((await enviar("envio")).situacao).toBe("ok");
+    const lista = await copias();
+    expect(lista.map(c => [c.motivo, c.noites, c.autorId, c.roomId])).toEqual([["antes_da_simulacao", 10, null, "20"], ["antes_do_envio", 10, null, "20"], ["antes_do_envio", 10, null, "20"]]);
+    expect(lista.map(c => [...new Set(c.dados.map(n => n.preco))])).toEqual([[40000], [41000], [42000]]);
+    expect(lista.map(c => c.lidoEm.getTime())).toEqual([agora.getTime(), agora.getTime() + 60_000, agora.getTime() + 120_000]);
+    expect([...new Set((await observacoes()).map(o => o.preco))]).toEqual([45000]);
+    // Simular de novo: a primeira copia a releitura (R$ 450, ainda sem cópia); a segunda acha a mesma leitura e não grava.
+    await enviar("simulacao");
+    await enviar("simulacao");
+    expect((await copias()).map(c => c.dados[0].preco)).toEqual([40000, 41000, 42000, 45000]);
+  });
+});
+
+describe("preço importado do Beds24 no plano (M3.11a)", () => {
+  const sp = { fuso: "America/Sao_Paulo" };
+  let copiaId: string;
+  // Importado às 23h de 30/09 em São Paulo (2h de 1/10 em UTC): o motivo cita o dia no fuso do imóvel.
+  const importar = (noites: [string, number, number | null][], criadoEm = new Date("2026-10-01T02:00:00Z")) =>
+    db.insert(precosImportados).values(noites.map(([data, preco, minimoNoites]) => ({ organizacaoId: org, imovelId: im, data, preco, minimoNoites, copiaId, criadoEm })));
+  beforeEach(async () => {
+    copiaId = (await guardarCopia(db, org, im, { roomId: "20", noites: [{ data: "2026-10-01", preco: 45000, minimo: 1, maximo: 27, livres: 1, bloqueio: "none" }], lidoEm: agora }, "importacao", null))!;
+  });
+
+  it("planejarImovel carrega a camada do intervalo, só com a fonte scl", async () => {
+    await importar([["2026-10-03", 52000, 3], ["2026-10-05", 61000, null], ["2026-10-20", 99000, 1]]);
+    const plano = () => planejarImovel(db, org, regras(), { ...sp, id: im }, agora, { inicio: "2026-10-03", fim: "2026-10-06" });
+    const p = await plano();
+    expect(p.linhas.map(l => [l.data, l.fontePreco, l.precoReferencia, l.minimoRegra])).toEqual([
+      ["2026-10-03", "importado", 52000, 3], ["2026-10-04", "base", 45000, 1], ["2026-10-05", "importado", 61000, 1], ["2026-10-06", "base", 45000, 1],
+    ]);
+    expect(p.linhas[0]).toMatchObject({ motivoPreco: "Preço importado do Beds24 em 30/09/2026", motivoMinimo: "Mínimo importado do Beds24" });
+    for (const fontePrecos of ["beds24", "manual"] as const) {
+      await db.update(imoveisDetalhes).set({ fontePrecos }).where(eq(imoveisDetalhes.imovelId, im));
+      expect((await plano()).linhas.some(l => l.fontePreco === "importado" || l.motivoMinimo.includes("importado"))).toBe(false);
+    }
+  });
+
+  it("o mínimo importado entra no maior mínimo da carga: reserva a 80 dias ainda encurta a sobra de um mínimo importado de 90", async () => {
+    await db.update(imoveisDetalhes).set({ estadiaMaxima: 365 }).where(eq(imoveisDetalhes.imovelId, im));
+    await importar([["2026-10-01", 45000, 90]]);
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-TESTE90", origem: "airbnb", estado: "confirmada", checkin: "2026-12-20", checkout: "2026-12-22", hospedeNome: "Hóspede Fictício", fonte: "manual", idFonte: "" });
+    const p = await planejarImovel(db, org, regras(), { ...sp, id: im }, agora, { inicio: "2026-10-01", fim: "2026-10-01" });
+    expect(p.linhas[0]).toMatchObject({ minimoRegra: 90, livresSeguidas: 80, minimoEnviar: 80 });
+  });
+
+  it("a substituição da revisão (preço base, estadia máxima e camada) vale só no plano: nada é gravado", async () => {
+    await importar([["2026-10-03", 52000, 3]]);
+    const retrato = async () => JSON.stringify([
+      await db.select().from(imoveisDetalhes).where(eq(imoveisDetalhes.organizacaoId, org)), await db.select().from(precosImportados).where(eq(precosImportados.organizacaoId, org)),
+      await db.select().from(beds24Calendario).where(eq(beds24Calendario.organizacaoId, org)), await db.select().from(beds24CalendarioCopias).where(eq(beds24CalendarioCopias.organizacaoId, org)),
+      await db.select().from(beds24CalendarioEnviado).where(eq(beds24CalendarioEnviado.organizacaoId, org)), await historicoDe(db, org, "imovel", im),
+    ]);
+    const antes = await retrato();
+    const camada = new Map([["2026-10-04", { preco: 70000, minimo: 2, em: "2026-10-01" }]]);
+    const p = await planejarImovel(db, org, regras(), { ...sp, id: im }, agora, { inicio: "2026-10-03", fim: "2026-10-05" }, { substituir: { precoBase: 30000, estadiaMaxima: 10, importados: camada } });
+    // A camada gravada (3/10) dá lugar à da revisão (4/10); o preço base e a máxima são os da revisão.
+    expect(p.linhas.map(l => [l.data, l.fontePreco, l.precoReferencia, l.minimoRegra, l.maximoEnviar])).toEqual([
+      ["2026-10-03", "base", 30000, 2], ["2026-10-04", "importado", 70000, 2], ["2026-10-05", "base", 30000, 1],
+    ].map(([d, f, pr, mi]) => [d, f, pr, mi, 10]));
+    expect(p.linhas[1].motivoPreco).toBe("Preço importado do Beds24 em 01/10/2026");
+    expect(p.regras).toMatchObject({ precoBase: 30000, estadiaMaxima: 10 });
+    expect(await retrato()).toBe(antes);
+    // Sem a substituição, volta o que está gravado.
+    const gravado = await planejarImovel(db, org, regras(), { ...sp, id: im }, agora, { inicio: "2026-10-03", fim: "2026-10-04" });
+    expect(gravado.linhas.map(l => [l.fontePreco, l.precoReferencia, l.maximoEnviar])).toEqual([["importado", 52000, 27], ["base", 45000, 27]]);
   });
 });
