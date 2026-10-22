@@ -411,7 +411,7 @@ Diego está configurando. **Não mexer.** O retrato abaixo vem das capturas de t
 
 ## 13. Pendências registradas na consolidação (22/10, madrugada)
 
-**Retrato datado, não fila pronta para execução.** Antes de levar qualquer item a Diego, conferir decisões e desfechos posteriores no registro privado e na fonte acessível. Retirar da fila o que já foi resolvido ou cancelado, sem apagar o histórico; não reabrir compra, cobrança, avaliação ou proposta encerrada. Consulta de status de um recurso não comprova envio de provas complementares. Casos individuais não entram neste guia.
+**Retrato datado, não fila pronta para execução.** Antes de levar qualquer item a Diego, conferir decisões e desfechos posteriores no registro privado e na fonte acessível. Retirar da fila o que já foi resolvido ou cancelado, sem apagar o histórico; não reabrir compra, cobrança, avaliação ou proposta encerrada. Consulta de status de um recurso não comprova envio de provas complementares. Os lembretes sanitizados abaixo preservam a continuidade e os prazos; nomes, identificadores e detalhes individuais ficam somente no registro privado, que deve ser consultado para reconciliar cada pendência.
 
 1. **Assinatura "— Mia"** no fim das mensagens do Airbnb: sim ou não? (seção 2)
 2. **Pisos 330/680/380: decisão encerrada.** Confirmados pela decisão de +R$30 em 15/10; não pedir nova aprovação dos mesmos valores. Conferir execução/proteção separadamente (seção 8).
