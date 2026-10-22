@@ -282,7 +282,7 @@ O sistema SCL ainda **não envia** preços. O envio só liga quando Diego ligar,
 **Regras gerais:**
 - Base B: **R$450** nos quatro studios, **R$800** no 303. Búzios não tem base própria confirmada.
 - Mínimo de noites: dom–qui 1, sex–sáb 2. Máximo 27.
-- Sobra entre reservas: mínimo = noites livres seguidas. Em feriado/evento com reserva no período, as sobras usam o mínimo normal e mantêm o preço do evento.
+- Sobra entre reservas: mínimo da entrada = **o menor** entre o mínimo aplicável e as noites livres seguidas (ex.: sobra de 1 noite numa sexta → mínimo 1; sobra de 5 noites em dias úteis → continua mínimo 1). Em feriado/evento com reserva no período, as sobras usam o mínimo normal e mantêm o preço do evento.
 - **Alta temporada** (15/12 ao fim de fevereiro, ou até Cinzas): 2×B no Leblon e em Búzios.
 - **Réveillon** (25/12–1/1): mínimo 5, Leblon 4×B.
 - **Carnaval:** mínimo 5, Leblon 4×B.
