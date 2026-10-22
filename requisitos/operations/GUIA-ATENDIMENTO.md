@@ -1,6 +1,7 @@
 # Guia de Atendimento — Sua Casa Leblon
 
 **Versão 2 · consolidada e revisada em 22/10/2026, a pedido de Diego.**
+Atualização de preços: decisão de 22/10/2026, 09:49 BRT (seção 8).
 Reúne num só lugar as regras de atendimento, as respostas aos hóspedes e o que fazer quando algo dá errado.
 Fontes: todos os documentos de `requisitos/operations/` (até 17/10), as regras do projeto Cowork (23–24/09), as notas
 locais das rodadas da Mia/Codex (05–21/10) e os e-mails de resumo até 21/10 à noite.
@@ -298,7 +299,9 @@ O sistema SCL ainda **não envia** preços. O envio só liga quando Diego ligar,
 - Búzios: Réveillon, Carnaval e feriadões ainda sem regra (decisão de Diego).
 - Descontos semanal, mensal e "hóspede bem avaliado": **todos retirados**. O desligamento do Preço Inteligente nunca foi comprovado na tela.
 
-**Última hora:** regras nativas do Beds24 (só canal Airbnb), −15% de D-7 a D-3 e −25% de D-2 a D0, calculadas sobre a referência (DailyPrice1). **O Beds24 não trava o piso**: a correção é manual.
+**Última hora — decisão vigente de 22/10/2026, 09:49 BRT:** nos seis imóveis próprios (102, 103, 303, 399, 403 e Búzios), **−20% em D0–D2** e **−12% em D3–D7**, calculados sobre a DailyPrice1 do próprio imóvel. D0 é hoje; Dn é a noite a n dias de antecedência, no fuso do imóvel. Substituem os antigos 25%/15%; não estender a imóveis de terceiros. Os pisos finais abaixo não mudaram.
+
+**Aplicação verificada:** as 12 regras nativas foram salvas e relidas no Beds24 entre **09:55 e 10:02 BRT de 22/10**, com os novos percentuais e nomes, sem mudar referências, reservas, bloqueios, eventos ou estados de ativação dos canais. Price Data confirma cálculo no Beds24, **não recebimento no Booking/Airbnb nem cotação final nas OTAs**. Nenhuma integração foi ativada nessa operação. A configuração anterior restringia essas faixas ao Airbnb; não presumir extensão ao Booking. A proteção permanente do piso continua não comprovada: reduzir o desconto não substitui a conferência e a correção autorizada.
 
 **Pisos (valor final depois do desconto)** — usados nas rodadas desde 15/10:
 
@@ -312,14 +315,18 @@ O sistema SCL ainda **não envia** preços. O envio só liga quando Diego ligar,
 
 **Como corrigir uma noite abaixo do piso:**
 - Só em **noite livre**, um dia por vez.
-- Subir só a referência para `ceil(piso ÷ (1 − desconto))`. Valores típicos:
-  - studios D3–7 → **411,77**
-  - studios D0–2 → **440,00**
-  - Búzios D3–7 → **447,06** (só se a referência estiver abaixo disso)
-  - 303 D0–2 → **906,67**
-  - Búzios D0–2 → **506,67**
+- Se estiver abaixo do piso, subir somente a referência necessária: `ceil(100 × piso ÷ (1 − desconto)) ÷ 100` (arredondamento **para cima ao centavo**, não ao real).
+
+  | Faixa / desconto | Studios | 303 | Búzios |
+  |---|---:|---:|---:|
+  | D0–D2 / 20% | R$412,50 | R$850,00 | R$475,00 |
+  | D3–D7 / 12% | R$397,73 | R$795,46 | R$431,82 |
+
+  São **limites matemáticos**, não preços-alvo nem ordem para reduzir referências atuais. Preservar toda referência já superior, inclusive correções anteriores, tarifas de evento e exceções autorizadas. Conferir outros descontos aplicáveis: a tabela considera somente a faixa indicada, não garante o valor final com benefícios adicionais.
 - Não subir antes da hora as noites que ainda estão acima do piso. Recorrigir quando elas mudarem de faixa.
 - Depois: salvar, **recarregar** e conferir. Registrar antes e depois no log privado.
+
+**Por que conferir a mudança de faixa:** no modelo histórico 15%/25%, a mesma referência de R$450 gerava R$382,50 em D3 e R$337,50 ao entrar em D2, sem alteração da referência. A janela móvel explicava essa queda; não é evidência de sobrescrita/importação. Com 12%/20%, a diferença diminui, mas ainda pode haver valor abaixo do piso. Conferir novamente as noites que mudam de faixa; não afirmar proteção automática nem reduzir referências para compensar o desconto menor.
 
 **Nunca:**
 - mexer em noites vendidas, reservas, bloqueios, eventos, multiplicadores ou mínimos de outras datas;
@@ -450,6 +457,7 @@ Diego está configurando. **Não mexer.** O retrato abaixo vem das capturas de t
 | 15/10 | Horário da agenda | última passada do dia (desde 8–13/10; antes, 20h) | **8h30 e 17h30, os dois destinos** |
 | 17/10 | Búzios | — | 1 vaga de carro, sem exceção |
 | 21/10 | Booking | Mia configurando | **Diego assumiu** |
+| 22/10, 09:49 BRT | Última hora nos seis imóveis próprios | 25% D0–D2 / 15% D3–D7 | **20% / 12%**, mesmos pisos; 12 regras relidas entre 09:55 e 10:02 BRT; sem ativação nem confirmação de recebimento pelas OTAs |
 | 22/10 | Atendimento | 6+ documentos | **este guia é a fonte única**, sujeito às decisões e autorizações vigentes |
 | 22/10 | Revisão solicitada por Diego | ambiguidade entre agenda e execução; triagem por não lidas | agenda futura pela saída prevista/acordada; mensagens legíveis; triagem por contexto; passada completa e análise comparável às sextas |
 
