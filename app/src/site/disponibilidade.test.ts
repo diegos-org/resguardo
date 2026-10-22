@@ -454,7 +454,10 @@ describe("preço importado do Beds24 no site (M3.11a)", () => {
     expect(r).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 147000, limpeza: 25000, hospedeExtra: 0, valorCheio: 172000 } });
     expect(r.cotacao!.total).toBe(172000 - r.cotacao!.desconto);
     // O mínimo importado da entrada (2 em 12/10, uma segunda) vale no site.
-    expect(await consultar({ saida: "2026-10-13" })).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 12/10/2026, o mínimo é de 2 noites."] });
+    const curta = await consultar({ saida: "2026-10-13" });
+    expect(curta).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 12/10/2026, o mínimo é de 2 noites."] });
+    // O que o hóspede lê nunca cita o Beds24 nem a importação (desenho 3.7): o motivo do plano fica no painel.
+    expect(JSON.stringify([r, curta])).not.toMatch(/beds24|importad/i);
     await db.update(imoveisDetalhes).set({ fontePrecos: "manual" }).where(eq(imoveisDetalhes.imovelId, im));
     expect(await consultar()).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 135000, valorCheio: 160000 } });
   });
