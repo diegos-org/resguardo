@@ -3,7 +3,7 @@
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
 > **Regras de preservação (9/10/2026):** Claude e Codex trabalham em cópias e branches novas, preservando originais, acervos e o histórico. Cada PR explica o que mudou, por quê, com qual objetivo e onde retomar. Decisões substituídas continuam registradas; voltar atrás acontece por uma nova mudança, sem apagar o passado. O visual continua tomando o acervo do Sage como referência, depois das entregas funcionais.
 > **Conferência da equipe (9/10/2026):** protegido também o caso de um cadastro ligado por engano a uma conta de outro perfil ou outra empresa. O sistema recusa alterar esse acesso, preserva a conta e não usa seu e-mail nos avisos da equipe. Os testes usam dados fictícios; isso não afirma que os cadastros reais foram inspecionados.
-> **Última atualização:** 22/10/2026, **plano novo, na branch e em revisão:** preços num lugar só (M3.11) e visual com o Codex (M7.23). Seus testes de 21/10 na prévia deram certo no que foi testado. Tudo na seção 2. Os resumos anteriores do topo foram para o fim do guia, sem mudança.
+> **Última atualização:** 22/10/2026, **importar os preços do Beds24 para o SCL (M3.11a), na branch e em revisão:** uma cópia datada de cada leitura e uma tela para você aprovar, imóvel por imóvel. O plano de 22/10 está no sistema desde 22/10 (PR #162). Tudo na seção 2.
 
 ---
 
@@ -32,7 +32,7 @@
 | M0 Fundação | Base do app, banco de dados, layout, publicação na Vercel, backup | 🟡 Vercel e login funcionando; banco de homologação separado conferido em 3/10; backup automático do repositório **ativo desde 4/10** em conta separada (M0.7, seção 6, item 23); conferência automática dos PRs mais rápida (M0.8); M0.5 fechado por você em 4/10; referência do sistema antigo cruzada com o plano em 4/10 (M0.6); avisos de erro pelo Sentry, sem dados pessoais (M0.9, 16/10); menu do painel no celular pronto (M0.10, 16/10). **M0 concluído, menos a arrumação deste guia (M0.11, planejada em 22/10)** |
 | M1 Acesso | Login (Google/código por e-mail), convites, permissões | ✅ pronto |
 | M2 Cadastros | Imóveis, proprietários, contratos e aba Anúncios | ✅ implementado; referências dos canais precisam ser preenchidas/conferidas |
-| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta; sobras de feriado e evento com reserva usam o mínimo normal da semana (M3.10, 9/10); **fonte única de preços planejada (M3.11, 22/10)**: importar os preços do Beds24, conferir com você e ligar imóvel a imóvel |
+| M3 Reservas | Reservas, calendário central, importação e envio de calendário/preços ao Beds24 | 🟡 importação e envio implementados; o envio começa desligado e espera o seu teste no 103; conferência das reservas parcial; fonte de preços por imóvel escolhida na ficha de cada imóvel (M3.9) pronta; sobras de feriado e evento com reserva usam o mínimo normal da semana (M3.10, 9/10); **fonte única de preços planejada (M3.11, 22/10)**: importar os preços do Beds24, conferir com você e ligar imóvel a imóvel; **a importação (M3.11a, 22/10) na branch e em revisão**: cópia datada de cada leitura e tela de revisão para você aprovar |
 | M4 Financeiro | Lançamentos, comissões, despesas, dashboard, aba Apartamentos | 🟡 em andamento; extrato e repasses por periodicidade prontos (M4.10); início do sistema e acerto por fora do que é de antes (M4.11); conciliação do extrato bancário (M4.4b) e Pix automático dependem do banco/Mercado Pago; reserva paga antes do início acertada inteira por fora, pela data em que o canal pagou (M4.12); dia do fechamento no dia 2, editável de 1 a 5 (M4.13, 5/10) |
 | M5 Portal do proprietário | Relatórios, saldos, PDF, bloqueio de uso próprio | 🟡 relatórios, PDF, e-mail do fechamento e bloqueio de datas prontos; documento "como funciona" para o proprietário pronto e com a versão 1 publicada por você em 7/10 (M5.6); relatório mensal no modelo oficial pronto (M5.7), com os extratos dos canais guardados por mês para o e-mail; ajustes de 5/10 no relatório prontos (M5.8: noites ocupadas, receita por noite disponível, estadia média, gráfico de ocupação); Beds24 fora dos textos do portal e do site (M5.9, 7/10) pronto; nomes da empresa e do proprietário sempre como estão no cadastro, no "Como funciona" e no e-mail do fechamento (M5.10, 16/10) |
 | M6 Operação | Limpezas, manutenção, agenda diária | 🟡 em andamento; a equipe entra sem e-mail e vê só a agenda da cidade dela (M6.8, 7/10); aviso pelo WhatsApp depende do M10 |
@@ -54,7 +54,17 @@
 - **Sua condição:** nada liga antes de piso, mínimo de noites, preço base, eventos e disponibilidade estarem conferidos no SCL, e de a simulação mostrar quase nada a mudar.
 - **Visual (M7.23):** fica com o Codex. Primeiro uma tela, no computador e no celular, para você aprovar; depois o resto, em quatro partes (M7.24a a M7.24d).
 - **Textos curtos:** uma ou duas linhas nas telas, no site e neste guia. A arrumação do guia é o M0.11, depois do primeiro passo dos preços.
-- **Para você:** avisar o Codex que pode seguir com o visual depois que este plano entrar no sistema.
+- **Para você:** avisar o Codex que pode seguir com o visual. Feito em 22/10, depois que o plano entrou no sistema (PR #162).
+
+### Importar os preços do Beds24 (M3.11a, 22/10, na branch e em revisão)
+
+- **Cópia datada:** antes de cada leitura, simulação e envio, o SCL guarda uma cópia do que leu do Beds24. Nenhuma é apagada.
+- **Onde:** Configurações → Calendário e preços → "Importar preços do Beds24". Uma linha por imóvel, com "Revisar".
+- **Na revisão:** o preço base e a estadia máxima propostos, as noites a importar, os avisos e a conta "igual ao Beds24 em X de Y noites".
+- **Aprovar:** grava os preços no SCL. Nada muda no Beds24, porque o envio continua desligado. Dá para desfazer.
+- **Depois:** eventos, feriadões e períodos que você criar valem por cima do preço importado.
+- **Mudança no plano:** temporadas e eventos aparecem só como sugestão; nenhum é criado sozinho. Motivo e detalhe no ROADMAP (decisões de 22/10).
+- **Para você:** seção 6, item 52.
 
 ### Seus testes na prévia (21/10)
 
@@ -4585,6 +4595,13 @@ ambiente).
 
     O último parágrafo pede, se for fácil para eles, o que o próprio ensaio também vai mostrar: onde vem o número da
     reserva criada, que canal ela recebe, o nome do aviso de créditos e o fuso da hora da reserva.
+52. **Importar os preços do Beds24 (M3.11a), quando entrar no sistema:**
+    1. em Configurações → Integrações, toque em "Importar agora". Só lê o Beds24; a leitura de 7/10 está vencida;
+    2. em Configurações → Calendário e preços → "Importar preços do Beds24", abra "Revisar" em cada imóvel;
+    3. confira o preço base, a estadia máxima e os avisos, e toque em "Aprovar e importar";
+    4. se algo parecer errado, "Desfazer a importação" volta como estava.
+
+    Nada disso escreve no Beds24.
 
 ---
 
