@@ -48,7 +48,7 @@ describe("proposta da importação (M3.11a, 3.3)", () => {
     expect(propor(seguidas("2026-10-22", 3), { cadastro: { precoBase: null, estadiaMinima: null, estadiaMaxima: 14 } }).estadiaMaximaAtual).toBe(14);
     const fora = propor([noite("2026-10-22", { maximoNoites: 0 }), noite("2026-10-23", { maximoNoites: 999 }), noite("2026-10-24", { maximoNoites: null })]);
     expect(fora.estadiaMaxima).toBeNull();
-    expect(fora.avisos).toEqual(["Estadia máxima fora de 1 a 365 noites em 2 noite(s) do Beds24: não entra na proposta.", "Sem estadia máxima no Beds24: fica a do cadastro."]);
+    expect(fora.avisos).toEqual(["Estadia máxima fora de 1 a 365 noites em 2 noite(s) do Beds24: não entra na proposta.", "Sem estadia máxima no Beds24: fica a que vale hoje no SCL."]);
     const curta = propor(seguidas("2026-10-22", 2, { maximoNoites: 3 }), { cadastro: { precoBase: null, estadiaMinima: 5, estadiaMaxima: null } });
     expect(curta.avisos).toContain("A estadia máxima proposta (3) é menor que a mínima do cadastro (5): confira antes de aprovar.");
   });

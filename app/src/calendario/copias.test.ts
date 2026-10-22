@@ -144,21 +144,23 @@ describe("cópia da leitura (M3.11a)", () => {
   });
 });
 
-/** Todo `.ts`/`.tsx` de `src/` (e das subpastas), fora os testes. */
-function arquivosDoCodigo(dir = join(__dirname, "..")): string[] {
+const PASTA_APP = join(__dirname, "..", "..");
+/** Todo `.ts`/`.tsx`/`.mts` de `src/` e `scripts/` (e das subpastas), fora os testes, e as migrações (`drizzle/*.sql`). */
+function arquivosDoCodigo(dir: string): string[] {
   return readdirSync(dir).flatMap((nome) => {
     const caminho = join(dir, nome);
-    if (statSync(caminho).isDirectory()) return arquivosDoCodigo(caminho);
-    return /\.tsx?$/.test(nome) && !/\.test\.tsx?$/.test(nome) ? [caminho] : [];
+    if (statSync(caminho).isDirectory()) return nome === "node_modules" ? [] : arquivosDoCodigo(caminho);
+    return (/\.m?tsx?$/.test(nome) && !/\.test\.tsx?$/.test(nome)) || /\.sql$/.test(nome) ? [caminho] : [];
   });
 }
 
 describe("só inclusão (M3.11a)", () => {
-  it("nenhum caminho do código altera ou apaga uma cópia (pelo Drizzle ou por SQL escrito à mão)", () => {
-    const arquivos = arquivosDoCodigo();
+  it("nenhum caminho do código altera ou apaga uma cópia (pelo Drizzle, por SQL escrito à mão ou numa migração)", () => {
+    const arquivos = ["src", "scripts", "drizzle"].flatMap((p) => arquivosDoCodigo(join(PASTA_APP, p)));
     expect(arquivos.length).toBeGreaterThan(100);
+    expect(arquivos.some((a) => a.endsWith("0075_m3_11a_copias_precos_importados.sql"))).toBe(true);
     const mexe = /\.(?:update|delete)\(\s*beds24CalendarioCopias\b|\b(?:update|delete\s+from|truncate(?:\s+table)?)\s+"?beds24_calendario_copias\b/i;
-    expect(arquivos.filter((a) => mexe.test(readFileSync(a, "utf8"))).map((a) => a.slice(join(__dirname, "..").length + 1))).toEqual([]);
+    expect(arquivos.filter((a) => mexe.test(readFileSync(a, "utf8"))).map((a) => a.slice(PASTA_APP.length + 1))).toEqual([]);
     // O próprio padrão pega os jeitos de mexer (a conferência do teste); a inclusão e a leitura não contam.
     for (const linha of ["await tx.update(beds24CalendarioCopias).set({ noites: 1 })", "db.delete( beds24CalendarioCopias )", 'sql`delete from "beds24_calendario_copias"`', "truncate table beds24_calendario_copias", "UPDATE beds24_calendario_copias SET"]) expect(mexe.test(linha), linha).toBe(true);
     for (const linha of ["db.insert(beds24CalendarioCopias)", "db.select().from(beds24CalendarioCopias)"]) expect(mexe.test(linha), linha).toBe(false);

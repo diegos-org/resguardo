@@ -13,9 +13,10 @@ const migracao = (sql: string, folderMillis: number): Migracao => ({ sql: [sql],
 
 beforeEach(async () => {
   db = new PGlite();
-  // A partida do banco fica na preparação (prazo maior), não no corpo do teste: com a máquina ocupada, ela passa de 5 s.
+  // A partida do banco fica na preparação (prazo maior), não no corpo do teste: com a máquina ocupada, ela passa de 5 s
+  // (e, com a suíte inteira em paralelo, dos 10 s padrão da preparação).
   await db.waitReady;
-});
+}, 60_000);
 afterEach(() => db.close());
 
 describe("aplicação das migrações por hash (build da Vercel)", () => {

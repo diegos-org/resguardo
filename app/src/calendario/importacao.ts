@@ -101,7 +101,7 @@ export function proporImportacao(e: EntradaProposta): PropostaImportacao {
   const distintos = [...new Set(maximosValidos)].sort((a, b) => a - b);
   if (maximos.length > maximosValidos.length) avisos.push(`Estadia máxima fora de 1 a 365 noites em ${maximos.length - maximosValidos.length} noite(s) do Beds24: não entra na proposta.`);
   if (distintos.length > 1) avisos.push(`O Beds24 tem mais de uma estadia máxima (${listaDeNoites(distintos)} noites). O SCL tem uma só: a proposta usa a mais comum, ${estadiaMaxima}.`);
-  if (usadas.length && estadiaMaxima === null) avisos.push("Sem estadia máxima no Beds24: fica a do cadastro.");
+  if (usadas.length && estadiaMaxima === null) avisos.push("Sem estadia máxima no Beds24: fica a que vale hoje no SCL.");
   if (estadiaMaxima !== null && e.cadastro.estadiaMinima !== null && estadiaMaxima < e.cadastro.estadiaMinima) avisos.push(`A estadia máxima proposta (${estadiaMaxima}) é menor que a mínima do cadastro (${e.cadastro.estadiaMinima}): confira antes de aprovar.`);
 
   // As noites a importar: toda noite com preço, com o mínimo do Beds24. Sem preço (ou zero), a noite não entra.
@@ -134,7 +134,11 @@ export function proporImportacao(e: EntradaProposta): PropostaImportacao {
 
   // Resumo por mês: noites, menor e maior preço e os mínimos.
   const porMes = new Map<string, NoiteLida[]>();
-  for (const n of usadas) porMes.set(n.data.slice(0, 7), [...(porMes.get(n.data.slice(0, 7)) ?? []), n]);
+  for (const n of usadas) {
+    const doMes = porMes.get(n.data.slice(0, 7));
+    if (doMes) doMes.push(n);
+    else porMes.set(n.data.slice(0, 7), [n]);
+  }
   const meses = [...porMes].map(([mes, ns]): ResumoDoMes => {
     const ps = ns.map((n) => n.preco).filter((p): p is number => p !== null && p > 0);
     return {
