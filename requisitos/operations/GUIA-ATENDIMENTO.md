@@ -114,7 +114,7 @@ Regras de convivência:
 - Lembrete de saída: D-1, 14h.
 - Agradecimento + convite à avaliação: 1 dia após a saída, 10h (modelo 04 A).
 
-Reserva de última hora dispara as mensagens sozinha. Conferir a conversa antes de mandar instrução manual.
+Reserva feita depois de D-2: **não presumir** que a mensagem automática saiu. Abrir a conversa. Se as instruções de entrada não aparecerem lá, enviá-las logo, conferindo a reserva. Se já aparecerem, não repetir.
 **[CORRIGIR]** O modelo automático **01 A ainda pede documentos no 303**. O certo é só no 403. Até corrigir, avisar os hóspedes do 303 que não precisam enviar.
 
 ---
