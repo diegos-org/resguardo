@@ -86,7 +86,7 @@ export async function aprovarImportacao(db: Db, org: string, imovelId: string, p
     const depois: Camada = { noites: proposta.importar.length, inicio: proposta.importar[0].data, fim: proposta.importar.at(-1)!.data };
     if (igual) return { ok: true, mensagem: textoCadastro ? `Os preços importados já eram estes (${resumo(depois)}).${textoCadastro}` : `Nada mudou: o SCL já tem estes preços importados (${resumo(depois)}).` };
 
-    const antes = await camadaDesde(tx, org, imovelId, hoje);
+    const antes: Camada | null = atuais.length ? { noites: atuais.length, inicio: atuais[0].data, fim: atuais.at(-1)!.data } : null;
     await tx.delete(p).where(deHoje);
     await tx.insert(p).values(proposta.importar.map((n) => ({ organizacaoId: org, imovelId, data: n.data, preco: n.preco, minimoNoites: n.minimo, copiaId, autorId, criadoEm: agora })));
     await registrarAuditoria(tx, {
