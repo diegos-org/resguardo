@@ -16,6 +16,9 @@
 .preview-results{padding-top:0}
 .checkout-summary>p{max-width:48ch}
 .checkout-summary .button{margin-top:12px}
+.card-body .eyebrow{color:#fff}
+header :focus-visible,.homes :focus-visible,.closing :focus-visible,footer :focus-visible{outline-color:#f3eee3}
+.calendar-grid button[aria-pressed="true"]:focus-visible{outline-color:#f3eee3;outline-offset:-2px}
 @supports(backdrop-filter:blur(10px)){.search-wrap>.search-form{background:rgba(248,244,234,.82);backdrop-filter:blur(10px)}}
 @media(min-width:1001px){.hero-copy{max-width:48%;}.hero{min-height:300px}.hero-inner{min-height:300px;padding-top:28px}.hero-link{bottom:65px}.hero h1{font-size:clamp(2.35rem,3.2vw,2.85rem)}.hero-image{background-position:center 30%}}
 @media(max-width:600px){header{flex-wrap:wrap;row-gap:8px}.brand{font-size:21px}nav{gap:14px;font-size:12px}.nav-cta{padding:10px}.nav-cta span{padding-left:6px}.preview-place{height:115px}.preview-result img{height:220px}.preview-legal{gap:8px 20px}.hero h1{font-size:clamp(1.8rem,7.5vw,2.65rem)}}

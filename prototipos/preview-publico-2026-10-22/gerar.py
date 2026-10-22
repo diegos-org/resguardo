@@ -3,13 +3,14 @@ from pathlib import Path
 import re, json, shutil, hashlib
 
 ROOT = Path(__file__).resolve().parent
-SOURCE = ROOT.parent / 'scl-publico-main-20261022/scl-reconstrucao-main/prototipos/acervo-visual-2026-10/site-publico'
+SOURCE = ROOT.parent / 'acervo-visual-2026-10/site-publico'
 DEST = ROOT / 'site'
 DEST.mkdir(exist_ok=True)
 PAGES = ['index.html', 'imoveis.html', 'consulta.html'] + [f'imovel-{n}.html' for n in ['102','103','303','399','403']]
 for name in PAGES:
     html = (SOURCE / name).read_text()
     html = html.replace('Prévia privada · Reservas e pagamentos ainda não estão habilitados', 'Estudo visual · catálogo de referência · sem reservas ou pagamentos')
+    html = html.replace('<script>document.addEventListener("submit",function(e){e.preventDefault();alert("Acervo visual: use a versão local em 127.0.0.1:4173 para testar formulários. Nenhuma consulta foi enviada.");},true);</script>', '')
     html = html.replace('action="disponibilidade"', 'action="consulta.html"')
     html = html.replace('Consulte as datas para receber disponibilidade, total e condições.', 'Explore as datas neste estudo. Disponibilidade e valores são consultados no site oficial.')
     html = html.replace('Escolha suas datas. A disponibilidade será confirmada antes de reservar.', 'Experimente a navegação. Esta prévia não verifica disponibilidade.')
@@ -31,7 +32,23 @@ for name in PAGES:
 
 (DEST / 'styles.css').write_text((SOURCE / 'styles.css').read_text())
 # Somente galeria, carrossel e calendário. O código de POST do acervo fica fora do pacote.
-(DEST / 'app.js').write_text((SOURCE / 'app.js').read_text().split('async function submitLocalForm')[0])
+app_js = (SOURCE / 'app.js').read_text().split('async function submitLocalForm')[0]
+app_js = re.sub(
+    r"const refresh=\(\)=>triggers\.forEach\(\(button,input\)=>button\.querySelector\('span'\)\.textContent=displayDate\(input\.value\)\);",
+    """  const refresh=()=>triggers.forEach((button,input)=>{
+   const kind=input===checkin?'entrada':'saída',value=displayDate(input.value);
+   button.querySelector('span').textContent=value;
+   button.setAttribute('aria-label',`Escolher data de ${kind}: ${value}`);
+  });""",
+    app_js,
+)
+app_js = re.sub(
+    r"^\s*if\(form\.dataset\.propertyNavigation\).*?\n",
+    '',
+    app_js,
+    flags=re.M,
+)
+(DEST / 'app.js').write_text(app_js)
 for f in SOURCE.joinpath('images').rglob('*'):
     if f.is_file() and 'places' not in f.relative_to(SOURCE).parts:
         out = DEST / f.relative_to(SOURCE)

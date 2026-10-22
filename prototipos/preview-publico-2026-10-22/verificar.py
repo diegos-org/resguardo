@@ -20,11 +20,15 @@ class Check(HTMLParser):
 for page in pages:
     html=page.read_text(); Check().feed(html)
     assert 'sem reservas ou pagamentos' in html and 'noindex,nofollow' in html
+    assert '127.0.0.1:4173' not in html
     assert 'images/places/' not in html
     assert 'https://www.suacasaleblon.com/termos' in html
 assert len(pages)==8
 for file in ROOT.glob('*.js'):
     assert not re.search(r'\bfetch\s*\(|XMLHttpRequest|localStorage|sessionStorage',file.read_text())
+app_js=(ROOT/'app.js').read_text()
+assert "button.setAttribute('aria-label',`Escolher data de ${kind}: ${value}`)" in app_js
+assert 'location.assign(' not in app_js
 assert "connect-src 'none'" in (ROOT/'vercel.json').read_text()
 assert not list(ROOT.rglob('.env*'))
 assert not errors, errors

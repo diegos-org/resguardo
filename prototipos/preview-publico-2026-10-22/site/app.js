@@ -51,7 +51,11 @@ document.querySelectorAll('.search-form').forEach(form=>{
  document.body.append(dialog);
  let active,month,opener;
  const triggers=new Map();
- const refresh=()=>triggers.forEach((button,input)=>button.querySelector('span').textContent=displayDate(input.value));
+   const refresh=()=>triggers.forEach((button,input)=>{
+   const kind=input===checkin?'entrada':'saída',value=displayDate(input.value);
+   button.querySelector('span').textContent=value;
+   button.setAttribute('aria-label',`Escolher data de ${kind}: ${value}`);
+  });
  const position=()=>{if(!opener||!dialog.open)return;const rect=opener.getBoundingClientRect(),w=dialog.offsetWidth,h=dialog.offsetHeight;dialog.style.left=`${Math.max(12,Math.min(rect.left,innerWidth-w-12))}px`;dialog.style.top=`${Math.max(12,Math.min(rect.bottom+10,innerHeight-h-12))}px`;};
  const open=input=>{active=input;opener=triggers.get(input);const base=input===checkout&&checkin.value?(checkout.value>=checkout.min?checkout.value:dayAfter(checkin.value)):(input.value||input.min);month=localDate(base);month.setDate(1);render();if(!dialog.open)dialog.showModal();position();const target=dialog.querySelector('[aria-pressed=true]:not(:disabled)')||dialog.querySelector('.calendar-grid button:not(:disabled)');target?.focus();};
  const render=()=>{
@@ -74,6 +78,5 @@ document.querySelectorAll('.search-form').forEach(form=>{
  dialog.querySelector('[aria-label="Mês anterior"]').addEventListener('click',()=>{month.setMonth(month.getMonth()-1);render();});dialog.querySelector('[aria-label="Próximo mês"]').addEventListener('click',()=>{month.setMonth(month.getMonth()+1);render();});dialog.querySelector('.calendar-close').addEventListener('click',()=>dialog.close());dialog.addEventListener('close',()=>opener?.focus());window.addEventListener('resize',position);
  dialog.querySelector('.calendar-grid').addEventListener('keydown',e=>{if(!e.target.dataset.date)return;const steps={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7};if(!(e.key in steps))return;e.preventDefault();const d=localDate(e.target.dataset.date);d.setDate(d.getDate()+steps[e.key]);if(iso(d)<active.min)return;month=new Date(d.getFullYear(),d.getMonth(),1,12);render();dialog.querySelector(`[data-date="${iso(d)}"]`)?.focus();});
  refresh();
- if(form.dataset.propertyNavigation)form.elements.property.addEventListener('change',()=>{const code=form.elements.property.value;if(!code)return;const params=new URLSearchParams();for(const key of ['checkin','checkout','guests'])if(form.elements[key].value)params.set(key,form.elements[key].value);location.assign(`imovel-${encodeURIComponent(code)}.html?${params}`);});
 });
 
