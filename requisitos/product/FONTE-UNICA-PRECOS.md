@@ -294,7 +294,7 @@ Com PGlite e a versão falsa do Beds24, sem rede.
 **Prioridade máxima (Diego, 26/10):** "acrescentar como bastante urgente agora então: resolver 100% de vez todo o mapeamento
 Castanha-Beds24-demais canais e syncs de preços e calendários; e focar bem forte no motor próprio de preços, pesquisa,
 ajustes constantes, pq agora é responsabilidade nossa". Ordem de 26/10, de manhã: (1) mapeamento e sincronização
-conferidos (M3.12); (2) motor próprio (M3.11b, M3.11c, M3.13 e M3.14); (3) a marca com o domínio (M7.25, M11.2); (4) o
+conferidos (M3.12); (2) motor próprio (M3.11b, M3.11c e M3.13; o M3.14 entrou à tarde); (3) a marca com o domínio (M7.25, M11.2); (4) o
 WhatsApp (M10.2, M10.3). **Mudada na noite de 26/10** (Diego aceitou a proposta do Claude; registro em "Decisões
 registradas" do `ROADMAP.md`): o PR do plano e o M3.11b (em curso), M3.11c, M10.1b (a chave permanente na Vercel, a
 situação do número e a inscrição da conta), M10.2 com o alerta por e-mail a cada mensagem nova, M3.14, M3.12, M3.13,
@@ -303,8 +303,7 @@ celular e fica mudo para o hóspede até o M10.2. O M3.11b não espera o M3.12: 
 mapeamento da direção do fluxo, e o M3.12 corre em paralelo, dependendo só do M3.11a.
 
 **Contexto:** o Antigravity (ferramenta externa usada por Diego) trabalhou de 23 a 26/10 corrigindo preços e calendários no
-Beds24 e nos canais; Diego confirma que terminou; o resumo técnico ainda vai chegar (Diego procura; só o resumo, ou a
-conversa inteira depois de apagar tokens, chaves, senhas e ids da Meta e do Beds24; na dúvida, só o resumo). Durante
+Beds24 e nos canais; Diego confirma que terminou; o resumo técnico ainda vai chegar (Diego procura; só o resumo técnico, nunca a conversa inteira, que continha chaves). Durante
 esse trabalho o SCL ficou só em leitura nessa área (coordenação de 24/10).
 
 **Conferência de 26/10** (Claude, no Neon de produção, só leitura, só contagens; nenhum dado pessoal):
@@ -314,10 +313,9 @@ esse trabalho o SCL ficou só em leitura nessa área (coordenação de 24/10).
 - Comparação com 7/10, nas 251 noites em comum por imóvel:
   - preço: só 13 noites mudaram, todas para cima, de 3% a 5%, quase todas entre 26 e 31/10 ou em maio/2027 (parece ajuste
     de última hora, não correção geral); as médias por mês ficaram iguais;
-  - mínimo: 1 noite mudou (303, janeiro);
+  - mínimo: 1 noite mudou;
   - máximo: igual (27) em tudo;
-  - disponibilidade: 26 noites mudaram (21 no 399: 8 reabriram em dezembro, as outras fecharam em novembro, janeiro e
-    março); movimento normal de reservas.
+  - disponibilidade: 26 noites mudaram (a maioria num só imóvel); movimento normal de reservas.
 - Conclusão: pelo calendário do Beds24, nada grande mudou. O que o Antigravity fez deve estar nas regras de preço e na
   ligação dos canais dentro do Beds24, ou direto no Airbnb e no Booking, que o SCL não lê.
 - Os seis imóveis não têm nenhum cadastro de preço no SCL (sem `imoveis_detalhes`: sem preço base, mínimo, máximo, pisos

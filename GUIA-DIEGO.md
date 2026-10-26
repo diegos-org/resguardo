@@ -48,7 +48,8 @@
 
 - **Preços e sincronização, prioridade máxima (26/10):** resolver de vez o mapeamento Castanha Home ↔ Beds24 ↔ Airbnb e Booking e a sincronização de preços e calendários; e focar no motor próprio de preços, com pesquisa de mercado e ajustes constantes, "porque agora é responsabilidade nossa".
 - **O que o Antigravity fez (23 a 26/10):** corrigiu preços e calendários no Beds24 e nos canais; você confirmou que terminou. Enquanto isso, o SCL ficou só lendo nessa área. O resumo técnico dele ainda vai chegar (seção 6, item 53).
-- **Leitura nova (26/10, só contagens, no banco de verdade):** você tocou em "Importar agora" na noite de 25/10 e a cópia de 7/10 ficou guardada. Nos seis imóveis, só 13 noites mudaram de preço (todas para cima, 3% a 5%), 1 mudou o mínimo e 26 mudaram a disponibilidade (reservas normais).
+- **Leitura nova (26/10):** você tocou em "Importar agora" na noite de 25/10 e a cópia de 7/10 ficou guardada.
+- **O que mudou (só contagens, no banco de verdade):** nos seis imóveis, 13 noites de preço (todas para cima, 3% a 5%), 1 de mínimo e 26 de disponibilidade (reservas normais).
 - **Conclusão:** pelo calendário do Beds24, nada grande mudou. O trabalho do Antigravity deve estar nas regras de preço e na ligação dos canais dentro do Beds24, ou direto no Airbnb e no Booking, que o SCL não lê.
 - **Preços no SCL:** nenhum dos seis imóveis tem preço cadastrado no SCL. O motor parte do zero, e a importação do Beds24 (M3.11a) preenche o grosso.
 - **Avisos da importação:** ela sai "parcial" por 100 avisos de reservas sem contrato. Conferi em 26/10: nenhum dos seis imóveis tem contrato, e 97 reservas estão sem cálculo financeiro (52 futuras).
@@ -84,8 +85,11 @@
 - **Respostas automáticas (26/10):** hoje o sistema só recebe.
 - **Primeiro, sugestão com alerta:** o Claude lê a mensagem e sugere a resposta; você recebe um e-mail com o imóvel, as datas, o tipo da mensagem e o link (sem o texto do hóspede), aprova e envia pelo painel, com o seu login no celular.
 - **Depois, envio sozinho só nas dúvidas simples** de reserva confirmada (Wi-Fi, horários, regras da casa, endereço), numa lista de assuntos que você edita; senha do Wi-Fi e endereço nunca vão para número não conferido. Você: "de acordo".
-- **Enviar pela Meta precisa da sua autorização por escrito:** o "de acordo" foi para a ordem; antes de eu construir o envio (M10.2 e o envio sozinho), preciso de um "pode" seu por escrito, que eu registro no plano (seção 7: são duas autorizações), e tudo fica atrás de uma chave que só você liga.
-- **Custo das sugestões:** uns 3 a 5 centavos de dólar por sugestão no modelo mais forte, 10 a 15 dólares por mês com 300 mensagens; menos com o Guia de Atendimento guardado em memória e com um modelo menor, se a qualidade aguentar (eu testo os dois e te mostro).
+- **Enviar pela Meta precisa da sua autorização por escrito:** o seu "de acordo" de 26/10 foi para a ordem, não para o envio.
+- **Antes de eu construir o envio (M10.2 e o envio sozinho), preciso de um "pode" seu por escrito,** que eu registro no plano (seção 7: são duas autorizações).
+- **Tudo fica atrás de uma chave que só você liga.**
+- **Custo das sugestões:** uns 3 a 5 centavos de dólar por sugestão no modelo mais forte, 10 a 15 dólares por mês com 300 mensagens.
+- **Como baixar o custo:** o Guia de Atendimento guardado em memória e um modelo menor, se a qualidade aguentar (eu testo os dois e te mostro).
 - **Chave da Anthropic:** você cria e coloca na Vercel quando o M10.3 começar (seção 6, item 58). Antes de ligar, a Política de privacidade precisa citar a Anthropic (seção 5, nota das páginas legais).
 
 ### Plano de 22/10: preços num lugar só e visual com o Codex
@@ -238,7 +242,7 @@ escreve no Beds24; o "Simular" da ficha continua mostrando o que seria enviado.
 
 ### Caixa de entrada do WhatsApp, ainda sem mensagens (M10.1a, 17/10)
 
-**Atualização de 25 e 26/10:** o número do sistema é o novo, final 0021, direto na Meta, sem aplicativo no celular e sem QR code; o passo a passo para receber está na seção 6, item 55. O que está abaixo sobre o final 0322, a coexistência e o QR code era o plano de 17/10 e fica como registro (resumo na subseção "Decisões de 24 a 26/10").
+**Atualização de 25 e 26/10:** o número do sistema é o novo, final 0021, direto na Meta, sem aplicativo no celular e sem QR code; o passo a passo para receber está na seção 6, item 55. O que está abaixo sobre o final 0322, a coexistência e o QR code era o plano de 17/10 e fica como registro (resumo na subseção "Decisões de 24 a 26/10"). E "responda pelo celular" não vale mais: o número não está em celular nenhum; até o M10.2 ninguém responde por ele pelo sistema.
 
 Esta é a primeira parte do WhatsApp no sistema. **Ela entrou no sistema em 17/10 (PR #158).** Até 17/10, esta linha dizia
 que ela estava pronta na branch e em revisão, ainda fora do sistema.
@@ -3783,7 +3787,7 @@ ambiente).
    de calendário ao Beds24 estiver ligado (item 3).
 21. **Data de início dos contratos (registrado em 2/10; mudado em 26/10):** desde 26/10, o início é
    01/10/2026 para os seis imóveis, cadastrados antes da carga de dados reais (item 56). Até então
-   valia a primeira reserva de cada imóvel, na carga do M11.1. **1/10/2026** continua o marco oficial
+   valia a primeira reserva de cada imóvel, na carga do M11.1. **01/10/2026** continua o marco oficial
    de preços e reservas pelo Beds24 e pelo sistema. O histórico anterior à conexão do Airbnb ao
    Beds24 não vem pela API do Beds24 — é limitação do canal, não do sistema — e fica fora da
    conferência.
@@ -4660,9 +4664,9 @@ ambiente).
 
     Nada disso escreve no Beds24.
 
-53. **Resumo do Antigravity (Beds24 e canais, 23 a 26/10):** ache e me mande só o resumo técnico do que ele fez. Se
-    quiser mandar a conversa inteira, antes apague tokens, chaves, senhas e ids da Meta e do Beds24; na dúvida, mande só
-    o resumo. Ele entra como registro no mapeamento (M3.12) quando chegar, sem travar nada.
+53. **Resumo do Antigravity (Beds24 e canais, 23 a 26/10):** ache e me mande só o resumo técnico do que ele fez; nunca
+    a conversa inteira, porque ela continha chaves. Se a conversa completa for mesmo necessária, me diga: combinamos um
+    arquivo fora do chat e fora do Git. Ele entra como registro no mapeamento (M3.12) quando chegar, sem travar nada.
 54. **Chave secreta do app na Meta:** a de 25/10 foi colada no chat. Conferi em 26/10 que `WHATSAPP_APP_SECRET` foi
     atualizada na Vercel em 25/10, depois da colagem. Se essa já é a chave redefinida na Meta, só me confirme; se não,
     redefina na Meta e ponha a nova lá, só no Production, com Redeploy. Nunca cole no chat.
@@ -4678,8 +4682,8 @@ ambiente).
 56. **Contratos dos seis imóveis no SCL (sua decisão de 26/10 à noite):** nenhum dos seis (102, 103, 303, 399,
     403 e bzs) tem contrato cadastrado. Por isso 97 reservas estão sem cálculo financeiro (52 delas futuras), e a
     importação do Beds24 sai "parcial" por 100 avisos (os outros 3 são de reservas canceladas ou já iniciadas).
-    - **Você decidiu:** início **01/10/2026** para os seis ("quando a gente iniciou o sistema mesmo"; não há
-      contratos assinados, é tudo entre amigos) e tipo **gestão completa**.
+    - **Você decidiu:** início **01/10/2026** para os seis ("quando a gente iniciou o sistema mesmo"; os contratos não
+      têm data de início registrada) e tipo **gestão completa**.
     - **Falta só a % da empresa:** confirme o padrão do sistema para gestão completa (15%) ou me diga outra.
     - **Com a % confirmada, eu cadastro:** gravo os seis no banco de verdade, com cópia de segurança antes, e registro
       aqui e no plano a data, os imóveis, o tipo e o início (a % só se você autorizar). O recálculo das 97 reservas
@@ -4712,7 +4716,8 @@ ambiente).
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
-**Preciso de você (sem pressa):**
+**Preciso de você (com pressa, as três primeiras):**
+- **% da empresa nos seis contratos (26/10):** confirme o padrão de gestão completa (15%) ou me diga outra; com ela eu cadastro (seção 6, item 56).
 - **Fonte da referência de mercado para os preços (M3.13, 26/10):** copiar preços de anúncios do Airbnb automaticamente
   vai contra as regras deles; por isso a fonte é decisão sua.
 - **As quatro opções:** (1) a equipe anota à mão, de tempos em tempos, alguns anúncios concorrentes; (2) dados pagos de
@@ -4722,15 +4727,14 @@ ambiente).
   semana, eventos).
 - **Destino do suacasaleblon.com (M11.2, 26/10):** manter redirecionando para o castanhahome.com (o que implica renovar
   na HostGator) ou deixar vencer. Nada muda até você responder: o domínio não é renovado nem redirecionado sozinho.
-- **Autorização 1, enviar mensagens pela Meta (M10.2 e o envio sozinho do M10.3b), pedida em 26/10:** um "pode" seu
+- **Autorização 1 (passo 3 da ordem, seção 2), enviar mensagens pela Meta (M10.2 e o envio sozinho do M10.3b), pedida em 26/10:** um "pode" seu
   por escrito; tudo fica atrás de uma chave que só você liga. O seu "de acordo" de 26/10 foi para a ordem das
   respostas, não para o envio.
 - **Sem a autorização 1,** nada de envio é construído.
-- **Autorização 2, inscrever a conta do WhatsApp (WABA) no app da Meta, pedida em 26/10:** é o passo do M10.1b que
+- **Autorização 2 (também passo 3 da ordem), inscrever a conta do WhatsApp (WABA) no app da Meta, pedida em 26/10:** é o passo do M10.1b que
   liga a conta do número ao app, para a Meta mandar os avisos ao sistema.
-- **Sem a autorização 2,** o M10.1b para antes dessa etapa.
-- **Não conferi se essa inscrição já foi feita à mão na Meta:** se foi, o M10.1b só a repete pelo sistema; se não
-  foi, nenhum aviso chega até ela ser feita.
+- **Sem a autorização 2,** o M10.1b para antes dessa etapa. Se você já inscreveu a conta no app pela própria Meta, me
+  diga: o M10.1b só a repete pelo sistema; se não, nenhum aviso chega até ela ser feita.
 - **MCP do SCL (M13.1, 16/10) — 14 decisões, cada uma com um padrão** (detalhes em `requisitos/product/MCP-SCL.md`,
   "Decisões em aberto para Diego"). Sem resposta, vale o padrão, menos nas que pedem um passo ou um "pode" seu
   (4, 5, 10, 11, 12 e 14): essas esperam por você, e os itens do M13 que dependem delas ficam bloqueados. Nada disso
