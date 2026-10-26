@@ -3,7 +3,7 @@
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
 > **Regras de preservação (9/10/2026):** Claude e Codex trabalham em cópias e branches novas, preservando originais, acervos e o histórico. Cada PR explica o que mudou, por quê, com qual objetivo e onde retomar. Decisões substituídas continuam registradas; voltar atrás acontece por uma nova mudança, sem apagar o passado. O visual continua tomando o acervo do Sage como referência, depois das entregas funcionais.
 > **Conferência da equipe (9/10/2026):** protegido também o caso de um cadastro ligado por engano a uma conta de outro perfil ou outra empresa. O sistema recusa alterar esse acesso, preserva a conta e não usa seu e-mail nos avisos da equipe. Os testes usam dados fictícios; isso não afirma que os cadastros reais foram inspecionados.
-> **Última atualização:** 26/10/2026, **plano de 24 a 26/10:** Castanha Home; WhatsApp no número novo (final 0021), sem o aplicativo do celular; preços e sincronização com o Beds24 em primeiro lugar; domínio castanhahome.com registrado por você. Revisado na noite de 26/10 (contratos, WhatsApp conferido, chave permanente, M3.14). Tudo na seção 2.
+> **Última atualização:** 26/10/2026, **plano de 24 a 26/10:** Castanha Home; WhatsApp no número novo (final 0021), sem o aplicativo do celular; preços e sincronização com o Beds24 em primeiro lugar; domínio castanhahome.com registrado por você. Revisado na noite de 26/10 (contratos, WhatsApp conferido, chave permanente, M3.14) e, mais tarde, com as suas decisões: o WhatsApp antes da marca e os contratos dos seis imóveis a partir de 01/10/2026. Tudo na seção 2.
 
 ---
 
@@ -39,7 +39,7 @@
 | M7 Site público | Site novo com disponibilidade e valor reais | 🟡 disponibilidade e valor prontos; visual novo do site, dos portais e do painel pronto (M7.5, 4/10); páginas legais prontas (M7.4, 9/10): você revisa e publica; fotos reais prontas (M7.3, 7/10: você sobe na ficha do imóvel); site do hóspede no visual do estudo pronto (M7.6, 7/10); página para proprietários pronta (M7.7, 8/10); páginas de "não encontrada" e de erro em português e aviso de quando não há casa publicada prontos (M7.8, 14/10); busca das datas em todas as casas de uma vez pronta (M7.9, 14/10, com as regras de acessibilidade do M7.11); páginas pessoais e internas fora do Google (M7.10, 14/10); acessibilidade do site pronta (M7.11, 14/10: contorno do teclado visível nas partes verdes, "Pular para o conteúdo", aviso dos links que abrem outra janela e ordem dos títulos); faixa "Prévia de teste" no topo das prévias pronta (M7.12, 15/10: duas perguntas para você); prévia dos links no WhatsApp e nas redes, com a foto e a frase de cada página, pronta (M7.13, 15/10: confira o campo Site, seção 6, item 47); registro da autorização dos proprietários nos formulários de "Anuncie seu imóvel" pronto (M7.14, 15/10: data e hora do envio e texto exato da caixa, no painel); texto das caixas de autorização editável no painel, com versão nova a cada mudança, pronto (M7.15, 15/10: Configurações → Autorização dos proprietários); títulos e frases que estavam fixos no site editáveis em Textos do site (M7.16, 15/10: com o texto de hoje; as sugestões do estudo estão nesta seção); frase de abertura de cada casa, escrita na ficha do imóvel, pronta (M7.17, 15/10: você escreve as frases, seção 6, item 48); ícone da aba e do atalho no celular com a marca do site, e a barra do navegador no celular no verde do site, prontos (M7.18, 15/10); foto em destaque da página da casa mais leve quando a tela permite (M7.19, 15/10: nada para você; a capa da página inicial continua com a foto grande); horários e regras da casa na página da cotação, antes do pagamento, com o link de volta para a casa (M7.20, 16/10: salve o cadastro completo de cada casa publicada); consulta no celular abrindo direto no resultado e link da casa com aviso do que não serve (M7.21, 16/10); datas e horas no padrão do Brasil: hora sempre como 15:00, campos de hora sem AM/PM, datas sem formato de máquina e semana começando na segunda (M7.22, 16/10); visual com o Codex desde 22/10 (M7.23), começando por uma tela para você aprovar; **a marca passa a ser Castanha Home (26/10)**: os textos fixos do código e o site mudam de nome (M7.25, depois do motor de preços), e o nome da empresa continua editável em Configurações → Empresa |
 | M8 Reserva direta | Cotação, datas seguradas e pagamento pelo Mercado Pago | 🟡 cotação e "segurar as datas" prontos; recebimento decidido em 4/10 (empresa recebe e repassa); pagamento dividido em cinco partes (8/10): **Pix em teste pronto (M8.2a)**, com a prévia preparada em 14/10 para o seu primeiro teste com as chaves da conta negócio nova (antes disso, nenhum teste com as suas chaves tinha acontecido); **cartão em teste pronto (M8.2b, 9/10)**, desligado até você ligar; **cancelamento de reserva paga pelo site em teste pronto (M8.2c, 10/10)**, pela política que o hóspede aceitou; **alteração de reserva paga pelo site em teste pronta (M8.2d, 10/10)**, antes da entrada, com a diferença paga pelo site ou devolvida pela política, e a devolução de parte do valor; **disputa do pagamento (contestação) em teste pronta (M8.2e, 11/10)**: as cinco partes estão prontas no teste, e o pagamento de verdade espera as suas decisões ★ (seção 7); **reserva paga pelo site no Beds24 (M8.3) autorizada por você em 16/10**, com uma chave própria, separada da do calendário, que só você liga, e dividida em quatro partes: **a base pronta e integrada, ainda sem envio (M8.3a, 16/10)**, com o bloco "No Beds24" e o "Simular" na ficha e a parte nova em Integrações; **as tarefas das plataformas num lugar só, no sistema desde 17/10 (M8.3b, PR #156; até 17/10, esta linha dizia "em revisão")**: os avisos do Início e o bloco da ficha com uma regra só e os textos certos ("mude para Cancelado (não apague)"), também para a operação, o botão "Datas fechadas nas OTAs" e o aviso do pedido confirmado à mão; **o envio de verdade pronto e desligado, no sistema desde 17/10 (M8.3c, PR #159; até 22/10, esta linha dizia "na branch e em revisão")**: cria, muda e cancela no Beds24 a reserva paga pelo site, confere e marca sozinho, avisa no Início e por e-mail quando algo não bate, com os botões novos da ficha e o ensaio em Integrações; só escreve depois do seu passo a passo (seção 6, item 51); falta o que depende do suporte do Beds24 (M8.3d, parado até a resposta do suporte, com a pergunta pronta no mesmo item); só vai ao Beds24 a reserva paga pelo site (sua decisão de 16/10). Até 17/10, esta linha dizia "faltam o envio de verdade (M8.3c, a fazer)"; **seus testes de 21/10 na prévia deram certo** no Pix, no cartão e no cancelamento; alteração e disputa foram testadas em parte |
 | M9 Portal do hóspede | Acesso do hóspede e mensagens automáticas | ✅ pronto; desde 10/10, o hóspede pede o cancelamento da reserva paga pelo site em Minha reserva, e há três mensagens novas do cancelamento (M8.2c); também em 10/10, Minha reserva avisa a alteração que espera o hóspede, e há duas mensagens novas da alteração (M8.2d) |
-| M10 WhatsApp | Caixa de entrada do WhatsApp no painel | 🟡 caixa de entrada pronta e no sistema desde 17/10 (M10.1a, PR #158), ainda sem mensagens: só leitura, só você vê, e nada chega até você ligar o recebimento (seção 6, item 55); **desde 25/10, o número do sistema é o novo, final 0021, direto na Meta, sem o aplicativo do celular** (até 26/10, esta linha dizia que a conexão aguardava o caminho na Meta e a data); em 26/10 eu conferi: a senha de verificação e a chave do app estão na Vercel (a chave foi atualizada em 25/10, depois da colagem no chat; confirme que é a redefinida, seção 6, item 54), o endereço passou na verificação da Meta e o número saiu do seu celular (vive só no sistema); o recebimento está desligado, nada foi guardado ainda e os ids da Meta não estão em Integrações; para receber não precisa esperar a análise da Meta (a aprovação do app pela Meta, que libera o envio para qualquer número; receber já funciona antes dela; seção 6, item 55); enviar, sim; a chave permanente vai na Vercel quando você puder (item 59); depois vêm o envio pelo painel (M10.2; eu proponho puxá-lo, seção 7) e as sugestões de resposta com o Claude (M10.3): primeiro com o seu "ok", depois sozinho só nas dúvidas simples de reserva confirmada |
+| M10 WhatsApp | Caixa de entrada do WhatsApp no painel | 🟡 caixa de entrada pronta e no sistema desde 17/10 (M10.1a, PR #158), ainda sem mensagens: só leitura, só você vê, e nada chega até você ligar o recebimento (seção 6, item 55); **desde 25/10, o número do sistema é o novo, final 0021, direto na Meta, sem o aplicativo do celular** (até 26/10, esta linha dizia que a conexão aguardava o caminho na Meta e a data); em 26/10 eu conferi: a senha de verificação e a chave do app estão na Vercel (a chave foi atualizada em 25/10, depois da colagem no chat; confirme que é a redefinida, seção 6, item 54), o endereço passou na verificação da Meta e o número saiu do seu celular (vive só no sistema); o recebimento está desligado, nada foi guardado ainda e os ids da Meta não estão em Integrações; para receber não precisa esperar a análise da Meta (a aprovação do app pela Meta, que libera o envio para qualquer número; receber já funciona antes dela; seção 6, item 55); enviar, sim; a chave permanente vai na Vercel quando você puder (item 59); depois vêm o envio pelo painel (M10.2, que você puxou para antes da marca em 26/10) e as sugestões de resposta com o Claude (M10.3): primeiro com o seu "ok", depois sozinho só nas dúvidas simples de reserva confirmada |
 | M11 Produção | Dados reais, domínio, entrada em uso | ⚪ aguardando; **domínio castanhahome.com registrado por você na HostGator em 26/10** (M11.2): eu cadastro na Vercel e te passo os dois registros de DNS para criar lá, com onde clicar (seção 6, item 57) |
 | M12 Marketplace | Proprietário que opera o próprio imóvel; SCL cuida do online | 🟡 portal do proprietário marketplace pronto (M12.4, 4/10); cadastro pelo site pronto; modelo de cobrança (B, partes iguais) com pesos editáveis, simulação e desconto único do site prontos (M12.1); cálculo e repasse no financeiro (M12.2): o pagamento (M8.2) e o extrato (M4.10) já estão prontos, falta a reserva no Beds24 (M8.3); pesos 6/3/3 no padrão do sistema (M12.5, 7/10); **marketplace confirmado como o modelo principal do negócio (16/10)** |
 | M13 MCP do SCL | Consultar o SCL pelo Claude e, como saída, pelo ChatGPT ou pelo Codex | ⚪ desenho pronto e revisado (M13.1, 16/10): só consulta na primeira fase, regras da fase 2 e histórico protegido registrados; nada construído; 14 decisões com padrão (seção 7) |
@@ -52,14 +52,17 @@
 - **Conclusão:** pelo calendário do Beds24, nada grande mudou. O trabalho do Antigravity deve estar nas regras de preço e na ligação dos canais dentro do Beds24, ou direto no Airbnb e no Booking, que o SCL não lê.
 - **Preços no SCL:** nenhum dos seis imóveis tem preço cadastrado no SCL. O motor parte do zero, e a importação do Beds24 (M3.11a) preenche o grosso.
 - **Avisos da importação:** ela sai "parcial" por 100 avisos de reservas sem contrato. Conferi em 26/10: nenhum dos seis imóveis tem contrato, e 97 reservas estão sem cálculo financeiro (52 futuras).
-- **Quatro imóveis (102, 303, 399 e bzs) também estão sem proprietário.** É cadastro, não calendário: os dois caminhos e as datas sugeridas estão na seção 6, item 56.
-- **A ordem combinada:**
-  1. mapeamento e sincronização conferidos, numa tela por imóvel (M3.12);
-  2. o motor próprio: "só disponibilidade" (M3.11b, que eu já comecei em 26/10, ainda fora do sistema), "pronto para ligar" (M3.11c), a página do motor com a importação de eventos (M3.14) e a pesquisa de mercado com sugestões semanais que você aprova (M3.13);
-  3. a marca com o domínio;
-  4. o envio do WhatsApp com as sugestões.
-  5. A arrumação deste guia (M0.11) espera os passos 1 a 3; deixar o passo 4 de fora é leitura minha, para você confirmar (seção 7).
-- **Minha proposta (26/10, depois do plano), para você responder na seção 7:** puxar o envio do WhatsApp (M10.2) para logo depois do "só disponibilidade", porque o número ficou mudo para o hóspede. Até você responder, vale a ordem acima.
+- **Contratos dos seis (sua decisão, 26/10 à noite):** início 01/10/2026 e gestão completa para os seis; falta você confirmar a % da empresa (padrão do sistema: 15%). Com a % confirmada, eu cadastro (seção 6, item 56).
+- **Quatro imóveis (102, 303, 399 e bzs) também estão sem proprietário:** continuam com você no painel; é cadastro, não calendário.
+- **Ordem (26/10, à noite; você aceitou a minha proposta):**
+  1. este plano e o "só disponibilidade" (M3.11b, que eu já comecei em 26/10, ainda fora do sistema);
+  2. "pronto para ligar" (M3.11c);
+  3. a conexão do WhatsApp (M10.1b) e o envio pelo painel, com um e-mail a cada mensagem nova (M10.2);
+  4. a página do motor com a importação de eventos (M3.14), o mapeamento (M3.12) e a pesquisa de mercado (M3.13);
+  5. a marca (M7.25) e o domínio (M11.2).
+- **Por que o WhatsApp subiu:** de manhã ele vinha por último; o número final 0021 saiu do seu celular e fica mudo para o hóspede até o M10.2.
+- **O M10.2 puxa também a conexão (M10.1b)** e os seus passos nela: seção 6, itens 54, 55 e 59.
+- **A arrumação deste guia (M0.11)** vem depois da marca; o WhatsApp não a segura.
 - **Calendário de eventos (26/10):** você pediu, dentro do motor, um calendário do Rio em que cada evento diz se mexe no preço e quanto.
 - **Ele já existe desde o M3.7:** Configurações → Calendário e preços, bloco "Temporadas e eventos" (nome, início, fim, multiplicador, mínimo de noites, todos os imóveis ou só alguns). Dá para digitar a lista do Rio hoje.
 - **A página do motor com a importação por colagem é o M3.14** (seção 6, item 60).
@@ -76,7 +79,7 @@
 - **Recebimento desligado:** cada aviso da Meta recebe "tente depois" e ela insiste por até 7 dias; nada se perdeu, nada foi guardado. Os ids da Meta ainda não estão em Integrações.
 - **Receber não depende da análise da Meta; enviar para qualquer número, sim** (seção 6, item 55).
 - **Hoje ninguém responde por esse número pelo sistema:** o envio é o M10.2.
-- **Também não existe aviso por mensagem nova:** hoje só sai e-mail quando a conta desconecta, aguarda reconexão ou é suspensa pela Meta. Por isso proponho puxar o M10.2 (seção 7).
+- **Também não existe aviso por mensagem nova:** hoje só sai e-mail quando a conta desconecta, aguarda reconexão ou é suspensa pela Meta. Por isso o M10.2 subiu na ordem (acima).
 - **Chave permanente do WhatsApp (26/10):** você já tem a chave permanente da Meta para o sistema (o "token de usuário do sistema"). Combinamos o nome `WHATSAPP_ACCESS_TOKEN`: você coloca na Vercel quando puder (seção 6, item 59); nunca no chat.
 - **Respostas automáticas (26/10):** hoje o sistema só recebe.
 - **Primeiro, sugestão com alerta:** o Claude lê a mensagem e sugere a resposta; você recebe um e-mail com o imóvel, as datas, o tipo da mensagem e o link (sem o texto do hóspede), aprova e envia pelo painel, com o seu login no celular.
@@ -3778,10 +3781,10 @@ ambiente).
    própria linha —, e avise os proprietários que já podem bloquear datas de uso próprio pelo
    portal. As datas só fecham nos canais quando o envio
    de calendário ao Beds24 estiver ligado (item 3).
-21. **Data de início dos contratos (registrado em 2/10):** nada a fazer agora. Na carga de dados
-   reais (M11.1), o início do contrato de cada um dos seis imóveis será a data da primeira
-   reserva dele (nunca mudaram de proprietário), e **1/10/2026** fica como o marco oficial de
-   preços e reservas pelo Beds24 e pelo sistema. O histórico anterior à conexão do Airbnb ao
+21. **Data de início dos contratos (registrado em 2/10; mudado em 26/10):** desde 26/10, o início é
+   01/10/2026 para os seis imóveis, cadastrados antes da carga de dados reais (item 56). Até então
+   valia a primeira reserva de cada imóvel, na carga do M11.1. **1/10/2026** continua o marco oficial
+   de preços e reservas pelo Beds24 e pelo sistema. O histórico anterior à conexão do Airbnb ao
    Beds24 não vem pela API do Beds24 — é limitação do canal, não do sistema — e fica fora da
    conferência.
 
@@ -4672,25 +4675,21 @@ ambiente).
 
     Se não aparecer, me chame. Nada chega a um celular: o número é só do sistema. Enquanto o recebimento está desligado,
     a Meta insiste por até 7 dias e nada é guardado; sem os ids, o sistema recusa avisos de número desconhecido.
-56. **Contratos dos seis imóveis no SCL (conferido em 26/10, só contagens):** nenhum dos seis (102, 103, 303, 399,
+56. **Contratos dos seis imóveis no SCL (sua decisão de 26/10 à noite):** nenhum dos seis (102, 103, 303, 399,
     403 e bzs) tem contrato cadastrado. Por isso 97 reservas estão sem cálculo financeiro (52 delas futuras), e a
     importação do Beds24 sai "parcial" por 100 avisos (os outros 3 são de reservas canceladas ou já iniciadas).
-    Quatro imóveis (102, 303, 399 e bzs) também estão sem proprietário vinculado (103 e 403 têm): o contrato não
-    precisa dele, mas repasses e portal travam depois.
-    Você me pediu para cadastrar "no olho". Não cadastro sem os dados: o tipo (gestão completa, gestão online ou
-    marketplace), a % da empresa e a data de início decidem o que é seu e o que é do proprietário em cada reserva,
-    repasse e relatório. Dois caminhos:
-    1. você cadastra no painel (recomendado): ficha do imóvel → Contratos → Adicionar contrato; são seis formulários,
-       e só três campos importam agora: Tipo, % da empresa e Início (Fim, Observações e a opção de bloqueio pelo
-       proprietário podem ficar como estão); o contrato criado pelo painel recalcula as reservas na hora;
-    2. ou me manda as seis linhas (tipo, %, início) com um "pode", e eu gravo no banco de verdade, com cópia de
-       segurança antes e registro aqui no guia só da data, dos imóveis e do seu "pode", sem o tipo nem a % de cada
-       contrato (feito à mão no banco, o recálculo só vem no deploy seguinte e não fica histórico).
-
-    Datas de início: pela regra de 2/10, a primeira reserva de cada imóvel no sistema. Você vê a data em Painel →
-    Reservas: escolha o imóvel, em "Consultar" marque "Todo o histórico" e em "Ordenar por" marque "Data de entrada";
-    a primeira da lista é a data. O marco de 01/10/2026 continua: o que foi pago antes já foi acertado por fora. Sem
-    pressa; é cadastro, não calendário.
+    - **Você decidiu:** início **01/10/2026** para os seis ("quando a gente iniciou o sistema mesmo"; não há
+      contratos assinados, é tudo entre amigos) e tipo **gestão completa**.
+    - **Falta só a % da empresa:** confirme o padrão do sistema para gestão completa (15%) ou me diga outra.
+    - **Com a % confirmada, eu cadastro:** gravo os seis no banco de verdade, com cópia de segurança antes, e registro
+      aqui e no plano a data, os imóveis, o tipo e o início (a % só se você autorizar). O recálculo das 97 reservas
+      vem no deploy seguinte.
+    - **Se preferir cadastrar você:** ficha do imóvel → Contratos → Adicionar contrato (Tipo, % da empresa e Início);
+      o painel recalcula na hora.
+    - **Os quatro imóveis sem proprietário** (102, 303, 399 e bzs) continuam com você no painel; o contrato não
+      precisa dele, mas repasses e portal travam depois.
+    - **O que mudou:** até 26/10, valia a regra de 2/10 (início = primeira reserva de cada imóvel, só na carga de
+      dados reais). O marco de 01/10/2026 continua: o que foi pago antes já foi acertado por fora.
 57. **Domínio castanhahome.com (M11.2), quando eu pedir:** eu cadastro o domínio na Vercel e te mando dois registros de
     DNS com os valores e onde clicar na HostGator. Você cria os dois e me avisa. A troca do login do Google, do e-mail,
     do Mercado Pago e do endereço da Meta vem depois, um de cada vez, comigo conferindo.
@@ -4723,25 +4722,15 @@ ambiente).
   semana, eventos).
 - **Destino do suacasaleblon.com (M11.2, 26/10):** manter redirecionando para o castanhahome.com (o que implica renovar
   na HostGator) ou deixar vencer. Nada muda até você responder: o domínio não é renovado nem redirecionado sozinho.
-- **Puxar o envio do WhatsApp (M10.2), sugestão minha de 26/10.** Problema: o número final 0021 recebe (quando você
-  ligar), mas ninguém responde por ele pelo sistema até o M10.2.
-- **Proposta:** puxar o M10.2 (responder pelo painel e um e-mail simples a cada mensagem nova, só com o imóvel, as datas
-  e o link, sem o texto do hóspede nem o telefone; a conversa fica atrás do login) para logo depois do "só
-  disponibilidade" (M3.11b), antes da marca e do domínio.
-- **Ordem completa que proponho:** este plano e o M3.11b (em curso), M3.11c, a conexão (M10.1b: a chave permanente na
-  Vercel, a situação do número e a inscrição da conta, com a sua autorização), M10.2, a página do motor (M3.14), o
-  mapeamento (M3.12), a pesquisa de mercado (M3.13), a marca e o domínio. Puxar o M10.2 puxa também o M10.1b e os seus
-  passos nele (seção 6, itens 54, 55 e 59).
-- **Junto, preciso de duas autorizações suas por escrito:** uma para o sistema enviar mensagens pela Meta (M10.2 e o
-  envio sozinho do M10.3), sempre atrás de uma chave que só você liga (o seu "de acordo" de 26/10 foi para a ordem das
-  respostas automáticas, não para o envio); outra para o sistema inscrever a conta do WhatsApp (WABA) no app da Meta,
-  parte do M10.1b (é o passo que liga a conta do número ao app, para a Meta mandar os avisos ao sistema; não conferi se
-  já foi feito à mão no painel da Meta: se foi, o M10.1b só o repete pelo sistema; se não foi, nenhum aviso chega até
-  ele ser feito; sem a autorização, o M10.1b para antes dessa etapa).
-- **Confirme também três leituras minhas:** o "só disponibilidade" (M3.11b) seguir sem esperar o mapeamento (M3.12); a
-  marca só depois do mapeamento e do motor; e a arrumação deste guia (M0.11) sem esperar o WhatsApp.
-- **Sem resposta,** vale a ordem combinada em 26/10 (seção 2), as três leituras valem como estão e nada de envio é
-  construído.
+- **Autorização 1, enviar mensagens pela Meta (M10.2 e o envio sozinho do M10.3b), pedida em 26/10:** um "pode" seu
+  por escrito; tudo fica atrás de uma chave que só você liga. O seu "de acordo" de 26/10 foi para a ordem das
+  respostas, não para o envio.
+- **Sem a autorização 1,** nada de envio é construído.
+- **Autorização 2, inscrever a conta do WhatsApp (WABA) no app da Meta, pedida em 26/10:** é o passo do M10.1b que
+  liga a conta do número ao app, para a Meta mandar os avisos ao sistema.
+- **Sem a autorização 2,** o M10.1b para antes dessa etapa.
+- **Não conferi se essa inscrição já foi feita à mão na Meta:** se foi, o M10.1b só a repete pelo sistema; se não
+  foi, nenhum aviso chega até ela ser feita.
 - **MCP do SCL (M13.1, 16/10) — 14 decisões, cada uma com um padrão** (detalhes em `requisitos/product/MCP-SCL.md`,
   "Decisões em aberto para Diego"). Sem resposta, vale o padrão, menos nas que pedem um passo ou um "pode" seu
   (4, 5, 10, 11, 12 e 14): essas esperam por você, e os itens do M13 que dependem delas ficam bloqueados. Nada disso

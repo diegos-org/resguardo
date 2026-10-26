@@ -2,13 +2,12 @@
 
 **Situação:** desenho do M3.11a escrito em 22/10/2026, na branch `claude/m3-11a-copia-importacao-precos`. O M3.11b ("só
 disponibilidade") e o M3.11c ("pronto para ligar") ganham as seções deles quando forem feitos; o M3.11b está em
-implementação desde 26/10 na branch `claude/m3-11b-so-disponibilidade`, só local, ainda não publicada (conferido na
-noite de 26/10: desenho em `requisitos/product/SO-DISPONIBILIDADE.md`, commit c0437ee, e, depois, o código em dois
-commits na mesma branch no mesmo dia: a fonte "só disponibilidade" no envio, no site e no portal, e a reserva direta
-confirmada no SCL, com a migração 0076 e o aviso na ficha da reserva; nada pendente de commit; revisão adversarial em
-curso), ainda sem PR e fora da `main`. Decisão de Diego e condição dele:
-`ROADMAP.md`, "Decisões registradas", 22/10. O M3.11a está na `main` desde 22/10 (PR #164). Leitura de 26/10 e
-prioridade máxima de Diego: §7.
+implementação desde 26/10 na branch `claude/m3-11b-so-disponibilidade`, só local: desenho em
+`requisitos/product/SO-DISPONIBILIDADE.md` (commit c0437ee); o código entra em commits na mesma branch conforme a
+implementação e a revisão adversarial avançam (a fonte "só disponibilidade" no motor, no envio, no site e no portal; a
+reserva direta confirmada no SCL, com a migração 0076 e o aviso na ficha); o PR abre quando as checagens passarem; nada
+na `main`. Decisão de Diego e condição dele: `ROADMAP.md`, "Decisões registradas", 22/10. O M3.11a está na `main`
+desde 22/10 (PR #164). Leitura de 26/10 e prioridade máxima de Diego: §7.
 
 ## 1. Objetivo
 
@@ -294,14 +293,14 @@ Com PGlite e a versão falsa do Beds24, sem rede.
 
 **Prioridade máxima (Diego, 26/10):** "acrescentar como bastante urgente agora então: resolver 100% de vez todo o mapeamento
 Castanha-Beds24-demais canais e syncs de preços e calendários; e focar bem forte no motor próprio de preços, pesquisa,
-ajustes constantes, pq agora é responsabilidade nossa". Ordem combinada: (1) mapeamento e sincronização conferidos
-(M3.12); (2) motor próprio (M3.11b, M3.11c, M3.13 e, desde a revisão de 26/10, M3.14); (3) a marca com o domínio (M7.25,
-M11.2); (4) o envio do WhatsApp com as sugestões (M10.2, M10.3). Essa ordem vale até Diego responder à proposta do Claude
-de 26/10 (depois do plano; "Pendências de decisão" do `ROADMAP.md`): o PR do plano e o M3.11b (em curso), M3.11c,
-M10.1b (a chave permanente na Vercel, a situação do número e a inscrição da conta, com a autorização de Diego), M10.2
-com alerta por mensagem (se Diego topar), M3.14, M3.12, M3.13, marca e domínio; puxar o M10.2 puxa também o M10.1b e
-os passos de Diego nele. O M3.11b não espera o M3.12: o modo "só disponibilidade" é parte do mapeamento da direção do
-fluxo, e o M3.12 corre em paralelo, dependendo só do M3.11a.
+ajustes constantes, pq agora é responsabilidade nossa". Ordem de 26/10, de manhã: (1) mapeamento e sincronização
+conferidos (M3.12); (2) motor próprio (M3.11b, M3.11c, M3.13 e M3.14); (3) a marca com o domínio (M7.25, M11.2); (4) o
+WhatsApp (M10.2, M10.3). **Mudada na noite de 26/10** (Diego aceitou a proposta do Claude; registro em "Decisões
+registradas" do `ROADMAP.md`): o PR do plano e o M3.11b (em curso), M3.11c, M10.1b (a chave permanente na Vercel, a
+situação do número e a inscrição da conta), M10.2 com o alerta por e-mail a cada mensagem nova, M3.14, M3.12, M3.13,
+marca e domínio; o M10.2 puxa também o M10.1b e os passos de Diego nele. Motivo: o número final 0021 saiu do
+celular e fica mudo para o hóspede até o M10.2. O M3.11b não espera o M3.12: o modo "só disponibilidade" é parte do
+mapeamento da direção do fluxo, e o M3.12 corre em paralelo, dependendo só do M3.11a.
 
 **Contexto:** o Antigravity (ferramenta externa usada por Diego) trabalhou de 23 a 26/10 corrigindo preços e calendários no
 Beds24 e nos canais; Diego confirma que terminou; o resumo técnico ainda vai chegar (Diego procura; só o resumo, ou a
@@ -327,9 +326,9 @@ esse trabalho o SCL ficou só em leitura nessa área (coordenação de 24/10).
   do motor financeiro). Conferido em 26/10, só contagens: nenhum dos seis imóveis (102, 103, 303, 399, 403 e bzs) tem
   contrato cadastrado; 97 reservas ficam sem cálculo financeiro, 52 delas futuras; os outros 3 avisos são de reservas
   canceladas ou já iniciadas. Quatro imóveis (102, 303, 399 e bzs) não têm proprietário vinculado (103 e 403 têm):
-  o contrato não precisa dele, mas repasses e portal travam depois. É cadastro de contratos, não calendário; ação de
-  Diego, sem pressa, pelos dois caminhos e com as datas de início sugeridas registradas em "Ações de Diego", item 21,
-  do `ROADMAP.md`. O Claude não cadastra "no olho": tipo, % da empresa e data de início decidem o que é de cada um.
+  o contrato não precisa dele, mas repasses e portal travam depois. É cadastro de contratos, não calendário: decisão de
+  Diego na noite de 26/10 (início 01/10/2026 e gestão completa para os seis; % a confirmar), em "Ações de Diego",
+  item 21, do `ROADMAP.md`; o Claude cadastra quando a % for confirmada. Tipo, % e início decidem o que é de cada um.
 
 **Itens novos no `ROADMAP.md`:**
 - **M3.12, mapeamento e sincronização conferidos:** por imóvel, o quarto do Beds24 (o SCL já sabe) e, registrados à mão por
