@@ -3,7 +3,7 @@
 > Documento escrito para você, sem precisar ler código. É atualizado a cada PR.
 > **Regras de preservação (9/10/2026):** Claude e Codex trabalham em cópias e branches novas, preservando originais, acervos e o histórico. Cada PR explica o que mudou, por quê, com qual objetivo e onde retomar. Decisões substituídas continuam registradas; voltar atrás acontece por uma nova mudança, sem apagar o passado. O visual continua tomando o acervo do Sage como referência, depois das entregas funcionais.
 > **Conferência da equipe (9/10/2026):** protegido também o caso de um cadastro ligado por engano a uma conta de outro perfil ou outra empresa. O sistema recusa alterar esse acesso, preserva a conta e não usa seu e-mail nos avisos da equipe. Os testes usam dados fictícios; isso não afirma que os cadastros reais foram inspecionados.
-> **Última atualização:** 26/10/2026, **plano de 24 a 26/10:** a empresa passa a se chamar Castanha Home; o WhatsApp do sistema vai para o número novo (final 0021), sem o aplicativo do celular; preços e sincronização com o Beds24 e os canais em primeiro lugar, com o motor próprio de preços; o domínio castanhahome.com registrado por você. Revisado na noite de 26/10: contratos dos imóveis, o estado do WhatsApp conferido por mim, o nome da chave permanente e a página do motor de preços (M3.14). A importação dos preços (M3.11a) está no sistema desde 22/10 (PR #164). Tudo na seção 2.
+> **Última atualização:** 26/10/2026, **plano de 24 a 26/10:** Castanha Home; WhatsApp no número novo (final 0021), sem o aplicativo do celular; preços e sincronização com o Beds24 em primeiro lugar; domínio castanhahome.com registrado por você. Revisado na noite de 26/10 (contratos, WhatsApp conferido, chave permanente, M3.14). Tudo na seção 2.
 
 ---
 
@@ -75,12 +75,13 @@
 - **O número final 0021 saiu do seu celular ao entrar na Meta:** é o esperado; de agora em diante ele vive só no sistema.
 - **Recebimento desligado:** cada aviso da Meta recebe "tente depois" e ela insiste por até 7 dias; nada se perdeu, nada foi guardado. Os ids da Meta ainda não estão em Integrações.
 - **Receber não depende da análise da Meta; enviar para qualquer número, sim** (seção 6, item 55).
-- **Hoje ninguém responde por esse número pelo sistema:** o envio é o M10.2, e não existe aviso por mensagem nova (hoje o sistema só avisa por e-mail sobre a conta: desconectada, aguardando reconexão ou suspensa pela Meta). Por isso a minha proposta de puxar o M10.2 (seção 7).
+- **Hoje ninguém responde por esse número pelo sistema:** o envio é o M10.2.
+- **Também não existe aviso por mensagem nova:** hoje só sai e-mail quando a conta desconecta, aguarda reconexão ou é suspensa pela Meta. Por isso proponho puxar o M10.2 (seção 7).
 - **Chave permanente do WhatsApp (26/10):** você já tem a chave permanente da Meta para o sistema (o "token de usuário do sistema"). Combinamos o nome `WHATSAPP_ACCESS_TOKEN`: você coloca na Vercel quando puder (seção 6, item 59); nunca no chat.
 - **Respostas automáticas (26/10):** hoje o sistema só recebe.
 - **Primeiro, sugestão com alerta:** o Claude lê a mensagem e sugere a resposta; você recebe um e-mail com o imóvel, as datas, o tipo da mensagem e o link (sem o texto do hóspede), aprova e envia pelo painel, com o seu login no celular.
 - **Depois, envio sozinho só nas dúvidas simples** de reserva confirmada (Wi-Fi, horários, regras da casa, endereço), numa lista de assuntos que você edita; senha do Wi-Fi e endereço nunca vão para número não conferido. Você: "de acordo".
-- **Enviar pela Meta precisa da sua autorização por escrito:** o "de acordo" foi para a ordem; antes de eu construir o envio (M10.2 e o envio sozinho), preciso de uma linha sua no roadmap, e tudo fica atrás de uma chave que só você liga (seção 7).
+- **Enviar pela Meta precisa da sua autorização por escrito:** o "de acordo" foi para a ordem; antes de eu construir o envio (M10.2 e o envio sozinho), preciso de um "pode" seu por escrito, que eu registro no plano (seção 7: são duas autorizações), e tudo fica atrás de uma chave que só você liga.
 - **Custo das sugestões:** uns 3 a 5 centavos de dólar por sugestão no modelo mais forte, 10 a 15 dólares por mês com 300 mensagens; menos com o Guia de Atendimento guardado em memória e com um modelo menor, se a qualidade aguentar (eu testo os dois e te mostro).
 - **Chave da Anthropic:** você cria e coloca na Vercel quando o M10.3 começar (seção 6, item 58). Antes de ligar, a Política de privacidade precisa citar a Anthropic (seção 5, nota das páginas legais).
 
@@ -232,9 +233,9 @@ escreve no Beds24; o "Simular" da ficha continua mostrando o que seria enviado.
 - **Para você:** nada agora. Quando quiser ligar, o passo a passo está na seção 6, item 51, com a pergunta ao suporte do
   Beds24 pronta para colar. As decisões 6, 7, 10 e 11 (seção 7) apontam para lá.
 
-### Caixa de entrada do WhatsApp, ainda sem conexão (M10.1a, 17/10)
+### Caixa de entrada do WhatsApp, ainda sem mensagens (M10.1a, 17/10)
 
-**Atualização de 25 e 26/10:** o número do sistema passou a ser o novo, final 0021, direto na Meta, sem o aplicativo do celular e sem QR code. O que está escrito abaixo sobre o final 0322, a coexistência e o QR code era o plano de 17/10 e fica como registro; o passo a passo da conexão agora está na seção 6, item 55. Resumo na subseção "Decisões de 24 a 26/10".
+**Atualização de 25 e 26/10:** o número do sistema é o novo, final 0021, direto na Meta, sem aplicativo no celular e sem QR code; o passo a passo para receber está na seção 6, item 55. O que está abaixo sobre o final 0322, a coexistência e o QR code era o plano de 17/10 e fica como registro (resumo na subseção "Decisões de 24 a 26/10").
 
 Esta é a primeira parte do WhatsApp no sistema. **Ela entrou no sistema em 17/10 (PR #158).** Até 17/10, esta linha dizia
 que ela estava pronta na branch e em revisão, ainda fora do sistema.
@@ -4686,9 +4687,10 @@ ambiente).
        segurança antes e registro aqui no guia só da data, dos imóveis e do seu "pode", sem o tipo nem a % de cada
        contrato (feito à mão no banco, o recálculo só vem no deploy seguinte e não fica histórico).
 
-    Datas de início sugeridas pela regra de 2/10 (início = primeira reserva do imóvel no sistema): 102 em 03/10/2026;
-    103 em 26/09/2026; 303 em 26/09/2026; 399 em 26/09/2026; 403 em 03/09/2026; bzs em 27/09/2026. O marco de
-    01/10/2026 continua: o que foi pago antes já foi acertado por fora. Sem pressa; é cadastro, não calendário.
+    Datas de início: pela regra de 2/10, a primeira reserva de cada imóvel no sistema. Você vê a data em Painel →
+    Reservas: escolha o imóvel, em "Consultar" marque "Todo o histórico" e em "Ordenar por" marque "Data de entrada";
+    a primeira da lista é a data. O marco de 01/10/2026 continua: o que foi pago antes já foi acertado por fora. Sem
+    pressa; é cadastro, não calendário.
 57. **Domínio castanhahome.com (M11.2), quando eu pedir:** eu cadastro o domínio na Vercel e te mando dois registros de
     DNS com os valores e onde clicar na HostGator. Você cria os dois e me avisa. A troca do login do Google, do e-mail,
     do Mercado Pago e do endereço da Meta vem depois, um de cada vez, comigo conferindo.
@@ -4723,14 +4725,19 @@ ambiente).
   na HostGator) ou deixar vencer. Nada muda até você responder: o domínio não é renovado nem redirecionado sozinho.
 - **Puxar o envio do WhatsApp (M10.2), sugestão minha de 26/10.** Problema: o número final 0021 recebe (quando você
   ligar), mas ninguém responde por ele pelo sistema até o M10.2.
-- **Proposta:** puxar o M10.2 (responder pelo painel e um e-mail simples a cada mensagem nova, com o imóvel, as datas e
-  o link) para logo depois do "só disponibilidade" (M3.11b), antes da marca e do domínio.
-- **Ordem completa que proponho:** este plano e o M3.11b (em curso), M3.11c, M10.2, a página do motor (M3.14), o
-  mapeamento (M3.12), a pesquisa de mercado (M3.13), a marca e o domínio.
+- **Proposta:** puxar o M10.2 (responder pelo painel e um e-mail simples a cada mensagem nova, só com o imóvel, as datas
+  e o link, sem o texto do hóspede nem o telefone; a conversa fica atrás do login) para logo depois do "só
+  disponibilidade" (M3.11b), antes da marca e do domínio.
+- **Ordem completa que proponho:** este plano e o M3.11b (em curso), M3.11c, a conexão (M10.1b: a chave permanente na
+  Vercel, a situação do número e a inscrição da conta, com a sua autorização), M10.2, a página do motor (M3.14), o
+  mapeamento (M3.12), a pesquisa de mercado (M3.13), a marca e o domínio. Puxar o M10.2 puxa também o M10.1b e os seus
+  passos nele (seção 6, itens 54, 55 e 59).
 - **Junto, preciso de duas autorizações suas por escrito:** uma para o sistema enviar mensagens pela Meta (M10.2 e o
   envio sozinho do M10.3), sempre atrás de uma chave que só você liga (o seu "de acordo" de 26/10 foi para a ordem das
   respostas automáticas, não para o envio); outra para o sistema inscrever a conta do WhatsApp (WABA) no app da Meta,
-  parte do M10.1b (sem ela, o M10.1b para antes dessa etapa).
+  parte do M10.1b (é o passo que liga a conta do número ao app, para a Meta mandar os avisos ao sistema; não conferi se
+  já foi feito à mão no painel da Meta: se foi, o M10.1b só o repete pelo sistema; se não foi, nenhum aviso chega até
+  ele ser feito; sem a autorização, o M10.1b para antes dessa etapa).
 - **Confirme também três leituras minhas:** o "só disponibilidade" (M3.11b) seguir sem esperar o mapeamento (M3.12); a
   marca só depois do mapeamento e do motor; e a arrumação deste guia (M0.11) sem esperar o WhatsApp.
 - **Sem resposta,** vale a ordem combinada em 26/10 (seção 2), as três leituras valem como estão e nada de envio é
