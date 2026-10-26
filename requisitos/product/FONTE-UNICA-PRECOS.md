@@ -2,8 +2,10 @@
 
 **Situação:** desenho do M3.11a escrito em 22/10/2026, na branch `claude/m3-11a-copia-importacao-precos`. O M3.11b ("só
 disponibilidade") e o M3.11c ("pronto para ligar") ganham as seções deles quando forem feitos; o M3.11b está em
-implementação desde 26/10 na branch `claude/m3-11b-so-disponibilidade` (desenho em
-`requisitos/product/SO-DISPONIBILIDADE.md`), ainda sem PR e fora da `main`. Decisão de Diego e condição dele:
+implementação desde 26/10 na branch `claude/m3-11b-so-disponibilidade`, só local, ainda não publicada (conferido em
+26/10: desenho em `requisitos/product/SO-DISPONIBILIDADE.md`, commit c0437ee; código em bcbad24, a fonte "só
+disponibilidade" no envio, no site e no portal; a migração 0076, da reserva direta × OTAs, e a ficha da reserva ainda
+sem commit), ainda sem PR e fora da `main`. Decisão de Diego e condição dele:
 `ROADMAP.md`, "Decisões registradas", 22/10. O M3.11a está na `main` desde 22/10 (PR #164). Leitura de 26/10 e
 prioridade máxima de Diego: §7.
 
@@ -306,7 +308,7 @@ esse trabalho o SCL ficou só em leitura nessa área (coordenação de 24/10).
 **Conferência de 26/10** (Claude, no Neon de produção, só leitura, só contagens; nenhum dado pessoal):
 - Diego tocou em "Importar agora" na noite de 25 para 26/10. O M3.11a guardou a cópia da leitura de 7/10 dos seis imóveis
   antes de reler, como desenhado em §3.1.
-- Leitura nova: de 26/10/2026 a 21/7/2027, 269 noites por imóvel, seis imóveis, um quarto cada, todos lidos.
+- Leitura nova: de 26/10/2026 a 21/07/2027, 269 noites por imóvel, seis imóveis, um quarto cada, todos lidos.
 - Comparação com 7/10, nas 251 noites em comum por imóvel:
   - preço: só 13 noites mudaram, todas para cima, de 3% a 5%, quase todas entre 26 e 31/10 ou em maio/2027 (parece ajuste
     de última hora, não correção geral); as médias por mês ficaram iguais;
@@ -335,18 +337,18 @@ esse trabalho o SCL ficou só em leitura nessa área (coordenação de 24/10).
 - **M3.13, pesquisa de mercado e ajuste constante:** sinais dos próprios dados (ocupação, ritmo de vendas, antecedência,
   dia da semana, eventos) e uma referência de mercado; sugestões semanais numa tela que Diego aprova (no começo nada muda
   sozinho), com registro de quem, quando e por quê. Copiar preços de anúncios do Airbnb automaticamente vai contra as
-  regras deles: a fonte da referência de mercado é decisão de Diego (amostragem manual pela equipe; serviço pago de dados
-  de mercado, como AirDNA e similares; a API oficial do Booking, se houver acesso; a ferramenta de precificação ligada ao
-  Beds24 só como fonte de dados). "Feito" (26/10): a primeira versão da página de comparação com apartamentos
+  regras deles: a fonte da referência de mercado é decisão de Diego, com quatro opções: (1) amostragem manual de alguns anúncios
+  concorrentes pela equipe; (2) dados pagos de mercado, como AirDNA e similares; (3) a API oficial do Booking, se houver
+  acesso; (4) a ferramenta de precificação ligada ao Beds24 só como fonte de dados. "Feito" (26/10): a primeira versão da página de comparação com apartamentos
   semelhantes (cadastro manual de 5 a 10 anúncios comparáveis com os preços que Diego vê; as métricas próprias do M5.8:
   ocupação, diária média, receita por noite disponível; posição relativa) e o registro dos ajustes feitos (quem, quando,
   por quê). A referência automática entra quando Diego decidir a fonte. Depende do M3.11c.
 - **M3.14, página do motor de preços e importação de eventos (26/10):** Diego quer o motor "direitinho", com um
   calendário de eventos (hoje só do Rio, feito com o ChatGPT) em que cada evento diz se impacta o preço e com que
   multiplicador. Fato: o calendário de eventos já existe desde o M3.7 (Configurações → Calendário e preços, bloco
-  Eventos: nome, início, fim, multiplicador de 1,0× a 10×, em que 1,0 não mexe no preço e só vale a estadia mínima;
-  estadia mínima; "mínimo normal com reserva"; todos os imóveis ou só alguns; limite de 100 eventos e 200 feriadões; o
-  motor aplica o maior multiplicador entre evento e feriadão sobre o preço base, sem somar, só na fonte "scl"). O item:
+  "Temporadas e eventos": nome, início, fim, multiplicador de 1,0× a 10×, em que 1,0 não mexe no preço e só vale a estadia mínima;
+  estadia mínima; "mínimo normal com reserva"; todos os imóveis ou só alguns; limite de 100 eventos e 200 feriados (datas; o feriadão é a
+  janela em volta de cada um); o motor aplica o maior multiplicador entre evento e feriadão sobre o preço base, sem somar, só na fonte "scl"). O item:
   uma página só que mostra, por imóvel, como cada noite é formada (base, período, evento, feriadão, última hora, pisos,
   preço importado, fonte) e o calendário de eventos com importação por colagem (Diego cola a lista: nome, início, fim,
   multiplicador sugerido, todos os imóveis ou quais; revisa linha a linha antes de gravar), observação e origem por
