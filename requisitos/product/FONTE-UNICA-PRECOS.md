@@ -1,11 +1,9 @@
 # Fonte única de preços (M3.11)
 
 **Situação:** desenho do M3.11a escrito em 22/10/2026, na branch `claude/m3-11a-copia-importacao-precos`. O M3.11b ("só
-disponibilidade") e o M3.11c ("pronto para ligar") ganham as seções deles quando forem feitos; o M3.11b está em
-implementação desde 26/10 na branch `claude/m3-11b-so-disponibilidade`, só local: desenho em
-`requisitos/product/SO-DISPONIBILIDADE.md` (commit c0437ee); o código entra em commits na mesma branch conforme a
-implementação e a revisão adversarial avançam (a fonte "só disponibilidade" no motor, no envio, no site e no portal; a
-reserva direta confirmada no SCL, com a migração 0076 e o aviso na ficha); o PR abre quando as checagens passarem; nada
+disponibilidade") e o M3.11c ("pronto para ligar") ganham as seções deles quando forem feitos; o M3.11b foi feito em
+26/10 na branch `claude/m3-11b-so-disponibilidade` (desenho e registros em `requisitos/product/SO-DISPONIBILIDADE.md`;
+PR aberto na noite de 26/10, em revisão até o merge); nada
 na `main`. Decisão de Diego e condição dele: `ROADMAP.md`, "Decisões registradas", 22/10. O M3.11a está na `main`
 desde 22/10 (PR #164). Leitura de 26/10 e prioridade máxima de Diego: §7.
 
