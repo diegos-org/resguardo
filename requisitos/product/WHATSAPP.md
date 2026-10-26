@@ -1,5 +1,37 @@
 # Recebimento do WhatsApp (M10.1a): desenho
 
+## Mudança de caminho (25 e 26/10/2026)
+
+Registro de Diego, 25 e 26/10. O resto deste documento é o desenho de 17/10 e continua valendo para o recebimento (M10.1a); onde ele fala do final 0322, da coexistência e do Embedded Signup, vale o que está aqui. Neste documento, o número antigo continua escrito como "final 0322" e o novo como "final 0021"; nenhum id da Meta, token ou chave entra aqui.
+
+| | |
+|---|---|
+| **Antes (17/10)** | Preservar o WhatsApp Business manual do final 0322 e conectar por coexistência (Embedded Signup v4, QR code), com sincronização de histórico e contatos nas 24 h. |
+| **Agora (25/10)** | O número do sistema é o final 0021: número novo, só do sistema (o pessoal de Diego também tem final 0021, mas é outro número), dedicado à Cloud API, sem aplicativo no celular, sem coexistência, sem Embedded Signup e sem sincronização de histórico ou contatos. O final 0322 sai do plano. |
+| **Motivo** | O final 0322 estava vinculado a mais de um aplicativo na Meta e isso travava tudo. |
+| **Objetivo final** | A caixa de entrada e os envios pelo SCL. |
+
+**Chave do app:** em 25/10 a chave secreta do app foi colada por engano no chat; ela deve ser redefinida na Meta (ação de Diego, já combinada) e a nova vai só para a Vercel. Nada disso vai para o Git.
+
+**Estado em 26/10** (relato técnico do Antigravity, ferramenta externa que Diego usou de 23 a 26/10): `WHATSAPP_VERIFY_TOKEN` (49 caracteres) e `WHATSAPP_APP_SECRET` configurados no Production da Vercel; o endereço `https://scl-reconstrucao.vercel.app/api/whatsapp` passou na verificação da Meta (HTTP 200); `WHATSAPP_RECEBIMENTO` continua desligada até terminar a análise da Meta; depois, Diego cola o id da conta (WABA) e o id do número em Configurações → Integrações e liga a chave. O M10.1a de hoje já suporta isso.
+
+### O que vale e o que sai do M10.1b
+- **Vale:** o token só no servidor; renovação e reconexão com aviso no painel (`aguardando_reconexao` e o aviso de desconexão do M10.1a); nunca senha digitada por script na Meta; a leitura dos cinco campos e a gravação idempotente do M10.1a (`history` e `smb_app_state_sync` continuam lidos de forma segura, mas nunca pedidos); a inscrição da conta no app escreve na Meta e continua pedindo a linha de autorização explícita no `ROADMAP.md`.
+- **Entra:** o token permanente de um "usuário do sistema" da Meta, guardado só na Vercel, no Production (nunca no banco em claro; sem a variável, nada é chamado na Meta); a leitura da situação do número; a inscrição da conta do WhatsApp (WABA) no app.
+- **Sai:** a tela "Conectar WhatsApp" (Embedded Signup v4), a troca do código pelo token, a chave `WHATSAPP_CONEXAO`, os pedidos de sincronização de contatos e histórico, a ordem desses pedidos (11.1), a decisão entre histórico síncrono e pedaços pendentes, o id da configuração do Embedded Signup e a medição do lote de 5.000 (T26) como pré-requisito.
+- **Depende de Diego:** a análise da Meta, os ids em Integrações, ligar `WHATSAPP_RECEBIMENTO`, o teste com uma mensagem de outro celular e a chave secreta redefinida.
+
+### Esboço do M10.2 (envio) e do M10.3 (sugestão com o Claude), combinado em 26/10
+Hoje o sistema só recebe; nada é enviado pela Meta. Ordem combinada: primeiro a sugestão com alerta (categoria B), depois o envio sozinho (categoria A). O desenho de cada item vem antes de construir; isto é o esboço.
+- **M10.2, envio pelo painel:** pela Cloud API com o token permanente, atrás de `WHATSAPP_ENVIO=ligada`, que só Diego liga; resposta livre só dentro de 24 h da última mensagem do hóspede, fora disso só modelo aprovado pela Meta; **"envio com um toque":** o alerta por e-mail traz o resumo e o link da conversa, e enviar exige o login de Diego no celular (ninguém envia só com o link); registro de entrega (`statuses`, na coluna `situacao` já prevista na seção 1) e prevenção de mensagem repetida.
+- **M10.3, assistente de sugestão:** Diego autorizou em 26/10 mandar as mensagens dos hóspedes ao Claude para gerar sugestões ("pode, claro, sempre foi a ideia"). A chave da Anthropic fica na Vercel, criada e colocada por Diego, nunca no chat; sem ela, nada é chamado. Adaptador com versão falsa para testes; nenhum teste usa rede. Custo estimado em 26/10: uns 3 a 5 centavos de dólar por sugestão no modelo mais forte, 10 a 15 dólares por mês com 300 mensagens; menos com a parte fixa (o Guia de Atendimento) guardada em memória (cache de prompt) e com um modelo menor se a qualidade aguentar: o Claude testa os dois e mostra o resultado antes de escolher.
+  - **Categoria B** (interessados, cotações, negociação, exceções, dúvidas sem certeza): sugestão imediata e alerta por e-mail com resumo e link; Diego aprova e envia (M10.3a).
+  - **Categoria A** (dúvidas operacionais de reserva confirmada: Wi-Fi, horários, regras da casa, endereço): envio sozinho só depois de alguns dias só com a categoria B, só em conversa ligada a reserva confirmada, dentro das 24 h, só nos assuntos de uma lista que Diego edita no painel; senha do Wi-Fi e endereço nunca vão para número não conferido (M10.3b). Diego: "de acordo".
+- **No instante em que a mensagem chega:** o `after()` da rota `POST /api/whatsapp`, que hoje já dispara o e-mail da conta desconectada depois do 200, passa a disparar a sugestão e o alerta assim que uma mensagem recebida em tempo real (`messages`, origem `tempo_real`) for gravada; a gravação continua síncrona e antes do 200, e uma falha na sugestão nunca faz a Meta reenviar (pedido técnico do Antigravity em 26/10, aceito).
+- **Regras de segurança nas duas categorias:** ao Claude vão as mensagens da conversa e o contexto da reserva que a sugestão precisa (o detalhe fica no desenho do M10.3); nenhuma sugestão é enviada sem o login de Diego (B) ou sem a lista de assuntos e a reserva confirmada (A); tudo registrado (sugerido, aprovado, enviado, custo); botão de desligar no painel; nenhum disparo real até as chaves ligadas por Diego.
+
+---
+
 **Situação:** desenho de 17/10/2026, revisado no mesmo dia por três críticas (segurança, correção e formato da Meta: 35 apontamentos, todos aplicados) e com os acréscimos de Diego (repassando a revisão do Codex) e da revisão de Diego e Mia, também de 17/10. Base: `main` em `b554cfa` (PR #156), atualizada depois com o PR #157.
 - **M10.1a (recebimento): entregue em 17/10/2026 na branch `claude/m10-1a-whatsapp-recebimento`, em revisão e ainda não integrado na `main`.** Nada escreve na Meta. Nada chega ao painel até a conexão (M10.1b) e a chave `WHATSAPP_RECEBIMENTO=ligada`, que só Diego liga. Onde a construção mudou o desenho, o registro está na própria regra, marcado **Implementação (17/10)**.
 - **M10.1b (conexão):** `bloqueado` (seção 11). **M10.2 (envios):** `bloqueado` no M10.1b (seção 12). **M10.3 (sugestão de resposta pelo Claude):** continua dependendo do M10.1 (o conjunto), sem mudança.
