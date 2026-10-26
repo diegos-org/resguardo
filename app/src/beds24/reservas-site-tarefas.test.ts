@@ -294,7 +294,7 @@ describe("teste 16: a marca manual \"Datas fechadas nas OTAs\" (D8)", () => {
     const z = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "z@example.com" });
     expect(await marcarDatasFechadasNasOtas(db, admin, z.reservaId, env(), new Date("2026-10-23T15:00:00Z"))).toEqual({ ok: false, erro: ERRO_NADA_A_FECHAR });
     // Outra empresa: a reserva não é dela. A trava ocupada: nada muda.
-    expect(await marcarDatasFechadasNasOtas(db, { ...admin, organizacaoId: crypto.randomUUID() }, z.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: "Reserva do site não encontrada." });
+    expect(await marcarDatasFechadasNasOtas(db, { ...admin, organizacaoId: crypto.randomUUID() }, z.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: "Reserva não encontrada." });
     trava.ocupada = true;
     expect(await marcarDatasFechadasNasOtas(db, admin, z.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: ERRO_MARCA_TRAVA_OCUPADA });
     trava.ocupada = false;
@@ -309,7 +309,7 @@ describe("teste 16: a marca manual \"Datas fechadas nas OTAs\" (D8)", () => {
       await expect(marcarDatasFechadasNasOtas(db, { ...admin, papel, imovelIds: [c.imovel] }, x.reservaId, env(), minutos(30))).rejects.toBeInstanceOf(AcessoNegado);
       await expect(marcarDatasReabertasNasOtas(db, { ...admin, papel, imovelIds: [c.imovel] }, x.reservaId, env(), minutos(30))).rejects.toBeInstanceOf(AcessoNegado);
     }
-    expect(await marcarDatasFechadasNasOtas(db, admin, "nao-e-uuid", env(), minutos(30))).toEqual({ ok: false, erro: "Reserva do site não encontrada." });
+    expect(await marcarDatasFechadasNasOtas(db, admin, "nao-e-uuid", env(), minutos(30))).toEqual({ ok: false, erro: "Reserva não encontrada." });
     expect(await acompanhamento(x.reservaId)).toBeUndefined();
   });
 });
@@ -587,7 +587,7 @@ describe("teste 19 (M3.11b): a reserva direta confirmada no SCL e as OTAs", () =
     const outra = await montarCenario(db);
     expect(await tarefasDasOtas(db, outra.org, minutos(90), env())).toEqual({ tarefas: [], atencoes: [], avisos: [] });
     const deOutra: Sessao = { ...admin, organizacaoId: outra.org };
-    expect(await marcarDatasFechadasNasOtas(db, deOutra, x.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: "Reserva do site não encontrada." });
+    expect(await marcarDatasFechadasNasOtas(db, deOutra, x.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: "Reserva não encontrada." });
     expect(await marcas(x.reservaId)).toBeUndefined();
     // A varredura de dados pessoais: nada do hóspede fictício fora da reserva.
     expect(await semDadosPessoais(db, ["direto@example.com", "(21) 98888-0000"])).toEqual([]);
@@ -661,6 +661,10 @@ describe("teste 19 (M3.11b): a reserva direta confirmada no SCL e as OTAs", () =
     // No dia da saída (27/10, São Paulo) a direta ainda entra; no dia seguinte, não (a paga de 12/10 a 15/10 já saiu antes).
     expect((await tarefas(em("2026-10-27"))).tarefas.map((t) => [t.reservaId, t.caso])).toEqual([[hoje.reservaId, "direta"]]);
     expect((await tarefas(em("2026-10-28"))).tarefas).toEqual([]);
+    // O corte é no dia de São Paulo, não no UTC (revisão 2): às 22:00 de 27/10 em São Paulo (já 28/10 em UTC) a direta
+    // ainda entra; às 00:30 de 28/10 em São Paulo, não.
+    expect((await tarefas(new Date("2026-10-28T01:00:00Z"))).tarefas.map((t) => [t.reservaId, t.caso])).toEqual([[hoje.reservaId, "direta"]]);
+    expect((await tarefas(new Date("2026-10-28T03:30:00Z"))).tarefas).toEqual([]);
     for (const r of [airbnb, comId, importada, pendente, passada]) {
       expect((await daReserva(r.reservaId, em("2026-10-27"))).length).toBe(0);
       expect(await marcarDatasFechadasNasOtas(db, admin, r.reservaId, env(), em("2026-10-27"))).toMatchObject({ ok: false });

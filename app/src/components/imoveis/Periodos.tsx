@@ -17,7 +17,7 @@ type Props = {
   excluir: (f: FormData) => Promise<void>;
   /** Preços definidos no Beds24 (M3.9): o período só leva estadia mínima — o campo de preço nem aparece. */
   semPreco?: boolean;
-  /** Só disponibilidade (M3.11b): nenhum período novo — a frase explica, no lugar do formulário (o servidor recusaria). */
+  /** Só disponibilidade (M3.11b): nenhum período novo — a frase explica, no lugar do formulário (o servidor recusa, no painel e no portal). */
   recusados?: string;
 };
 

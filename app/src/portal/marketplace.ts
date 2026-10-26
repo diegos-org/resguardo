@@ -34,6 +34,8 @@ const dataBr = (d: string) => d.split("-").reverse().join("/");
 export const ANTES_DA_POSSE = (desde: string) => `Isso é de antes de o imóvel passar a ser seu (${dataBr(desde)}): fica com a empresa e com o dono da época.`;
 /** Preço da noite definido fora do SCL (fontes "beds24" e "só disponibilidade"): o portal não o edita. */
 export const PRECO_FORA_DO_PORTAL = "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui.";
+/** Só disponibilidade (M3.11b, desenho §6): a estadia mínima e a máxima também ficam fora do SCL; o portal não as edita (a tela as mostra só de leitura). */
+export const ESTADIA_FORA_DO_PORTAL = "Com só a disponibilidade pelo nosso sistema, a estadia mínima e a máxima são definidas por você ou pela sua ferramenta de preços: são editadas lá.";
 /** Só disponibilidade (M3.11b, desenho §6): nenhum período do portal — nada dele seria enviado. A frase vive em `fonte-precos.ts` (a tela a mostra). */
 export const PERIODO_SO_DISPONIBILIDADE = PERIODO_SO_DISPONIBILIDADE_PORTAL;
 
@@ -238,9 +240,15 @@ export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imove
       }
       const v = validarDetalhes(completa);
       if (!v.ok) return { erro: "Confira os campos destacados.", erros: v.erros };
-      if (precoLidoDoBeds24(atual.fontePrecos) && v.dados.precoBase !== atual.precoBase) {
-        return { erro: "Confira os campos destacados.", erros: { precoBase: PRECO_FORA_DO_PORTAL } };
+      // O que fica fora do SCL nesta fonte não muda por aqui (a mesma regra da tela, no servidor): o preço da noite quando é
+      // lido do Beds24; com "só disponibilidade" (M3.11b, desenho §6), também a estadia mínima e a máxima.
+      const fora: ErrosDetalhes = {};
+      if (precoLidoDoBeds24(atual.fontePrecos) && v.dados.precoBase !== atual.precoBase) fora.precoBase = PRECO_FORA_DO_PORTAL;
+      if (atual.fontePrecos === "so_disponibilidade") {
+        if (v.dados.estadiaMinima !== atual.estadiaMinima) fora.estadiaMinima = ESTADIA_FORA_DO_PORTAL;
+        if (v.dados.estadiaMaxima !== atual.estadiaMaxima) fora.estadiaMaxima = ESTADIA_FORA_DO_PORTAL;
       }
+      if (Object.keys(fora).length) return { erro: "Confira os campos destacados.", erros: fora };
       return v.dados;
     },
     sessao.usuarioId,

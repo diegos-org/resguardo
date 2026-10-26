@@ -13,7 +13,7 @@ import { dataValida } from "@/reservas/regras";
 import { HORARIOS_PADRAO } from "@/site/regras-da-casa";
 import { COMODIDADES, TIPOS_CAMA } from "./cadastro-opcoes";
 import { esperarEnvioBeds24 } from "@/beds24/trava";
-import { type FontePrecos, fontePrecosValida } from "./fonte-precos";
+import { type FontePrecos, fontePrecosValida, PERIODO_SO_DISPONIBILIDADE_PAINEL } from "./fonte-precos";
 import type { Periodo, RegrasVenda } from "./regras-venda";
 
 export { COMODIDADES, TIPOS_CAMA, type TipoCama } from "./cadastro-opcoes";
@@ -395,7 +395,9 @@ export function validarPeriodo(e: Entrada): { ok: true; dados: Omit<Periodo, "id
 /**
  * Cria um período de exceção. `conferir`: regra extra avaliada sobre o cadastro ATUAL, lido com o
  * imóvel já travado (ex.: o portal recusa preço no período quando os preços são do Beds24) — nunca
- * sobre uma leitura anterior, que o painel pode ter mudado no meio.
+ * sobre uma leitura anterior, que o painel pode ter mudado no meio. Com "só disponibilidade" (M3.11b,
+ * desenho §7), nenhum período novo em tela nenhuma: o preço é o lido do Beds24, o mínimo não é enviado
+ * e o site não lê os períodos; a regra vive aqui, e o portal só troca a frase (sem citar o Beds24).
  */
 export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: string, e: Entrada, autorId: string | null, o: { conferir?: (atual: Detalhes, tx: Db) => Promise<string | null> | string | null } = {}): Promise<ResultadoPeriodo> {
   const v = validarPeriodo(e);
@@ -403,10 +405,12 @@ export async function criarPeriodo(db: Db, organizacaoId: string, imovelId: stri
   return db.transaction(async (tx) => {
     // Trava o imóvel: dois períodos sobrepostos não entram ao mesmo tempo.
     if (!(await imovelDaOrg(tx, organizacaoId, imovelId, true))) return { ok: false as const, erro: "Imóvel não encontrado." };
+    const atual = await lerDetalhes(tx, organizacaoId, imovelId);
     if (o.conferir) {
-      const recusa = await o.conferir(await lerDetalhes(tx, organizacaoId, imovelId), tx);
+      const recusa = await o.conferir(atual, tx);
       if (recusa) return { ok: false as const, erro: recusa };
     }
+    if (atual.fontePrecos === "so_disponibilidade") return { ok: false as const, erro: PERIODO_SO_DISPONIBILIDADE_PAINEL };
     const [choque] = await tx
       .select({ nome: imoveisPeriodos.nome })
       .from(imoveisPeriodos)

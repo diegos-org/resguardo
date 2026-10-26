@@ -75,7 +75,8 @@ export default async function PaginaImovel({ params, searchParams }: PageProps<"
   const comPix = segurar
     ? await pixPossivel(db, conteudo.organizacaoId, { imovel: { codigo: imovel.codigo }, checkin: consulta.entrada, checkout: consulta.saida, situacao: segurar.situacao, total: segurar.cotacao?.total ?? null }, gate)
     : false;
-  // Horários e regras de convivência de um lugar só (M7.20), os mesmos da página da cotação; a estadia mínima entra aqui.
+  // Horários e regras de convivência de um lugar só (M7.20), os mesmos da página da cotação; a estadia mínima entra aqui
+  // (com "só disponibilidade", M3.11b, ela chega nula de `site.ts`: o mínimo que vale é o lido, e aparece na consulta).
   const casa = regrasDaCasa(imovel);
   const regras = [
     ...frasesDosHorarios(casa),

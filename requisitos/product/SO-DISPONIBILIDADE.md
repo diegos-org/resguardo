@@ -85,7 +85,14 @@ Com `fontePrecos === "so_disponibilidade"`:
   - Mínimo ou máximo nulo na leitura atual é "sem restrição": na API do Beds24, minStay e maxStay valem 1 ou mais, ou
     nulo quando não há restrição; 1 noite vende. É diferente da restrição de entrada/saída, em que "não informada" nunca
     vira disponível, porque ali o nulo é ausência de dado sobre a data e aqui é o próprio valor "sem mínimo". (Registro
-    26/10, revisão 1; teste em `site/disponibilidade.test.ts`.)
+    26/10, revisão 1; teste em `site/disponibilidade.test.ts`.) Conferido na revisão 2 de 26/10, com contagens nas
+    leituras reais de produção (1614 noites em `beds24_calendario`, nenhuma com mínimo, máximo ou preço nulos; mínimo
+    entre 1 e 5, máximo 27): o nulo é exceção.
+- Registro (26/10, revisão 2): a página da casa não mostra o mínimo do cadastro nesta fonte. A frase "Em geral, mínimo
+  de N noites" vinha de `imoveis_detalhes.estadia_minima` em qualquer fonte, e aqui esse valor não vale em lugar nenhum
+  (a consulta usa o lido na noite de entrada; o envio não o manda): o hóspede leria "mínimo de 5 noites" numa página
+  que vende 3. `site/site.ts` devolve `estadiaMinima` nula nesta fonte, como num cadastro sem mínimo; a linha some e o
+  mínimo real aparece na consulta ("Para entrada em …, o mínimo é de N noites."). Nas outras fontes, nada muda.
 - O desconto do site (M12.1) vale por cima, como nas outras fontes. Nenhum texto do site cita o Beds24.
 
 ## 6. Portal do proprietário (M12.4)
@@ -99,6 +106,10 @@ Com `fontePrecos === "so_disponibilidade"`:
   com a nota "definida por você ou pela sua ferramenta de preços" (como o preço). Antes continuavam editáveis, mas não
   valiam em lugar nenhum (o site lê os dos canais e o envio não os manda): o proprietário digitaria um mínimo sem efeito.
   Avisar em vez de supor. Decisão de produto aberta para Diego: manter assim ou esconder os dois campos.
+- Registro (26/10, revisão 2): o "só de leitura" desses dois campos também vale no servidor, como o preço:
+  `salvarPrecosPeloProprietario` recusa a mudança de estadia mínima ou máxima nesta fonte, com a nota "definidas por você
+  ou pela sua ferramenta de preços" (`ESTADIA_FORA_DO_PORTAL`). Antes a regra existia só na tela; um envio sem o campo só
+  de leitura gravaria um mínimo sem efeito. Vale nas duas opções da decisão de Diego (manter só de leitura ou esconder).
 
 ## 7. Painel
 
@@ -107,6 +118,12 @@ Com `fontePrecos === "so_disponibilidade"`:
 - Anúncios (`QuadroAnuncios`, `NOTAS_PRECO_SITE`): nota da fonte nova.
 - Importação (M3.11a): o bloqueio "fonte" já recusa qualquer fonte diferente de "scl".
 - Prévia e lista de envio: §4.
+- Registro (26/10, revisão 2): Períodos especiais da ficha, nesta fonte, mostra "Com só disponibilidade, preço e estadia
+  mínima ficam no Beds24: períodos daqui não são enviados nem usados no site." no lugar do formulário, e o servidor
+  (`criarPeriodo`) recusa o período novo em qualquer tela, com essa frase; o portal recusa antes, com a frase da §6. Antes
+  o painel gravava um período com preço e mínimo que não valiam em lugar nenhum (o motor usa o preço lido e o mínimo só
+  para informação; o site ignora os períodos). Os períodos já gravados ficam, para quando a fonte voltar. Avisar em vez
+  de supor; a regra vive num lugar só.
 
 ## 8. Reserva direta confirmada no SCL
 
@@ -140,6 +157,9 @@ Com `fontePrecos === "so_disponibilidade"`:
     marca continua valendo, nenhuma tarefa aparece e o bloqueio no Beds24 fica com as datas antigas. Opções para um item
     seguinte: um caso `direta_alterada` ("mude as datas do bloqueio para X a Y") ou zerar a marca quando as datas de uma
     direta marcada mudam.
+  - **Recusa "não encontrada" (revisão 2):** a marca manual devolve "Reserva não encontrada." (texto neutro) para id
+    inválido, outra organização ou reserva fora dos dois caminhos; antes dizia "Reserva do site não encontrada." também na
+    direta. A recusa era correta e não vazava nada; só o texto errava o tipo da reserva.
 
 ## 9. Testes
 

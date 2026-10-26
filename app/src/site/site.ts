@@ -162,6 +162,8 @@ const colunasPublicas = {
   checkinAPartirDe: imoveisDetalhes.checkinAPartirDe,
   checkoutAte: imoveisDetalhes.checkoutAte,
   estadiaMinima: imoveisDetalhes.estadiaMinima,
+  // Só para decidir se a estadia mínima do cadastro vale (M3.11b): a fonte nunca vai para o objeto público.
+  fontePrecos: imoveisDetalhes.fontePrecos,
 };
 
 type Linha = { [K in keyof typeof colunasPublicas]: (typeof colunasPublicas)[K]["_"]["data"] | null };
@@ -188,7 +190,9 @@ function publico(l: Linha, fotos: FotoPublica[]): ImovelPublico {
     // Sem ficha, os mesmos horários da página da cotação (M7.20).
     checkinAPartirDe: l.checkinAPartirDe ?? HORARIOS_PADRAO.entrada,
     checkoutAte: l.checkoutAte ?? HORARIOS_PADRAO.saida,
-    estadiaMinima: l.estadiaMinima,
+    // Só disponibilidade (M3.11b, desenho §5): o mínimo que vale é o lido na noite de entrada, na consulta; o do cadastro
+    // não vale em lugar nenhum, então a página da casa não o mostra (como num cadastro sem mínimo).
+    estadiaMinima: l.fontePrecos === "so_disponibilidade" ? null : l.estadiaMinima,
     fotos,
   };
 }

@@ -136,7 +136,8 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
   const centavos = reaisParaCentavos(precoDigitado);
   const precoNaFerramenta = precoForaDoPortal(imovel.fontePrecos);
   // Só disponibilidade (M3.11b, desenho §6, registro de 26/10): estadia mínima e máxima também ficam com o proprietário ou
-  // com a ferramenta dele (o site lê as dos canais; nosso sistema não as envia). Os campos ficam só de leitura, com a nota.
+  // com a ferramenta dele (o site lê as dos canais; nosso sistema não as envia). Os campos ficam só de leitura, com a nota;
+  // o servidor recusa a mudança deles nesta fonte, como faz com o preço (`salvarPrecosPeloProprietario`).
   const estadiasNaFerramenta = imovel.fontePrecos === "so_disponibilidade";
   return (
     <form key={JSON.stringify(imovel.regras)} action={enviar} className={f.form} aria-label={`Preços e regras de venda do ${imovel.codigo}`}>

@@ -536,7 +536,8 @@ export const ERRO_MARCA_TRAVA_OCUPADA = "Há uma importação ou um envio do Bed
 export const ERRO_MARCA_EM_ENVIO = "O sistema está enviando esta reserva ao Beds24 (ou há um envio dela sem conclusão): espere a conferência e tente de novo.";
 export const ERRO_NADA_A_FECHAR = "Esta reserva não tem datas a fechar à mão nas OTAs agora.";
 export const ERRO_NADA_A_REABRIR = "Esta reserva não tem datas a reabrir à mão nas OTAs agora.";
-const ERRO_NAO_ENCONTRADA = "Reserva do site não encontrada.";
+/** Vale para a reserva do site e para a direta (M3.11b): id inválido, outra organização ou reserva que não é de nenhum dos dois caminhos. */
+const ERRO_NAO_ENCONTRADA = "Reserva não encontrada.";
 const ERRO_JA_FECHADAS = "As datas já foram marcadas como fechadas.";
 const ERRO_JA_REABERTAS = "As datas já foram marcadas como reabertas nas OTAs.";
 

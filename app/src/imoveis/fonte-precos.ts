@@ -61,5 +61,7 @@ export const EXPLICACAO_FONTE_PRECOS_PORTAL: Record<FontePrecosPortal, string> =
 
 /** Só disponibilidade no portal (M3.11b, desenho §6): nenhum período do proprietário — nada dele seria enviado. */
 export const PERIODO_SO_DISPONIBILIDADE_PORTAL = "Com só disponibilidade, preço e estadia mínima ficam com você ou com a sua ferramenta: aqui você só fecha e reabre datas.";
+/** A mesma recusa no painel (desenho §7, revisão 2 de 26/10): o período não seria enviado nem usado no site. Pode citar o Beds24. */
+export const PERIODO_SO_DISPONIBILIDADE_PAINEL = "Com só disponibilidade, preço e estadia mínima ficam no Beds24: períodos daqui não são enviados nem usados no site.";
 
 export const fontePrecosValida = (v: string): v is FontePrecos => (FONTES_PRECOS as readonly string[]).includes(v);

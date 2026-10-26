@@ -5,6 +5,7 @@ import { beds24Envios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, salvarDetalhesComLeitura, validarDetalhes, validarPeriodo } from "./detalhes";
+import { PERIODO_SO_DISPONIBILIDADE_PAINEL } from "./fonte-precos";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -183,6 +184,20 @@ describe("períodos de exceção", () => {
     expect(await listarPeriodos(db, org, im)).toEqual([]);
     // Gravação com leitura: a regra extra roda antes de preparar, com o imóvel travado.
     expect(await salvarDetalhesComLeitura(db, org, im, (atual) => atual, null, new Date(), { conferir: async () => "sem contrato" })).toEqual({ ok: false, erro: "sem contrato" });
+  });
+
+  it("só disponibilidade (M3.11b, desenho §7): nenhum período novo, com a frase do painel, em qualquer tela; a regra extra de quem chama (o portal) fala antes", async () => {
+    await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "so_disponibilidade" }, null);
+    for (const entrada of [rev, { ...rev, precoNoite: "" }, { ...rev, estadiaMinima: "" }]) {
+      expect(await criarPeriodo(db, org, im, entrada, null)).toEqual({ ok: false, erro: PERIODO_SO_DISPONIBILIDADE_PAINEL });
+    }
+    expect(await criarPeriodo(db, org, im, rev, null, { conferir: () => "a frase do portal" })).toEqual({ ok: false, erro: "a frase do portal" });
+    expect(await criarPeriodo(db, org, im, rev, null, { conferir: () => null })).toEqual({ ok: false, erro: PERIODO_SO_DISPONIBILIDADE_PAINEL });
+    expect(await listarPeriodos(db, org, im)).toEqual([]);
+    expect(PERIODO_SO_DISPONIBILIDADE_PAINEL).toBe("Com só disponibilidade, preço e estadia mínima ficam no Beds24: períodos daqui não são enviados nem usados no site.");
+    // De volta a outra fonte, o período entra.
+    await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "scl" }, null);
+    expect(await criarPeriodo(db, org, im, rev, null)).toEqual({ ok: true });
   });
 
   it("cria, recusa sobreposição, lista em ordem e exclui", async () => {
