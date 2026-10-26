@@ -81,6 +81,8 @@
 - **Receber não depende da análise da Meta; enviar para qualquer número, sim** (seção 6, item 55).
 - **Hoje ninguém responde por esse número pelo sistema:** o envio é o M10.2.
 - **Também não existe aviso por mensagem nova:** hoje só sai e-mail quando a conta desconecta, aguarda reconexão ou é suspensa pela Meta. Por isso o M10.2 subiu na ordem (acima).
+- **Fotos, áudios e documentos ainda não chegam ao sistema:** a caixa de entrada mostra só o tipo ("Foto", "Documento"), sem o conteúdo, e "ver no celular" deixou de valer, porque o número não está em celular nenhum.
+- **Até o M10.1b trazer os anexos** (baixados da Meta e vistos só com login), peça ao hóspede que mande em texto ou por e-mail; documento de check-in continua pelo caminho de hoje, fora do WhatsApp.
 - **Chave permanente do WhatsApp (26/10):** você já tem a chave permanente da Meta para o sistema (o "token de usuário do sistema"). Combinamos o nome `WHATSAPP_ACCESS_TOKEN`: você coloca na Vercel quando puder (seção 6, item 59); nunca no chat.
 - **Respostas automáticas (26/10):** hoje o sistema só recebe.
 - **Primeiro, sugestão com alerta:** o Claude lê a mensagem e sugere a resposta; você recebe um e-mail com o imóvel, as datas, o tipo da mensagem e o link (sem o texto do hóspede), aprova e envia pelo painel, com o seu login no celular.
@@ -4672,6 +4674,9 @@ ambiente).
     redefina na Meta e ponha a nova lá, só no Production, com Redeploy. Nunca cole no chat.
 55. **Ligar o recebimento do WhatsApp no número final 0021 (M10.1a), quando quiser (não depende da análise da Meta;
     só o envio depende):**
+    0. antes, confira no painel de desenvolvedores da Meta que a conta do WhatsApp (WABA) está inscrita no app e que o
+       campo `messages` do webhook está marcado; se não estiver, nenhum aviso chega: é a etapa do M10.1b que depende da
+       autorização 2 (seção 7). Me diga o que encontrou;
     1. em Configurações → Integrações → WhatsApp, "Identificação na Meta", cole o id da conta (WABA) e o id do número;
     2. na Vercel, só no Production, crie `WHATSAPP_RECEBIMENTO` = `ligada` (só você liga);
     3. faça Redeploy, ou espere o merge seguinte;
