@@ -4686,8 +4686,11 @@ ambiente).
       têm data de início registrada) e tipo **gestão completa**.
     - **Falta só a % da empresa:** confirme o padrão do sistema para gestão completa (15%) ou me diga outra.
     - **Com a % confirmada, eu cadastro:** gravo os seis no banco de verdade, com cópia de segurança antes, e registro
-      aqui e no plano a data, os imóveis, o tipo e o início (a % só se você autorizar). O recálculo das 97 reservas
-      vem no deploy seguinte.
+      aqui e no plano a data, os imóveis, o tipo e o início (a % só se você autorizar).
+    - **O que o recálculo alcança:** só as reservas com entrada de hoje em diante (52). O sistema nunca recalcula o
+      passado sozinho, por regra sua ("mudança vale daquela data para frente").
+    - **As 45 com entrada entre 01/10 e ontem** ficam sem cálculo até você decidir (seção 7): elas nunca foram
+      calculadas, então não há passado a alterar; eu proponho uma regra de "primeira conta" num PR pequeno.
     - **Se preferir cadastrar você:** ficha do imóvel → Contratos → Adicionar contrato (Tipo, % da empresa e Início);
       o painel recalcula na hora.
     - **Os quatro imóveis sem proprietário** (102, 303, 399 e bzs) continuam com você no painel; o contrato não
@@ -4716,8 +4719,12 @@ ambiente).
 
 ## 7. Decisões pendentes e respostas às suas perguntas
 
-**Preciso de você (com pressa, as três primeiras):**
+**Preciso de você (com pressa, as quatro primeiras):**
 - **% da empresa nos seis contratos (26/10):** confirme o padrão de gestão completa (15%) ou me diga outra; com ela eu cadastro (seção 6, item 56).
+- **"Primeira conta" das 45 reservas passadas (26/10):** o recálculo só alcança entradas de hoje em diante; as 45 com
+  entrada entre 01/10 e ontem nunca foram calculadas. Proposta: reserva que nunca teve cálculo pode ser calculada
+  mesmo com entrada no passado (não há passado a alterar), num PR pequeno. Sem o seu "pode", elas ficam sem cálculo e o
+  fechamento de outubro sai incompleto.
 - **Fonte da referência de mercado para os preços (M3.13, 26/10):** copiar preços de anúncios do Airbnb automaticamente
   vai contra as regras deles; por isso a fonte é decisão sua.
 - **As quatro opções:** (1) a equipe anota à mão, de tempos em tempos, alguns anúncios concorrentes; (2) dados pagos de
