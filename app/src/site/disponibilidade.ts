@@ -16,6 +16,7 @@ import { lerRegrasCalendario, type RegrasCalendario } from "@/calendario/regras-
 import { alteracoesReserva, bloqueios, cotacoes, imoveis, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { listarPeriodos } from "@/imoveis/detalhes";
+import { precoLidoDoBeds24 } from "@/imoveis/fonte-precos";
 import { type Cotacao, cotarNoites, diasEntre, verificarEstadia } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { descontoDoSite, type PrecosMarketplace } from "@/marketplace/precos";
@@ -140,17 +141,27 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   const motivos = new Set<string>();
   let aConfirmar = false;
 
+  // Leitura do Beds24 "atual" (a mesma régua das noites, abaixo): dentro da validade e posterior ao último envio.
+  const limite = limiteDaLeitura(regras, agora);
+  const atual = (l: NoiteLida | undefined) => leituraAtual(l, limite);
   // Regras de venda: mínimo/máximo vêm do motor (já considera semana normal, eventos e sobras);
   // antecedência, horizonte e dias de entrada/saída vêm do cadastro.
   const entrada = linhas[0];
+  // Só disponibilidade (M3.11b): a regra de venda é do proprietário, no Beds24 — o mínimo e o máximo são os lidos na noite
+  // de entrada, quando a leitura é atual (sem ela a noite já não vende pelo preço, abaixo); as sobras e a regra de 6/10
+  // do SCL não valem. Na fonte "beds24" (M3.9) os mínimos continuam do SCL, porque o SCL os envia.
+  const soDisponibilidade = plano.fontePrecos === "so_disponibilidade";
   // Mínimo de negócio: o do motor (semana normal, eventos, sobras). Se a regra supera o máximo, o motor
   // manda o máximo ao Beds24 e avisa no painel; para o site vale a regra original, e a estadia fica
   // impossível até o cadastro ser corrigido — nunca "disponível" por causa do ajuste de envio.
-  const minimo = entrada ? (entrada.minimoRegra !== null && entrada.minimoRegra > entrada.maximoEnviar ? entrada.minimoRegra : entrada.minimoEnviar) : null;
+  const minimo = !entrada ? null
+    : soDisponibilidade ? (atual(entrada) ? entrada.observacao!.minimoNoites : null)
+    : entrada.minimoRegra !== null && entrada.maximoEnviar !== null && entrada.minimoRegra > entrada.maximoEnviar ? entrada.minimoRegra : entrada.minimoEnviar;
+  const maximo = !entrada ? null : soDisponibilidade ? (atual(entrada) ? entrada.observacao!.maximoNoites : null) : entrada.maximoEnviar;
   // Sem mudar as datas (alteração só de pessoas ou valor), as noites são as já vendidas: o mínimo e o máximo não contam.
   const mesmasNoites = mesmaEntrada && mesmaSaida;
   if (!mesmasNoites && minimo !== null && noites < minimo) motivos.add(`Para entrada em ${dataBr(p.entrada)}, o mínimo é de ${minimo} ${minimo === 1 ? "noite" : "noites"}.`);
-  if (!mesmasNoites && entrada && noites > entrada.maximoEnviar) motivos.add(`Máximo de ${entrada.maximoEnviar} noites por estadia.`);
+  if (!mesmasNoites && maximo !== null && noites > maximo) motivos.add(`Máximo de ${maximo} noites por estadia.`);
   const regrasDaEstadia = {
     ...plano.regras,
     estadiaMinima: null,
@@ -163,9 +174,7 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   // Restrições de entrada/saída do calendário Beds24: valem na data de entrada e na de saída,
   // só com leitura atual (leitura velha vira "a confirmar", como nas noites).
   // Restrição desconhecida (ex.: "exception") ou não informada na leitura (null) nunca vira "disponível".
-  const limite = limiteDaLeitura(regras, agora);
   const conhecidas = new Set<string | null>(["none", "noCheckIn", "noCheckOut", "noCheckInOrCheckOut"]);
-  const atual = (l: NoiteLida | undefined) => leituraAtual(l, limite);
   const restricao = (l: { observacao: { bloqueio: string | null; observadoEm: Date } | null; enviado: { enviadoEm: Date } | null } | undefined, fecha: readonly string[], motivo: string) => {
     if (!atual(l)) { aConfirmar = true; return; }
     const bloqueio = l!.observacao!.bloqueio;
@@ -204,17 +213,18 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   }
   if (motivos.size) return { situacao: "indisponivel", motivos: [...motivos], noites, cotacao: null, leituraEm: semLeitura ? null : leituraEm };
 
-  // Fonte de preços do imóvel (M3.9): com preços do Beds24, só vale o preço de uma leitura atual (dentro da
-  // validade e posterior ao último envio); leitura velha ou sem preço deixa a noite sem valor — nunca o
-  // cadastro como palpite. Nas outras fontes vale o preço final esperado do motor.
-  const precoDaNoite = (l: (typeof linhas)[number]) => (plano.fontePrecos === "beds24" ? (atual(l) ? (l.observacao?.preco ?? null) : null) : l.precoFinalEsperado);
+  // Fonte de preços do imóvel (M3.9, M3.11b): com o preço lido do Beds24 ("beds24" e "só disponibilidade"), só vale o
+  // preço de uma leitura atual (dentro da validade e posterior ao último envio); leitura velha ou sem preço deixa a
+  // noite sem valor — nunca o cadastro como palpite. Nas outras fontes vale o preço final esperado do motor.
+  const precoLido = precoLidoDoBeds24(plano.fontePrecos);
+  const precoDaNoite = (l: (typeof linhas)[number]) => (precoLido ? (atual(l) ? (l.observacao?.preco ?? null) : null) : l.precoFinalEsperado);
   const precosNoites = linhas.map((l) => ({ data: l.data, valor: precoDaNoite(l), fonte: l.fontePreco }));
   const cot = cotarNoites(plano.regras, precosNoites, hospedes);
   // Preço zero numa noite é aviso do motor ("conferir"), não diária grátis; taxa de limpeza não
   // cadastrada também não vira zero para o visitante. Nos dois casos o valor fica a confirmar.
   const comValor = precosNoites.every((p) => p.valor !== null && p.valor > 0);
   // Preços do Beds24 sem leitura atual (ou sem preço na leitura): a data não é vendida pelo site, fica a confirmar (M3.9).
-  const semPrecoNaFonte = plano.fontePrecos === "beds24" && !comValor;
+  const semPrecoNaFonte = precoLido && !comValor;
   const diarias = comValor ? cot.diarias : null;
   const valorCheio = comValor && cot.total !== null && plano.regras.taxaLimpeza !== null ? cot.total : null;
   // Desconto único do site (M12.1): a parte do hóspede da margem do modelo B, calculada sobre o valor cheio.

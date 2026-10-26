@@ -117,6 +117,8 @@ describe("gravação", () => {
     const r = await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "beds24" }, null, agora);
     expect(typeof r).toBe("string");
     expect(r).toContain("envio de calendário e preços em andamento");
+    // A fonte "só disponibilidade" (M3.11b) passa pela mesma trava.
+    expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "so_disponibilidade" }, null, agora)).toContain("envio de calendário e preços em andamento");
     expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("scl");
     // Outros campos não dependem do envio.
     expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000 }, null, agora)).toBe(true);
@@ -200,10 +202,11 @@ describe("períodos de exceção", () => {
   });
 });
 
-it("fonte de preços (M3.9): ausente vira SCL; beds24 e manual são aceitas; valor desconhecido é erro", () => {
+it("fonte de preços (M3.9, M3.11b): ausente vira SCL; beds24, manual e so_disponibilidade são aceitas; valor desconhecido é erro", () => {
   expect(validarDetalhes({})).toMatchObject({ ok: true, dados: { fontePrecos: "scl" } });
   expect(validarDetalhes({ fontePrecos: "beds24" })).toMatchObject({ ok: true, dados: { fontePrecos: "beds24" } });
   expect(validarDetalhes({ fontePrecos: "manual" })).toMatchObject({ ok: true, dados: { fontePrecos: "manual" } });
+  expect(validarDetalhes({ fontePrecos: "so_disponibilidade" })).toMatchObject({ ok: true, dados: { fontePrecos: "so_disponibilidade" } });
   expect(validarDetalhes({ fontePrecos: "airbnb" })).toMatchObject({ ok: false, erros: { fontePrecos: expect.any(String) } });
 });
 

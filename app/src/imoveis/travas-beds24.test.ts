@@ -71,6 +71,19 @@ describe("fonte de preços e a trava do Beds24 (M8.3a, teste 8)", () => {
     expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("beds24");
   });
 
+  it("a troca para \"só disponibilidade\" (M3.11b), e dela para outra fonte, espera a trava do Beds24 antes da do imóvel", async () => {
+    const e = espiarOrdem();
+    expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000, fontePrecos: "so_disponibilidade" }, null)).toBe(true);
+    e.restaurar();
+    expect(e.imovelJaTravado).toEqual([false]);
+    expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("so_disponibilidade");
+    const volta = espiarOrdem();
+    expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000, fontePrecos: "scl" }, null)).toBe(true);
+    volta.restaurar();
+    expect(volta.imovelJaTravado).toEqual([false]);
+    expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("scl");
+  });
+
   it("salvarDetalhesComLeitura (a do portal): a mesma ordem; sem mudar a fonte, nem pede a trava do Beds24", async () => {
     const e = espiarOrdem();
     expect(await salvarDetalhesComLeitura(db, org, im, (atual) => ({ ...atual, fontePrecos: "manual" }), null)).toEqual({ ok: true });

@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
-import type { FontePrecos } from "@/imoveis/fonte-precos";
+import { type FontePrecos, precoLidoDoBeds24 } from "@/imoveis/fonte-precos";
 import { cotarEstadia, type Periodo, type RegrasVenda, verificarEstadia } from "@/imoveis/regras-venda";
 import styles from "../formularios.module.css";
 
@@ -17,19 +17,23 @@ type Props = {
   excluir: (f: FormData) => Promise<void>;
   /** Preços definidos no Beds24 (M3.9): o período só leva estadia mínima — o campo de preço nem aparece. */
   semPreco?: boolean;
+  /** Só disponibilidade (M3.11b): nenhum período novo — a frase explica, no lugar do formulário (o servidor recusaria). */
+  recusados?: string;
 };
 
 /** Exceções por período: preço da noite e/ou estadia mínima diferentes (Réveillon, Carnaval…). */
-export function Periodos({ imovelId, periodos, criar, excluir, semPreco = false }: Props) {
+export function Periodos({ imovelId, periodos, criar, excluir, semPreco = false, recusados }: Props) {
   const [estado, enviar, enviando] = useActionState(criar, {});
   const v = estado.valores ?? {};
   return (
     <section aria-label="Períodos especiais" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.25rem" }}>Períodos especiais</h2>
       <p style={{ fontSize: "0.875rem", color: "var(--scl-texto-2)", margin: 0 }}>
-        {semPreco
-          ? "Estadia mínima diferente em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço da noite é definido por você ou pela sua ferramenta de preços, então aqui o período não tem preço."
-          : "Preço da noite e/ou estadia mínima diferentes em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço explícito do período é preservado, mesmo fora dos limites gerais do preço base."}
+        {recusados
+          ? recusados
+          : semPreco
+            ? "Estadia mínima diferente em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço da noite é definido por você ou pela sua ferramenta de preços, então aqui o período não tem preço."
+            : "Preço da noite e/ou estadia mínima diferentes em datas específicas. As datas são das noites (a primeira e a última noite do período). O preço explícito do período é preservado, mesmo fora dos limites gerais do preço base."}
       </p>
       {periodos.length > 0 && (
         <div className={styles.rolagem}>
@@ -67,7 +71,7 @@ export function Periodos({ imovelId, periodos, criar, excluir, semPreco = false 
           </table>
         </div>
       )}
-      <form key={periodos.length} action={enviar} className={styles.form} aria-label="Novo período especial">
+      {!recusados && <form key={periodos.length} action={enviar} className={styles.form} aria-label="Novo período especial">
         <input type="hidden" name="imovelId" value={imovelId} />
         <div className={styles.linha}>
           <label className={styles.largo}>
@@ -105,7 +109,7 @@ export function Periodos({ imovelId, periodos, criar, excluir, semPreco = false 
             Adicionar período
           </button>
         </div>
-      </form>
+      </form>}
     </section>
   );
 }
@@ -113,16 +117,20 @@ export function Periodos({ imovelId, periodos, criar, excluir, semPreco = false 
 /**
  * Simulador: confere regras e valor de uma estadia com o cadastro salvo (nada é gravado). Segue a fonte
  * de preços do imóvel (M3.9): com preços digitados, sem os limites do preço dinâmico; com preços do
- * Beds24, só as regras de estadia — o valor vem da leitura do Beds24 (prévia de calendário e site).
+ * Beds24, só as regras de estadia — o valor vem da leitura do Beds24 (prévia de calendário e site). Com
+ * só disponibilidade (M3.11b), a estadia mínima e máxima também ficam no Beds24: aqui valem só as regras
+ * de quando se pode reservar e entrar/sair.
  */
 export function Simulador({ regras, periodos, hoje, fontePrecos = "scl" }: { regras: RegrasVenda; periodos: Periodo[]; hoje: string; fontePrecos?: FontePrecos }) {
   const [checkin, setCheckin] = useState("");
   const [checkout, setCheckout] = useState("");
   const [hospedes, setHospedes] = useState("2");
   const pronto = /^\d{4}-\d{2}-\d{2}$/.test(checkin) && /^\d{4}-\d{2}-\d{2}$/.test(checkout);
-  const regrasDaFonte = fontePrecos === "manual" ? { ...regras, precoDinamico: false } : regras;
-  const problemas = pronto ? verificarEstadia(regrasDaFonte, periodos, checkin, checkout, hoje) : [];
-  const cot = pronto && checkout > checkin && fontePrecos !== "beds24" ? cotarEstadia(regrasDaFonte, periodos, checkin, checkout, Number(hospedes) || 1) : null;
+  const soDisponibilidade = fontePrecos === "so_disponibilidade";
+  const regrasDaFonte = fontePrecos === "manual" ? { ...regras, precoDinamico: false } : soDisponibilidade ? { ...regras, estadiaMinima: null, estadiaMaxima: null } : regras;
+  const periodosDaFonte = soDisponibilidade ? periodos.map((p) => ({ ...p, estadiaMinima: null })) : periodos;
+  const problemas = pronto ? verificarEstadia(regrasDaFonte, periodosDaFonte, checkin, checkout, hoje) : [];
+  const cot = pronto && checkout > checkin && !precoLidoDoBeds24(fontePrecos) ? cotarEstadia(regrasDaFonte, periodos, checkin, checkout, Number(hospedes) || 1) : null;
   return (
     <section aria-label="Simular estadia" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ fontSize: "1.25rem" }}>Simular uma estadia</h2>
@@ -130,6 +138,7 @@ export function Simulador({ regras, periodos, hoje, fontePrecos = "scl" }: { reg
         Usa o cadastro salvo acima. Não cria reserva.
         {fontePrecos === "manual" ? " Preços digitados: vale o preço base e os períodos como estão, sem eventos, feriadões, última hora nem os limites do preço dinâmico." : ""}
         {fontePrecos === "beds24" ? " Preços definidos no Beds24: aqui só as regras de estadia são conferidas; o valor da noite é o lido do Beds24 e aparece na prévia de calendário e no site." : ""}
+        {soDisponibilidade ? " Só disponibilidade: aqui só as regras de quando se pode reservar e entrar/sair são conferidas; preço, estadia mínima e máxima são os lidos do Beds24 e aparecem na prévia de calendário e no site." : ""}
         {fontePrecos === "scl" ? " O valor abaixo é o do cadastro (base, períodos e limites); eventos, feriadões e última hora entram na prévia de calendário." : ""}
       </p>
       <div className={styles.form}>

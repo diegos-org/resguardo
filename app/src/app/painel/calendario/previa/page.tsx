@@ -53,6 +53,8 @@ export default async function Previa({ searchParams }: PageProps<"/painel/calend
   const permiteDia = (dias: readonly number[], d: string) => !dias.length || dias.includes(diaDaSemana(d));
   const comLeitura = plano?.linhas.filter(l => l.observacao).length ?? 0;
   const aEnviar = plano?.linhas.filter(l => l.acao === "enviar").length ?? 0;
+  // Só disponibilidade (M3.11b): preço, mínimo e máximo ficam no Beds24; as colunas do SCL mostram "—" e a do Beds24, o lido.
+  const soDisponibilidade = plano?.fontePrecos === "so_disponibilidade";
   const passadas = plano && inicio < plano.hoje ? `Noites antes de hoje (${dataBr(plano.hoje)}) não aparecem: o cadastro atual não reconstitui tarifas passadas.` : null;
   return <>
     <h1>Conferir calendário e preços</h1>
@@ -82,7 +84,7 @@ export default async function Previa({ searchParams }: PageProps<"/painel/calend
         <p>Vínculo atual: propriedade {vinculos[0].propertyId || "não informada"} · quarto {vinculos[0].roomId || "não informado"}.</p>}
       <p>Regras em vigor: mínimo por dia da semana {DIAS_NA_ORDEM.map((n) => regras.minimoPorDia[n]).join("/")} ({INTERVALO_DA_SEMANA}) · máximo {plano.regras.estadiaMaxima ?? regras.estadiaMaxima} noites · feriados cadastrados: {regras.feriados.length} · eventos: {regras.eventos.filter(e => e.todosImoveis || e.imoveis.includes(escolhido.id)).length} neste imóvel · última hora: {APLICACOES_ULTIMA_HORA[regras.ultimaHora.aplicadoPor]} ({regras.ultimaHora.faixas.map(f => `D−${f.ateDias} a D−${f.deDias}: ${f.percentual}%`).join("; ")}) · pisos deste imóvel: {dinheiro(plano.pisos[0])} / {dinheiro(plano.pisos[1])}.</p>
       {regras.ultimaHora.aplicadoPor === "beds24" && <p>Com o Beds24 aplicando a última hora, o SCL envia a referência e eleva o valor enviado só quando o desconto nativo cairia abaixo do piso. O preço final mostrado é o esperado após a regra nativa; a releitura confirma o que o Beds24 gravou, não a cotação final nos canais.</p>}
-      <p><strong>Fonte de preços deste imóvel:</strong> {NOMES_FONTE_PRECOS[plano.fontePrecos]}. {EXPLICACAO_FONTE_PRECOS[plano.fontePrecos]}{plano.fontePrecos === "beds24" ? " Nesta tela, o preço de cada noite é o da coluna Beds24; o SCL envia só mínimos, máximos e bloqueios." : ""}</p>
+      <p><strong>Fonte de preços deste imóvel:</strong> {NOMES_FONTE_PRECOS[plano.fontePrecos]}. {EXPLICACAO_FONTE_PRECOS[plano.fontePrecos]}{plano.fontePrecos === "beds24" ? " Nesta tela, o preço de cada noite é o da coluna Beds24; o SCL envia só mínimos, máximos e bloqueios." : ""}{soDisponibilidade ? " Nesta tela, preço, mínimo e máximo de cada noite são os da coluna Beds24; o SCL envia só os bloqueios do SCL." : ""}</p>
       <p>Coluna “Site (≈)”: preço da noite no site com o desconto do site de aproximadamente {(bpSite / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% (Configurações → Marketplace e desconto do site). É referência por noite: o desconto real é calculado sobre o total da estadia. Serve para conferir a promessa de preço abaixo das plataformas contra o que o hóspede vê no Airbnb e no Booking.</p>
       <p>Antecedência mínima: {numero(plano.regras.antecedenciaMinima)} dias · Horizonte do cadastro: {numero(plano.regras.janelaMaxima)} dias. Dias de entrada/saída restritos no cadastro não são enviados ao Beds24 nesta etapa.</p>
       {s.papel === "admin" && <p><Link href={`/painel/imoveis/${escolhido.id}`}>Editar base, períodos, pisos e regras do imóvel</Link> · <Link href="/painel/configuracoes/integracoes">Importação do Beds24</Link></p>}
@@ -92,10 +94,10 @@ export default async function Previa({ searchParams }: PageProps<"/painel/calend
           <thead><tr><th scope="col">Noite</th><th scope="col">Preço: referência → enviar (final esperado) / Beds24</th><th scope="col">Site (≈)</th><th scope="col">Mínimo: regra → enviar / Beds24</th><th scope="col">Máximo</th><th scope="col">Ocupação e bloqueio</th><th scope="col">Entrada / saída no cadastro</th><th scope="col">Ação</th><th scope="col">Leitura e avisos</th></tr></thead>
           <tbody>{plano.linhas.map(l => <tr key={l.data}>
             <th scope="row">{dataBr(l.data)}<br /><small>D{l.antecedencia === 0 ? "0" : `−${l.antecedencia}`}</small></th>
-            <td>{dinheiro(l.precoReferencia)} → {dinheiro(l.precoEnviar)} ({dinheiro(l.precoFinalEsperado)}) / {dinheiro(l.observacao?.preco)}<br /><small>{l.motivoPreco}{l.percentualUltimaHora ? ` · última hora ${l.percentualUltimaHora}%${l.piso !== null ? `, piso ${formatBRL(l.piso)}` : ""}` : ""}</small></td>
+            <td>{soDisponibilidade ? "—" : `${dinheiro(l.precoReferencia)} → ${dinheiro(l.precoEnviar)} (${dinheiro(l.precoFinalEsperado)})`} / {dinheiro(l.observacao?.preco)}<br /><small>{l.motivoPreco}{l.percentualUltimaHora ? ` · última hora ${l.percentualUltimaHora}%${l.piso !== null ? `, piso ${formatBRL(l.piso)}` : ""}` : ""}</small></td>
             <td>{siteAprox(l.precoFinalEsperado)}</td>
-            <td>{numero(l.minimoRegra)} → {numero(l.minimoEnviar)} / {numero(l.observacao?.minimoNoites)}<br /><small>{l.motivoMinimo}</small></td>
-            <td>{l.maximoEnviar} / {numero(l.observacao?.maximoNoites)}</td>
+            <td>{soDisponibilidade ? "—" : `${numero(l.minimoRegra)} → ${numero(l.minimoEnviar)}`} / {numero(l.observacao?.minimoNoites)}<br /><small>{l.motivoMinimo}</small></td>
+            <td>{l.maximoEnviar ?? "—"} / {numero(l.observacao?.maximoNoites)}</td>
             <td>{l.reservas} reserva(s){l.bloqueioScl ? " · bloqueio do SCL" : ""}{l.livresSeguidas !== null && l.livresSeguidas > 0 ? ` · ${l.livresSeguidas} noite(s) livre(s) seguidas` : ""}<br /><small>Beds24: {numero(l.observacao?.livres)} livre(s), {l.observacao ? BLOQUEIO[l.observacao.bloqueio ?? "none"] ?? l.observacao.bloqueio : "sem leitura"}{l.bloqueioEnviar ? ` → enviar ${BLOQUEIO[l.bloqueioEnviar]}` : ""}</small></td>
             <td>{permiteDia(plano.regras.diasChegada, l.data) ? "Entrada não restringida" : "Entrada restringida"}<br />{permiteDia(plano.regras.diasSaida, l.data) ? "Saída não restringida" : "Saída restringida"}</td>
             <td>{ACOES[l.acao]}{l.enviado ? <><br /><small>Último envio: {instante(l.enviado.enviadoEm, escolhido.fuso)}{l.enviado.confirmado ? ", confirmado" : ", sem confirmação"}</small></> : null}</td>

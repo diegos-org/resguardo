@@ -786,6 +786,79 @@ describe("envio ao Beds24 (M3.7)", () => {
   });
 });
 
+describe("só disponibilidade no envio (M3.11b)", () => {
+  beforeEach(() => db.update(imoveisDetalhes).set({ fontePrecos: "so_disponibilidade" }).where(eq(imoveisDetalhes.imovelId, im)));
+
+  it("a carga leva só o bloqueio do SCL: preço, mínimo e máximo do Beds24 ficam como estão, os registros guardam nulos e a releitura confere só o bloqueio; removido, reabre", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-05", motivo: "Uso próprio" });
+    const r = await enviar();
+    expect(r).toMatchObject({ ok: true, situacao: "ok", imoveis: [{ codigo: "103", enviadas: 2, confirmadas: 2, divergentes: 0, falha: "", resumo: { enviar: 2, iguais: 0, semDados: 8 } }] });
+    expect(beds.escritas).toHaveLength(1);
+    expect(beds.escritas[0][0].faixas).toEqual([{ from: "2026-10-03", to: "2026-10-04", bloqueio: "blackout" }]);
+    // O Beds24 falso mantém preço, mínimo e máximo; só o bloqueio mudou.
+    expect(diaFalso("2026-10-03")).toMatchObject({ price1: 400, minStay: 1, maxStay: 27, override: "blackout", numAvail: 0 });
+    expect(diaFalso("2026-10-02")).toMatchObject({ price1: 400, minStay: 1, maxStay: 27, override: "none", numAvail: 1 });
+    const n = await noitesDoEnvio(db, org, r.envioId!);
+    expect(n).toHaveLength(2);
+    expect(n[0]).toMatchObject({ data: "2026-10-03", precoAntes: 40000, precoEnviado: null, minimoAntes: 1, minimoEnviado: null, maximoEnviado: null, bloqueioAntes: "none", bloqueioEnviado: "blackout", resultado: "confirmado" });
+    expect(n[0].regra).toContain("Preço definido no Beds24 (o SCL só lê)");
+    expect(n[0].regra).toContain("máx. —");
+    const est = await enviados();
+    expect(est).toHaveLength(2);
+    expect(est[0]).toMatchObject({ data: "2026-10-03", preco: null, minimo: null, maximo: null, bloqueio: "blackout", bloqueioAnterior: null, confirmado: true });
+    // Nenhum aviso de "preço do SCL ausente": nesta fonte o preço é lido do Beds24 por regra.
+    expect(r.avisos.some(a => a.includes("sem preço no SCL"))).toBe(false);
+    // Nada mudou: nada a enviar.
+    expect((await enviar()).imoveis[0]).toMatchObject({ enviadas: 0, resumo: { enviar: 0, iguais: 2, semDados: 8 } });
+    expect(beds.escritas).toHaveLength(1);
+    // Bloqueio removido: reabre só o que o SCL fechou, de novo sem preço, mínimo nem máximo.
+    await db.delete(bloqueios).where(eq(bloqueios.imovelId, im));
+    expect((await enviar()).imoveis[0]).toMatchObject({ enviadas: 2, confirmadas: 2 });
+    expect(beds.escritas[1][0].faixas).toEqual([{ from: "2026-10-03", to: "2026-10-04", bloqueio: "none" }]);
+    expect(diaFalso("2026-10-03")).toMatchObject({ price1: 400, minStay: 1, maxStay: 27, override: "none", numAvail: 1 });
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ preco: null, minimo: null, maximo: null, bloqueio: "none", confirmado: true });
+    expect((await enviar()).imoveis[0].enviadas).toBe(0);
+  });
+
+  it("fonte trocada entre o plano e a escrita, para \"só disponibilidade\" ou dela para outra: nada é escrito; o próximo envio replaneja pela fonte nova", async () => {
+    await db.update(imoveisDetalhes).set({ fontePrecos: "scl" }).where(eq(imoveisDetalhes.imovelId, im));
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    // Depois da primeira transação (o plano), outra gravação troca a fonte.
+    const trocandoPara = (fonte: "scl" | "so_disponibilidade") => {
+      let transacoes = 0;
+      return new Proxy(db, {
+        get(alvo, prop, receptor) {
+          if (prop === "transaction") {
+            const original = alvo.transaction.bind(alvo) as (...a: unknown[]) => Promise<unknown>;
+            return async (...a: unknown[]) => { const r = await original(...a); if (++transacoes === 1) await alvo.update(imoveisDetalhes).set({ fontePrecos: fonte }).where(eq(imoveisDetalhes.imovelId, im)); return r; };
+          }
+          const v = Reflect.get(alvo, prop, receptor);
+          return typeof v === "function" ? v.bind(alvo) : v;
+        },
+      }) as Db;
+    };
+    const r = await enviarCalendarioBeds24(trocandoPara("so_disponibilidade"), org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, confirmadas: 0, falha: expect.stringContaining("Fonte de preços do imóvel alterada") }] });
+    expect(beds.escritas).toHaveLength(0);
+    expect(diaFalso("2026-10-01")).toMatchObject({ price1: 400, override: "none" });
+    // Replanejado com a fonte nova: só o bloqueio vai.
+    expect((await enviar()).situacao).toBe("ok");
+    expect(beds.escritas[0][0].faixas).toEqual([{ from: "2026-10-03", to: "2026-10-03", bloqueio: "blackout" }]);
+    // E de volta: o bloqueio removido pede a reabertura, mas a fonte volta a "scl" no meio — nada é escrito.
+    await db.delete(bloqueios).where(eq(bloqueios.imovelId, im));
+    const r2 = await enviarCalendarioBeds24(trocandoPara("scl"), org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r2).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, falha: expect.stringContaining("Fonte de preços do imóvel alterada") }] });
+    expect(beds.escritas).toHaveLength(1);
+    expect(diaFalso("2026-10-03")).toMatchObject({ price1: 400, override: "blackout" });
+    // Com a fonte "scl" de volta, o próximo envio manda preço, mínimo e máximo e reabre a noite.
+    expect((await enviar()).situacao).toBe("ok");
+    const faixas = beds.escritas[1][0].faixas;
+    expect(faixas.every(f => f.preco !== undefined && f.maximo === 27)).toBe(true);
+    expect(faixas.find(f => f.from <= "2026-10-03" && "2026-10-03" <= f.to)).toMatchObject({ bloqueio: "none" });
+    expect(diaFalso("2026-10-03")).toMatchObject({ price1: 450, override: "none" });
+  });
+});
+
 describe("reserva-pedido de uma alteração (M8.2d) no plano do Beds24", () => {
   it("o envio não conta as noites seguradas de uma alteração: o mínimo em volta delas não muda; o site continua vendo as noites ocupadas", async () => {
     // Sábado 3/10 segurado por uma alteração (reserva-pedido, que nunca vai ao Beds24). Sem ela, sexta 2/10 pede 2 noites.

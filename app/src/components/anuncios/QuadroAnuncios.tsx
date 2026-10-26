@@ -23,6 +23,7 @@ export const NOTAS_PRECO_SITE: Record<FontePrecos, string> = {
   scl: "É a base do valor da noite no site: com os preços automáticos do SCL, cada noite parte deste preço (ou do preço do período), com os ajustes automáticos e o desconto do site por cima.",
   manual: "É a base do valor da noite no site: com os preços digitados no cadastro, vale este preço (ou o do período), sem ajustes automáticos, com o desconto do site por cima.",
   beds24: "Só referência interna: com os preços definidos no Beds24, o site usa o preço de cada noite lido do Beds24, com o desconto do site por cima; este preço não entra no site.",
+  so_disponibilidade: "Só referência interna: com só disponibilidade, o site usa o preço e as estadias mínima e máxima de cada noite lidos do Beds24, com o desconto do site por cima; este preço não entra no site.",
 };
 /**
  * Frase de abertura no cartão "Site" (M7.17). Sem ela, o que o cartão da casa e a prévia do link usam no lugar, pela
