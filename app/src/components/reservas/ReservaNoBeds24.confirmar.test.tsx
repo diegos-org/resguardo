@@ -19,9 +19,10 @@ import { ReservaNoBeds24 } from "./ReservaNoBeds24";
 const ID = "11111111-1111-4111-8111-111111111111";
 const tarefa = (o: Partial<TarefaOta>): TarefaOta => ({ reservaId: ID, codigo: "SCL-7K2QXM", caso: "d3", estado: "manual", checkin: "2026-12-20", checkout: "2026-12-27", desde: new Date(0), alteracaoIds: [], texto: "", marca: null, ...o });
 // Muda junto (M8.3c, bloco G): a ficha ganhou `acoes` (os botões do envio que valem agora); aqui, nenhum.
+// Muda junto (M3.11b): a ficha ganhou `direta` (a reserva direta confirmada no SCL); aqui, a reserva do site.
 const ficha = (t: TarefaOta): FichaReservaNoBeds24 => ({
   desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: false, pedido: null, tarefas: [t], atencoes: [],
-  acoes: { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false },
+  acoes: { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false }, direta: null,
 });
 
 afterEach(() => {
@@ -37,6 +38,21 @@ describe("marcas manuais das OTAs (M8.3b)", () => {
     const confirmar = vi.fn(() => false);
     vi.stubGlobal("confirm", confirmar);
     render(<ReservaNoBeds24 reservaId={ID} ficha={ficha(tarefa({ marca, caso: marca === "datas_fechadas" ? "d3" : "d3_cancelada" }))} editar />);
+    const botao = screen.getByRole("button", { name: rotulo });
+    const enviado = vi.fn((ev: Event) => ev.preventDefault());
+    botao.closest("form")!.addEventListener("submit", enviado);
+    fireEvent.click(botao);
+    expect(confirmar).toHaveBeenCalledWith(pergunta);
+    expect(enviado).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["datas_fechadas", "direta", "Datas fechadas nas OTAs", "Confirmar que as datas desta reserva direta (20/12 a 27/12) já foram fechadas no Beds24 como bloqueio (sem criar reserva lá)?"],
+    ["datas_reabertas", "direta_cancelada", "Datas reabertas nas OTAs", "Confirmar que as datas desta reserva (20/12 a 27/12) já foram reabertas nas OTAs (no Beds24, o bloqueio mudado para Cancelado, sem apagar)?"],
+  ] as const)("M3.11b, a reserva direta, %s: pede confirmação sem prometer o que o sistema nunca faria; recusada, nada é enviado", (marca, caso, rotulo, pergunta) => {
+    const confirmar = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirmar);
+    render(<ReservaNoBeds24 reservaId={ID} ficha={{ ...ficha(tarefa({ marca, caso })), desligada: [], direta: { fechadasEm: null, reabertasEm: null } }} editar />);
     const botao = screen.getByRole("button", { name: rotulo });
     const enviado = vi.fn((ev: Event) => ev.preventDefault());
     botao.closest("form")!.addEventListener("submit", enviado);

@@ -31,7 +31,8 @@ import { NOMES_MOTIVO_NO_BEDS24, NOMES_SITUACAO_NO_BEDS24, ReservaNoBeds24, text
 const ID = "11111111-1111-4111-8111-111111111111";
 // Muda junto (M8.3c, bloco G): a ficha ganhou `acoes` (os botões do envio que valem agora); aqui, nenhum.
 const SEM_ACOES: FichaReservaNoBeds24["acoes"] = { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false };
-const vazia: FichaReservaNoBeds24 = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [], acoes: SEM_ACOES };
+// Muda junto (M3.11b): a ficha ganhou `direta` (a reserva direta confirmada no SCL); aqui, a reserva do site.
+const vazia: FichaReservaNoBeds24 = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [], acoes: SEM_ACOES, direta: null };
 const tarefa = (o: Partial<TarefaOta> = {}): TarefaOta => ({
   reservaId: ID,
   codigo: "SCL-7K2QXM",
@@ -136,6 +137,7 @@ describe("bloco No Beds24 da ficha", () => {
       tarefas: [],
       atencoes: [],
       acoes: SEM_ACOES,
+      direta: null,
     });
     expect(h).toContain("Diferente no Beds24: cancelada no Beds24 por fora");
     expect(h).toContain("98765");
@@ -267,6 +269,52 @@ describe("os botões do envio na ficha (M8.3c, bloco G; plano 1.15)", () => {
     expect(aguardando("incerta", false)).not.toContain(FRASE);
     // A duplicada e a marca no registro inesperado pedem a equipe de verdade: sem a frase.
     for (const motivo of ["duplicada", "marca_em_registro_inesperado"] as const) expect(aguardando(motivo, true)).not.toContain(FRASE);
+  });
+});
+
+describe("M3.11b: a reserva direta confirmada no SCL na ficha", () => {
+  const FRASE = "O sistema faz isso sozinho; este aviso fica quando ele não consegue.";
+  const direta = (o: Partial<FichaReservaNoBeds24> = {}, marcas: NonNullable<FichaReservaNoBeds24["direta"]> = { fechadasEm: null, reabertasEm: null }): FichaReservaNoBeds24 => ({
+    ...vazia,
+    desligada: [],
+    simular: false,
+    direta: marcas,
+    ...o,
+  });
+  const feche = tarefa({ caso: "direta", texto: "Reserva direta SCL-7K2QXM: feche as datas de 20/12 a 27/12 no Beds24 como bloqueio (não crie reserva lá).", marca: "datas_fechadas" });
+  const reabra = tarefa({ caso: "direta_cancelada", texto: "Reserva direta SCL-7K2QXM cancelada: reabra as datas de 20/12 a 27/12 no Beds24 (mude o bloqueio para Cancelado; não apague).", marca: "datas_reabertas" });
+
+  it("o aviso e a tarefa com o botão da marca (reserva:editar); nunca o envio automático, a frase da 6.2, o Simular nem os botões do envio", () => {
+    const h = html(direta({ tarefas: [feche] }));
+    expect(h).toContain('aria-label="Reserva no Beds24"');
+    expect(h).toContain("Reserva direta (fora do site e das OTAs): o sistema nunca cria esta reserva no Beds24.");
+    expect(h).toContain("Reserva direta SCL-7K2QXM: feche as datas de 20/12 a 27/12 no Beds24 como bloqueio (não crie reserva lá).");
+    expect(h).toContain(">Datas fechadas nas OTAs</button>");
+    expect(h).toMatch(/Datas fechadas nas OTAs<\/dt><dd>não marcado/);
+    expect(h).not.toContain("Datas reabertas nas OTAs");
+    for (const nunca of ["Envio automático ao Beds24", FRASE, ">Simular</button>", 'aria-label="Envio ao Beds24"', "Id no Beds24", "Nada a fazer à mão nas OTAs"]) expect(h).not.toContain(nunca);
+    // Sem dado do hóspede nem valor: só o código e as datas.
+    expect(h).not.toMatch(/R\$|@/);
+    // Sem reserva:editar, só o texto.
+    const semEditar = html(direta({ tarefas: [feche] }), false);
+    expect(semEditar).toContain("feche as datas de 20/12 a 27/12 no Beds24 como bloqueio");
+    expect(semEditar).not.toContain("</button>");
+  });
+
+  it("marcada: quando a equipe fechou; sem tarefa, nada a fazer; cancelada depois da marca: reabrir, com o botão; reaberta: as duas datas", () => {
+    const marcada = html(direta({}, { fechadasEm: new Date("2026-10-02T12:00:00Z"), reabertasEm: null }));
+    expect(marcada).toContain("02/10/2026 às 09:00 (marcado pela equipe)");
+    expect(marcada).toContain("Nada a fazer à mão nas OTAs para esta reserva agora.");
+    expect(marcada).not.toContain("</button>");
+    const cancelada = html(direta({ tarefas: [reabra] }, { fechadasEm: new Date("2026-10-02T12:00:00Z"), reabertasEm: null }));
+    expect(cancelada).toContain("Reserva direta SCL-7K2QXM cancelada: reabra as datas de 20/12 a 27/12 no Beds24 (mude o bloqueio para Cancelado; não apague).");
+    expect(cancelada).toContain(">Datas reabertas nas OTAs</button>");
+    expect(cancelada).not.toContain(">Datas fechadas nas OTAs</button>");
+    const reaberta = html(direta({}, { fechadasEm: new Date("2026-10-02T12:00:00Z"), reabertasEm: new Date("2026-10-03T12:00:00Z") }));
+    expect(reaberta).toMatch(/Datas reabertas nas OTAs<\/dt><dd>03\/10\/2026 às 09:00 \(marcado pela equipe\)/);
+    expect(reaberta).not.toContain("</button>");
+    // O resultado da marca (`?beds24=`), como na reserva do site.
+    expect(html(direta({}, { fechadasEm: new Date("2026-10-02T12:00:00Z"), reabertasEm: null }), true, "ota_fechada")).toMatch(/class="[^"]*sucesso[^"]*">Datas marcadas como fechadas nas OTAs\./);
   });
 });
 

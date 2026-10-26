@@ -15,6 +15,7 @@
  * - Ficha (M8.3b, `reserva:editar`, com `BotaoConfirmar` na tela e auditoria no domínio): "Datas fechadas nas OTAs" (D8,
  *   a marca manual da reserva paga sem criação pelo sistema e da confirmada à mão sem pagamento) e "Datas reabertas nas
  *   OTAs" (a confirmada à mão, marcada e depois cancelada pelo "Cancelar reserva" comum). Recusa volta à ficha com `?erro=`.
+ *   M3.11b: as mesmas duas marcas valem para a reserva direta confirmada no SCL (o domínio decide pela reserva).
  * - Ficha (M8.3c, bloco G; plano 1.15): "Conferir agora", "Tentar de novo", "Deixar à mão" e "Reenviar o que está no SCL"
  *   (`reserva:editar`) e "Não existe, pode criar", "Vincular o id" e "Passar ao sistema" (também `configuracao:editar`:
  *   hoje, só o admin), com o resultado em `?beds24=` e a recusa em `?erro=`.

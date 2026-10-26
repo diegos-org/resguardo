@@ -3,21 +3,24 @@
  * alterada com os cortes de data de antes; os textos por reserva (bloqueio feito à mão ou reserva criada pelo sistema, sempre
  * "não apague"); a marca manual "Datas fechadas nas OTAs" (D8) e a "Datas reabertas nas OTAs" da D3 cancelada; a D3 que
  * nunca vai ao envio; a carência do envio automático (informativo, atrasadas e atenção). PGlite, os cenários do pagamento e
- * um espião de `fetch` que nunca é chamado: nada vai ao Beds24.
+ * um espião de `fetch` que nunca é chamado: nada vai ao Beds24. M3.11b (teste 19; SO-DISPONIBILIDADE, 9.6): a reserva direta
+ * confirmada no SCL — o aviso "feche as datas" no Início e na ficha, a marca que o tira, a cancelada depois da marca que pede
+ * reabrir, quem não entra, as duas fontes de preços, a operação, outra organização, a auditoria e a fila do envio vazia.
  */
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcessoNegado, type Sessao } from "@/acesso/politica";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { auditoria, beds24ReservasOperacoes, beds24ReservasSite, pagamentos, reservas } from "@/db/schema";
+import { auditoria, beds24ReservasOperacoes, beds24ReservasSite, type EstadoReserva, imoveisDetalhes, type OrigemReserva, pagamentos, reservas, reservasDiretasOtas } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { marcarOtaAtualizada } from "@/pagamentos/alteracao";
 import { marcarOtaLiberada } from "@/pagamentos/cancelamento";
-import { cancelarReserva, confirmarReserva } from "@/reservas/repositorio";
-import { alterar, type Cenario, cancelar, entradaPadrao, env, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, semDadosDoHospede, usuarioDeTeste } from "@/pagamentos/testes";
+import { cancelarReserva, confirmarReserva, criarReserva } from "@/reservas/repositorio";
+import { alterar, type Cenario, cancelar, entradaPadrao, env, minutos, montarCenario, pagarDiferenca, pagarEConfirmar, semDadosDoHospede, semDadosPessoais, usuarioDeTeste } from "@/pagamentos/testes";
 import { conferirNaImportacao } from "./reservas-site";
-import { avisosDeReservasNoBeds24 } from "./reservas-site-avisos";
+import { avisosDeReservasNoBeds24, reservasComAtencaoNoBeds24 } from "./reservas-site-avisos";
+import { reservaDiretaParaOtas } from "./reservas-site-regras";
 import { chaveDoResultadoDaSimulacao, simularReservaNoBeds24 } from "./reservas-site-simulacao";
 import {
   avisosDasTarefas,
@@ -530,5 +533,164 @@ describe("teste 18: a carência do envio automático", () => {
     expect(classificarTarefa(e({ fato: "cancelada", ...linha("manual", null, minutos(1)) }))).toEqual({ tipo: "tarefa", caso: "cancelada_bloqueio", estado: "manual" });
     expect(classificarTarefa(e({ fato: "alterada", ...linha("pendente"), agora: minutos(31) }))).toEqual({ tipo: "tarefa", caso: "alterada_bloqueio", estado: "atrasada" });
     expect(classificarTarefa(e({ fato: "cancelada" }))).toEqual({ tipo: "tarefa", caso: "cancelada_bloqueio", estado: "manual" });
+  });
+});
+
+describe("teste 19 (M3.11b): a reserva direta confirmada no SCL e as OTAs", () => {
+  /** Uma reserva lançada à mão no painel (fonte `manual`), direta por padrão, confirmada; dados fictícios. */
+  async function direta(entrada: string, saida: string, o: Partial<{ origem: OrigemReserva; estado: EstadoReserva; email: string }> = {}) {
+    const r = await criarReserva(
+      db,
+      c.org,
+      {
+        imovelId: c.imovel, origem: o.origem ?? "direta", estado: o.estado ?? "confirmada", checkin: entrada, checkout: saida, hospedes: 2, hospedeNome: "Visitante Direto Fictício", hospedeEmail: o.email ?? "direto@example.com",
+        hospedeTelefone: "(21) 98888-0000", hospedeOrigem: "", moeda: "BRL", valorBruto: 120000, taxaCanal: null, valorLiquido: null, recebimento: "empresa", codigoCanal: "", observacoes: "",
+      },
+      equipe,
+    );
+    if (!r.ok) throw new Error(JSON.stringify(r.erros));
+    return { reservaId: r.reserva.id, reservaCodigo: r.reserva.codigo };
+  }
+  const marcas = async (reservaId: string) => (await db.select().from(reservasDiretasOtas).where(eq(reservasDiretasOtas.reservaId, reservaId)))[0];
+  const ficha = (reservaId: string) => `/painel/reservas/${reservaId}`;
+  const feche = (x: { reservaId: string; reservaCodigo: string }, datas: string) => `Reserva direta ${x.reservaCodigo}: feche as datas de ${datas} no Beds24 como bloqueio (não crie reserva lá).`;
+  /** Nenhum valor nem dado do hóspede fictício nas tarefas e nos avisos (só o código SCL e as datas). */
+  const semValores = (x: unknown) => {
+    const s = JSON.stringify(x);
+    for (const dado of ["R$", "120000", "1.200", "Visitante Direto", "direto@example.com", "98888"]) expect(s).not.toContain(dado);
+  };
+
+  it("o aviso no Início e na ficha, em qualquer fonte de preços, sempre à mão (também no deploy de produção com a chave), para a operação, sem valores; outra organização não vê", async () => {
+    const x = await direta("2026-11-10", "2026-11-13");
+    const outro = await direta("2026-12-01", "2026-12-04", { origem: "outro", email: "outro.direto@example.com" });
+    const ordem = [x, outro].sort((a, b) => a.reservaCodigo.localeCompare(b.reservaCodigo));
+    const esperadas = ordem.map((r) => ({ reservaId: r.reservaId, codigo: r.reservaCodigo, caso: "direta", estado: "manual", checkin: r === x ? "2026-11-10" : "2026-12-01", checkout: r === x ? "2026-11-13" : "2026-12-04", alteracaoIds: [], texto: feche(r, r === x ? "10/11 a 13/11" : "01/12 a 04/12"), marca: "datas_fechadas" }));
+    const linhas = ordem.map((r) => ({ nivel: "info", texto: feche(r, r === x ? "10/11 a 13/11" : "01/12 a 04/12"), link: ficha(r.reservaId) }));
+    for (const fonte of ["scl", "so_disponibilidade"] as const) {
+      await db.update(imoveisDetalhes).set({ fontePrecos: fonte }).where(eq(imoveisDetalhes.imovelId, c.imovel));
+      for (const e of [env(), PRONTO]) {
+        const t = await tarefas(minutos(90), e);
+        expect(t.tarefas).toMatchObject(esperadas);
+        expect(t.atencoes).toEqual([]);
+        expect(t.avisos).toEqual(linhas);
+        semValores(t);
+        // O Início (a operação, sem o link de Integrações) traz as mesmas linhas, com o link para a ficha; o filtro de atenção, não.
+        const inicio = await avisosDeReservasNoBeds24(db, c.org, minutos(90), e, { verConfiguracao: false });
+        expect(inicio.filter((a) => a.link?.startsWith("/painel/reservas/"))).toEqual(linhas);
+        expect(inicio.map((a) => a.texto).join("\n")).not.toMatch(/sendo enviadas|faz isso sozinho/);
+        expect(await reservasComAtencaoNoBeds24(db, c.org, minutos(90), e)).toEqual([]);
+      }
+    }
+    // A ficha de uma só (`reservaIds`) traz só a dela.
+    expect((await tarefas(minutos(90), env(), [x.reservaId])).tarefas.map((t) => t.codigo)).toEqual([x.reservaCodigo]);
+    // Outra empresa não vê nada disso, nem marca.
+    const outra = await montarCenario(db);
+    expect(await tarefasDasOtas(db, outra.org, minutos(90), env())).toEqual({ tarefas: [], atencoes: [], avisos: [] });
+    const deOutra: Sessao = { ...admin, organizacaoId: outra.org };
+    expect(await marcarDatasFechadasNasOtas(db, deOutra, x.reservaId, env(), minutos(30))).toEqual({ ok: false, erro: "Reserva do site não encontrada." });
+    expect(await marcas(x.reservaId)).toBeUndefined();
+    // A varredura de dados pessoais: nada do hóspede fictício fora da reserva.
+    expect(await semDadosPessoais(db, ["direto@example.com", "(21) 98888-0000"])).toEqual([]);
+  });
+
+  it("\"Datas fechadas nas OTAs\" (a operação também): grava quem e quando, tira o aviso, audita; a segunda vez recusa; nada entra na fila do envio", async () => {
+    const x = await direta("2026-11-10", "2026-11-13");
+    const operacao: Sessao = { ...admin, papel: "operacao" };
+    expect(await marcarDatasReabertasNasOtas(db, operacao, x.reservaId, env(), minutos(29))).toEqual({ ok: false, erro: ERRO_NADA_A_REABRIR });
+    expect(await marcarDatasFechadasNasOtas(db, operacao, x.reservaId, env(), minutos(30))).toEqual({ ok: true });
+    expect(await marcas(x.reservaId)).toMatchObject({ organizacaoId: c.org, fechadasEm: minutos(30), fechadasPor: equipe, reabertasEm: null, reabertasPor: null });
+    expect(await tarefas(minutos(31))).toEqual({ tarefas: [], atencoes: [], avisos: [] });
+    expect((await avisosDeReservasNoBeds24(db, c.org, minutos(31), PRONTO)).filter((a) => a.link === ficha(x.reservaId))).toEqual([]);
+    const [registro] = await db.select().from(auditoria).where(and(eq(auditoria.entidadeId, x.reservaId), eq(auditoria.acao, "beds24.reserva.ota_fechada")));
+    expect(registro).toMatchObject({ organizacaoId: c.org, usuarioId: equipe, entidade: "reserva", mudancas: { otaFechadaEm: [null, minutos(30).toISOString()] } });
+    expect(await marcarDatasFechadasNasOtas(db, admin, x.reservaId, env(), minutos(32))).toEqual({ ok: false, erro: "As datas já foram marcadas como fechadas em 01/10." });
+    expect(await marcarDatasReabertasNasOtas(db, admin, x.reservaId, env(), minutos(33))).toEqual({ ok: false, erro: ERRO_NADA_A_REABRIR });
+    // Nunca na fila do envio do M8.3c: nenhum acompanhamento nem operação, e o "Simular" diz que não é do site.
+    expect(await db.select().from(beds24ReservasSite).where(eq(beds24ReservasSite.organizacaoId, c.org))).toEqual([]);
+    expect(await db.select().from(beds24ReservasOperacoes).where(eq(beds24ReservasOperacoes.organizacaoId, c.org))).toEqual([]);
+    expect(await simularReservaNoBeds24(db, admin, x.reservaId, env(), minutos(34))).toEqual({ ok: false, motivo: "outra_fonte" });
+    expect(await db.select().from(auditoria).where(and(eq(auditoria.organizacaoId, c.org), eq(auditoria.acao, "beds24.reserva.ota_fechada")))).toHaveLength(1);
+  });
+
+  it("cancelada depois da marca: \"reabra as datas\" até \"Datas reabertas nas OTAs\" (auditada); cancelada sem a marca, nada; confirmada de novo, fecha de novo", async () => {
+    const x = await direta("2026-11-10", "2026-11-13");
+    const semMarca = await direta("2026-12-01", "2026-12-04", { email: "outro.direto@example.com" });
+    expect(await marcarDatasFechadasNasOtas(db, admin, x.reservaId, env(), minutos(20))).toEqual({ ok: true });
+    expect(await cancelarReserva(db, c.org, x.reservaId, equipe, { agora: minutos(40) })).toBe(true);
+    expect(await cancelarReserva(db, c.org, semMarca.reservaId, equipe, { agora: minutos(40) })).toBe(true);
+    const reabra = `Reserva direta ${x.reservaCodigo} cancelada: reabra as datas de 10/11 a 13/11 no Beds24 (mude o bloqueio para Cancelado; não apague).`;
+    const t = await tarefas(minutos(50));
+    expect(t.tarefas).toEqual([
+      { reservaId: x.reservaId, codigo: x.reservaCodigo, caso: "direta_cancelada", estado: "manual", checkin: "2026-11-10", checkout: "2026-11-13", desde: minutos(40), alteracaoIds: [], texto: reabra, marca: "datas_reabertas" },
+    ]);
+    expect(t.avisos).toEqual([{ nivel: "info", texto: reabra, link: ficha(x.reservaId) }]);
+    semValores(t);
+    expect(await marcarDatasFechadasNasOtas(db, admin, x.reservaId, env(), minutos(55))).toEqual({ ok: false, erro: "As datas já foram marcadas como fechadas em 01/10." });
+    expect(await marcarDatasReabertasNasOtas(db, admin, semMarca.reservaId, env(), minutos(55))).toEqual({ ok: false, erro: ERRO_NADA_A_REABRIR });
+    expect(await marcarDatasReabertasNasOtas(db, { ...admin, papel: "operacao" }, x.reservaId, env(), minutos(60))).toEqual({ ok: true });
+    expect(await marcas(x.reservaId)).toMatchObject({ fechadasEm: minutos(20), fechadasPor: equipe, reabertasEm: minutos(60), reabertasPor: equipe });
+    expect(await tarefas(minutos(61))).toEqual({ tarefas: [], atencoes: [], avisos: [] });
+    const [registro] = await db.select().from(auditoria).where(and(eq(auditoria.entidadeId, x.reservaId), eq(auditoria.acao, "beds24.reserva.ota_reaberta")));
+    expect(registro).toMatchObject({ usuarioId: equipe, entidade: "reserva", mudancas: { otaReabertaEm: [null, minutos(60).toISOString()] } });
+    expect(await marcarDatasReabertasNasOtas(db, admin, x.reservaId, env(), minutos(62))).toEqual({ ok: false, erro: "As datas já foram marcadas como reabertas nas OTAs." });
+    // A estadia que já terminou não pede mais reabrir (nem a cancelada com a marca vigente).
+    expect(await marcarDatasReabertasNasOtas(db, admin, x.reservaId, env(), new Date("2026-11-14T15:00:00Z"))).toMatchObject({ ok: false });
+    // Confirmada de novo (uma importação que a traz de volta): o aviso "feche" volta, e a marca nova regrava a linha e zera a reabertura.
+    await db.update(reservas).set({ estado: "confirmada", canceladaEm: null, confirmadaEm: minutos(70) }).where(eq(reservas.id, x.reservaId));
+    expect((await daReserva(x.reservaId, minutos(71))).map((k) => [k.caso, k.marca])).toEqual([["direta", "datas_fechadas"]]);
+    expect(await marcarDatasFechadasNasOtas(db, admin, x.reservaId, env(), minutos(72))).toEqual({ ok: true });
+    expect(await marcas(x.reservaId)).toMatchObject({ fechadasEm: minutos(72), fechadasPor: equipe, reabertasEm: null, reabertasPor: null });
+    const registros = await db.select().from(auditoria).where(and(eq(auditoria.entidadeId, x.reservaId), eq(auditoria.acao, "beds24.reserva.ota_fechada")));
+    expect(registros.map((r) => r.mudancas)).toEqual([{ otaFechadaEm: [null, minutos(20).toISOString()] }, { otaFechadaEm: [minutos(20).toISOString(), minutos(72).toISOString()], otaReabertaEm: [minutos(60).toISOString(), null] }]);
+    expect(await tarefas(minutos(73))).toEqual({ tarefas: [], atencoes: [], avisos: [] });
+  });
+
+  it("quem não entra: a do site, a de OTA, a com id do Beds24, a importada do Beds24, a pendente e a saída no passado (a saída hoje entra); a permissão", async () => {
+    const site = await pagarEConfirmar(c);
+    const airbnb = await direta("2026-11-20", "2026-11-23", { origem: "airbnb", email: "airbnb@example.com" });
+    const comId = await direta("2026-11-24", "2026-11-27", { email: "com.id@example.com" });
+    await db.update(reservas).set({ beds24Id: "900777" }).where(eq(reservas.id, comId.reservaId));
+    const importada = await direta("2026-11-28", "2026-12-01", { email: "importada@example.com" });
+    await db.update(reservas).set({ fonte: "beds24" }).where(eq(reservas.id, importada.reservaId));
+    const pendente = await direta("2026-12-02", "2026-12-05", { estado: "pendente", email: "pendente@example.com" });
+    const passada = await direta("2026-10-20", "2026-10-23", { email: "passada@example.com" });
+    const hoje = await direta("2026-10-24", "2026-10-27", { email: "hoje@example.com" });
+    const em = (dia: string) => new Date(`${dia}T15:00:00Z`);
+    // No começo de outubro (o relógio padrão): a do site é a paga do M8.3 (nunca "direta") e as duas diretas ainda por vir.
+    expect((await tarefas()).tarefas.map((t) => [t.reservaId, t.caso]).sort()).toEqual([[site.reservaId, "paga"], [hoje.reservaId, "direta"], [passada.reservaId, "direta"]].sort());
+    // No dia da saída (27/10, São Paulo) a direta ainda entra; no dia seguinte, não (a paga de 12/10 a 15/10 já saiu antes).
+    expect((await tarefas(em("2026-10-27"))).tarefas.map((t) => [t.reservaId, t.caso])).toEqual([[hoje.reservaId, "direta"]]);
+    expect((await tarefas(em("2026-10-28"))).tarefas).toEqual([]);
+    for (const r of [airbnb, comId, importada, pendente, passada]) {
+      expect((await daReserva(r.reservaId, em("2026-10-27"))).length).toBe(0);
+      expect(await marcarDatasFechadasNasOtas(db, admin, r.reservaId, env(), em("2026-10-27"))).toMatchObject({ ok: false });
+      expect(await marcas(r.reservaId)).toBeUndefined();
+    }
+    // A fonte "site" com a origem direta é do M8.3 (a D3, com o corte dela: a saída depois de hoje), nunca "direta".
+    await db.update(reservas).set({ fonte: "site" }).where(eq(reservas.id, hoje.reservaId));
+    expect((await daReserva(hoje.reservaId, em("2026-10-26"))).map((t) => t.caso)).toEqual(["d3"]);
+    expect(await daReserva(hoje.reservaId, em("2026-10-27"))).toEqual([]);
+    // A permissão: reserva:editar, antes de ler (deny-by-default).
+    for (const papel of ["proprietario", "limpeza", "hospede"] as const) {
+      await expect(marcarDatasFechadasNasOtas(db, { ...admin, papel, imovelIds: [c.imovel] }, passada.reservaId, env(), minutos(30))).rejects.toBeInstanceOf(AcessoNegado);
+    }
+  });
+
+  it("a regra pura: quem é direta para as OTAs, a classificação sempre à mão (mesmo com envio em curso ou a chave ligada) e os textos", () => {
+    expect(reservaDiretaParaOtas({ origem: "direta", fonte: "manual", beds24Id: null })).toBe(true);
+    expect(reservaDiretaParaOtas({ origem: "outro", fonte: "csv", beds24Id: null })).toBe(true);
+    for (const r of [
+      { origem: "airbnb", fonte: "manual", beds24Id: null },
+      { origem: "site", fonte: "manual", beds24Id: null },
+      { origem: "direta", fonte: "beds24", beds24Id: null },
+      { origem: "direta", fonte: "site", beds24Id: null },
+      { origem: "direta", fonte: "manual", beds24Id: "900001" },
+    ]) expect(reservaDiretaParaOtas(r)).toBe(false);
+    const e = (fato: EntradaDaTarefaOta["fato"]): EntradaDaTarefaOta => ({ fato, criada: false, acompanhamento: null, emCurso: true, desligada: [], regua: "criar", desde: minutos(0), agora: minutos(60) });
+    expect(classificarTarefa(e("direta"))).toEqual({ tipo: "tarefa", caso: "direta", estado: "manual" });
+    expect(classificarTarefa(e("direta_cancelada"))).toEqual({ tipo: "tarefa", caso: "direta_cancelada", estado: "manual" });
+    const r = { codigo: "SCL-TESTE1", checkin: "2026-10-12", checkout: "2026-10-15" };
+    expect(textoDaTarefa({ ...r, caso: "direta" })).toBe("Reserva direta SCL-TESTE1: feche as datas de 12/10 a 15/10 no Beds24 como bloqueio (não crie reserva lá).");
+    expect(textoDaTarefa({ ...r, caso: "direta_cancelada" })).toBe("Reserva direta SCL-TESTE1 cancelada: reabra as datas de 12/10 a 15/10 no Beds24 (mude o bloqueio para Cancelado; não apague).");
   });
 });

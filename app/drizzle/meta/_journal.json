@@ -533,6 +533,13 @@
       "when": 1792638668000,
       "tag": "0075_m3_11a_copias_precos_importados",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1793047010091,
+      "tag": "0076_m3_11b_reservas_diretas_otas",
+      "breakpoints": true
     }
   ]
 }

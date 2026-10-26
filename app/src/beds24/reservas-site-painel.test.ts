@@ -8,7 +8,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { gravarConfig } from "@/configuracoes/armazem";
-import { beds24ReservasOperacoes, beds24ReservasRotina, beds24ReservasSite, cotacoes, idsExternos, imoveis, organizacoes, reservas, usuarios } from "@/db/schema";
+import { beds24ReservasOperacoes, beds24ReservasRotina, beds24ReservasSite, cotacoes, idsExternos, imoveis, organizacoes, reservas, reservasDiretasOtas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { Beds24Falso } from "./falso";
@@ -59,7 +59,8 @@ describe("ficha da reserva", () => {
     const tarefa = { reservaId, codigo, caso: "d3", estado: "manual", checkin: "2026-12-20", checkout: "2026-12-27", desde: new Date(0), alteracaoIds: [], texto: expect.stringContaining("Feche as datas no Beds24 como bloqueio"), marca: "datas_fechadas" };
     // Muda junto (M8.3c, bloco G): a ficha ganhou `acoes`, os botões do envio que valem agora — fora do deploy de produção, nenhum.
     const acoes = { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false };
-    expect(f).toEqual({ desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [tarefa], atencoes: [], acoes });
+    // Muda junto (M3.11b): a ficha ganhou `direta` (a reserva direta confirmada no SCL); na reserva do site, null.
+    expect(f).toEqual({ desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [tarefa], atencoes: [], acoes, direta: null });
     // Outra reserva não entra na ficha desta.
     await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-OUTRA1", origem: "site", fonte: "site", checkin: "2026-12-01", checkout: "2026-12-03", hospedes: 2 });
     expect((await fichaReservaNoBeds24(db, org, reservaId, env(), AGORA))?.tarefas.map((t) => t.codigo)).toEqual([codigo]);
@@ -97,12 +98,25 @@ describe("ficha da reserva", () => {
     expect((await fichaReservaNoBeds24(db, org, reservaId, env()))?.pedido).toBeNull();
   });
 
-  it("reserva de outra fonte ou de outra organização: nada (o bloco não aparece)", async () => {
-    const [manual] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-MANUA2", origem: "direta", fonte: "manual", checkin: "2026-12-01", checkout: "2026-12-03" }).returning();
-    expect(await fichaReservaNoBeds24(db, org, manual.id, env())).toBeNull();
+  it("reserva de outra fonte ou de outra organização: nada (o bloco não aparece); a direta confirmada no SCL (M3.11b) tem o bloco reduzido, com a tarefa e as marcas dela", async () => {
+    // Muda junto (M3.11b): a lançada à mão de origem direta ganhou o bloco; a importada do Beds24 e a de OTA continuam sem ele.
+    const [importada] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-IMPOR2", origem: "direta", fonte: "beds24", beds24Id: "900002", checkin: "2026-12-01", checkout: "2026-12-03" }).returning();
+    expect(await fichaReservaNoBeds24(db, org, importada.id, env(), AGORA)).toBeNull();
+    const [airbnb] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-AIRBN2", origem: "airbnb", fonte: "manual", checkin: "2026-12-04", checkout: "2026-12-06" }).returning();
+    expect(await fichaReservaNoBeds24(db, org, airbnb.id, env(), AGORA)).toBeNull();
     const [{ id: outra }] = await db.insert(organizacoes).values({ nome: "Outra empresa" }).returning();
     expect(await fichaReservaNoBeds24(db, outra, reservaId, env())).toBeNull();
     expect(await fichaReservaNoBeds24(db, org, "nao-e-uuid", env())).toBeNull();
+    // A direta: só a tarefa (a mesma do Início) e as marcas; sem envio automático, histórico, simulação nem botões.
+    const [manual] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-MANUA2", origem: "direta", fonte: "manual", checkin: "2026-12-01", checkout: "2026-12-03" }).returning();
+    const acoes = { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false };
+    expect(await fichaReservaNoBeds24(db, org, manual.id, env(PRONTO), AGORA)).toEqual({
+      desligada: [], beds24Id: null, acompanhamento: null, operacoes: [], simular: false, pedido: null, atencoes: [], acoes, direta: { fechadasEm: null, reabertasEm: null },
+      tarefas: [{ reservaId: manual.id, codigo: "SCL-MANUA2", caso: "direta", estado: "manual", checkin: "2026-12-01", checkout: "2026-12-03", desde: new Date(0), alteracaoIds: [], texto: "Reserva direta SCL-MANUA2: feche as datas de 01/12 a 03/12 no Beds24 como bloqueio (não crie reserva lá).", marca: "datas_fechadas" }],
+    });
+    await db.insert(reservasDiretasOtas).values({ reservaId: manual.id, organizacaoId: org, fechadasEm: new Date("2026-10-02T12:00:00Z"), fechadasPor: admin });
+    expect(await fichaReservaNoBeds24(db, org, manual.id, env(), AGORA)).toMatchObject({ tarefas: [], direta: { fechadasEm: new Date("2026-10-02T12:00:00Z"), reabertasEm: null } });
+    expect(await fichaReservaNoBeds24(db, outra, manual.id, env(), AGORA)).toBeNull();
   });
 });
 

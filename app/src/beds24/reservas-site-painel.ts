@@ -3,7 +3,9 @@
  * rótulos ficam nos componentes (`components/reservas/ReservaNoBeds24.tsx`, `components/configuracoes/ReservasSiteBeds24.tsx`).
  * - `fichaReservaNoBeds24`: o bloco da ficha (situação e motivo, id no Beds24, quarto, última conferência e leitura,
  *   histórico curto das operações), o "desligada", calculado e nunca gravado (chave, pausa, imóvel ou nenhuma linha), e as
- *   tarefas das OTAs desta reserva (M8.3b), da mesma função do Início (`tarefasDasOtas`).
+ *   tarefas das OTAs desta reserva (M8.3b), da mesma função do Início (`tarefasDasOtas`). M3.11b: na reserva direta
+ *   confirmada no SCL (`reservaDiretaParaOtas`), o bloco reduzido: a tarefa "feche as datas" ou "reabra as datas" e as
+ *   marcas da equipe (`direta`); nada de envio, simulação ou botões, porque o sistema nunca a escreve no Beds24.
  * - `painelReservasBeds24`: a seção de Integrações (chave e ambiente, credencial com o último 403 ou 401 de reservas,
  *   prontidão sem rede com os escopos guardados, o motivo que para a escrita, pausa geral, imóveis ligados, o ensaio e os
  *   contadores por situação). M8.3c: a marca ilegível sai da mesma regra do trabalhador (`existeMarcaIlegivelQueConta`).
@@ -14,7 +16,7 @@
  */
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { quartoDoVinculo } from "@/calendario/envio";
-import { beds24ReservasOperacoes, beds24ReservasSite, cotacoes, imoveis, reservas, usuarios } from "@/db/schema";
+import { beds24ReservasOperacoes, beds24ReservasSite, cotacoes, imoveis, reservas, reservasDiretasOtas, usuarios } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { uuidValido } from "@/lib/ids";
 import { lerConfigBeds24, listarMapeamentosBeds24, organizacaoBeds24 } from "./configuracao";
@@ -32,6 +34,7 @@ import {
   type MotivoAcompanhamentoBeds24,
   type PedidoBeds24,
   type ProntidaoEscoposBeds24,
+  reservaDiretaParaOtas,
   SITUACOES_ACOMPANHAMENTO_BEDS24,
   type SituacaoAcompanhamentoBeds24,
   type SituacaoOperacaoBeds24,
@@ -88,6 +91,13 @@ export type FichaReservaNoBeds24 = {
   atencoes: LinhaAtencaoOta[];
   /** M8.3c (bloco G): os botões que valem para esta reserva agora e o que eles mostram. */
   acoes: AcoesDaFichaBeds24;
+  /**
+   * M3.11b: a reserva direta confirmada no SCL (fora do site e das OTAs), com as marcas da equipe em `reservas_diretas_otas`
+   * (quando e se foram marcadas; `fechadasEm` com `reabertasEm` vazio = a marca vigente). null = a reserva do site. Com ela,
+   * o bloco mostra só a tarefa e as marcas: o sistema nunca escreve esta reserva no Beds24, então `desligada`, `acoes`,
+   * `operacoes` e `simular` ficam vazios.
+   */
+  direta: { fechadasEm: Date | null; reabertasEm: Date | null } | null;
 };
 
 /** M8.3c (bloco G; plano 1.15): os botões da ficha que valem agora (códigos) e o que eles mostram. */
@@ -112,11 +122,18 @@ export type PedidoNaFicha = "segurado" | "vencido";
 /** Quantas operações a ficha mostra. */
 export const OPERACOES_NA_FICHA = 10;
 
-/** O bloco da ficha de uma reserva do site; null = reserva fora da organização ou de outra fonte. */
+/**
+ * O bloco da ficha de uma reserva do site ou, no M3.11b, de uma reserva direta confirmada no SCL (`reservaDiretaParaOtas`);
+ * null = reserva fora da organização ou de outra fonte (a importada do Beds24, a das OTAs).
+ */
 export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: string, env: NodeJS.ProcessEnv, agora: Date = new Date()): Promise<FichaReservaNoBeds24 | null> {
   if (!uuidValido(reservaId)) return null;
-  const [r] = await db.select({ id: reservas.id, imovelId: reservas.imovelId, beds24Id: reservas.beds24Id, estado: reservas.estado }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org), eq(reservas.fonte, "site")));
+  const [r] = await db
+    .select({ id: reservas.id, imovelId: reservas.imovelId, beds24Id: reservas.beds24Id, estado: reservas.estado, fonte: reservas.fonte, origem: reservas.origem })
+    .from(reservas)
+    .where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org)));
   if (!r) return null;
+  if (r.fonte !== "site") return reservaDiretaParaOtas(r) ? fichaDaReservaDireta(db, org, r.id, env, agora) : null;
   // "Expirada" só é gravada na cotação quando o pedido vence ainda como pedido (nunca depois de confirmado).
   const [vencido] = r.estado === "cancelada" ? await db.select({ id: cotacoes.id }).from(cotacoes).where(and(eq(cotacoes.organizacaoId, org), eq(cotacoes.reservaId, r.id), eq(cotacoes.estado, "expirada"))).limit(1) : [];
   const config = await lerConfigReservasBeds24(db, org);
@@ -141,6 +158,28 @@ export async function fichaReservaNoBeds24(db: Db, org: string, reservaId: strin
     pedido: r.estado === "pedido" ? "segurado" : vencido ? "vencido" : null,
     tarefas,
     atencoes,
+    direta: null,
+  };
+}
+
+/**
+ * O bloco da reserva direta (M3.11b, SO-DISPONIBILIDADE, 8): a tarefa dela ("feche as datas" ou "reabra as datas", da mesma
+ * função do Início) e as marcas da equipe. Sem acompanhamento, operações, simulação ou botões: nada disso vale para ela.
+ */
+async function fichaDaReservaDireta(db: Db, org: string, reservaId: string, env: NodeJS.ProcessEnv, agora: Date): Promise<FichaReservaNoBeds24> {
+  const [m] = await db.select({ fechadasEm: reservasDiretasOtas.fechadasEm, reabertasEm: reservasDiretasOtas.reabertasEm }).from(reservasDiretasOtas).where(and(eq(reservasDiretasOtas.reservaId, reservaId), eq(reservasDiretasOtas.organizacaoId, org)));
+  const { tarefas } = await tarefasDasOtas(db, org, agora, env, { reservaIds: [reservaId] });
+  return {
+    desligada: [],
+    acoes: SEM_ACOES_NA_FICHA,
+    beds24Id: null,
+    acompanhamento: null,
+    operacoes: [],
+    simular: false,
+    pedido: null,
+    tarefas,
+    atencoes: [],
+    direta: { fechadasEm: m?.fechadasEm ?? null, reabertasEm: m?.reabertasEm ?? null },
   };
 }
 

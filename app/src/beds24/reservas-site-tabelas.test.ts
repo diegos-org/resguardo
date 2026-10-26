@@ -2,11 +2,12 @@
  * As duas tabelas do M8.3 (migração 0072, desenho 3.2): os únicos e o índice parcial que o banco garante sozinho, e a
  * varredura `semDadosPessoais`, que passa a cobrir as duas. M8.3c (migração 0074): a resposta e o detalhe das operações, o
  * índice do último 403 ou 401, o estado da rotina (uma linha por organização) e a varredura também no resumo das rotinas e
- * nos e-mails. PGlite, sem rede.
+ * nos e-mails. M3.11b (migração 0076): as marcas das OTAs da reserva direta (`reservas_diretas_otas`, só ids e horas) e a
+ * varredura também nela. PGlite, sem rede.
  */
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { beds24ReservasOperacoes, beds24ReservasRotina, beds24ReservasSite, execucoesAutomacao, imoveis, organizacoes, reservas } from "@/db/schema";
+import { beds24ReservasOperacoes, beds24ReservasRotina, beds24ReservasSite, execucoesAutomacao, imoveis, organizacoes, reservas, reservasDiretasOtas } from "@/db/schema";
 import { CorreioMemoria } from "@/email/correio";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
@@ -115,5 +116,22 @@ describe("as colunas e a tabela da escrita (migração 0074, M8.3c)", () => {
     expect(await semDadosPessoais(db, canarios, { correio })).toEqual(canarios);
     // Sem o correio, os e-mails não entram (quem chama passa o dele).
     expect(await semDadosPessoais(db, canarios)).toEqual(canarios.slice(0, 3));
+  });
+});
+
+describe("as marcas das OTAs da reserva direta (migração 0076, M3.11b)", () => {
+  it("uma linha por reserva, só ids e horas (nenhuma coluna de texto); o índice do desenho; a varredura semDadosPessoais cobre a tabela", async () => {
+    const [{ id: direta }] = await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: `SCL-${crypto.randomUUID().slice(0, 6)}`, origem: "direta", fonte: "manual", checkin: "2026-12-20", checkout: "2026-12-27", hospedes: 2 }).returning();
+    await db.insert(reservasDiretasOtas).values({ reservaId: direta, organizacaoId: org, fechadasEm: new Date("2026-10-02T12:00:00Z") });
+    expect(await codigoDoErro(db.insert(reservasDiretasOtas).values({ reservaId: direta, organizacaoId: org, fechadasEm: new Date("2026-10-03T12:00:00Z") }))).toBe("23505");
+    // A reserva do site do cenário não tem marca nenhuma aqui (as dela ficam no acompanhamento).
+    expect(await codigoDoErro(db.insert(reservasDiretasOtas).values({ reservaId: crypto.randomUUID(), organizacaoId: org, fechadasEm: new Date() }))).toBe("23503");
+    const [linha] = await db.select().from(reservasDiretasOtas).where(eq(reservasDiretasOtas.organizacaoId, org));
+    expect(linha).toMatchObject({ reservaId: direta, fechadasEm: new Date("2026-10-02T12:00:00Z"), fechadasPor: null, reabertasEm: null, reabertasPor: null });
+    const tipos = await db.execute(sql`select data_type from information_schema.columns where table_schema = 'public' and table_name = 'reservas_diretas_otas'`);
+    expect(new Set((tipos as unknown as { rows: { data_type: string }[] }).rows.map((x) => x.data_type))).toEqual(new Set(["uuid", "timestamp with time zone"]));
+    const indices = await db.execute(sql`select indexname from pg_indexes where tablename = 'reservas_diretas_otas' order by indexname`);
+    expect((indices as unknown as { rows: { indexname: string }[] }).rows.map((x) => x.indexname)).toEqual(["reservas_diretas_otas_organizacao", "reservas_diretas_otas_pkey"]);
+    expect(await semDadosPessoais(db, ["canario.direta@example.com"])).toEqual([]);
   });
 });

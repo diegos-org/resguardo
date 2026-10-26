@@ -10,18 +10,26 @@
  * M8.3c (bloco G): as linhas de atenção do Início saíram de `avisosDasTarefas` para `avisosDeReservasNoBeds24`
  * (`reservas-site-avisos.ts`, desenho 6.5), que as junta com as tarefas daqui; a carência conta também desde o "Retomar" e a
  * ligação do imóvel (`inicioDaCarencia`, plano 1.8); e a frase "o sistema faz isso sozinho" (6.2) mora aqui.
+ * M3.11b (desenho em `requisitos/product/SO-DISPONIBILIDADE.md`, 8): a reserva direta confirmada no SCL (WhatsApp,
+ * indicação; `reservaDiretaParaOtas`), que não nasce no Beds24, ganha o aviso "feche as datas no Beds24 como bloqueio (não
+ * crie reserva lá)" em qualquer fonte de preços, e, cancelada depois da marca, "reabra as datas". Sempre à mão: o sistema
+ * nunca a envia. As marcas dela ficam em `reservas_diretas_otas` (migração 0076), nunca em `beds24_reservas_site` (a fila do
+ * envio do M8.3c).
  */
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { exigir, type Sessao } from "@/acesso/politica";
 import { registrarAuditoria } from "@/auditoria/auditoria";
-import { alteracoesReserva, beds24ReservasOperacoes, beds24ReservasSite, cancelamentosReserva, pagamentos, reservas } from "@/db/schema";
+import { alteracoesReserva, beds24ReservasOperacoes, beds24ReservasSite, cancelamentosReserva, pagamentos, reservas, reservasDiretasOtas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { diaMesBr, diaMesNoFuso, FUSO_PADRAO, hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
 import { travarReservaDoSite } from "./reservas-site";
 import { type ConfigReservasBeds24, lerConfigReservasBeds24, ligacaoDoImovel, type MotivoDesligadaBeds24, motivosDesligada } from "./reservas-site-config";
 import { lerReservaParaBeds24 } from "./reservas-site-contexto";
-import { criadaPeloM83, detalheOperacaoBeds24, MOTIVOS_CONFIGURACAO_BEDS24, type MotivoAcompanhamentoBeds24, reservaDoSiteParaBeds24, type SituacaoAcompanhamentoBeds24, SITUACOES_OPERACAO_ATIVAS } from "./reservas-site-regras";
+import {
+  criadaPeloM83, detalheOperacaoBeds24, FONTES_FORA_DA_RESERVA_DIRETA, MOTIVOS_CONFIGURACAO_BEDS24, type MotivoAcompanhamentoBeds24, ORIGENS_RESERVA_DIRETA, reservaDiretaParaOtas, reservaDoSiteParaBeds24,
+  type SituacaoAcompanhamentoBeds24, SITUACOES_OPERACAO_ATIVAS,
+} from "./reservas-site-regras";
 import { tentarTravaBeds24 } from "./trava";
 
 /**
@@ -34,9 +42,10 @@ export const CARENCIA_ENVIO_RESERVA_MINUTOS = 30;
 /**
  * O caso de cada tarefa (desenho 6.2): a paga sem reserva no Beds24, a D3 (confirmada à mão sem pagamento pelo site), a D3
  * cancelada pelo "Cancelar reserva" comum depois de marcada, e a cancelada e a alterada, com o texto do bloqueio feito à mão
- * ou o da reserva criada pelo sistema.
+ * ou o da reserva criada pelo sistema. M3.11b: a reserva direta confirmada no SCL (`direta`, "feche as datas como
+ * bloqueio") e a mesma cancelada depois da marca (`direta_cancelada`, "reabra as datas"); as duas sempre à mão, como a D3.
  */
-export type CasoTarefaOta = "paga" | "d3" | "d3_cancelada" | "cancelada_bloqueio" | "cancelada_criada" | "alterada_bloqueio" | "alterada_criada";
+export type CasoTarefaOta = "paga" | "d3" | "d3_cancelada" | "cancelada_bloqueio" | "cancelada_criada" | "alterada_bloqueio" | "alterada_criada" | "direta" | "direta_cancelada";
 /** `manual`: a equipe faz no Beds24; `sendo_enviada`: o sistema está enviando (há menos de 30 min); `atrasada`: há mais. */
 export type EstadoTarefaOta = "manual" | "sendo_enviada" | "atrasada";
 /**
@@ -45,7 +54,7 @@ export type EstadoTarefaOta = "manual" | "sendo_enviada" | "atrasada";
  * registro do Beds24 que o sistema não criou.
  */
 export type AtencaoOta = "conflito" | "divergente" | "aguardando_equipe" | "transicao" | "ja_no_beds24";
-/** O botão da ficha: "Datas fechadas nas OTAs" (paga e D3) ou "Datas reabertas nas OTAs" (a D3 cancelada). */
+/** O botão da ficha: "Datas fechadas nas OTAs" (paga, D3 e a direta) ou "Datas reabertas nas OTAs" (a D3 e a direta canceladas). */
 export type MarcaDaTarefaOta = "datas_fechadas" | "datas_reabertas";
 
 export type TarefaOta = {
@@ -75,8 +84,8 @@ export type TarefasDasOtas = { tarefas: TarefaOta[]; atencoes: LinhaAtencaoOta[]
 
 // ---------------------------------------------------------------- a classificação (pura, desenho 6.1)
 
-/** O fato que pede a tarefa; o caso sai dele e de a reserva ter sido criada pelo sistema. */
-export type FatoDaTarefaOta = "paga" | "d3" | "d3_cancelada" | "cancelada" | "alterada";
+/** O fato que pede a tarefa; o caso sai dele e de a reserva ter sido criada pelo sistema. M3.11b: a direta e a direta cancelada. */
+export type FatoDaTarefaOta = "paga" | "d3" | "d3_cancelada" | "cancelada" | "alterada" | "direta" | "direta_cancelada";
 
 export type EntradaDaTarefaOta = {
   fato: FatoDaTarefaOta;
@@ -135,7 +144,8 @@ const sobrouBloqueio = (a: { situacao: SituacaoAcompanhamentoBeds24; motivo: Mot
  *    aguardando a equipe (com qualquer motivo, inclusive o de configuração, como a marca ilegível): a atenção; senão, o
  *    sistema está nela (sendo enviada ou atrasada);
  * 3. conflito, divergente ou aguardando a equipe (fora de configuração): só a atenção, nunca a tarefa manual;
- * 4. D3 (com ou sem o cancelamento comum): sempre à mão, nunca vai ao envio (a régua responde `sem_pagamento`);
+ * 4. D3 (com ou sem o cancelamento comum): sempre à mão, nunca vai ao envio (a régua responde `sem_pagamento`); a reserva
+ *    direta (M3.11b, com ou sem o cancelamento), idem: o sistema nunca a escreve no Beds24;
  * 5. um envio desta reserva sem conclusão: o sistema está nele (sendo enviada ou atrasada, pelo relógio do fato);
  * 6. motivo de configuração, acompanhamento `manual` ou `encerrada`: à mão;
  * 7. o envio desligado (ambiente, chave, credencial ou pausa): à mão; o imóvel desligado só para a criação;
@@ -157,7 +167,7 @@ export function classificarTarefa(e: EntradaDaTarefaOta): ClassificacaoTarefaOta
   const caso = casoDaTarefa(e.fato, e.criada && !(e.fato === "cancelada" && sobrouBloqueio(a)));
   const manual: ClassificacaoTarefaOta = { tipo: "tarefa", caso, estado: "manual" };
   const automatica: ClassificacaoTarefaOta = { tipo: "tarefa", caso, estado: tempo };
-  if (e.fato === "d3" || e.fato === "d3_cancelada") return manual;
+  if (e.fato === "d3" || e.fato === "d3_cancelada" || e.fato === "direta" || e.fato === "direta_cancelada") return manual;
   if (e.emCurso) return automatica;
   if (a && (ehMotivoDeConfiguracao(a.motivo) || a.situacao === "manual" || a.situacao === "encerrada")) return manual;
   if (e.desligada.some((m) => m !== "imovel" && m !== "sem_acompanhamento")) return manual;
@@ -179,7 +189,8 @@ const FECHE = "Feche as datas no Beds24 como bloqueio e marque Datas fechadas na
 /**
  * O texto manual de cada caso (6.2), por reserva: as datas são as da reserva agora, de `diaMesBr(checkin)` a
  * `diaMesBr(checkout)` (o mesmo [início, fim) que a importação guarda para os bloqueios). Sempre "não apague": um bloqueio
- * apagado no Beds24 nunca sai do SCL; o que volta como `cancelled`, sai.
+ * apagado no Beds24 nunca sai do SCL; o que volta como `cancelled`, sai. M3.11b: a reserva direta leva só o código SCL e
+ * as datas (nenhum valor nem dado do hóspede), e "não crie reserva lá": o bloqueio basta, e o sistema nunca a cria.
  */
 export function textoDaTarefa(t: Pick<TarefaOta, "caso" | "codigo" | "checkin" | "checkout">): string {
   const datas = `${diaMesBr(t.checkin)} a ${diaMesBr(t.checkout)}`;
@@ -188,6 +199,10 @@ export function textoDaTarefa(t: Pick<TarefaOta, "caso" | "codigo" | "checkin" |
       return FECHE;
     case "d3":
       return `Confirmada à mão, sem pagamento pelo site: esta reserva nunca vai ao Beds24 pelo sistema. ${FECHE}`;
+    case "direta":
+      return `Reserva direta ${t.codigo}: feche as datas de ${datas} no Beds24 como bloqueio (não crie reserva lá).`;
+    case "direta_cancelada":
+      return `Reserva direta ${t.codigo} cancelada: reabra as datas de ${datas} no Beds24 (mude o bloqueio para Cancelado; não apague).`;
     case "d3_cancelada":
     case "cancelada_bloqueio":
       return `Mude o bloqueio de ${datas} para Cancelado (não apague).`;
@@ -226,9 +241,9 @@ export const porReserva = <T extends { reservaId: string }>(xs: readonly T[]) =>
 
 /**
  * As linhas das tarefas no Início (desenho 6.1), sem valores, nesta ordem: o que a equipe faz à mão (a paga e a D3 agrupadas
- * com os códigos; cancelada e alterada uma por reserva, porque o texto leva as datas dela) e o informativo (sendo enviadas
- * pelo sistema e o bloqueio feito à mão sobre as noites, das atenções do tipo `transicao`). Todo texto leva um código ou uma
- * contagem (a chave da lista no Início).
+ * com os códigos; a reserva direta (M3.11b), a cancelada e a alterada uma por reserva, porque o texto leva as datas dela) e
+ * o informativo (sendo enviadas pelo sistema e o bloqueio feito à mão sobre as noites, das atenções do tipo `transicao`).
+ * Todo texto leva um código ou uma contagem (a chave da lista no Início).
  * M8.3c (bloco G; desenho 6.5): antes, as linhas de atenção (conflito, divergente, aguardando a equipe, a reserva ligada a
  * outro registro e as atrasadas) vinham primeiro, daqui. Agora elas são de `avisosDeReservasNoBeds24`
  * (`reservas-site-avisos.ts`), que também lê o acompanhamento direto da tabela (a divergência com as datas fechadas mantidas,
@@ -242,10 +257,12 @@ export function avisosDasTarefas(tarefas: readonly TarefaOta[], atencoes: readon
   const d3 = manuais.filter((t) => t.caso === "d3");
   if (d3.length)
     avisos.push({ nivel: "info", texto: `${d3.length} reserva(s) do site confirmada(s) à mão, sem pagamento pelo site (${codigosDoAviso(d3)}): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.`, link: link(d3) });
+  // M3.11b: a reserva direta, uma linha por reserva, com o texto da ficha (o código SCL e as datas; nenhum valor).
+  for (const t of manuais) if (t.caso === "direta") avisos.push({ nivel: "info", texto: t.texto, link: link([t]) });
   const datas = (t: TarefaOta) => `${diaMesBr(t.checkin)} a ${diaMesBr(t.checkout)}`;
   for (const t of manuais) {
     if (t.caso === "cancelada_bloqueio" || t.caso === "d3_cancelada") avisos.push({ nivel: "info", texto: `Reserva ${t.codigo}, cancelada: mude o bloqueio de ${datas(t)} para Cancelado (não apague).`, link: link([t]) });
-    else if (t.caso === "cancelada_criada") avisos.push({ nivel: "info", texto: t.texto, link: link([t]) });
+    else if (t.caso === "cancelada_criada" || t.caso === "direta_cancelada") avisos.push({ nivel: "info", texto: t.texto, link: link([t]) });
   }
   for (const t of manuais) {
     if (t.caso === "alterada_bloqueio") avisos.push({ nivel: "info", texto: `Reserva ${t.codigo}, alterada: mude as datas do bloqueio para ${datas(t)} (não apague nem crie outro).`, link: link([t]) });
@@ -262,7 +279,7 @@ export function avisosDasTarefas(tarefas: readonly TarefaOta[], atencoes: readon
 
 type Candidata = { fato: FatoDaTarefaOta; id: string; codigo: string; imovelId: string; checkin: string; checkout: string; beds24Id: string | null; desde: Date; alteracaoIds: string[] };
 
-const ORDEM_DOS_CASOS: readonly CasoTarefaOta[] = ["paga", "d3", "d3_cancelada", "cancelada_bloqueio", "cancelada_criada", "alterada_bloqueio", "alterada_criada"];
+const ORDEM_DOS_CASOS: readonly CasoTarefaOta[] = ["paga", "d3", "d3_cancelada", "cancelada_bloqueio", "cancelada_criada", "alterada_bloqueio", "alterada_criada", "direta", "direta_cancelada"];
 /** Sem a hora do fato, a carência conta como passada (avisar em vez de supor). */
 const SEM_HORA = new Date(0);
 
@@ -285,6 +302,8 @@ export function inicioDaCarencia(fato: Date, config: ConfigReservasBeds24, imove
  * ou de agora) hoje ou depois. A régua só é lida para a paga quando o envio automático está ligado para ela (no
  * M8.3b, só nos testes: ligar um imóvel exige o ensaio do M8.3c). `env` vem de quem chama; `{}` deixa tudo à mão.
  * Desvio do desenho (`tarefasDasOtas(db, org, agora)`): `env` explícito (regra do M8.3) e `reservaIds` (a ficha).
+ * M3.11b: a reserva direta confirmada no SCL com a saída de hoje em diante (SO-DISPONIBILIDADE, 8), sem a marca "datas
+ * fechadas" vigente; e a direta cancelada depois da marca, até "datas reabertas". Em qualquer fonte de preços.
  */
 export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: NodeJS.ProcessEnv, o: { reservaIds?: readonly string[] } = {}): Promise<TarefasDasOtas> {
   const ids = o.reservaIds?.filter((id) => uuidValido(id));
@@ -409,6 +428,31 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
     porAlterada.set(r.id, c);
   }
   candidatas.push(...porAlterada.values());
+
+  // M3.11b: a reserva direta (a regra de `reservaDiretaParaOtas`, em SQL, pelas mesmas listas) com a saída de hoje em
+  // diante: confirmada, sem a marca "datas fechadas" vigente (nenhuma linha, ou a reabertura já marcada), pede "feche as
+  // datas"; cancelada com a marca vigente, "reabra as datas". A marca mora em `reservas_diretas_otas`, nunca no acompanhamento.
+  const marcasDireta = reservasDiretasOtas;
+  const fechadaVigente = and(isNotNull(marcasDireta.fechadasEm), isNull(marcasDireta.reabertasEm));
+  const diretas = await db
+    .select({ ...daReserva, estado: reservas.estado, confirmadaEm: reservas.confirmadaEm, canceladaEm: reservas.canceladaEm })
+    .from(reservas)
+    .leftJoin(marcasDireta, and(eq(marcasDireta.reservaId, reservas.id), eq(marcasDireta.organizacaoId, org)))
+    .where(
+      and(
+        eq(reservas.organizacaoId, org),
+        inArray(reservas.origem, [...ORIGENS_RESERVA_DIRETA]),
+        notInArray(reservas.fonte, [...FONTES_FORA_DA_RESERVA_DIRETA]),
+        isNull(reservas.beds24Id),
+        sql`${reservas.checkout} >= ${hoje}`,
+        or(and(eq(reservas.estado, "confirmada"), sql`not (${fechadaVigente})`), and(eq(reservas.estado, "cancelada"), fechadaVigente)),
+        soEstas,
+      ),
+    )
+    .orderBy(asc(reservas.codigo));
+  for (const { estado, confirmadaEm, canceladaEm, ...r } of diretas) {
+    candidatas.push(estado === "confirmada" ? { fato: "direta", ...r, desde: confirmadaEm ?? SEM_HORA, alteracaoIds: [] } : { fato: "direta_cancelada", ...r, desde: canceladaEm ?? SEM_HORA, alteracaoIds: [] });
+  }
   if (!candidatas.length) return { tarefas: [], atencoes: [], avisos: [] };
 
   // O acompanhamento, o id do Beds24 de uma operação real (antes da fase 3 ele ainda não está na reserva) e as operações
@@ -470,7 +514,7 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
       continue;
     }
     if (k.tipo !== "tarefa") continue;
-    const marca = k.estado === "manual" && !ativa ? (k.caso === "paga" || k.caso === "d3" ? "datas_fechadas" : k.caso === "d3_cancelada" ? "datas_reabertas" : null) : null;
+    const marca = k.estado === "manual" && !ativa ? (k.caso === "paga" || k.caso === "d3" || k.caso === "direta" ? "datas_fechadas" : k.caso === "d3_cancelada" || k.caso === "direta_cancelada" ? "datas_reabertas" : null) : null;
     const base = { reservaId: c.id, codigo: c.codigo, caso: k.caso, checkin: c.checkin, checkout: c.checkout };
     tarefas.push({ ...base, estado: k.estado, desde, alteracaoIds: c.alteracaoIds, texto: textoDaTarefa(base), marca });
   }
@@ -484,7 +528,7 @@ export async function tarefasDasOtas(db: Db, org: string, agora: Date, env: Node
   return { tarefas: lista, atencoes: linhas, avisos: avisosDasTarefas(lista, linhas) };
 }
 
-// ---------------------------------------------------------------- as marcas manuais (D8, desenho 6.4; D3 cancelada)
+// ---------------------------------------------------------------- as marcas manuais (D8, desenho 6.4; D3 cancelada; M3.11b, a direta)
 
 export type ResultadoMarcaOta = { ok: true } | { ok: false; erro: string };
 
@@ -496,27 +540,100 @@ const ERRO_NAO_ENCONTRADA = "Reserva do site não encontrada.";
 const ERRO_JA_FECHADAS = "As datas já foram marcadas como fechadas.";
 const ERRO_JA_REABERTAS = "As datas já foram marcadas como reabertas nas OTAs.";
 
+type ReservaDoSiteTravada = NonNullable<Awaited<ReturnType<typeof travarReservaDoSite>>>;
+/** A reserva travada para a marca: a do site (com o acompanhamento) ou a direta (M3.11b, com as marcas dela). */
+type ReservaTravadaParaMarca = ({ tipo: "site" } & ReservaDoSiteTravada) | { tipo: "direta"; reserva: typeof reservas.$inferSelect; marcas: typeof reservasDiretasOtas.$inferSelect | null };
+
 /**
- * Trava e confere a reserva para uma marca manual (desenho 3.6): `reserva:editar` (deny-by-default), a trava `beds24:<org>`
- * (ocupada = recusa, sem esperar), depois o imóvel, a reserva e o acompanhamento, e a tarefa dela relida já com as travas.
+ * A reserva direta (M3.11b) travada para a marca: a reserva (`no key update`) e a linha das marcas dela (`for update`; sem
+ * linha, a trava da reserva serializa quem vai criá-la). Sem o imóvel e sem a trava `beds24:<org>`: a marca não ocupa
+ * noites nem toca no que o envio lê.
  */
-async function comAReservaTravada(
-  db: Db,
-  sessao: Sessao,
-  reservaId: string,
-  env: NodeJS.ProcessEnv,
-  agora: Date,
-  f: (tx: Db, t: NonNullable<Awaited<ReturnType<typeof travarReservaDoSite>>>, tarefas: TarefaOta[]) => Promise<ResultadoMarcaOta>,
-): Promise<ResultadoMarcaOta> {
+async function travarReservaDireta(tx: Db, org: string, reservaId: string) {
+  const [reserva] = await tx.select().from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org))).for("no key update");
+  if (!reserva || !reservaDiretaParaOtas(reserva)) return null;
+  const [marcas] = await tx.select().from(reservasDiretasOtas).where(and(eq(reservasDiretasOtas.reservaId, reservaId), eq(reservasDiretasOtas.organizacaoId, org))).for("update");
+  return { reserva, marcas: marcas ?? null };
+}
+
+/**
+ * Trava e confere a reserva para uma marca manual (desenho 3.6): `reserva:editar` (deny-by-default) e, na reserva do site, a
+ * trava `beds24:<org>` (ocupada = recusa, sem esperar), depois o imóvel, a reserva e o acompanhamento; na reserva direta
+ * (M3.11b), só a reserva e as marcas dela. A tarefa dela é relida já com as travas. A fonte e a origem decidem o caminho sem
+ * trava: nenhuma reserva muda de site para direta.
+ */
+async function comAReservaTravada(db: Db, sessao: Sessao, reservaId: string, env: NodeJS.ProcessEnv, agora: Date, f: (tx: Db, t: ReservaTravadaParaMarca, tarefas: TarefaOta[]) => Promise<ResultadoMarcaOta>): Promise<ResultadoMarcaOta> {
   exigir(sessao, "reserva:editar", { organizacaoId: sessao.organizacaoId });
   if (!uuidValido(reservaId)) return { ok: false, erro: ERRO_NAO_ENCONTRADA };
   const org = sessao.organizacaoId;
   return db.transaction(async (tx) => {
-    if (!(await tentarTravaBeds24(tx, org))) return { ok: false, erro: ERRO_MARCA_TRAVA_OCUPADA };
-    const t = await travarReservaDoSite(tx, org, reservaId, "no key update");
-    if (!t) return { ok: false, erro: ERRO_NAO_ENCONTRADA };
+    const [previa] = await tx.select({ origem: reservas.origem, fonte: reservas.fonte, beds24Id: reservas.beds24Id }).from(reservas).where(and(eq(reservas.id, reservaId), eq(reservas.organizacaoId, org)));
+    if (!previa) return { ok: false, erro: ERRO_NAO_ENCONTRADA };
+    let t: ReservaTravadaParaMarca;
+    if (reservaDiretaParaOtas(previa)) {
+      const d = await travarReservaDireta(tx, org, reservaId);
+      if (!d) return { ok: false, erro: ERRO_NAO_ENCONTRADA };
+      t = { tipo: "direta", ...d };
+    } else {
+      if (!(await tentarTravaBeds24(tx, org))) return { ok: false, erro: ERRO_MARCA_TRAVA_OCUPADA };
+      const s = await travarReservaDoSite(tx, org, reservaId, "no key update");
+      if (!s) return { ok: false, erro: ERRO_NAO_ENCONTRADA };
+      t = { tipo: "site", ...s };
+    }
     return f(tx, t, (await tarefasDasOtas(tx, org, agora, env, { reservaIds: [reservaId] })).tarefas);
   });
+}
+
+/**
+ * "Datas fechadas nas OTAs" da reserva direta (M3.11b, SO-DISPONIBILIDADE, 8): só com a tarefa "feche as datas" dela (a
+ * confirmada, com a saída de hoje em diante, sem a marca vigente). Grava (ou regrava, depois de uma reabertura) a linha das
+ * marcas com quem e quando; a reabertura anterior volta a vazio. Mesma auditoria da marca da reserva do site.
+ */
+async function fecharDatasDaDireta(tx: Db, sessao: Sessao, t: Extract<ReservaTravadaParaMarca, { tipo: "direta" }>, tarefas: readonly TarefaOta[], agora: Date): Promise<ResultadoMarcaOta> {
+  const m = t.marcas;
+  if (m && m.reabertasEm === null) return { ok: false, erro: `As datas já foram marcadas como fechadas em ${diaMesNoFuso(m.fechadasEm)}.` };
+  const tarefa = tarefas.find((x) => x.caso === "direta");
+  if (!tarefa || tarefa.marca !== "datas_fechadas") return { ok: false, erro: ERRO_NADA_A_FECHAR };
+  const marca = { fechadasEm: agora, fechadasPor: sessao.usuarioId, reabertasEm: null, reabertasPor: null, atualizadoEm: agora };
+  await tx
+    .insert(reservasDiretasOtas)
+    .values({ reservaId: t.reserva.id, organizacaoId: sessao.organizacaoId, ...marca })
+    .onConflictDoUpdate({ target: reservasDiretasOtas.reservaId, set: marca });
+  await registrarAuditoria(tx, {
+    organizacaoId: sessao.organizacaoId,
+    usuarioId: sessao.usuarioId,
+    acao: "beds24.reserva.ota_fechada",
+    entidade: "reserva",
+    entidadeId: t.reserva.id,
+    mudancas: { otaFechadaEm: [m?.fechadasEm.toISOString() ?? null, agora.toISOString()], ...(m?.reabertasEm ? { otaReabertaEm: [m.reabertasEm.toISOString(), null] } : {}) },
+  });
+  return { ok: true };
+}
+
+/**
+ * "Datas reabertas nas OTAs" da reserva direta cancelada (M3.11b): só com a tarefa "reabra as datas" dela (cancelada com a
+ * marca "datas fechadas" vigente). Grava quem e quando na mesma linha; a tarefa some do Início e da ficha.
+ */
+async function reabrirDatasDaDireta(tx: Db, sessao: Sessao, t: Extract<ReservaTravadaParaMarca, { tipo: "direta" }>, tarefas: readonly TarefaOta[], agora: Date): Promise<ResultadoMarcaOta> {
+  const m = t.marcas;
+  if (m?.reabertasEm && t.reserva.estado === "cancelada") return { ok: false, erro: ERRO_JA_REABERTAS };
+  const tarefa = tarefas.find((x) => x.caso === "direta_cancelada");
+  if (!m || !tarefa || tarefa.marca !== "datas_reabertas") return { ok: false, erro: ERRO_NADA_A_REABRIR };
+  const [feito] = await tx
+    .update(reservasDiretasOtas)
+    .set({ reabertasEm: agora, reabertasPor: sessao.usuarioId, atualizadoEm: agora })
+    .where(and(eq(reservasDiretasOtas.reservaId, t.reserva.id), isNull(reservasDiretasOtas.reabertasEm)))
+    .returning({ reservaId: reservasDiretasOtas.reservaId });
+  if (!feito) return { ok: false, erro: ERRO_JA_REABERTAS };
+  await registrarAuditoria(tx, {
+    organizacaoId: sessao.organizacaoId,
+    usuarioId: sessao.usuarioId,
+    acao: "beds24.reserva.ota_reaberta",
+    entidade: "reserva",
+    entidadeId: t.reserva.id,
+    mudancas: { otaReabertaEm: [null, agora.toISOString()] },
+  });
+  return { ok: true };
 }
 
 /**
@@ -527,9 +644,12 @@ async function comAReservaTravada(
  * e põe o acompanhamento em `manual` (sem acompanhamento, cria a linha, sem o quarto: o quarto guardado é o sinal de "criada
  * pelo sistema"). Depois disso a régua nunca cria esta reserva no Beds24 (6.6) e a importação não apaga a marca (a linha
  * manual não tem `esperado`). O motivo fica vazio (`ota_fechada_por` diz que foi à mão), ou o da linha que já era `manual`.
+ * M3.11b: na reserva direta, a mesma marca grava em `reservas_diretas_otas` (`fecharDatasDaDireta`).
  */
 export async function marcarDatasFechadasNasOtas(db: Db, sessao: Sessao, reservaId: string, env: NodeJS.ProcessEnv, agora: Date = new Date()): Promise<ResultadoMarcaOta> {
-  return comAReservaTravada(db, sessao, reservaId, env, agora, async (tx, { reserva, acompanhamento: a }, tarefas) => {
+  return comAReservaTravada(db, sessao, reservaId, env, agora, async (tx, t, tarefas) => {
+    if (t.tipo === "direta") return fecharDatasDaDireta(tx, sessao, t, tarefas, agora);
+    const { reserva, acompanhamento: a } = t;
     if (a?.otaFechadaEm) return { ok: false, erro: `As datas já foram marcadas como fechadas em ${diaMesNoFuso(a.otaFechadaEm)}.` };
     const tarefa = tarefas.find((x) => x.caso === "paga" || x.caso === "d3");
     if (!tarefa || tarefa.marca !== "datas_fechadas") return { ok: false, erro: tarefa ? ERRO_MARCA_EM_ENVIO : ERRO_NADA_A_FECHAR };
@@ -562,10 +682,13 @@ export async function marcarDatasFechadasNasOtas(db: Db, sessao: Sessao, reserva
  * "Datas reabertas nas OTAs" da D3 cancelada (M8.3b): a reserva do site marcada como fechada à mão e cancelada pelo
  * "Cancelar reserva" comum (sem o cancelamento pela política, que tem a marca própria). A equipe mudou o bloqueio para
  * Cancelado no Beds24; o acompanhamento vai a `encerrada` (motivo vazio) e a tarefa some do Início. As datas do texto são as
- * da reserva agora (as marcadas não são guardadas).
+ * da reserva agora (as marcadas não são guardadas). M3.11b: na reserva direta cancelada, a mesma marca grava em
+ * `reservas_diretas_otas` (`reabrirDatasDaDireta`).
  */
 export async function marcarDatasReabertasNasOtas(db: Db, sessao: Sessao, reservaId: string, env: NodeJS.ProcessEnv, agora: Date = new Date()): Promise<ResultadoMarcaOta> {
-  return comAReservaTravada(db, sessao, reservaId, env, agora, async (tx, { reserva, acompanhamento: a }, tarefas) => {
+  return comAReservaTravada(db, sessao, reservaId, env, agora, async (tx, t, tarefas) => {
+    if (t.tipo === "direta") return reabrirDatasDaDireta(tx, sessao, t, tarefas, agora);
+    const { reserva, acompanhamento: a } = t;
     if (a?.situacao === "encerrada" && reserva.estado === "cancelada") return { ok: false, erro: ERRO_JA_REABERTAS };
     const tarefa = tarefas.find((x) => x.caso === "d3_cancelada");
     if (!a || !tarefa || tarefa.marca !== "datas_reabertas") return { ok: false, erro: ERRO_NADA_A_REABRIR };
