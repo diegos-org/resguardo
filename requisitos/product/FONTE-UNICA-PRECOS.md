@@ -1,9 +1,11 @@
 # Fonte única de preços (M3.11)
 
 **Situação:** desenho do M3.11a escrito em 22/10/2026, na branch `claude/m3-11a-copia-importacao-precos`. O M3.11b ("só
-disponibilidade") e o M3.11c ("pronto para ligar") ganham as seções deles quando forem feitos. Decisão de Diego e
-condição dele: `ROADMAP.md`, "Decisões registradas", 22/10. O M3.11a está na `main` desde 22/10 (PR #164). Leitura de
-26/10 e prioridade máxima de Diego: §7.
+disponibilidade") e o M3.11c ("pronto para ligar") ganham as seções deles quando forem feitos; o M3.11b está em
+implementação desde 26/10 na branch `claude/m3-11b-so-disponibilidade` (desenho em
+`requisitos/product/SO-DISPONIBILIDADE.md`), ainda sem PR e fora da `main`. Decisão de Diego e condição dele:
+`ROADMAP.md`, "Decisões registradas", 22/10. O M3.11a está na `main` desde 22/10 (PR #164). Leitura de 26/10 e
+prioridade máxima de Diego: §7.
 
 ## 1. Objetivo
 
@@ -290,12 +292,16 @@ Com PGlite e a versão falsa do Beds24, sem rede.
 **Prioridade máxima (Diego, 26/10):** "acrescentar como bastante urgente agora então: resolver 100% de vez todo o mapeamento
 Castanha-Beds24-demais canais e syncs de preços e calendários; e focar bem forte no motor próprio de preços, pesquisa,
 ajustes constantes, pq agora é responsabilidade nossa". Ordem combinada: (1) mapeamento e sincronização conferidos
-(M3.12); (2) motor próprio (M3.11b, M3.11c, M3.13); (3) a marca com o domínio (M7.25, M11.2); (4) o envio do WhatsApp com
-as sugestões (M10.2, M10.3).
+(M3.12); (2) motor próprio (M3.11b, M3.11c, M3.13 e, desde a revisão de 26/10, M3.14); (3) a marca com o domínio (M7.25,
+M11.2); (4) o envio do WhatsApp com as sugestões (M10.2, M10.3). Essa ordem vale até Diego responder à proposta do Claude
+de 26/10 (depois do plano; "Pendências de decisão" do `ROADMAP.md`): o PR do plano e o M3.11b (em curso), M3.11c, M10.2
+com alerta por mensagem (se Diego topar), M3.14, M3.12, M3.13, marca e domínio. O M3.11b não espera o M3.12: o modo
+"só disponibilidade" é parte do mapeamento da direção do fluxo, e o M3.12 corre em paralelo, dependendo só do M3.11a.
 
 **Contexto:** o Antigravity (ferramenta externa usada por Diego) trabalhou de 23 a 26/10 corrigindo preços e calendários no
-Beds24 e nos canais; Diego confirma que terminou; o resumo técnico ainda vai chegar (Diego procura; pode vir a conversa
-inteira, sem segredos). Durante esse trabalho o SCL ficou só em leitura nessa área (coordenação de 24/10).
+Beds24 e nos canais; Diego confirma que terminou; o resumo técnico ainda vai chegar (Diego procura; só o resumo, ou a
+conversa inteira depois de apagar tokens, chaves, senhas e ids da Meta e do Beds24; na dúvida, só o resumo). Durante
+esse trabalho o SCL ficou só em leitura nessa área (coordenação de 24/10).
 
 **Conferência de 26/10** (Claude, no Neon de produção, só leitura, só contagens; nenhum dado pessoal):
 - Diego tocou em "Importar agora" na noite de 25 para 26/10. O M3.11a guardou a cópia da leitura de 7/10 dos seis imóveis
@@ -312,16 +318,37 @@ inteira, sem segredos). Durante esse trabalho o SCL ficou só em leitura nessa �
   ligação dos canais dentro do Beds24, ou direto no Airbnb e no Booking, que o SCL não lê.
 - Os seis imóveis não têm nenhum cadastro de preço no SCL (sem `imoveis_detalhes`: sem preço base, mínimo, máximo, pisos
   nem eventos): o motor parte do zero e a importação do M3.11a preenche o grosso.
-- A importação sai "parcial" por 100 avisos de reservas sem contrato vigente no SCL (mais algumas canceladas sem lançamento
-  e já iniciadas): é cadastro de contratos, não calendário; ação de Diego, sem pressa.
+- A importação sai "parcial" por 100 avisos de reservas sem contrato vigente no SCL ("Sem contrato vigente em {data}",
+  do motor financeiro). Conferido em 26/10, só contagens: nenhum dos seis imóveis (102, 103, 303, 399, 403 e bzs) tem
+  contrato cadastrado; 97 reservas ficam sem cálculo financeiro, 52 delas futuras; os outros 3 avisos são de reservas
+  canceladas ou já iniciadas. Quatro imóveis (102, 303, 399 e bzs) não têm proprietário vinculado (103 e 403 têm):
+  o contrato não precisa dele, mas repasses e portal travam depois. É cadastro de contratos, não calendário; ação de
+  Diego, sem pressa, pelos dois caminhos e com as datas de início sugeridas registradas em "Ações de Diego", item 21,
+  do `ROADMAP.md`. O Claude não cadastra "no olho": tipo, % da empresa e data de início decidem o que é de cada um.
 
 **Itens novos no `ROADMAP.md`:**
 - **M3.12, mapeamento e sincronização conferidos:** por imóvel, o quarto do Beds24 (o SCL já sabe) e, registrados à mão por
   Diego no painel, os anúncios do Airbnb e do Booking ligados a ele, com "conferido em (data) por (quem)" e o que conferir
   em cada canal (preço, mínimo, noites fechadas); o SCL mostra o lado do Beds24 pela leitura e avisa o que falta; o lado
-  dos canais fica registrado à mão até existir leitura deles. Depende do resumo do Antigravity e do M3.11a.
+  dos canais fica registrado à mão até existir leitura deles. Depende só do M3.11a; o resumo do Antigravity entra como
+  registro quando chegar, sem travar o item. Corre em paralelo ao M3.11b.
 - **M3.13, pesquisa de mercado e ajuste constante:** sinais dos próprios dados (ocupação, ritmo de vendas, antecedência,
   dia da semana, eventos) e uma referência de mercado; sugestões semanais numa tela que Diego aprova (no começo nada muda
   sozinho), com registro de quem, quando e por quê. Copiar preços de anúncios do Airbnb automaticamente vai contra as
   regras deles: a fonte da referência de mercado é decisão de Diego (amostragem manual pela equipe; serviço pago de dados
-  de mercado; a ferramenta de precificação ligada ao Beds24 só como fonte de dados). Depende do M3.11c.
+  de mercado, como AirDNA e similares; a API oficial do Booking, se houver acesso; a ferramenta de precificação ligada ao
+  Beds24 só como fonte de dados). "Feito" (26/10): a primeira versão da página de comparação com apartamentos
+  semelhantes (cadastro manual de 5 a 10 anúncios comparáveis com os preços que Diego vê; as métricas próprias do M5.8:
+  ocupação, diária média, receita por noite disponível; posição relativa) e o registro dos ajustes feitos (quem, quando,
+  por quê). A referência automática entra quando Diego decidir a fonte. Depende do M3.11c.
+- **M3.14, página do motor de preços e importação de eventos (26/10):** Diego quer o motor "direitinho", com um
+  calendário de eventos (hoje só do Rio, feito com o ChatGPT) em que cada evento diz se impacta o preço e com que
+  multiplicador. Fato: o calendário de eventos já existe desde o M3.7 (Configurações → Calendário e preços, bloco
+  Eventos: nome, início, fim, multiplicador de 1,0× a 10×, em que 1,0 não mexe no preço e só vale a estadia mínima;
+  estadia mínima; "mínimo normal com reserva"; todos os imóveis ou só alguns; limite de 100 eventos e 200 feriadões; o
+  motor aplica o maior multiplicador entre evento e feriadão sobre o preço base, sem somar, só na fonte "scl"). O item:
+  uma página só que mostra, por imóvel, como cada noite é formada (base, período, evento, feriadão, última hora, pisos,
+  preço importado, fonte) e o calendário de eventos com importação por colagem (Diego cola a lista: nome, início, fim,
+  multiplicador sugerido, todos os imóveis ou quais; revisa linha a linha antes de gravar), observação e origem por
+  evento e o campo "cidade" (Rio hoje; outras depois). Nada escreve no Beds24 fora do envio já existente. Depende do
+  M3.11a.
