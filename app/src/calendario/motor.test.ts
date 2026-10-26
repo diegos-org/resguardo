@@ -442,7 +442,8 @@ describe("só disponibilidade (M3.11b)", () => {
     // A regra do SCL (sexta: mínimo 2) e as sobras continuam calculadas, só para informação; o motivo diz de quem é o mínimo.
     expect(l2).toMatchObject({ minimoRegra: 2, livresSeguidas: null });
     expect(l2.motivoMinimo).toMatch(/^mínimo definido no Beds24 \(o SCL só lê\); regra do SCL só para informação: Semana normal/);
-    expect(l2.regra).toContain("mín. — (");
+    expect(l2.regra).toContain("mín. — (definido no Beds24; o SCL só lê)");
+    expect(l2.regra).not.toContain("só para informação");
     expect(l2.regra).toContain("máx. —");
     expect(l2.avisos).not.toContainEqual(expect.stringContaining("Preço não cadastrado"));
     // Evento do SCL (3×) não mexe no preço de quem define preço no Beds24.

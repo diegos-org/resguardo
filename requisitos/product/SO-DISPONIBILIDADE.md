@@ -47,6 +47,11 @@ Com `fontePrecos === "so_disponibilidade"`:
   venda no site até a próxima leitura" e todos os avisos de disponibilidade (unidades livres com reserva no SCL,
   overbooking, blackout externo, 0 unidades sem reserva).
 - **Ação da noite:** "sem_dados" quando não há bloqueio a enviar ou reabrir; "enviar" ou "igual" só pelo bloqueio.
+- Registro (26/10, revisão 1): na `regra` de cada noite (gravada no histórico do envio e cortada em 300 caracteres) o
+  motivo do mínimo nesta fonte é curto, "mín. — (definido no Beds24; o SCL só lê)"; a regra do SCL inteira fica em
+  `motivoMinimo`, para a prévia. Antes, a `regra` levava o motivo completo ("… regra do SCL só para informação: …") e,
+  com evento ou feriadão, o corte apagava o texto do bloqueio, a única coisa que vai nesta fonte. Objetivo: o histórico
+  mostrar o que foi enviado.
 
 ## 4. Envio (`calendario/envio.ts`, M3.7)
 
@@ -56,7 +61,18 @@ Com `fontePrecos === "so_disponibilidade"`:
 - A troca da fonte entre o plano e a escrita continua recusando a escrita do imóvel ("Fonte de preços alterada").
 - Configurações → Calendário e preços, lista de envio: rótulo "(só disponibilidade: o SCL envia só os bloqueios do SCL)".
 - Prévia (M3.7a): a frase da fonte diz que o SCL envia só os bloqueios; as colunas de preço, mínimo e máximo do SCL mostram
-  "—" e a do Beds24 mostra o lido.
+  "—" e a do Beds24 mostra o lido. A linha "Regras em vigor" diz que mínimo e máximo são definidos no Beds24 (a regra do
+  SCL fica entre parênteses, só para informação) e, na tabela "Noites do envio escolhido", campo não enviado (nulo) mostra
+  "—" em vez de "não informado" (revisão 1, 26/10).
+- Registro (26/10, revisão 1): o aviso por imóvel "N noite(s) sem preço no SCL; o preço dessas noites não é enviado" deixa
+  de sair quando o preço é lido do Beds24 (`precoLidoDoBeds24`: fontes "beds24" e "só disponibilidade"). Antes saía em
+  todo envio da fonte "beds24" (M3.9), porque nela `precoReferencia` é sempre nulo. Motivo: nessas fontes o SCL não tem
+  preço por regra, e o aviso que importa é o da noite sem leitura ("Sem preço lido do Beds24"), no plano. Teste na
+  describe da fonte "beds24" em `calendario/envio.test.ts`.
+- Registro (26/10, revisão 1): o aviso por imóvel "N noite(s) sem leitura anterior do Beds24; serão enviadas e conferidas
+  pela releitura" passa a dizer quantas dessas noites o plano de fato envia ("M delas serão enviadas…" ou "nenhuma delas
+  tem algo a enviar"). Antes contava toda noite sem leitura como "a enviar", o que nesta fonte é falso (noite sem leitura
+  e sem bloqueio do SCL é "sem_dados") e, em qualquer fonte, ignorava a noite igual ao último envio confirmado.
 
 ## 5. Site e cotação (`site/disponibilidade.ts`, M7.2, M8.1)
 
@@ -66,6 +82,10 @@ Com `fontePrecos === "so_disponibilidade"`:
   proprietário). Sem leitura atual, a noite já não vende pelo preço. As sobras e a regra 6/10 do SCL não valem aqui.
   - Registro: na fonte "beds24" (M3.9) os mínimos continuam do SCL, porque o SCL os envia; nesta fonte o SCL não envia
     mínimo, então vale o lido. Motivo: uma regra, um lugar; a regra de venda fica com o proprietário.
+  - Mínimo ou máximo nulo na leitura atual é "sem restrição": na API do Beds24, minStay e maxStay valem 1 ou mais, ou
+    nulo quando não há restrição; 1 noite vende. É diferente da restrição de entrada/saída, em que "não informada" nunca
+    vira disponível, porque ali o nulo é ausência de dado sobre a data e aqui é o próprio valor "sem mínimo". (Registro
+    26/10, revisão 1; teste em `site/disponibilidade.test.ts`.)
 - O desconto do site (M12.1) vale por cima, como nas outras fontes. Nenhum texto do site cita o Beds24.
 
 ## 6. Portal do proprietário (M12.4)
@@ -75,6 +95,10 @@ Com `fontePrecos === "so_disponibilidade"`:
 - Períodos do portal: recusados nesta fonte, com a frase "Com só disponibilidade, preço e estadia mínima ficam com você ou
   com a sua ferramenta: aqui você só fecha e reabre datas." (avisar em vez de gravar algo que não seria enviado).
 - Bloqueio de uso próprio (M5.5) continua: é o que esta fonte envia.
+- Registro (26/10, revisão 1): os campos "Estadia mínima" e "Estadia máxima" do portal ficam só de leitura nesta fonte,
+  com a nota "definida por você ou pela sua ferramenta de preços" (como o preço). Antes continuavam editáveis, mas não
+  valiam em lugar nenhum (o site lê os dos canais e o envio não os manda): o proprietário digitaria um mínimo sem efeito.
+  Avisar em vez de supor. Decisão de produto aberta para Diego: manter assim ou esconder os dois campos.
 
 ## 7. Painel
 
@@ -98,6 +122,24 @@ Com `fontePrecos === "so_disponibilidade"`:
   `fechadas_em`, `fechadas_por`, `reabertas_em`, `reabertas_por`. Não reaproveitar `beds24_reservas_site`: o envio do M8.3c
   lê aquela tabela para decidir o que escrever no Beds24, e uma reserva direta nunca pode entrar nessa fila.
 - O envio do calendário não fecha essas noites sozinho (pendência de Diego). Nada escreve no Beds24.
+- Registro (26/10, revisão 1), desvios da implementação em relação ao texto acima:
+  - **Auditoria:** reutiliza os eventos `beds24.reserva.ota_fechada` e `beds24.reserva.ota_reaberta` (os mesmos da marca
+    da reserva do site, D3 do M8.3b) em vez de `reserva.otas.datas_fechadas` e `reserva.otas.datas_reabertas`. Motivo: um
+    ato humano, um nome; o histórico da reserva (`HistoricoAlteracoes`) já tem rótulo para eles. Objetivo: uma regra, um
+    lugar.
+  - **Texto da reabertura:** "Reserva direta {código} cancelada: reabra as datas de {entrada} a {saída} no Beds24 (mude o
+    bloqueio para Cancelado; não apague)." A regra de sempre: nunca apagar.
+  - **Travas:** a marca da direta trava só a reserva (`for no key update`) e a linha das marcas dela (`for update`); não
+    toma a trava `beds24:<org>` nem a do imóvel, porque não ocupa noites nem toca no que o envio lê. A marca da reserva
+    do site continua com as travas do M8.3b.
+  - **Ficha:** o bloco "No Beds24" da reserva direta aparece sempre, com o aviso de que o sistema nunca a cria no Beds24;
+    sem tarefa (já marcada, ou sem saída de hoje em diante), diz "Nada a fazer à mão nas OTAs para esta reserva agora."
+  - **Imóvel sem vínculo com o Beds24** recebe a mesma tarefa, como a paga e a D3 do M8.3b. Se houver imóvel fora do
+    Beds24, decidir num item seguinte se a tarefa exige vínculo (mesma regra para as três).
+  - **Limite (pendência de Diego):** reserva direta com as datas alteradas depois da marca "Datas fechadas nas OTAs": a
+    marca continua valendo, nenhuma tarefa aparece e o bloqueio no Beds24 fica com as datas antigas. Opções para um item
+    seguinte: um caso `direta_alterada` ("mude as datas do bloqueio para X a Y") ou zerar a marca quando as datas de uma
+    direta marcada mudam.
 
 ## 9. Testes
 
@@ -108,8 +150,9 @@ Com PGlite e a versão falsa do Beds24, sem rede; dados fictícios.
    importada é ignorada; `regra` com "máx. —".
 2. **Envio:** carga só com bloqueio; registros com preço, mínimo e máximo nulos; releitura confere só o bloqueio; a troca
    da fonte durante o envio recusa a escrita; a lista de envio mostra o rótulo.
-3. **Site e cotação:** preço, mínimo e máximo lidos do Beds24; sem leitura atual, "a confirmar"; sobras do SCL não valem;
-   desconto do site por cima; nenhum texto cita o Beds24.
+3. **Site e cotação:** preço, mínimo e máximo lidos do Beds24; sem leitura atual, "a confirmar"; sobras do SCL não valem
+   (reserva logo depois da entrada não rebaixa o mínimo lido; com a fonte scl a mesma sobra vale); mínimo e máximo nulos
+   na leitura = sem restrição; desconto do site por cima; nenhum texto cita o Beds24.
 4. **Portal:** nome e explicação sem Beds24; campos de preço escondidos; período recusado com a frase.
 5. **Telas:** a opção na ficha; a nota em Anúncios; a prévia com "—" e a frase; a importação recusa pela fonte.
 6. **Reserva direta:** o aviso no Início e na ficha; a marca tira o aviso; cancelada depois da marca pede reabrir; reserva
@@ -120,3 +163,7 @@ Com PGlite e a versão falsa do Beds24, sem rede; dados fictícios.
 
 - Importar de uma cópia antiga, lista "pronto" e ativação: M3.11c e item 18 das ações de Diego.
 - Mínimo e máximo lidos do Beds24 valem para o site só nesta fonte; a fonte "beds24" continua como no M3.9.
+- Depois do deploy, toda reserva direta já confirmada com saída de hoje em diante (origem "direta" ou "outro", inclusive
+  as da planilha, fonte "csv") aparece no Início como "feche as datas" até a equipe marcar, uma vez só, mesmo as já
+  bloqueadas no Beds24: nada nasce marcado sozinho. Se Diego não quiser as da planilha, é um ajuste nas listas de
+  `beds24/reservas-site-regras.ts` (`ORIGENS_RESERVA_DIRETA`, `FONTES_FORA_DA_RESERVA_DIRETA`).

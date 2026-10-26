@@ -432,8 +432,11 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         const semPreco = precoLidoDoBeds24(p.fontePrecos) ? 0 : p.linhas.filter(l => l.precoReferencia === null).length;
         if (semPreco) aviso(`Imóvel ${m.codigo}: ${semPreco} noite(s) sem preço no SCL; o preço dessas noites não é enviado.`);
         for (const l of p.linhas) for (const a of l.avisos) if (!a.startsWith("Sem leitura do Beds24")) aviso(`Imóvel ${m.codigo}, noite ${dataBr(l.data)}: ${a}`);
-        const semLeitura = p.linhas.filter(l => !l.observacao).length;
-        if (semLeitura) aviso(`Imóvel ${m.codigo}: ${semLeitura} noite(s) sem leitura anterior do Beds24; serão enviadas e conferidas pela releitura.`);
+        // Noite sem leitura anterior só vai quando o plano a marcou para envio: com o preço lido do Beds24 ela só vai pelo
+        // bloqueio do SCL, e em qualquer fonte fica se é igual ao último envio confirmado. O aviso diz quantas de fato vão.
+        const semLeitura = p.linhas.filter(l => !l.observacao);
+        const semLeituraAEnviar = semLeitura.filter(l => l.acao === "enviar").length;
+        if (semLeitura.length) aviso(`Imóvel ${m.codigo}: ${semLeitura.length} noite(s) sem leitura anterior do Beds24; ${semLeituraAEnviar === 0 ? "nenhuma delas tem algo a enviar" : semLeituraAEnviar === semLeitura.length ? "serão enviadas e conferidas pela releitura" : `${semLeituraAEnviar} delas serão enviadas e conferidas pela releitura`}.`);
       }
       const resultadoImoveis: ImovelEnviado[] = planos.map(p => ({ imovelId: p.imovelId, codigo: p.codigo, resumo: resumirPlano(p.linhas), enviadas: 0, confirmadas: 0, divergentes: 0, pendentes: 0, falha: motivosSemEscrita.get(p.imovelId) ?? "" }));
 

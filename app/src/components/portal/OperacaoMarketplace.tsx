@@ -5,7 +5,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { CampoHora } from "@/components/CampoHora";
 import { Periodos } from "@/components/imoveis/Periodos";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
-import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL, PERIODO_SO_DISPONIBILIDADE_PORTAL } from "@/imoveis/fonte-precos";
+import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL, PERIODO_SO_DISPONIBILIDADE_PORTAL, precoForaDoPortal } from "@/imoveis/fonte-precos";
 import type { Periodo } from "@/imoveis/regras-venda";
 import { dataBr, dataHoraNoFuso, DIAS_NA_ORDEM, DIAS_SEMANA } from "@/lib/datas";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
@@ -75,8 +75,6 @@ const oQueFica = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "as est
 const SO_NO_SITE = "taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site";
 const PRECO_NA_FERRAMENTA = "o preço da noite é definido por você ou pela sua ferramenta de preços e vem de lá para o site e para os canais";
 const SO_DISPONIBILIDADE = "preço, estadia mínima e máxima são definidos por você ou pela sua ferramenta de preços e vêm de lá para o site e para os canais; nosso sistema leva aos canais só as datas que você fecha e reabre aqui";
-/** O preço da noite não é editado no portal: definido pelo proprietário ou pela ferramenta dele (M3.9) ou só disponibilidade (M3.11b). */
-const precoForaDoPortal = (fonte: FontePrecosPortal) => fonte === "ferramenta" || fonte === "so_disponibilidade";
 const maiuscula = (t: string) => `${t[0].toUpperCase()}${t.slice(1)}`;
 
 /** O que falta para o envio alcançar as OTAs de fato (lista, vínculo, chave de escrita, e um envio real que já aceitou o imóvel); vazio = pronto. */
@@ -137,6 +135,9 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
   const [precoDigitado, setPrecoDigitado] = useState(dinheiro("precoBase"));
   const centavos = reaisParaCentavos(precoDigitado);
   const precoNaFerramenta = precoForaDoPortal(imovel.fontePrecos);
+  // Só disponibilidade (M3.11b, desenho §6, registro de 26/10): estadia mínima e máxima também ficam com o proprietário ou
+  // com a ferramenta dele (o site lê as dos canais; nosso sistema não as envia). Os campos ficam só de leitura, com a nota.
+  const estadiasNaFerramenta = imovel.fontePrecos === "so_disponibilidade";
   return (
     <form key={JSON.stringify(imovel.regras)} action={enviar} className={f.form} aria-label={`Preços e regras de venda do ${imovel.codigo}`}>
       <input type="hidden" name="imovelId" value={imovel.id} />
@@ -185,13 +186,13 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       </p>
       <div className={f.linha}>
         <label>
-          Estadia mínima (noites)
-          <input name="estadiaMinima" inputMode="numeric" defaultValue={numero("estadiaMinima")} {...invalido("estadiaMinima")} />
+          Estadia mínima (noites){estadiasNaFerramenta ? " — definida por você ou pela sua ferramenta de preços" : ""}
+          <input name="estadiaMinima" inputMode="numeric" defaultValue={numero("estadiaMinima")} readOnly={estadiasNaFerramenta} {...invalido("estadiaMinima")} />
           {erro("estadiaMinima")}
         </label>
         <label>
-          Estadia máxima (noites)
-          <input name="estadiaMaxima" inputMode="numeric" defaultValue={numero("estadiaMaxima")} {...invalido("estadiaMaxima")} />
+          Estadia máxima (noites){estadiasNaFerramenta ? " — definida por você ou pela sua ferramenta de preços" : ""}
+          <input name="estadiaMaxima" inputMode="numeric" defaultValue={numero("estadiaMaxima")} readOnly={estadiasNaFerramenta} {...invalido("estadiaMaxima")} />
           {erro("estadiaMaxima")}
         </label>
         <label>

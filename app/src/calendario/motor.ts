@@ -373,7 +373,10 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
 
     const textoBloqueio = bloqueioEnviar === "blackout" ? (bloqueioAnterior ? `bloqueio do SCL (antes: "${bloqueioAnterior}")` : "bloqueio do SCL")
       : bloqueioEnviar === "none" ? "reabre bloqueio do SCL" : bloqueioEnviar ? `reabre bloqueio do SCL e devolve "${bloqueioEnviar}"` : "";
-    const regra = [motivoPreco, motivoUltimaHora, `mín. ${minimoEnviar ?? "—"} (${motivoMinimo})`, `máx. ${maximoEnviar ?? "—"}`, textoBloqueio].filter(Boolean).join(" · ");
+    // Na `regra` (histórico do envio, cortada em 300 caracteres) o mínimo desta fonte leva um motivo curto: a regra do SCL
+    // inteira fica em `motivoMinimo`, para a prévia, e o texto do bloqueio — o que de fato vai — não é cortado.
+    const motivoMinimoDaRegra = soDisponibilidade ? "definido no Beds24; o SCL só lê" : motivoMinimo;
+    const regra = [motivoPreco, motivoUltimaHora, `mín. ${minimoEnviar ?? "—"} (${motivoMinimoDaRegra})`, `máx. ${maximoEnviar ?? "—"}`, textoBloqueio].filter(Boolean).join(" · ");
     linhas.push({
       data, antecedencia, fontePreco, motivoPreco, precoReferencia, faixaUltimaHora: faixa >= 0 ? faixa : null, percentualUltimaHora: pct, piso,
       precoEnviar, precoFinalEsperado, minimoRegra, motivoMinimo, livresSeguidas, minimoEnviar, maximoEnviar,

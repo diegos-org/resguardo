@@ -116,6 +116,10 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(form.textContent).not.toContain("no Airbnb você receberia");
     expect(form.textContent).toContain("não dá para simular aqui");
     expect((within(form).getByLabelText(/Preço da noite/) as HTMLInputElement).readOnly).toBe(true);
+    // Estadia mínima e máxima também ficam com o proprietário ou com a ferramenta dele (desenho §6, registro de 26/10): só de leitura, com a nota.
+    for (const rotulo of [/Estadia mínima/, /Estadia máxima/]) expect((within(form).getByLabelText(rotulo) as HTMLInputElement).readOnly).toBe(true);
+    expect(form.textContent).toContain("Estadia mínima (noites) — definida por você ou pela sua ferramenta de preços");
+    expect(form.textContent).toContain("Estadia máxima (noites) — definida por você ou pela sua ferramenta de preços");
     const nota = screen.getByRole("note").textContent ?? "";
     expect(nota).toContain("leva ao Airbnb e ao Booking só as datas fechadas e reabertas");
     expect(nota).not.toContain("estadias mínima e máxima ao Airbnb");

@@ -149,7 +149,8 @@ export async function consultarDisponibilidade(db: Db, organizacaoId: string, p:
   const entrada = linhas[0];
   // Só disponibilidade (M3.11b): a regra de venda é do proprietário, no Beds24 — o mínimo e o máximo são os lidos na noite
   // de entrada, quando a leitura é atual (sem ela a noite já não vende pelo preço, abaixo); as sobras e a regra de 6/10
-  // do SCL não valem. Na fonte "beds24" (M3.9) os mínimos continuam do SCL, porque o SCL os envia.
+  // do SCL não valem. Na fonte "beds24" (M3.9) os mínimos continuam do SCL, porque o SCL os envia. Mínimo ou máximo nulo
+  // na leitura atual é "sem restrição" (na API do Beds24, minStay/maxStay valem 1 ou mais, ou nulo): 1 noite vende.
   const soDisponibilidade = plano.fontePrecos === "so_disponibilidade";
   // Mínimo de negócio: o do motor (semana normal, eventos, sobras). Se a regra supera o máximo, o motor
   // manda o máximo ao Beds24 e avisa no painel; para o site vale a regra original, e a estadia fica

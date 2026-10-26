@@ -498,4 +498,25 @@ describe("só disponibilidade no site (M3.11b)", () => {
     expect(semPreco).toMatchObject({ situacao: "a_confirmar", cotacao: { diarias: null, total: null } });
     expect(JSON.stringify([r, semPreco])).not.toMatch(/beds24/i);
   });
+
+  it("as sobras do SCL não valem: a reserva logo depois da entrada não rebaixa o mínimo lido; com a fonte scl, a mesma sobra vale", async () => {
+    // Cadastro do SCL com mínimo 5; na leitura, mínimo 3. Reserva confirmada de 14 a 16/10: sobra de 2 noites (12 e 13/10).
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 5 }).where(eq(imoveisDetalhes.imovelId, im));
+    await observar(dias("2026-10-12", 5), { preco: 52000, minimoNoites: 3, maximoNoites: 27 });
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-SOBRA", origem: "airbnb", estado: "confirmada", checkin: "2026-10-14", checkout: "2026-10-16", hospedeNome: "Hóspede Fictício", hospedeEmail: "fake@example.com", fonte: "manual", idFonte: "" });
+    const r = await consultar({ saida: "2026-10-14" });
+    expect(r).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 12/10/2026, o mínimo é de 3 noites."], cotacao: null });
+    expect(JSON.stringify(r)).not.toMatch(/beds24|Fictício|fake@/i);
+    // Contraste: com a fonte scl a sobra cede o mínimo 5 às 2 noites livres, e a estadia vende.
+    await db.update(imoveisDetalhes).set({ fontePrecos: "scl" }).where(eq(imoveisDetalhes.imovelId, im));
+    expect(await consultar({ saida: "2026-10-14" })).toMatchObject({ situacao: "disponivel", motivos: [], noites: 2 });
+  });
+
+  it("mínimo e máximo nulos na leitura atual são \"sem restrição\" (na API, minStay/maxStay valem 1 ou mais, ou nulo): 1 noite vende, mesmo com mínimo 5 no cadastro do SCL", async () => {
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 5 }).where(eq(imoveisDetalhes.imovelId, im));
+    await observar(dias("2026-10-12", 4), { preco: 52000, minimoNoites: null, maximoNoites: null });
+    const r = await consultar({ saida: "2026-10-13" });
+    expect(r).toMatchObject({ situacao: "disponivel", motivos: [], noites: 1, cotacao: { diarias: 52000 } });
+    expect(JSON.stringify(r)).not.toMatch(/beds24/i);
+  });
 });

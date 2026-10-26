@@ -39,6 +39,12 @@ export const precoLidoDoBeds24 = (fonte: FontePrecos): boolean => fonte === "bed
 export type FontePrecosPortal = "scl" | "ferramenta" | "manual" | "so_disponibilidade";
 export const fontePrecosDoPortal = (f: FontePrecos): FontePrecosPortal => (f === "beds24" ? "ferramenta" : f);
 
+/**
+ * No portal, o preço da noite não é editado quando a fonte (como o proprietário a vê) lê o preço do Beds24. Derivado de
+ * `precoLidoDoBeds24` pelas fontes do painel: a decisão "o preço é lido" vive num lugar só.
+ */
+export const precoForaDoPortal = (f: FontePrecosPortal): boolean => FONTES_PRECOS.some((x) => fontePrecosDoPortal(x) === f && precoLidoDoBeds24(x));
+
 export const NOMES_FONTE_PRECOS_PORTAL: Record<FontePrecosPortal, string> = {
   scl: "Preços automáticos da SCL",
   ferramenta: "Preços definidos por você ou pela sua ferramenta de preços",
