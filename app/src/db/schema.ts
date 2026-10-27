@@ -2659,3 +2659,31 @@ export const precosImportados = pgTable(
     check("precos_importados_minimo", sql`${t.minimoNoites} is null or (${t.minimoNoites} between 1 and 365)`),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Reserva direta confirmada no SCL e as OTAs (M3.11b, desenho em requisitos/product/SO-DISPONIBILIDADE.md, 8): a reserva
+// que não nasce no Beds24 (WhatsApp, indicação) tem as datas fechadas lá à mão, como bloqueio, e a equipe marca aqui.
+// Nunca `beds24_reservas_site`: o envio do M8.3c lê aquela tabela para decidir o que escrever no Beds24, e a reserva direta
+// nunca pode entrar nessa fila. Só ids e horas: nenhum dado pessoal nem valor.
+// ---------------------------------------------------------------------------
+
+/**
+ * As marcas manuais das OTAs de uma reserva direta (uma linha por reserva, criada pela primeira marca): "Datas fechadas
+ * nas OTAs" (`fechadas_em`/`por`) tira o aviso "feche as datas"; cancelada depois disso, "Datas reabertas nas OTAs"
+ * (`reabertas_em`/`por`) tira o "reabra as datas". Fechar de novo (a reserva confirmada outra vez) regrava a linha e zera a
+ * reabertura. `por` nulo só se o usuário for apagado.
+ */
+export const reservasDiretasOtas = pgTable(
+  "reservas_diretas_otas",
+  {
+    reservaId: uuid("reserva_id").primaryKey().references(() => reservas.id),
+    organizacaoId: uuid("organizacao_id").notNull().references(() => organizacoes.id),
+    fechadasEm: timestamp("fechadas_em", { withTimezone: true }).notNull(),
+    fechadasPor: uuid("fechadas_por").references(() => usuarios.id, { onDelete: "set null" }),
+    reabertasEm: timestamp("reabertas_em", { withTimezone: true }),
+    reabertasPor: uuid("reabertas_por").references(() => usuarios.id, { onDelete: "set null" }),
+    criadoEm: criadoEm(),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("reservas_diretas_otas_organizacao").on(t.organizacaoId)],
+);

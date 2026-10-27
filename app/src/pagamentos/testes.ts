@@ -41,6 +41,7 @@ import {
   proprietarioImoveis,
   proprietarios,
   reservas,
+  reservasDiretasOtas,
   tentativasLogin,
   usuarios,
   whatsappAvisosDia,
@@ -242,6 +243,8 @@ export async function semDadosPessoais(db: Db, valores: string[], o: { nomes?: s
     // camada do preço importado (preço e mínimo por noite). Nada de hóspede.
     await db.select().from(beds24CalendarioCopias),
     await db.select().from(precosImportados),
+    // M3.11b: as marcas das OTAs da reserva direta (só ids e horas).
+    await db.select().from(reservasDiretasOtas),
   ];
   const registros = await db.select().from(auditoria);
   const tudo = JSON.stringify([semAuditoria, registros]);

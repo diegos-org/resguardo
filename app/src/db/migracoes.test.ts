@@ -585,4 +585,74 @@ describe("aplicação das migrações por hash (build da Vercel)", () => {
     expect(await copia(1)).toBe("ok");
     expect((await db.query<{ o: number }>("select max(ordem)::int as o from beds24_calendario_copias")).rows[0].o).toBeGreaterThan(copias[1].ordem);
   }, 120_000);
+
+  it("a 0076 (M3.11b, marcas das OTAs da reserva direta) cria a tabela vazia, uma linha por reserva presa à reserva e à organização, só ids e horas, nomes até 63 caracteres, e é idempotente", async () => {
+    const todas = readMigrationFiles({ migrationsFolder: join(process.cwd(), "drizzle") });
+    const m0076 = todas[76];
+    expect(m0076.sql.join("\n")).toContain('"reservas_diretas_otas"');
+    // Só até a 0076 (as seguintes terão o próprio teste).
+    const ate0076 = todas.slice(0, 77);
+    expect(await aplicarMigracoesPendentes(executar, todas.slice(0, 76))).toBe(76);
+    const um = async <T,>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows[0];
+    const { id: org } = (await um<{ id: string }>("insert into organizacoes (nome) values ('Org') returning id"))!;
+    const { id: outra } = (await um<{ id: string }>("insert into organizacoes (nome) values ('Outra') returning id"))!;
+    const { id: im } = (await um<{ id: string }>("insert into imoveis (organizacao_id, codigo, nome) values ($1, '403', 'Studio Fictício') returning id", [org]))!;
+    // Uma reserva direta de antes (lançada à mão) e quem vai marcar (fictícios).
+    const { id: reserva } = (await um<{ id: string }>("insert into reservas (organizacao_id, imovel_id, codigo, origem, checkin, checkout, fonte) values ($1, $2, 'SCL-D1RET4', 'direta', '2026-12-20', '2026-12-27', 'manual') returning id", [org, im]))!;
+    const { id: usuario } = (await um<{ id: string }>("insert into usuarios (organizacao_id, email, nome, papel) values ($1, 'equipe.ficticia@example.com', 'Equipe Fictícia', 'admin') returning id", [org]))!;
+
+    expect(await aplicarMigracoesPendentes(executar, ate0076)).toBe(1);
+    // Nada nasce sozinho: a reserva direta de antes não ganha marca nenhuma.
+    expect((await db.query<{ n: number }>("select count(*)::int as n from reservas_diretas_otas")).rows[0].n).toBe(0);
+    const colunas = async () =>
+      (await db.query<{ c: string }>("select column_name || ':' || data_type || ':' || is_nullable as c from information_schema.columns where table_schema = 'public' and table_name = 'reservas_diretas_otas' order by ordinal_position")).rows.map((r) => r.c);
+    // Sem os "not null" (o Postgres recente os lista como restrições): a chave, as estrangeiras e os CHECKs.
+    const restricoes = async () => (await db.query<{ n: string }>("select c.conname as n from pg_constraint c join pg_class t on t.oid = c.conrelid where t.relname = 'reservas_diretas_otas' and c.contype <> 'n' order by 1")).rows.map((r) => r.n);
+    const indices = async () => (await db.query<{ n: string }>("select indexname as n from pg_indexes where tablename = 'reservas_diretas_otas' order by 1")).rows.map((r) => r.n);
+    const antes = { colunas: await colunas(), restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas() };
+    expect(antes.tabelas).toContain("reservas_diretas_otas");
+    // Só ids e horas: nenhuma coluna de texto para um dado pessoal ou valor morar.
+    expect(antes.colunas).toEqual([
+      "reserva_id:uuid:NO", "organizacao_id:uuid:NO", "fechadas_em:timestamp with time zone:NO", "fechadas_por:uuid:YES", "reabertas_em:timestamp with time zone:YES", "reabertas_por:uuid:YES",
+      "criado_em:timestamp with time zone:NO", "atualizado_em:timestamp with time zone:NO",
+    ]);
+    expect(antes.restricoes).toEqual([
+      "reservas_diretas_otas_fechadas_por_usuarios_id_fk", "reservas_diretas_otas_organizacao_id_organizacoes_id_fk", "reservas_diretas_otas_pkey", "reservas_diretas_otas_reabertas_por_usuarios_id_fk", "reservas_diretas_otas_reserva_id_reservas_id_fk",
+    ]);
+    expect(antes.indices).toEqual(["reservas_diretas_otas_organizacao", "reservas_diretas_otas_pkey"]);
+    // Nenhum nome passa dos 63 caracteres do Postgres: mede os nomes escritos na 0076 (o catálogo guardaria o nome já cortado).
+    const nomesNaMigracao = [...m0076.sql.join("\n").matchAll(/conname = '([^']+)'|INDEX IF NOT EXISTS "([^"]+)"/g)].map((m) => m[1] ?? m[2]);
+    expect(nomesNaMigracao).toHaveLength(5); // 4 chaves estrangeiras e 1 índice
+    expect(nomesNaMigracao.every((n) => n.length <= 63)).toBe(true);
+    expect([...antes.restricoes, ...antes.indices]).toEqual(expect.arrayContaining(nomesNaMigracao));
+
+    // Uma linha por reserva (23505), presa à reserva e à organização (23503), sempre com a hora da marca (23502).
+    const codigo = async (sql: string, params: unknown[] = []) => {
+      try {
+        await db.query(sql, params);
+        return "ok";
+      } catch (e) {
+        return (e as { code?: string }).code;
+      }
+    };
+    const marca = (reservaId: string, orgId: string, colunas = "", valores = "", params: unknown[] = []) =>
+      codigo(`insert into reservas_diretas_otas (reserva_id, organizacao_id, fechadas_em${colunas}) values ($1, $2, '2026-10-02T12:00:00Z'${valores})`, [reservaId, orgId, ...params]);
+    expect(await marca(reserva, org, ", fechadas_por", ", $3", [usuario])).toBe("ok");
+    expect(await marca(reserva, org)).toBe("23505");
+    expect(await marca("6f1c2a7e-3b4d-4c5e-8f90-123456789abc", org)).toBe("23503");
+    expect(await codigo("insert into reservas_diretas_otas (reserva_id, organizacao_id) values (gen_random_uuid(), $1)", [outra])).toBe("23502");
+    expect(await codigo("update reservas_diretas_otas set organizacao_id = gen_random_uuid() where reserva_id = $1", [reserva])).toBe("23503");
+    expect(await codigo("update reservas_diretas_otas set reabertas_por = gen_random_uuid() where reserva_id = $1", [reserva])).toBe("23503");
+    // Quem marcou apagado: a marca fica, sem o autor (`set null`).
+    await db.query("delete from usuarios where id = $1", [usuario]);
+    expect(await um("select fechadas_por as por, fechadas_em is not null as em from reservas_diretas_otas where reserva_id = $1", [reserva])).toEqual({ por: null, em: true });
+
+    // As instruções de novo (banco compartilhado das prévias): nada muda, nem a linha já gravada.
+    for (const instrucao of m0076.sql) await db.exec(instrucao);
+    expect({ colunas: await colunas(), restricoes: await restricoes(), indices: await indices(), tabelas: await tabelas() }).toEqual(antes);
+    expect((await db.query<{ n: number }>("select count(*)::int as n from reservas_diretas_otas")).rows[0].n).toBe(1);
+    await db.query('delete from "drizzle"."__drizzle_migrations" where hash = $1', [m0076.hash]);
+    expect(await aplicarMigracoesPendentes(executar, ate0076)).toBe(1);
+    expect((await db.query<{ n: number }>("select count(*)::int as n from reservas_diretas_otas")).rows[0].n).toBe(1);
+  }, 120_000);
 });

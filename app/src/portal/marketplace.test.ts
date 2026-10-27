@@ -6,7 +6,7 @@ import { impressaoCredencialBeds24 } from "@/beds24/http";
 import { VEREDITO_PENDENTE } from "@/calendario/envio";
 import { REGRAS_CALENDARIO_PADRAO, salvarRegrasCalendario } from "@/calendario/regras-config";
 import { criarContrato, listarContratos } from "@/contratos/repositorio";
-import { beds24EnvioImoveis, beds24Envios, beds24EnvioNoites, idsExternos, imoveis, limpezas, manutencoes, organizacoes, profissionaisLimpeza, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
+import { beds24EnvioImoveis, beds24Envios, beds24EnvioNoites, idsExternos, imoveis, imoveisDetalhes, limpezas, manutencoes, organizacoes, profissionaisLimpeza, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { DETALHES_VAZIOS, entradaDeDetalhes, lerDetalhes, listarPeriodos, salvarDetalhes, validarDetalhes } from "@/imoveis/detalhes";
@@ -16,6 +16,7 @@ import {
   ANTES_DA_POSSE,
   criarPeriodoPeloProprietario,
   envioPronto,
+  ESTADIA_FORA_DO_PORTAL,
   excluirPeriodoPeloProprietario,
   imoveisMarketplaceDaSessao,
   limpezasDoProprietario,
@@ -24,6 +25,7 @@ import {
   NAO_DONO,
   NAO_MARKETPLACE,
   NAO_SAIDA,
+  PERIODO_SO_DISPONIBILIDADE,
   registrarManutencaoPeloProprietario,
   salvarPrecosPeloProprietario,
   situacaoDoEnvio,
@@ -136,6 +138,30 @@ describe("portal do proprietário marketplace (M12.4)", () => {
     expect((await imoveisMarketplaceDaSessao(db, sessao(), agora))[0]).toMatchObject({ fontePrecos: "ferramenta" });
     expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: "900,00", estadiaMinima: "" }, agora)).toMatchObject({ ok: false, erro: expect.stringContaining("sua ferramenta de preços") });
     expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", precoNoite: "", estadiaMinima: "5" }, agora)).toEqual({ ok: true });
+  });
+
+  it("com só disponibilidade (M3.11b): o preço da noite não é editado aqui, a fonte chega com o valor próprio e nenhum período é criado, com a frase do desenho; nada cita o Beds24", async () => {
+    await salvarDetalhes(db, org, a, { ...(await lerDetalhes(db, org, a)), fontePrecos: "so_disponibilidade" }, null, agora);
+    const recusa = await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "350,00", estadiaMinima: "2" }, agora);
+    expect(recusa).toMatchObject({ ok: false, erros: { precoBase: expect.stringContaining("sua ferramenta de preços") } });
+    expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "300,00", taxaLimpeza: "120,00" }, agora)).toEqual({ ok: true });
+    expect(await lerDetalhes(db, org, a)).toMatchObject({ precoBase: 30000, taxaLimpeza: 12000, fontePrecos: "so_disponibilidade" });
+    expect((await imoveisMarketplaceDaSessao(db, sessao(), agora))[0]).toMatchObject({ fontePrecos: "so_disponibilidade" });
+    // Estadia mínima e máxima (revisão 2): a tela as mostra só de leitura e o servidor recusa a mudança, como o preço; o mesmo
+    // valor (o que o campo só de leitura envia) passa, e as outras regras continuam editáveis.
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 2, estadiaMaxima: 10 }).where(eq(imoveisDetalhes.imovelId, a));
+    expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "300,00", estadiaMinima: "3", estadiaMaxima: "10" }, agora)).toEqual({ ok: false, erro: "Confira os campos destacados.", erros: { estadiaMinima: ESTADIA_FORA_DO_PORTAL } });
+    expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "300,00", estadiaMinima: "2", estadiaMaxima: "" }, agora)).toEqual({ ok: false, erro: "Confira os campos destacados.", erros: { estadiaMaxima: ESTADIA_FORA_DO_PORTAL } });
+    expect(await salvarPrecosPeloProprietario(db, sessao(), a, { precoBase: "300,00", estadiaMinima: "2", estadiaMaxima: "10", antecedenciaMinima: "1" }, agora)).toEqual({ ok: true });
+    expect(await lerDetalhes(db, org, a)).toMatchObject({ estadiaMinima: 2, estadiaMaxima: 10, antecedenciaMinima: 1 });
+    expect(ESTADIA_FORA_DO_PORTAL).not.toMatch(/beds24/i);
+    // Período com preço ou só com mínimo: nenhum dos dois seria enviado, então nenhum é gravado.
+    for (const entrada of [{ precoNoite: "900,00", estadiaMinima: "" }, { precoNoite: "", estadiaMinima: "5" }]) {
+      expect(await criarPeriodoPeloProprietario(db, sessao(), a, { nome: "Réveillon", inicio: "2026-12-28", fim: "2027-01-02", ...entrada }, agora)).toEqual({ ok: false, erro: PERIODO_SO_DISPONIBILIDADE });
+    }
+    expect(await listarPeriodos(db, org, a)).toEqual([]);
+    expect(PERIODO_SO_DISPONIBILIDADE).toBe("Com só disponibilidade, preço e estadia mínima ficam com você ou com a sua ferramenta: aqui você só fecha e reabre datas.");
+    expect(JSON.stringify([recusa, PERIODO_SO_DISPONIBILIDADE])).not.toMatch(/beds24/i);
   });
 
   it("períodos: cria e exclui só nos próprios imóveis marketplace", async () => {

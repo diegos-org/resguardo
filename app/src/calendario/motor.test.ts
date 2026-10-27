@@ -430,6 +430,73 @@ describe("fonte de preços por imóvel (M3.9)", () => {
   });
 });
 
+describe("só disponibilidade (M3.11b)", () => {
+  const evento = { id: "e", nome: "Evento", inicio: "2026-10-03", fim: "2026-10-03", multiplicador: 300, estadiaMinima: null, minimoNormalComReserva: true, todosImoveis: true, imoveis: [] };
+  const so = (over: Partial<EntradaPlano> = {}) => planejarCalendario(entrada({ imovel: imovel({ fontePrecos: "so_disponibilidade" }), ...over }));
+
+  it("preço, mínimo e máximo não vão ao Beds24: o preço esperado é o lido; sem leitura, o aviso do preço; nunca \"preço não cadastrado\"; a regra escreve \"máx. —\"", () => {
+    const linhas = so({ regras: regras({ eventos: [evento] }), observacoes: [obs("2026-10-02", { preco: 52000, minimoNoites: 3, maximoNoites: 14 }), obs("2026-10-03", { preco: 61000 })] });
+    const l2 = porData(linhas, "2026-10-02");
+    expect(l2).toMatchObject({ fontePreco: "beds24", precoReferencia: null, precoEnviar: null, precoFinalEsperado: 52000, percentualUltimaHora: 0, minimoEnviar: null, maximoEnviar: null, acao: "sem_dados" });
+    expect(l2.motivoPreco).toBe("Preço definido no Beds24 (o SCL só lê)");
+    // A regra do SCL (sexta: mínimo 2) e as sobras continuam calculadas, só para informação; o motivo diz de quem é o mínimo.
+    expect(l2).toMatchObject({ minimoRegra: 2, livresSeguidas: null });
+    expect(l2.motivoMinimo).toMatch(/^mínimo definido no Beds24 \(o SCL só lê\); regra do SCL só para informação: Semana normal/);
+    expect(l2.regra).toContain("mín. — (definido no Beds24; o SCL só lê)");
+    expect(l2.regra).not.toContain("só para informação");
+    expect(l2.regra).toContain("máx. —");
+    expect(l2.avisos).not.toContainEqual(expect.stringContaining("Preço não cadastrado"));
+    // Evento do SCL (3×) não mexe no preço de quem define preço no Beds24.
+    expect(porData(linhas, "2026-10-03").precoFinalEsperado).toBe(61000);
+    // Sem leitura: sem preço, com o aviso; continua "nada a enviar".
+    const l4 = porData(linhas, "2026-10-04");
+    expect(l4).toMatchObject({ precoEnviar: null, precoFinalEsperado: null, acao: "sem_dados" });
+    expect(l4.avisos).toContainEqual(expect.stringContaining("Sem preço lido do Beds24"));
+    expect(linhas.every((l) => l.precoEnviar === null && l.minimoEnviar === null && l.maximoEnviar === null)).toBe(true);
+    expect(faixasDeEnvio(linhas)).toEqual([]);
+    expect(resumirPlano(linhas)).toMatchObject({ noites: 10, enviar: 0, iguais: 0, semDados: 10 });
+  });
+
+  it("o bloqueio do SCL é a única coisa que vai: fecha com blackout e reabre devolvendo a restrição anterior; preço, mínimo e máximo lidos não entram na comparação", () => {
+    const linhas = so({
+      bloqueios: [{ inicio: "2026-10-03", fim: "2026-10-05", fonte: "manual" }],
+      observacoes: [obs("2026-10-03", { preco: 52000 }), obs("2026-10-04", { preco: 52000, bloqueio: "noCheckIn" })],
+    });
+    expect(porData(linhas, "2026-10-03")).toMatchObject({ acao: "enviar", bloqueioEnviar: "blackout", bloqueioAnterior: null });
+    expect(porData(linhas, "2026-10-04")).toMatchObject({ acao: "enviar", bloqueioEnviar: "blackout", bloqueioAnterior: "noCheckIn" });
+    expect(porData(linhas, "2026-10-03").regra).toContain("bloqueio do SCL");
+    expect(faixasDeEnvio(linhas)).toEqual([{ from: "2026-10-03", to: "2026-10-04", bloqueio: "blackout" }]);
+    // Já fechado no Beds24: igual, mesmo com mínimo e máximo lidos diferentes dos que o SCL calcularia.
+    const fechado = so({ bloqueios: [{ inicio: "2026-10-03", fim: "2026-10-04", fonte: "manual" }], observacoes: [obs("2026-10-03", { bloqueio: "blackout", minimoNoites: 5, maximoNoites: 9 })] });
+    expect(porData(fechado, "2026-10-03")).toMatchObject({ acao: "igual", bloqueioEnviar: "blackout" });
+    // Bloqueio removido: reabre o blackout que o SCL aplicou (devolvendo a restrição anterior), e só isso.
+    const enviadoEm = new Date("2026-10-01T08:00:00Z");
+    const reabrir = so({
+      observacoes: [obs("2026-10-03", { bloqueio: "blackout" }), obs("2026-10-04", { bloqueio: "blackout" })],
+      enviados: [
+        { data: "2026-10-03", preco: null, minimo: null, maximo: null, bloqueio: "blackout", bloqueioAnterior: null, confirmado: true, enviadoEm },
+        { data: "2026-10-04", preco: null, minimo: null, maximo: null, bloqueio: "blackout", bloqueioAnterior: "noCheckIn", confirmado: true, enviadoEm },
+      ],
+    });
+    expect(faixasDeEnvio(reabrir)).toEqual([{ from: "2026-10-03", to: "2026-10-03", bloqueio: "none" }, { from: "2026-10-04", to: "2026-10-04", bloqueio: "noCheckIn" }]);
+    // Bloqueio importado do Beds24 nunca gera escrita.
+    expect(faixasDeEnvio(so({ bloqueios: [{ inicio: "2026-10-06", fim: "2026-10-07", fonte: "beds24" }] }))).toEqual([]);
+  });
+
+  it("a camada importada, a última hora e o aviso de mínimo acima do máximo não valem: nada disso vai ao Beds24", () => {
+    const importados = new Map([["2026-10-02", { preco: 52000, minimo: 9, em: "2026-09-30" }]]);
+    const linhas = planejarCalendario(entrada({ imovel: imovel({ fontePrecos: "so_disponibilidade", importados }, { estadiaMinima: 30, estadiaMaxima: 10 }), observacoes: [obs("2026-10-02", { preco: 61000 })] }));
+    const l2 = porData(linhas, "2026-10-02");
+    expect(l2).toMatchObject({ fontePreco: "beds24", precoReferencia: null, precoFinalEsperado: 61000, percentualUltimaHora: 0, minimoRegra: 30, minimoEnviar: null, maximoEnviar: null });
+    expect(l2.motivoMinimo).not.toContain("importado");
+    expect(l2.avisos).not.toContainEqual(expect.stringContaining("acima do máximo"));
+    // O mesmo cadastro com a fonte scl: a camada vale e o mínimo acima do máximo avisa.
+    const scl = porData(planejarCalendario(entrada({ imovel: imovel({ importados }, { estadiaMinima: 30, estadiaMaxima: 10 }) })), "2026-10-02");
+    expect(scl).toMatchObject({ fontePreco: "importado", minimoEnviar: 10, maximoEnviar: 10 });
+    expect(scl.avisos).toContainEqual(expect.stringContaining("acima do máximo"));
+  });
+});
+
 
 describe("preço importado do Beds24 (M3.11a)", () => {
   // Importado em 1/10/2026; o mínimo é o da entrada naquela noite (null = sem mínimo importado).

@@ -63,6 +63,12 @@ describe("aba Anúncios, cartão Site (M7.17)", () => {
     render(<QuadroAnuncios imovel={imovel({ fontePrecos: "beds24" })} podeEditar siteDaOrg />);
     expect(cartaoSite().getByText(NOTAS_PRECO_SITE.beds24)).toBeTruthy();
     expect(NOTAS_PRECO_SITE.beds24).toContain("este preço não entra no site");
+    cleanup();
+    // Só disponibilidade (M3.11b): o preço e as estadias vêm da leitura; o preço base também é só referência.
+    render(<QuadroAnuncios imovel={imovel({ fontePrecos: "so_disponibilidade" })} podeEditar siteDaOrg />);
+    expect(cartaoSite().getByText(NOTAS_PRECO_SITE.so_disponibilidade)).toBeTruthy();
+    expect(NOTAS_PRECO_SITE.so_disponibilidade).toContain("este preço não entra no site");
+    expect(NOTAS_PRECO_SITE.so_disponibilidade).toContain("estadias mínima e máxima");
     // A frase vencida do M7.2 não volta em nenhuma fonte.
     for (const nota of Object.values(NOTAS_PRECO_SITE)) expect(nota).not.toContain("ainda não publica cotações");
     expect(document.body.textContent).not.toContain("ainda não publica cotações");

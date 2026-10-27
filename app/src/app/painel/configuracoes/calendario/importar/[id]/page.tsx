@@ -99,7 +99,7 @@ export default async function RevisarImportacao({ params, searchParams }: PagePr
             <tbody>{diferentes.map((n) => <tr key={n.data}>
               <th scope="row">{dataBr(n.data)}</th>
               <td>{dinheiro(n.precoBeds24)} · mín. {numero(n.minimoBeds24)} · máx. {numero(n.maximoBeds24)}</td>
-              <td>{dinheiro(n.precoScl)} · mín. {numero(n.minimoScl)} · máx. {n.maximoScl}</td>
+              <td>{dinheiro(n.precoScl)} · mín. {numero(n.minimoScl)} · máx. {n.maximoScl ?? "—"}</td>
               <td>{diferenca(n)}</td>
               <td><small>{n.motivo}</small></td>
             </tr>)}</tbody>

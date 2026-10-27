@@ -17,7 +17,7 @@ import { listarContratos } from "@/contratos/repositorio";
 import { beds24EnvioImoveis, beds24Envios, imoveis, imoveisPeriodos, limpezas, proprietarioImoveis, proprietarios, proprietarioUsuarios, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { type Detalhes, type ErrosDetalhes, criarPeriodo, entradaDeDetalhes, excluirPeriodo, lerDetalhes, listarPeriodos, salvarDetalhesComLeitura, validarDetalhes } from "@/imoveis/detalhes";
-import { fontePrecosDoPortal, type FontePrecosPortal } from "@/imoveis/fonte-precos";
+import { fontePrecosDoPortal, type FontePrecosPortal, PERIODO_SO_DISPONIBILIDADE_PORTAL, precoLidoDoBeds24 } from "@/imoveis/fonte-precos";
 import type { Periodo } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { uuidValido } from "@/lib/ids";
@@ -32,6 +32,12 @@ export const NAO_DONO = "Este imóvel não está mais vinculado a você: recarre
 export const NAO_SAIDA = "Esta limpeza não é de saída de hóspede: é da empresa, não entra no portal.";
 const dataBr = (d: string) => d.split("-").reverse().join("/");
 export const ANTES_DA_POSSE = (desde: string) => `Isso é de antes de o imóvel passar a ser seu (${dataBr(desde)}): fica com a empresa e com o dono da época.`;
+/** Preço da noite definido fora do SCL (fontes "beds24" e "só disponibilidade"): o portal não o edita. */
+export const PRECO_FORA_DO_PORTAL = "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui.";
+/** Só disponibilidade (M3.11b, desenho §6): a estadia mínima e a máxima também ficam fora do SCL; o portal não as edita (a tela as mostra só de leitura). */
+export const ESTADIA_FORA_DO_PORTAL = "Com só a disponibilidade pelo nosso sistema, a estadia mínima e a máxima são definidas por você ou pela sua ferramenta de preços: são editadas lá.";
+/** Só disponibilidade (M3.11b, desenho §6): nenhum período do portal — nada dele seria enviado. A frase vive em `fonte-precos.ts` (a tela a mostra). */
+export const PERIODO_SO_DISPONIBILIDADE = PERIODO_SO_DISPONIBILIDADE_PORTAL;
 
 /**
  * Desde quando cada imóvel é do dono atual (data do vínculo, no fuso de São Paulo — a mesma régua de
@@ -215,8 +221,9 @@ export { simular };
 /**
  * Salva os campos do portal no cadastro do imóvel, passando pela validação do painel com o resto do
  * cadastro preservado — lido e mesclado dentro da transação de gravação, com o imóvel travado, para
- * não gravar uma foto velha por cima de uma edição do painel feita no meio. Com os preços definidos no
- * Beds24 (M3.9), o preço da noite é editado lá: aqui só limpeza, hóspede extra, regras e horários.
+ * não gravar uma foto velha por cima de uma edição do painel feita no meio. Com o preço lido do Beds24
+ * (M3.9 "beds24"; M3.11b "só disponibilidade"), o preço da noite é editado lá: aqui só limpeza, hóspede extra,
+ * regras e horários.
  */
 export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imovelId: string, entrada: Record<string, string | string[]>, agora = new Date()): Promise<ResultadoPortal> {
   const r = await imovelOperavel(db, sessao, imovelId, agora);
@@ -233,9 +240,15 @@ export async function salvarPrecosPeloProprietario(db: Db, sessao: Sessao, imove
       }
       const v = validarDetalhes(completa);
       if (!v.ok) return { erro: "Confira os campos destacados.", erros: v.erros };
-      if (atual.fontePrecos === "beds24" && v.dados.precoBase !== atual.precoBase) {
-        return { erro: "Confira os campos destacados.", erros: { precoBase: "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: o preço da noite é editado lá. Limpeza, hóspede extra, regras e horários podem ser editados aqui." } };
+      // O que fica fora do SCL nesta fonte não muda por aqui (a mesma regra da tela, no servidor): o preço da noite quando é
+      // lido do Beds24; com "só disponibilidade" (M3.11b, desenho §6), também a estadia mínima e a máxima.
+      const fora: ErrosDetalhes = {};
+      if (precoLidoDoBeds24(atual.fontePrecos) && v.dados.precoBase !== atual.precoBase) fora.precoBase = PRECO_FORA_DO_PORTAL;
+      if (atual.fontePrecos === "so_disponibilidade") {
+        if (v.dados.estadiaMinima !== atual.estadiaMinima) fora.estadiaMinima = ESTADIA_FORA_DO_PORTAL;
+        if (v.dados.estadiaMaxima !== atual.estadiaMaxima) fora.estadiaMaxima = ESTADIA_FORA_DO_PORTAL;
       }
+      if (Object.keys(fora).length) return { erro: "Confira os campos destacados.", erros: fora };
       return v.dados;
     },
     sessao.usuarioId,
@@ -248,10 +261,14 @@ export async function criarPeriodoPeloProprietario(db: Db, sessao: Sessao, imove
   const r = await imovelOperavel(db, sessao, imovelId, agora);
   if (!r.ok) return r;
   const preco = typeof entrada.precoNoite === "string" ? entrada.precoNoite.trim() : "";
-  // Contrato e fonte de preços são conferidos dentro da transação que grava o período, com o imóvel travado (o painel pode tê-los mudado no meio).
+  // Contrato e fonte de preços são conferidos dentro da transação que grava o período, com o imóvel travado (o painel pode
+  // tê-los mudado no meio). Com "beds24" o período só leva estadia mínima (o SCL a envia); com "só disponibilidade" nenhum
+  // período: nem preço nem mínimo seriam enviados (avisar em vez de gravar).
   return criarPeriodo(db, sessao.organizacaoId, r.imovel.id, entrada, sessao.usuarioId, {
     conferir: async (atual, tx) =>
-      (await conferirNaTransacao(tx, sessao, r.imovel.id, r.dia)) ?? (atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
+      (await conferirNaTransacao(tx, sessao, r.imovel.id, r.dia))
+      ?? (atual.fontePrecos === "so_disponibilidade" ? PERIODO_SO_DISPONIBILIDADE
+        : atual.fontePrecos === "beds24" && preco ? "Os preços deste imóvel são definidos por você ou pela sua ferramenta de preços: aqui o período só pode ter estadia mínima. Deixe o preço em branco." : null),
   });
 }
 

@@ -81,6 +81,18 @@ describe("site público (M7.1)", () => {
     expect(lista[0]).toMatchObject({ camas: [], comodidades: [], checkinAPartirDe: "15:00" });
   });
 
+  it("só disponibilidade (M3.11b): a estadia mínima do cadastro não sai para o site (o mínimo que vale é o lido na consulta); nas outras fontes, sai; a fonte nunca vai ao objeto público", async () => {
+    await salvarDetalhes(db, org, studio, { ...DETALHES_VAZIOS, estadiaMinima: 5, fontePrecos: "so_disponibilidade" }, null);
+    const s = await imovelDoSite(db, org, "403");
+    expect(s?.estadiaMinima).toBeNull();
+    expect((await imoveisDoSite(db, org)).find((i) => i.codigo === "403")?.estadiaMinima).toBeNull();
+    expect(JSON.stringify(s)).not.toMatch(/fontePrecos|so_disponibilidade|beds24/i);
+    for (const fontePrecos of ["scl", "beds24", "manual"] as const) {
+      await salvarDetalhes(db, org, studio, { ...DETALHES_VAZIOS, estadiaMinima: 5, fontePrecos }, null);
+      expect((await imovelDoSite(db, org, "403"))?.estadiaMinima).toBe(5);
+    }
+  });
+
   it("fotos reais (M7.3): cada imóvel com as suas, na ordem, só endereço e legenda; sem foto, lista vazia", async () => {
     const jpg = (n: number) => Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, n]);
     const f1 = await guardarFoto(db, org, { imovelId: studio, legenda: "Sala", arquivo: { nome: "a.jpg", conteudo: jpg(1) }, miniatura: jpg(2) }, null);

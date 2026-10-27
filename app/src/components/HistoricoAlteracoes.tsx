@@ -43,6 +43,8 @@ const ROTULOS: Record<string, string> = {
   otaLiberadaEm: "Datas reabertas nas OTAs",
   otaAtualizadaEm: "Bloqueio mudado nas OTAs",
   otaFechadaEm: "Datas fechadas nas OTAs",
+  // M3.11b: a reabertura marcada na reserva direta.
+  otaReabertaEm: "Datas reabertas nas OTAs",
   situacaoNoBeds24: "Situação no Beds24",
   beds24Id: "Id no Beds24",
   // M8.3c: a escrita real das reservas do site no Beds24 e os botões da ficha.

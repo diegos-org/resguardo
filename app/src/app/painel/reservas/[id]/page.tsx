@@ -24,6 +24,7 @@ import { PaginasLegaisAceitas } from "@/components/reservas/PaginasLegaisAceitas
 import { Recebimentos } from "@/components/reservas/Recebimentos";
 import { ReservaNoBeds24 } from "@/components/reservas/ReservaNoBeds24";
 import { fichaReservaNoBeds24 } from "@/beds24/reservas-site-painel";
+import { reservaDiretaParaOtas } from "@/beds24/reservas-site-regras";
 import { dataBr, dataHoraNoFuso, diaHoraNoFuso, diaMesBr, hojeISO } from "@/lib/datas";
 import { alteracaoDoPortador, alteracoesDaReserva } from "@/pagamentos/alteracao-painel";
 import { textoDoResultadoDaAlteracao } from "@/pagamentos/alteracao-tela";
@@ -126,15 +127,22 @@ export default async function DetalheReserva({ params, searchParams }: PageProps
     (!momentos || agora.getTime() < momentos.entradaEm.getTime()) &&
     (disputasEquipe ?? disputasOperacao).some((d) => d.seguraValor && pagamentosSite.some((p) => p.id === d.pagamentoId && (p.desfecho === "reserva" || p.desfecho === "alteracao")));
   // M8.3a: a reserva do site no Beds24 (só para a equipe; "Simular" com reserva:editar, sem rede). M8.3b: as tarefas das
-  // OTAs desta reserva (a mesma função do Início) e as marcas manuais.
-  const noBeds24 = r.fonte === "site" && sessao.papel !== "proprietario" && podeFazer(sessao.papel, "reserva:ler") ? await fichaReservaNoBeds24(db, sessao.organizacaoId, r.id, process.env, agora) : null;
+  // OTAs desta reserva (a mesma função do Início) e as marcas manuais. M3.11b: também a reserva direta confirmada no SCL
+  // (`reservaDiretaParaOtas`): o aviso "feche as datas no Beds24 como bloqueio" e as marcas dela.
+  const noBeds24 =
+    (r.fonte === "site" || reservaDiretaParaOtas(r)) && sessao.papel !== "proprietario" && podeFazer(sessao.papel, "reserva:ler") ? await fichaReservaNoBeds24(db, sessao.organizacaoId, r.id, process.env, agora) : null;
   // O texto das OTAs no cancelamento e na alteração vem da tarefa à mão desta reserva (uma regra, um lugar).
   const tarefaOta = (casos: readonly string[]) => noBeds24?.tarefas.find((t) => casos.includes(t.caso) && t.estado === "manual")?.texto;
   const textoOtaCancelamento = tarefaOta(["cancelada_bloqueio", "cancelada_criada"]);
   const textoOtaAlteracao = tarefaOta(["alterada_bloqueio", "alterada_criada"]);
   // A reserva do site marcada como fechada nas OTAs e cancelada pelo botão de sempre (a confirmada à mão, sem pagamento): só
   // quando a tarefa dela vai existir depois (acompanhamento manual e a saída depois de hoje), com o botão "Datas reabertas".
-  const otaNoCancelar = r.fonte === "site" && noBeds24?.acompanhamento?.otaFechadaEm && noBeds24.acompanhamento.situacao === "manual" && r.checkout > hojeISO(undefined, agora)
+  // M3.11b: a reserva direta com a marca vigente, idem (a tarefa "reabra as datas" vale com a saída de hoje em diante).
+  const hoje = hojeISO(undefined, agora);
+  const marcadaFechada = noBeds24?.direta
+    ? noBeds24.direta.fechadasEm !== null && noBeds24.direta.reabertasEm === null && r.checkout >= hoje
+    : r.fonte === "site" && noBeds24?.acompanhamento?.otaFechadaEm && noBeds24.acompanhamento.situacao === "manual" && r.checkout > hoje;
+  const otaNoCancelar = marcadaFechada
     ? ` As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de ${diaMesBr(r.checkin)} a ${diaMesBr(r.checkout)} para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha.`
     : "";
   // M7.4: páginas legais que o hóspede aceitou no site (também o aceite gravado sem um Pix que deu certo).

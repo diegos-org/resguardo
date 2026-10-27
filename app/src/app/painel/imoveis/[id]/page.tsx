@@ -16,6 +16,7 @@ import { Recebimento } from "@/components/imoveis/Recebimento";
 import { lerRegrasFinanceiras } from "@/configuracoes/regras-financeiras";
 import { excluirPeriodoAcao, novoPeriodoAcao, salvarDetalhesAcao, salvarImovel, salvarRecebimentoAcao } from "@/imoveis/acoes";
 import { lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
+import { PERIODO_SO_DISPONIBILIDADE_PAINEL } from "@/imoveis/fonte-precos";
 import { FormDetalhes } from "@/components/imoveis/FormDetalhes";
 import { FotosImovel } from "@/components/imoveis/FotosImovel";
 import { listarFotos } from "@/imoveis/fotos";
@@ -55,7 +56,7 @@ export default async function EditarImovel({ params }: PageProps<"/painel/imovei
       <FormImovel acao={salvarImovel} id={imovel.id} inicial={imovel} />
       <FormDetalhes imovelId={imovel.id} inicial={detalhes} salvar={salvarDetalhesAcao} importados={importados} />
       <FotosImovel imovelId={imovel.id} imovelNome={`${imovel.codigo} · ${imovel.nome}`} fotos={fotos} noSite={siteOrg === sessao.organizacaoId && imovel.publico && imovel.ativo} />
-      <Periodos imovelId={imovel.id} periodos={periodos} criar={novoPeriodoAcao} excluir={excluirPeriodoAcao} />
+      <Periodos imovelId={imovel.id} periodos={periodos} criar={novoPeriodoAcao} excluir={excluirPeriodoAcao} recusados={detalhes.fontePrecos === "so_disponibilidade" ? PERIODO_SO_DISPONIBILIDADE_PAINEL : undefined} />
       <Simulador regras={regrasDeVenda(detalhes)} periodos={periodos} hoje={hojeISO(imovel.fuso)} fontePrecos={detalhes.fontePrecos} />
       <IdsExternos imovelId={imovel.id} lista={ids} adicionar={novoIdExterno} remover={excluirIdExterno} />
       <Contratos

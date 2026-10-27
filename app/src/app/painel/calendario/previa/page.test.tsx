@@ -103,3 +103,26 @@ it("o preço importado do Beds24 (M3.11a) aparece com o motivo dele, no preço e
   // A noite sem importado continua no preço base.
   expect(h).toContain("Preço base");
 });
+
+it("só disponibilidade (M3.11b): a frase diz que o SCL envia só os bloqueios; preço, mínimo e máximo do SCL mostram \"—\" e a coluna Beds24 mostra o lido", async () => {
+  const so = planejarCalendario({
+    imovel: { id: "i103", regras, periodos: [], pisos: [35000, 30000], fontePrecos: "so_disponibilidade" }, regras: REGRAS_CALENDARIO_PADRAO, hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03",
+    reservas: [], bloqueios: [{ inicio: "2026-10-03", fim: "2026-10-04", fonte: "manual" }], enviados: [],
+    observacoes: [{ data: "2026-10-02", preco: 52000, minimoNoites: 3, maximoNoites: 14, livres: 1, bloqueio: "none", observadoEm: new Date("2026-10-02T15:00:00Z") }],
+  });
+  m.planejar.mockResolvedValue({ hoje: "2026-10-02", inicio: "2026-10-02", fim: "2026-10-03", linhas: so, regras, pisos: [35000, 30000], fontePrecos: "so_disponibilidade" });
+  const h = await html({ inicio: "2026-10-02", fim: "2026-10-03" });
+  expect(h).toContain("Fonte de preços deste imóvel:</strong> Só disponibilidade: o SCL envia só os bloqueios");
+  expect(h).toContain("o SCL envia só os bloqueios do SCL.");
+  // 2/10 com leitura: as colunas do SCL ficam "—" e a do Beds24 mostra o lido (preço, mínimo e máximo); 3/10 sem leitura.
+  expect(h).toContain("<td>— / R$ 520,00<br/>");
+  expect(h).toContain("<td>— / 3<br/>");
+  expect(h).toContain("<td>— / 14</td>");
+  expect(h).toContain("<td>— / não informado<br/>");
+  expect(h).toContain("<td>— / não informado</td>");
+  expect(h).toContain("mínimo definido no Beds24 (o SCL só lê)");
+  // Só o bloqueio do SCL vai: 1 noite a enviar (3/10, fechada), a outra "nada a enviar".
+  expect(h).toContain("2 noites nesta consulta · 1 com leitura do Beds24 · 1 a enviar");
+  expect(h).toContain("enviar fechado");
+  expect(h).toContain("Nada a enviar");
+});

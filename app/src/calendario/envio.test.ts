@@ -563,6 +563,8 @@ describe("envio ao Beds24 (M3.7)", () => {
     const r2 = await enviar();
     expect(r2.situacao).toBe("ok");
     expect(beds.escritas[0][0].faixas.every(f => f.preco === undefined)).toBe(true);
+    // Com o preço lido do Beds24 o aviso "N noite(s) sem preço no SCL" não sai: o SCL não tem preço por regra (M3.11b, registro de 26/10 no desenho, §4).
+    expect(r2.avisos.some(a => a.includes("sem preço no SCL"))).toBe(false);
     expect(diaFalso("2026-10-01")).toMatchObject({ price1: 400 });
   });
 
@@ -783,6 +785,99 @@ describe("envio ao Beds24 (M3.7)", () => {
     const r = await lerRegrasCalendario(db, org);
     const p = await planejarImovel(db, org, r, { id: im, fuso: "America/Sao_Paulo" }, agora);
     expect(p.linhas[0]).toMatchObject({ data: "2026-10-01", minimoRegra: 90, livresSeguidas: 80, minimoEnviar: 80 });
+  });
+});
+
+describe("só disponibilidade no envio (M3.11b)", () => {
+  beforeEach(async () => {
+    await db.update(imoveisDetalhes).set({ fontePrecos: "so_disponibilidade" }).where(eq(imoveisDetalhes.imovelId, im));
+    // Mínimo e máximo no Beds24 diferentes dos do SCL (mínimo 1 ou 2 por dia, máximo 27): se o motor voltasse a compará-los,
+    // a releitura daria divergência e este teste de ponta a ponta pegaria.
+    beds.calendarios = [{ roomId: 20, calendar: [{ from: "2026-10-01", to: "2026-10-10", numAvail: 1, price1: 400, minStay: 4, maxStay: 9, override: "none" }] }];
+  });
+
+  it("a carga leva só o bloqueio do SCL: preço, mínimo e máximo do Beds24 ficam como estão, os registros guardam nulos e a releitura confere só o bloqueio; removido, reabre", async () => {
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-05", motivo: "Uso próprio" });
+    const r = await enviar();
+    expect(r).toMatchObject({ ok: true, situacao: "ok", imoveis: [{ codigo: "103", enviadas: 2, confirmadas: 2, divergentes: 0, falha: "", resumo: { enviar: 2, iguais: 0, semDados: 8 } }] });
+    expect(beds.escritas).toHaveLength(1);
+    expect(beds.escritas[0][0].faixas).toEqual([{ from: "2026-10-03", to: "2026-10-04", bloqueio: "blackout" }]);
+    // O Beds24 falso mantém preço, mínimo e máximo; só o bloqueio mudou.
+    expect(diaFalso("2026-10-03")).toMatchObject({ price1: 400, minStay: 4, maxStay: 9, override: "blackout", numAvail: 0 });
+    expect(diaFalso("2026-10-02")).toMatchObject({ price1: 400, minStay: 4, maxStay: 9, override: "none", numAvail: 1 });
+    const n = await noitesDoEnvio(db, org, r.envioId!);
+    expect(n).toHaveLength(2);
+    expect(n[0]).toMatchObject({ data: "2026-10-03", precoAntes: 40000, precoEnviado: null, minimoAntes: 4, minimoEnviado: null, maximoEnviado: null, bloqueioAntes: "none", bloqueioEnviado: "blackout", resultado: "confirmado" });
+    expect(n[0].regra).toContain("Preço definido no Beds24 (o SCL só lê)");
+    // A regra guardada termina no bloqueio (o que de fato foi): o motivo do mínimo é curto nesta fonte, e nada é cortado.
+    expect(n[0].regra).toMatch(/mín\. — \(definido no Beds24; o SCL só lê\) · máx\. — · bloqueio do SCL$/);
+    const est = await enviados();
+    expect(est).toHaveLength(2);
+    expect(est[0]).toMatchObject({ data: "2026-10-03", preco: null, minimo: null, maximo: null, bloqueio: "blackout", bloqueioAnterior: null, confirmado: true });
+    // Nenhum aviso de "preço do SCL ausente": nesta fonte o preço é lido do Beds24 por regra.
+    expect(r.avisos.some(a => a.includes("sem preço no SCL"))).toBe(false);
+    // Nada mudou: nada a enviar.
+    expect((await enviar()).imoveis[0]).toMatchObject({ enviadas: 0, resumo: { enviar: 0, iguais: 2, semDados: 8 } });
+    expect(beds.escritas).toHaveLength(1);
+    // Bloqueio removido: reabre só o que o SCL fechou, de novo sem preço, mínimo nem máximo.
+    await db.delete(bloqueios).where(eq(bloqueios.imovelId, im));
+    expect((await enviar()).imoveis[0]).toMatchObject({ enviadas: 2, confirmadas: 2 });
+    expect(beds.escritas[1][0].faixas).toEqual([{ from: "2026-10-03", to: "2026-10-04", bloqueio: "none" }]);
+    expect(diaFalso("2026-10-03")).toMatchObject({ price1: 400, minStay: 4, maxStay: 9, override: "none", numAvail: 1 });
+    expect((await enviados()).find(e => e.data === "2026-10-03")).toMatchObject({ preco: null, minimo: null, maximo: null, bloqueio: "none", confirmado: true });
+    expect((await enviar()).imoveis[0].enviadas).toBe(0);
+  });
+
+  it("noite sem leitura anterior só vai pelo bloqueio: o aviso por imóvel conta quantas das noites sem leitura de fato vão", async () => {
+    // Simulação com a leitura falhando e sem leitura guardada: as 10 noites ficam sem leitura.
+    const leitorFalho: LeitorBeds24 = { reservas: f => beds.reservas(f), quartos: () => beds.quartos(), calendario: async () => { throw new ErroBeds24("Beds24 não respondeu a tempo.", "tempo"); } };
+    const semBloqueio = await enviar("simulacao", { leitor: leitorFalho });
+    expect(semBloqueio.avisos).toContainEqual("Imóvel 103: 10 noite(s) sem leitura anterior do Beds24; nenhuma delas tem algo a enviar.");
+    expect(semBloqueio.avisos).not.toContainEqual(expect.stringContaining("serão enviadas"));
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-05", motivo: "Uso próprio" });
+    const comBloqueio = await enviar("simulacao", { leitor: leitorFalho });
+    expect(comBloqueio.avisos).toContainEqual("Imóvel 103: 10 noite(s) sem leitura anterior do Beds24; 2 delas serão enviadas e conferidas pela releitura.");
+    // Com a fonte scl toda noite sem leitura vai (preço, mínimo e máximo): o texto de sempre.
+    await db.update(imoveisDetalhes).set({ fontePrecos: "scl" }).where(eq(imoveisDetalhes.imovelId, im));
+    expect((await enviar("simulacao", { leitor: leitorFalho })).avisos).toContainEqual("Imóvel 103: 10 noite(s) sem leitura anterior do Beds24; serão enviadas e conferidas pela releitura.");
+  });
+
+  it("fonte trocada entre o plano e a escrita, para \"só disponibilidade\" ou dela para outra: nada é escrito; o próximo envio replaneja pela fonte nova", async () => {
+    await db.update(imoveisDetalhes).set({ fontePrecos: "scl" }).where(eq(imoveisDetalhes.imovelId, im));
+    await db.insert(bloqueios).values({ organizacaoId: org, imovelId: im, inicio: "2026-10-03", fim: "2026-10-04", motivo: "Uso próprio" });
+    // Depois da primeira transação (o plano), outra gravação troca a fonte.
+    const trocandoPara = (fonte: "scl" | "so_disponibilidade") => {
+      let transacoes = 0;
+      return new Proxy(db, {
+        get(alvo, prop, receptor) {
+          if (prop === "transaction") {
+            const original = alvo.transaction.bind(alvo) as (...a: unknown[]) => Promise<unknown>;
+            return async (...a: unknown[]) => { const r = await original(...a); if (++transacoes === 1) await alvo.update(imoveisDetalhes).set({ fontePrecos: fonte }).where(eq(imoveisDetalhes.imovelId, im)); return r; };
+          }
+          const v = Reflect.get(alvo, prop, receptor);
+          return typeof v === "function" ? v.bind(alvo) : v;
+        },
+      }) as Db;
+    };
+    const r = await enviarCalendarioBeds24(trocandoPara("so_disponibilidade"), org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, confirmadas: 0, falha: expect.stringContaining("Fonte de preços do imóvel alterada") }] });
+    expect(beds.escritas).toHaveLength(0);
+    expect(diaFalso("2026-10-01")).toMatchObject({ price1: 400, override: "none" });
+    // Replanejado com a fonte nova: só o bloqueio vai.
+    expect((await enviar()).situacao).toBe("ok");
+    expect(beds.escritas[0][0].faixas).toEqual([{ from: "2026-10-03", to: "2026-10-03", bloqueio: "blackout" }]);
+    // E de volta: o bloqueio removido pede a reabertura, mas a fonte volta a "scl" no meio — nada é escrito.
+    await db.delete(bloqueios).where(eq(bloqueios.imovelId, im));
+    const r2 = await enviarCalendarioBeds24(trocandoPara("scl"), org, beds, beds, { modo: "envio", agora: proximoAgora(), autorId: null });
+    expect(r2).toMatchObject({ ok: false, situacao: "erro", imoveis: [{ enviadas: 0, falha: expect.stringContaining("Fonte de preços do imóvel alterada") }] });
+    expect(beds.escritas).toHaveLength(1);
+    expect(diaFalso("2026-10-03")).toMatchObject({ price1: 400, override: "blackout" });
+    // Com a fonte "scl" de volta, o próximo envio manda preço, mínimo e máximo e reabre a noite.
+    expect((await enviar()).situacao).toBe("ok");
+    const faixas = beds.escritas[1][0].faixas;
+    expect(faixas.every(f => f.preco !== undefined && f.maximo === 27)).toBe(true);
+    expect(faixas.find(f => f.from <= "2026-10-03" && "2026-10-03" <= f.to)).toMatchObject({ bloqueio: "none" });
+    expect(diaFalso("2026-10-03")).toMatchObject({ price1: 450, override: "none" });
   });
 });
 

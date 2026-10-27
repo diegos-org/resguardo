@@ -140,6 +140,8 @@ describe("proposta da importação (M3.11a, 3.3)", () => {
     const ok = { fontePrecos: "scl" as const, roomId: "20", noites: 30, vencida: false, validadeHoras: 36 };
     expect(bloqueiosDaImportacao(ok)).toEqual([]);
     expect(bloqueiosDaImportacao({ ...ok, fontePrecos: "beds24" }).map((b) => b.motivo)).toEqual(["fonte"]);
+    // M3.11b: com "só disponibilidade" o preço também fica no Beds24; a importação não vale.
+    expect(bloqueiosDaImportacao({ ...ok, fontePrecos: "so_disponibilidade" }).map((b) => b.motivo)).toEqual(["fonte"]);
     expect(bloqueiosDaImportacao({ ...ok, fontePrecos: "manual", roomId: null, noites: 0 }).map((b) => b.motivo)).toEqual(["fonte", "vinculo"]);
     expect(bloqueiosDaImportacao({ ...ok, noites: 0 }).map((b) => b.motivo)).toEqual(["sem_leitura"]);
     expect(bloqueiosDaImportacao({ ...ok, vencida: true, validadeHoras: 12 })).toEqual([
