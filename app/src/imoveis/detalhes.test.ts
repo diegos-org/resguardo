@@ -5,6 +5,7 @@ import { beds24Envios, imoveis, organizacoes } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { criarPeriodo, DETALHES_VAZIOS, excluirPeriodo, fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, salvarDetalhes, salvarDetalhesComLeitura, validarDetalhes, validarPeriodo } from "./detalhes";
+import { PERIODO_SO_DISPONIBILIDADE_PAINEL } from "./fonte-precos";
 
 let db: Db;
 let close: () => Promise<void>;
@@ -117,6 +118,8 @@ describe("gravação", () => {
     const r = await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "beds24" }, null, agora);
     expect(typeof r).toBe("string");
     expect(r).toContain("envio de calendário e preços em andamento");
+    // A fonte "só disponibilidade" (M3.11b) passa pela mesma trava.
+    expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "so_disponibilidade" }, null, agora)).toContain("envio de calendário e preços em andamento");
     expect((await lerDetalhes(db, org, im)).fontePrecos).toBe("scl");
     // Outros campos não dependem do envio.
     expect(await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, precoBase: 50000 }, null, agora)).toBe(true);
@@ -183,6 +186,20 @@ describe("períodos de exceção", () => {
     expect(await salvarDetalhesComLeitura(db, org, im, (atual) => atual, null, new Date(), { conferir: async () => "sem contrato" })).toEqual({ ok: false, erro: "sem contrato" });
   });
 
+  it("só disponibilidade (M3.11b, desenho §7): nenhum período novo, com a frase do painel, em qualquer tela; a regra extra de quem chama (o portal) fala antes", async () => {
+    await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "so_disponibilidade" }, null);
+    for (const entrada of [rev, { ...rev, precoNoite: "" }, { ...rev, estadiaMinima: "" }]) {
+      expect(await criarPeriodo(db, org, im, entrada, null)).toEqual({ ok: false, erro: PERIODO_SO_DISPONIBILIDADE_PAINEL });
+    }
+    expect(await criarPeriodo(db, org, im, rev, null, { conferir: () => "a frase do portal" })).toEqual({ ok: false, erro: "a frase do portal" });
+    expect(await criarPeriodo(db, org, im, rev, null, { conferir: () => null })).toEqual({ ok: false, erro: PERIODO_SO_DISPONIBILIDADE_PAINEL });
+    expect(await listarPeriodos(db, org, im)).toEqual([]);
+    expect(PERIODO_SO_DISPONIBILIDADE_PAINEL).toBe("Com só disponibilidade, preço e estadia mínima ficam no Beds24: períodos daqui não são enviados nem usados no site.");
+    // De volta a outra fonte, o período entra.
+    await salvarDetalhes(db, org, im, { ...DETALHES_VAZIOS, fontePrecos: "scl" }, null);
+    expect(await criarPeriodo(db, org, im, rev, null)).toEqual({ ok: true });
+  });
+
   it("cria, recusa sobreposição, lista em ordem e exclui", async () => {
     expect(await criarPeriodo(db, org, im, rev, null)).toEqual({ ok: true });
     expect(await criarPeriodo(db, org, im, { ...rev, nome: "Ano novo", inicio: "2027-01-01", fim: "2027-01-03" }, null)).toMatchObject({
@@ -200,10 +217,11 @@ describe("períodos de exceção", () => {
   });
 });
 
-it("fonte de preços (M3.9): ausente vira SCL; beds24 e manual são aceitas; valor desconhecido é erro", () => {
+it("fonte de preços (M3.9, M3.11b): ausente vira SCL; beds24, manual e so_disponibilidade são aceitas; valor desconhecido é erro", () => {
   expect(validarDetalhes({})).toMatchObject({ ok: true, dados: { fontePrecos: "scl" } });
   expect(validarDetalhes({ fontePrecos: "beds24" })).toMatchObject({ ok: true, dados: { fontePrecos: "beds24" } });
   expect(validarDetalhes({ fontePrecos: "manual" })).toMatchObject({ ok: true, dados: { fontePrecos: "manual" } });
+  expect(validarDetalhes({ fontePrecos: "so_disponibilidade" })).toMatchObject({ ok: true, dados: { fontePrecos: "so_disponibilidade" } });
   expect(validarDetalhes({ fontePrecos: "airbnb" })).toMatchObject({ ok: false, erros: { fontePrecos: expect.any(String) } });
 });
 

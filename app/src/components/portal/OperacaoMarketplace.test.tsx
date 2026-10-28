@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PERIODO_SO_DISPONIBILIDADE_PORTAL } from "@/imoveis/fonte-precos";
 import { PRECOS_MARKETPLACE_PADRAO } from "@/marketplace/precos";
 import type { SituacaoEnvio } from "@/portal/marketplace";
 import { type ImovelOperavel, OperacaoMarketplace, textoDaSimulacao, textoDoEnvio, textoSalvo } from "./OperacaoMarketplace";
@@ -108,6 +109,28 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(document.body.textContent).not.toMatch(/beds24/i);
   });
 
+  it("com só disponibilidade (M3.11b): preço só de leitura e sem simulação, nenhum período novo (com a frase), e os textos prometem aos canais só as datas fechadas e reabertas; nada cita o Beds24", () => {
+    render_({ imoveis: [{ ...imovel, fontePrecos: "so_disponibilidade" }] });
+    const form = screen.getByRole("form", { name: "Preços e regras de venda do 403" });
+    expect(form.textContent).toContain("Só a disponibilidade pelo nosso sistema. Nosso sistema só fecha e reabre datas nos canais.");
+    expect(form.textContent).not.toContain("no Airbnb você receberia");
+    expect(form.textContent).toContain("não dá para simular aqui");
+    expect((within(form).getByLabelText(/Preço da noite/) as HTMLInputElement).readOnly).toBe(true);
+    // Estadia mínima e máxima também ficam com o proprietário ou com a ferramenta dele (desenho §6, registro de 26/10): só de leitura, com a nota.
+    for (const rotulo of [/Estadia mínima/, /Estadia máxima/]) expect((within(form).getByLabelText(rotulo) as HTMLInputElement).readOnly).toBe(true);
+    expect(form.textContent).toContain("Estadia mínima (noites) — definida por você ou pela sua ferramenta de preços");
+    expect(form.textContent).toContain("Estadia máxima (noites) — definida por você ou pela sua ferramenta de preços");
+    const nota = screen.getByRole("note").textContent ?? "";
+    expect(nota).toContain("leva ao Airbnb e ao Booking só as datas fechadas e reabertas");
+    expect(nota).not.toContain("estadias mínima e máxima ao Airbnb");
+    const periodos = screen.getByRole("region", { name: "Períodos especiais" });
+    expect(periodos.textContent).toContain(PERIODO_SO_DISPONIBILIDADE_PORTAL);
+    expect(within(periodos).queryByRole("form", { name: "Novo período especial" })).toBeNull();
+    // O período já gravado continua listado (e pode ser excluído).
+    expect(within(periodos).getByText("Réveillon")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/beds24/i);
+  });
+
   it("explica o envio aos canais sem supor e sem citar o Beds24: fora da lista, manual e automático", () => {
     const feito = { em: new Date("2026-10-01T10:00:00Z"), situacao: "ok", falhou: false, mesmoVinculo: true, mesmaCredencial: true };
     const envio = (over: Partial<SituacaoEnvio> = {}): SituacaoEnvio => ({ naLista: true, vinculado: true, escritaPronta: true, automatico: true, ultimo: feito, ...over });
@@ -135,7 +158,7 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(textoSalvo(envio({ escritaPronta: false }), "SCL")).not.toContain("próximo envio");
     // M5.9: em nenhum estado, e em nenhuma fonte de preços, o texto para o proprietário cita o Beds24.
     const estados = [envio(), envio({ naLista: false }), envio({ vinculado: false }), envio({ escritaPronta: false }), envio({ automatico: false }), envio({ ultimo: null }), envio({ ultimo: { ...feito, falhou: true } }), envio({ ultimo: { ...feito, mesmoVinculo: false } }), envio({ ultimo: { ...feito, mesmaCredencial: false } })];
-    for (const e of estados) for (const f of ["scl", "ferramenta", "manual"] as const) {
+    for (const e of estados) for (const f of ["scl", "ferramenta", "manual", "so_disponibilidade"] as const) {
       expect(textoDoEnvio(e, "SCL", f)).not.toMatch(/beds24/i);
       expect(textoSalvo(e, "SCL", f)).not.toMatch(/beds24/i);
     }
@@ -158,5 +181,12 @@ describe("portal marketplace (M12.4): seção do proprietário", () => {
     expect(textoSalvo(pronto, "SCL", "ferramenta")).toContain("Estadias mínima e máxima chegam ao Airbnb e ao Booking");
     expect(textoSalvo(pronto, "SCL", "ferramenta")).toContain("o preço da noite é definido por você ou pela sua ferramenta de preços");
     expect(textoSalvo(fora, "SCL", "ferramenta")).toContain("continuam com as estadias anteriores");
+    // Só disponibilidade (M3.11b): nada deste formulário vai aos canais (só as datas fechadas e reabertas vão), então nenhuma promessa, pronto ou não.
+    expect(textoSalvo(pronto, "SCL", "so_disponibilidade")).not.toContain("chegam ao Airbnb");
+    expect(textoSalvo(pronto, "SCL", "so_disponibilidade")).toContain("nosso sistema leva aos canais só as datas que você fecha e reabre aqui");
+    expect(textoSalvo(fora, "SCL", "so_disponibilidade")).toBe(textoSalvo(pronto, "SCL", "so_disponibilidade"));
+    expect(textoDoEnvio(pronto, "SCL", "so_disponibilidade")).toContain("leva ao Airbnb e ao Booking só as datas fechadas e reabertas");
+    expect(textoDoEnvio(fora, "SCL", "so_disponibilidade")).toContain("chegam ao Airbnb e ao Booking só depois de a SCL incluir este imóvel no envio de calendário");
+    expect(textoDoEnvio(fora, "SCL", "so_disponibilidade")).not.toContain("roda todo dia");
   });
 });

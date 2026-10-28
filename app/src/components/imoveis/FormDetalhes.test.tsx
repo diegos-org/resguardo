@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EstadoDetalhes } from "@/imoveis/acoes";
 import { DETALHES_VAZIOS } from "@/imoveis/detalhes";
+import { EXPLICACAO_FONTE_PRECOS, NOMES_FONTE_PRECOS } from "@/imoveis/fonte-precos";
 import { FormDetalhes } from "./FormDetalhes";
 
 afterEach(cleanup);
@@ -63,5 +64,17 @@ describe("cadastro completo: os preços importados do Beds24 na ficha (M3.11a)",
     outra.unmount();
     render(<FormDetalhes imovelId={IMOVEL} inicial={DETALHES_VAZIOS} salvar={vi.fn()} />);
     expect(screen.queryByText(/Preços importados do Beds24/)).toBeNull();
+  });
+});
+
+describe("cadastro completo: a fonte \"só disponibilidade\" (M3.11b)", () => {
+  it("a opção aparece no seletor, com a explicação na lista, e fica escolhida quando é a fonte gravada", () => {
+    render(<FormDetalhes imovelId={IMOVEL} inicial={{ ...DETALHES_VAZIOS, fontePrecos: "so_disponibilidade" }} salvar={vi.fn()} />);
+    const seletor = screen.getByLabelText(/^Fonte de preços deste imóvel/) as HTMLSelectElement;
+    expect(seletor.value).toBe("so_disponibilidade");
+    expect(Array.from(seletor.options).map((o) => [o.value, o.textContent])).toContainEqual(["so_disponibilidade", NOMES_FONTE_PRECOS.so_disponibilidade]);
+    expect(NOMES_FONTE_PRECOS.so_disponibilidade).toBe("Só disponibilidade: o SCL envia só os bloqueios; preço e regras de venda ficam no Beds24");
+    expect(document.body.textContent).toContain(EXPLICACAO_FONTE_PRECOS.so_disponibilidade);
+    expect(EXPLICACAO_FONTE_PRECOS.so_disponibilidade).toContain("noite sem leitura recente fica indisponível para venda, nunca com um palpite");
   });
 });

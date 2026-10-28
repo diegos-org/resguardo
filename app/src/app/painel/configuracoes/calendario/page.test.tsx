@@ -7,7 +7,7 @@ vi.mock("next/navigation", () => ({ redirect: m.redirect }));
 vi.mock("@/acesso/sessao-atual", () => ({ exigirSessaoPainel: m.sessao }));
 vi.mock("@/db/client", () => ({ getDb: m.db }));
 vi.mock("@/imoveis/repositorio", () => ({ listarImoveis: m.imoveis }));
-vi.mock("@/imoveis/detalhes", () => ({ fontesDePrecosDosImoveis: async () => new Map([["ib", "beds24"]]) }));
+vi.mock("@/imoveis/detalhes", () => ({ fontesDePrecosDosImoveis: async () => new Map([["ib", "beds24"], ["ic", "so_disponibilidade"]]) }));
 vi.mock("@/beds24/configuracao", () => ({ listarMapeamentosBeds24: m.mapas }));
 vi.mock("@/calendario/regras-config", async (orig) => ({ ...(await orig<typeof import("@/calendario/regras-config")>()), lerRegrasCalendario: m.regras }));
 vi.mock("@/calendario/acoes", () => ({ alternarMinimoNormalEventoAcao: vi.fn(), novoEventoAcao: vi.fn(), removerEventoAcao: vi.fn(), salvarRegrasCalendarioAcao: vi.fn() }));
@@ -16,7 +16,7 @@ beforeEach(() => {
   m.db.mockReturnValue({});
   m.redirect.mockImplementation(() => { throw new Error("NEXT_REDIRECT"); });
   m.sessao.mockResolvedValue({ papel: "admin", usuarioId: "u", organizacaoId: "org" });
-  m.imoveis.mockResolvedValue([{ id: "i103", codigo: "103", nome: "Boutique" }, { id: "ib", codigo: "buzios", nome: "Búzios" }]);
+  m.imoveis.mockResolvedValue([{ id: "i103", codigo: "103", nome: "Boutique" }, { id: "ib", codigo: "buzios", nome: "Búzios" }, { id: "ic", codigo: "501", nome: "Cobertura" }]);
   m.mapas.mockResolvedValue([{ id: "m", imovelId: "i103", codigo: "103", ativo: true, propertyId: "10", roomId: "20" }]);
   m.regras.mockResolvedValue({ ...REGRAS_CALENDARIO_PADRAO, feriados: [{ data: "2026-11-02", nome: "Finados" }], eventos: [{ id: "e", nome: "Carnaval", inicio: "2027-02-08", fim: "2027-02-17", multiplicador: 400, estadiaMinima: 5, minimoNormalComReserva: true, todosImoveis: false, imoveis: ["i103"] }, { id: "a", nome: "Alta temporada", inicio: "2026-12-15", fim: "2027-02-28", multiplicador: 200, estadiaMinima: 3, minimoNormalComReserva: false, todosImoveis: true, imoveis: [] }], envio: { imoveis: ["i103"], automatico: false } });
 });
@@ -36,6 +36,8 @@ it("admin vê as regras, feriados, eventos, imóveis com vínculo e o sinal da V
   expect(h).toContain("Carnaval");
   expect(h).toContain("4×");
   expect(h).toContain("buzios (sem vínculo Beds24) (preços do Beds24: o SCL envia só calendário)");
+  // M3.11b: a lista de envio diz o que o SCL manda com "só disponibilidade".
+  expect(h).toContain("501 (sem vínculo Beds24) (só disponibilidade: o SCL envia só os bloqueios do SCL)");
   expect(h).toContain("Sinal de escrita na Vercel: <strong>desligado</strong>");
   // M3.11a: o caminho para a importação dos preços do Beds24.
   expect(h).toContain('<a href="/painel/configuracoes/calendario/importar">Importar preços do Beds24</a>');

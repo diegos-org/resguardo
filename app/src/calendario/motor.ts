@@ -16,7 +16,10 @@
  *   dela), cadastro do imóvel, evento e feriadão (período explícito com mínimo substitui); evento ou feriadão que
  *   já tem reserva confirmada no período deixa de contar nas noites livres dele, que voltam ao mínimo normal (regra
  *   de 6/10; o preço do evento continua); sobras: mínimo ≤ noites livres seguidas;
- * - bloqueio: só o que o SCL criou vai como "blackout"; o SCL só reabre o que ele mesmo fechou.
+ * - bloqueio: só o que o SCL criou vai como "blackout"; o SCL só reabre o que ele mesmo fechou;
+ * - fonte "só disponibilidade" (M3.11b, requisitos/product/SO-DISPONIBILIDADE.md): preço, mínimo e máximo ficam no
+ *   Beds24 e o SCL só lê (preço esperado = o lido); vai ao Beds24 só o bloqueio do SCL. `precoLidoDoBeds24` é o único
+ *   ponto que decide "o preço é o lido do Beds24" (também na fonte "beds24").
  * Nada aqui afirma disponibilidade para venda nem preço final nas OTAs.
  */
 import type { EstadoReserva } from "@/db/schema";
@@ -26,13 +29,13 @@ import { formatBRL } from "@/lib/money";
 import { ocupaInventario } from "@/reservas/regras";
 import { type BloqueioEnvio, ehBloqueioEnvio, type FaixaEnvio } from "@/beds24/tipos";
 import { centesimosParaMultiplicador, type Evento, type Feriado, type RegrasCalendario } from "./regras-config";
-import type { FontePrecos } from "@/imoveis/fonte-precos";
+import { type FontePrecos, precoLidoDoBeds24 } from "@/imoveis/fonte-precos";
 
 /** Preço importado do Beds24 numa noite (M3.11a): centavos, o mínimo da entrada (ou nenhum) e a data da importação. */
 export type PrecoImportado = { preco: number; minimo: number | null; em: string };
 export type ImovelPlano = {
   id: string; regras: RegrasVenda; periodos: readonly Periodo[]; pisos: readonly [number | null, number | null];
-  /** Fonte de preços (M3.9): scl, beds24 ou manual. */
+  /** Fonte de preços (M3.9): scl, beds24 ou manual; só disponibilidade (M3.11b). */
   fontePrecos: FontePrecos;
   /** A camada do preço importado do Beds24, por noite (M3.11a). Só vale com a fonte scl; nas outras é ignorada. */
   importados?: ReadonlyMap<string, PrecoImportado>;
@@ -62,7 +65,8 @@ export type LinhaPlano = {
   /** Noites livres seguidas a partir desta (0 = ocupada; null = livre até o fim dos dados). */
   livresSeguidas: number | null;
   minimoEnviar: number | null;
-  maximoEnviar: number;
+  /** Nulo só com a fonte "só disponibilidade" (M3.11b): o máximo fica no Beds24 e não vai na carga. */
+  maximoEnviar: number | null;
   reservas: number;
   bloqueioScl: boolean;
   bloqueioEnviar: BloqueioEnvio | undefined;
@@ -161,6 +165,9 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
   const observadas = new Map(e.observacoes.map((o) => [o.data, o]));
   const enviadas = new Map(e.enviados.map((o) => [o.data, o]));
   const maximo = imovel.regras.estadiaMaxima ?? regras.estadiaMaxima;
+  // Só disponibilidade (M3.11b): preço, mínimo e máximo ficam no Beds24; ao Beds24 vai só o bloqueio do SCL.
+  const soDisponibilidade = imovel.fontePrecos === "so_disponibilidade";
+  const maximoEnviar: number | null = soDisponibilidade ? null : maximo;
 
   // Ocupação dia a dia até o fim dos dados; sobras contadas de trás para a frente.
   const totalDias = diasEntre(inicio, fimDados) + 1;
@@ -212,10 +219,11 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
         motivoPreco = `Preço importado do Beds24 em ${dataBr(importado.em)}`;
       } else if (base.ajustado) motivoPreco = "Preço base (limitado ao piso/teto)";
     }
-    // Fonte "beds24": o preço é o lido do Beds24 (proprietário ou ferramenta dele); o SCL nunca envia preço.
-    // Sem leitura, a noite fica sem preço (o site não vende) — nunca um palpite do cadastro.
-    const lidoDoBeds24 = fonte === "beds24" ? (observadas.get(data)?.preco ?? null) : null;
-    if (fonte === "beds24") {
+    // Fontes "beds24" e "só disponibilidade": o preço é o lido do Beds24 (proprietário ou ferramenta dele); o SCL
+    // nunca envia preço. Sem leitura, a noite fica sem preço (o site não vende) — nunca um palpite do cadastro.
+    const precoLido = precoLidoDoBeds24(fonte);
+    const lidoDoBeds24 = precoLido ? (observadas.get(data)?.preco ?? null) : null;
+    if (precoLido) {
       fontePreco = "beds24";
       precoReferencia = null;
       motivoPreco = lidoDoBeds24 !== null ? "Preço definido no Beds24 (o SCL só lê)" : "Preço definido no Beds24, ainda sem leitura";
@@ -229,7 +237,7 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
     const pct = faixa >= 0 ? uh.faixas[faixa].percentual : 0;
     const piso = faixa >= 0 ? imovel.pisos[faixa] : null;
     let precoEnviar = precoReferencia;
-    let precoFinalEsperado = fonte === "beds24" ? lidoDoBeds24 : precoReferencia;
+    let precoFinalEsperado = precoLido ? lidoDoBeds24 : precoReferencia;
     let motivoUltimaHora = "";
     if (precoReferencia !== null && pct > 0) {
       const reduzido = reduzir(precoReferencia, pct);
@@ -288,15 +296,20 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
       if (cedem && especiais.some((c) => c.ligada && c.v > maior.v)) motivoMinimo += `; ${comReserva.join(" e ")} já tem reserva confirmada: noites livres com o mínimo normal`;
     }
     const livresSeguidas = livres[n] ?? null;
-    let minimoEnviar = minimoRegra;
+    let minimoEnviar: number | null = minimoRegra;
     if (minimoRegra !== null && livresSeguidas !== null && livresSeguidas > 0 && livresSeguidas < minimoRegra) {
       minimoEnviar = livresSeguidas;
       motivoMinimo += `; sobra de ${livresSeguidas} noite(s) até a próxima reserva/bloqueio`;
     }
+    // Só disponibilidade: o mínimo fica no Beds24. A regra do SCL e as sobras acima ficam só para informação.
+    if (soDisponibilidade) {
+      minimoEnviar = null;
+      motivoMinimo = `mínimo definido no Beds24 (o SCL só lê); regra do SCL só para informação: ${motivoMinimo}`;
+    }
     // Mínimo acima do máximo é impossível de cumprir (e o Beds24 pode recusar): envia o máximo como mínimo e avisa.
-    if (minimoEnviar !== null && minimoEnviar > maximo) {
-      avisos.push(`Mínimo (${minimoEnviar}) acima do máximo (${maximo}): enviado mínimo igual ao máximo; conferir o cadastro.`);
-      minimoEnviar = maximo;
+    if (minimoEnviar !== null && maximoEnviar !== null && minimoEnviar > maximoEnviar) {
+      avisos.push(`Mínimo (${minimoEnviar}) acima do máximo (${maximoEnviar}): enviado mínimo igual ao máximo; conferir o cadastro.`);
+      minimoEnviar = maximoEnviar;
     }
 
     // Ocupação, bloqueio e observação externa.
@@ -349,21 +362,24 @@ export function planejarCalendario(e: EntradaPlano): LinhaPlano[] {
 
     // Comparação: observação mais recente que o último envio vale; senão vale o envio confirmado.
     const observacaoValida = observacao && (!enviado || observacao.observadoEm.getTime() >= enviado.enviadoEm.getTime()) ? observacao : null;
-    // Campo que não vai (preço ou mínimo ausentes) não entra na comparação: senão a noite ficaria "enviar" para sempre.
-    const igualObs = observacaoValida !== null && (precoEnviar === null || observacaoValida.preco === precoEnviar) && (minimoEnviar === null || observacaoValida.minimoNoites === minimoEnviar) && observacaoValida.maximoNoites === maximo
+    // Campo que não vai (preço, mínimo ou máximo ausentes) não entra na comparação: senão a noite ficaria "enviar" para sempre.
+    const igualObs = observacaoValida !== null && (precoEnviar === null || observacaoValida.preco === precoEnviar) && (minimoEnviar === null || observacaoValida.minimoNoites === minimoEnviar) && (maximoEnviar === null || observacaoValida.maximoNoites === maximoEnviar)
       && (bloqueioEnviar === undefined || normalizarBloqueio(observacaoValida.bloqueio) === bloqueioEnviar);
-    const igualEnviado = enviado !== null && enviado.confirmado && (precoEnviar === null || enviado.preco === precoEnviar) && (minimoEnviar === null || enviado.minimo === minimoEnviar) && enviado.maximo === maximo
+    const igualEnviado = enviado !== null && enviado.confirmado && (precoEnviar === null || enviado.preco === precoEnviar) && (minimoEnviar === null || enviado.minimo === minimoEnviar) && (maximoEnviar === null || enviado.maximo === maximoEnviar)
       && (bloqueioEnviar === undefined || normalizarBloqueio(enviado.bloqueio) === bloqueioEnviar);
-    const nadaAEnviar = precoEnviar === null && minimoEnviar === null && bloqueioEnviar === undefined;
+    const nadaAEnviar = precoEnviar === null && minimoEnviar === null && maximoEnviar === null && bloqueioEnviar === undefined;
     const acao: AcaoNoite = nadaAEnviar ? "sem_dados" : igualObs || (observacaoValida === null && igualEnviado) ? "igual" : "enviar";
     if (acao === "enviar" && observacaoValida && igualEnviado) avisos.push("Beds24 difere do último envio confirmado pelo SCL: o SCL reenvia o valor oficial.");
 
     const textoBloqueio = bloqueioEnviar === "blackout" ? (bloqueioAnterior ? `bloqueio do SCL (antes: "${bloqueioAnterior}")` : "bloqueio do SCL")
       : bloqueioEnviar === "none" ? "reabre bloqueio do SCL" : bloqueioEnviar ? `reabre bloqueio do SCL e devolve "${bloqueioEnviar}"` : "";
-    const regra = [motivoPreco, motivoUltimaHora, `mín. ${minimoEnviar ?? "—"} (${motivoMinimo})`, `máx. ${maximo}`, textoBloqueio].filter(Boolean).join(" · ");
+    // Na `regra` (histórico do envio, cortada em 300 caracteres) o mínimo desta fonte leva um motivo curto: a regra do SCL
+    // inteira fica em `motivoMinimo`, para a prévia, e o texto do bloqueio — o que de fato vai — não é cortado.
+    const motivoMinimoDaRegra = soDisponibilidade ? "definido no Beds24; o SCL só lê" : motivoMinimo;
+    const regra = [motivoPreco, motivoUltimaHora, `mín. ${minimoEnviar ?? "—"} (${motivoMinimoDaRegra})`, `máx. ${maximoEnviar ?? "—"}`, textoBloqueio].filter(Boolean).join(" · ");
     linhas.push({
       data, antecedencia, fontePreco, motivoPreco, precoReferencia, faixaUltimaHora: faixa >= 0 ? faixa : null, percentualUltimaHora: pct, piso,
-      precoEnviar, precoFinalEsperado, minimoRegra, motivoMinimo, livresSeguidas, minimoEnviar, maximoEnviar: maximo,
+      precoEnviar, precoFinalEsperado, minimoRegra, motivoMinimo, livresSeguidas, minimoEnviar, maximoEnviar,
       reservas, bloqueioScl, bloqueioEnviar, bloqueioAnterior, posseBloqueioEncerrada, observacao, enviado, acao, regra, avisos,
     });
   }
@@ -374,7 +390,7 @@ type Carga = { preco?: number; minimo?: number; maximo?: number; bloqueio?: Bloq
 const cargaDe = (l: LinhaPlano): Carga => ({
   ...(l.precoEnviar !== null ? { preco: l.precoEnviar } : {}),
   ...(l.minimoEnviar !== null ? { minimo: l.minimoEnviar } : {}),
-  maximo: l.maximoEnviar,
+  ...(l.maximoEnviar !== null ? { maximo: l.maximoEnviar } : {}),
   ...(l.bloqueioEnviar !== undefined ? { bloqueio: l.bloqueioEnviar } : {}),
 });
 const mesmaCarga = (a: Carga, b: Carga) => a.preco === b.preco && a.minimo === b.minimo && a.maximo === b.maximo && a.bloqueio === b.bloqueio;

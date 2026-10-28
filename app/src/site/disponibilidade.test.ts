@@ -462,3 +462,61 @@ describe("preço importado do Beds24 no site (M3.11a)", () => {
     expect(await consultar()).toMatchObject({ situacao: "disponivel", cotacao: { diarias: 135000, valorCheio: 160000 } });
   });
 });
+
+describe("só disponibilidade no site (M3.11b)", () => {
+  beforeEach(() => db.update(imoveisDetalhes).set({ fontePrecos: "so_disponibilidade" }).where(eq(imoveisDetalhes.imovelId, im)));
+
+  it("preço, mínimo e máximo são os lidos na noite de entrada; as regras do SCL não valem; o desconto do site vale por cima; nada cita o Beds24", async () => {
+    // Cadastro do SCL com mínimo 5 (não vale nesta fonte); na leitura, R$ 520 por noite, mínimo 2 e máximo 3.
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 5 }).where(eq(imoveisDetalhes.imovelId, im));
+    await observar(dias("2026-10-12", 5), { preco: 52000, minimoNoites: 2, maximoNoites: 3 });
+    // 3 × R$ 520 + limpeza R$ 250 + hóspede extra (2 × R$ 50 × 3) = R$ 2.110 cheio; desconto do site 4% = R$ 84,40.
+    const r = await consultar({ hospedes: "4" });
+    expect(r).toMatchObject({ situacao: "disponivel", motivos: [], cotacao: { diarias: 156000, valorCheio: 211000, desconto: 8440, total: 202560 } });
+    // 1 noite fica abaixo do mínimo lido (2); 4 noites passam do máximo lido (3).
+    const curta = await consultar({ saida: "2026-10-13" });
+    expect(curta).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 12/10/2026, o mínimo é de 2 noites."] });
+    const longa = await consultar({ saida: "2026-10-16" });
+    expect(longa).toMatchObject({ situacao: "indisponivel", motivos: ["Máximo de 3 noites por estadia."] });
+    expect(JSON.stringify([r, curta, longa])).not.toMatch(/beds24/i);
+    // Na fonte "beds24" (M3.9) o mínimo continua o do SCL (cadastro: 5), e o máximo lido não conta.
+    await db.update(imoveisDetalhes).set({ fontePrecos: "beds24" }).where(eq(imoveisDetalhes.imovelId, im));
+    expect(await consultar({ saida: "2026-10-16" })).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 12/10/2026, o mínimo é de 5 noites."] });
+  });
+
+  it("sem leitura atual na entrada, a data fica a confirmar e sem valor: nem o cadastro, nem o mínimo do SCL, nem um palpite", async () => {
+    await observar(dias("2026-10-12", 4), { preco: 52000, minimoNoites: 2, maximoNoites: 3 });
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-09-20T09:00:00Z") }).where(eq(beds24Calendario.data, "2026-10-12"));
+    const r = await consultar({ hospedes: "4" });
+    expect(r).toMatchObject({ situacao: "a_confirmar", cotacao: { diarias: null, valorCheio: null, total: null } });
+    expect(r.motivos).toContainEqual(expect.stringContaining("ainda não foi confirmado"));
+    // Sem leitura atual não há mínimo a aplicar: a noite curta também fica a confirmar, não "indisponível".
+    expect(await consultar({ saida: "2026-10-13" })).toMatchObject({ situacao: "a_confirmar", cotacao: { diarias: null } });
+    // Leitura atual sem preço: idem.
+    await db.update(beds24Calendario).set({ observadoEm: new Date("2026-10-01T09:15:00Z"), preco: null }).where(eq(beds24Calendario.data, "2026-10-12"));
+    const semPreco = await consultar({ hospedes: "4" });
+    expect(semPreco).toMatchObject({ situacao: "a_confirmar", cotacao: { diarias: null, total: null } });
+    expect(JSON.stringify([r, semPreco])).not.toMatch(/beds24/i);
+  });
+
+  it("as sobras do SCL não valem: a reserva logo depois da entrada não rebaixa o mínimo lido; com a fonte scl, a mesma sobra vale", async () => {
+    // Cadastro do SCL com mínimo 5; na leitura, mínimo 3. Reserva confirmada de 14 a 16/10: sobra de 2 noites (12 e 13/10).
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 5 }).where(eq(imoveisDetalhes.imovelId, im));
+    await observar(dias("2026-10-12", 5), { preco: 52000, minimoNoites: 3, maximoNoites: 27 });
+    await db.insert(reservas).values({ organizacaoId: org, imovelId: im, codigo: "SCL-SOBRA", origem: "airbnb", estado: "confirmada", checkin: "2026-10-14", checkout: "2026-10-16", hospedeNome: "Hóspede Fictício", hospedeEmail: "fake@example.com", fonte: "manual", idFonte: "" });
+    const r = await consultar({ saida: "2026-10-14" });
+    expect(r).toMatchObject({ situacao: "indisponivel", motivos: ["Para entrada em 12/10/2026, o mínimo é de 3 noites."], cotacao: null });
+    expect(JSON.stringify(r)).not.toMatch(/beds24|Fictício|fake@/i);
+    // Contraste: com a fonte scl a sobra cede o mínimo 5 às 2 noites livres, e a estadia vende.
+    await db.update(imoveisDetalhes).set({ fontePrecos: "scl" }).where(eq(imoveisDetalhes.imovelId, im));
+    expect(await consultar({ saida: "2026-10-14" })).toMatchObject({ situacao: "disponivel", motivos: [], noites: 2 });
+  });
+
+  it("mínimo e máximo nulos na leitura atual são \"sem restrição\" (na API, minStay/maxStay valem 1 ou mais, ou nulo): 1 noite vende, mesmo com mínimo 5 no cadastro do SCL", async () => {
+    await db.update(imoveisDetalhes).set({ estadiaMinima: 5 }).where(eq(imoveisDetalhes.imovelId, im));
+    await observar(dias("2026-10-12", 4), { preco: 52000, minimoNoites: null, maximoNoites: null });
+    const r = await consultar({ saida: "2026-10-13" });
+    expect(r).toMatchObject({ situacao: "disponivel", motivos: [], noites: 1, cotacao: { diarias: 52000 } });
+    expect(JSON.stringify(r)).not.toMatch(/beds24/i);
+  });
+});

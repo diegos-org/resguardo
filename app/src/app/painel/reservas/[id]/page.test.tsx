@@ -577,8 +577,8 @@ const cancelada = {
 };
 
 describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
-  // Muda junto (M8.3c, bloco G): a ficha ganhou `acoes` (os botões do envio que valem agora); aqui, nenhum.
-  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [], acoes: { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false } };
+  // Muda junto (M8.3c, bloco G): a ficha ganhou `acoes` (os botões do envio que valem agora); aqui, nenhum. M3.11b: e `direta`.
+  const ficha = { desligada: ["ambiente", "chave", "credencial", "imovel", "sem_acompanhamento"], beds24Id: null, acompanhamento: null, operacoes: [], simular: true, pedido: null, tarefas: [], atencoes: [], acoes: { botoes: [], candidato: null, duplicadas: [], vincularSemMarca: false, automatico: false }, direta: null };
   const tarefa = (caso: string, texto: string, marca: string | null = null) => ({ reservaId: "r1", codigo: "SCL-TESTE1", caso, estado: "manual", checkin: "2026-10-12", checkout: "2026-10-15", desde: new Date(0), alteracaoIds: [], texto, marca });
   beforeEach(() => {
     m.reserva.mockResolvedValue({ ...reserva, fonte: "site" });
@@ -678,7 +678,49 @@ describe("M8.3a: a reserva do site no Beds24 (só leitura)", () => {
       m.reserva.mockResolvedValue({ ...reserva, fonte });
       expect(await html()).not.toContain('aria-label="Reserva no Beds24"');
     }
+    // M3.11b: a direta e a de OTA com o id do Beds24, e a importada do Beds24, também não (a regra `reservaDiretaParaOtas`).
+    for (const r of [{ origem: "direta", fonte: "beds24", beds24Id: "900001" }, { origem: "direta", fonte: "manual", beds24Id: "900001" }, { origem: "airbnb", fonte: "manual", beds24Id: null }]) {
+      m.reserva.mockResolvedValue({ ...reserva, ...r });
+      expect(await html()).not.toContain('aria-label="Reserva no Beds24"');
+    }
     expect(m.noBeds24).not.toHaveBeenCalled();
+  });
+
+  it.each(["admin", "operacao"])("M3.11b: a reserva direta confirmada no SCL tem o bloco para %s (o aviso e a marca), com o lembrete no Cancelar quando marcada; o proprietário não", async (papel) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+      m.sessao.mockResolvedValue({ papel, organizacaoId: "org", usuarioId: "u", imovelIds: [] });
+      m.reserva.mockResolvedValue({ ...reserva, origem: "direta", fonte: "manual", beds24Id: null });
+      m.pagamentos.mockResolvedValue([]);
+      const semMarca = { ...ficha, desligada: [], simular: false, tarefas: [tarefa("direta", "Reserva direta SCL-TESTE1: feche as datas de 12/10 a 15/10 no Beds24 como bloqueio (não crie reserva lá).", "datas_fechadas")], direta: { fechadasEm: null, reabertasEm: null } };
+      m.noBeds24.mockResolvedValue(semMarca);
+      const h = await html();
+      expect(m.noBeds24).toHaveBeenCalledWith({}, "org", "r1", process.env, expect.any(Date));
+      expect(h).toContain('aria-label="Reserva no Beds24"');
+      expect(h).toContain("Reserva direta SCL-TESTE1: feche as datas de 12/10 a 15/10 no Beds24 como bloqueio (não crie reserva lá).");
+      expect(h).toContain(">Datas fechadas nas OTAs</button>");
+      expect(h).not.toContain(">Simular</button>");
+      expect(h).not.toContain("marcadas como fechadas nas OTAs: depois de cancelar");
+      // Marcada: o "Cancelar reserva" lembra de reabrir as datas e marcar (até o dia da saída); depois dela, não; reaberta, não.
+      const marcada = { ...semMarca, tarefas: [], direta: { fechadasEm: new Date("2026-10-02T12:00:00Z"), reabertasEm: null } };
+      m.noBeds24.mockResolvedValue(marcada);
+      const lembrete = "As datas foram marcadas como fechadas nas OTAs: depois de cancelar, no Beds24, mude o bloqueio de 12/10 a 15/10 para Cancelado (não apague) e marque Datas reabertas nas OTAs aqui na ficha.";
+      expect(await html()).toContain(lembrete);
+      vi.setSystemTime(new Date("2026-10-15T15:00:00Z"));
+      expect(await html()).toContain(lembrete);
+      vi.setSystemTime(new Date("2026-10-16T15:00:00Z"));
+      expect(await html()).not.toContain("marcadas como fechadas nas OTAs: depois de cancelar");
+      vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+      m.noBeds24.mockResolvedValue({ ...marcada, direta: { fechadasEm: new Date("2026-10-02T12:00:00Z"), reabertasEm: new Date("2026-10-03T12:00:00Z") } });
+      expect(await html()).not.toContain("marcadas como fechadas nas OTAs: depois de cancelar");
+      m.sessao.mockResolvedValue({ papel: "proprietario", organizacaoId: "org", usuarioId: "u", imovelIds: ["im"] });
+      m.noBeds24.mockClear();
+      expect(await html()).not.toContain('aria-label="Reserva no Beds24"');
+      expect(m.noBeds24).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

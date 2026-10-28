@@ -15,6 +15,7 @@ import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
 import { type Correio, CorreioMemoria, type Mensagem } from "@/email/correio";
 import { alterar, type Cenario, EMAIL_HOSPEDE, env, minutos, montarCenario, NOME_HOSPEDE, pagarDiferenca, pagarEConfirmar, TELEFONE_HOSPEDE } from "@/pagamentos/testes";
+import { criarReserva } from "@/reservas/repositorio";
 import {
   avisarEquipeDasReservasNoBeds24, avisarEquipeDeReservaNoBeds24, avisosDeReservasNoBeds24, chaveDoEmailBeds24, type DadosDoEmailBeds24, emailDeReservaNoBeds24, LINK_DAS_ATENCOES_NO_BEDS24,
   reservasComAtencaoNoBeds24,
@@ -279,6 +280,31 @@ describe("o Início das reservas do site no Beds24 (desenho 6.5; plano 1.14)", (
     await gravarConfig(db, c.org, "reservas_beds24", { pausado: { em: minutos(100).toISOString(), por: null }, retomado: null, imoveis: [{ imovelId: c.imovel, ligadoEm: "2026-09-01T00:00:00.000Z", ligadoPor: null }], ensaio: null }, null);
     expect(atrasadas(await inicio(minutos(120), PRONTO))).toEqual([]);
     expect((await inicio(minutos(120), PRONTO)).map((a) => a.texto).join("\n")).not.toContain("faz isso sozinho");
+  });
+
+  it("M3.11b: a reserva direta confirmada no SCL entra entre as tarefas à mão (depois da paga), uma linha por reserva com o link da ficha, para a operação também; nunca no filtro de atenção", async () => {
+    const conflito = await comAcompanhamento("conflito", "noites_ocupadas");
+    const paga = await pagarEConfirmar(c, { entrada: "2026-10-20", saida: "2026-10-23", email: "paga@example.com" });
+    const r = await criarReserva(
+      db,
+      c.org,
+      {
+        imovelId: c.imovel, origem: "direta", estado: "confirmada", checkin: "2026-11-10", checkout: "2026-11-13", hospedes: 2, hospedeNome: "Visitante Direto Fictício", hospedeEmail: "direto@example.com", hospedeTelefone: "(21) 98888-0000",
+        hospedeOrigem: "", moeda: "BRL", valorBruto: 120000, taxaCanal: null, valorLiquido: null, recebimento: "empresa", codigoCanal: "", observacoes: "",
+      },
+      null,
+    );
+    if (!r.ok) throw new Error("reserva direta não criada");
+    const direta = r.reserva;
+    const esperado = [
+      { nivel: "atencao", texto: `Reserva ${conflito.reservaCodigo}: as noites estão ocupadas por outra reserva no Beds24 (possível venda dupla). Veja a ficha.`, link: ficha(conflito.reservaId) },
+      { nivel: "info", texto: `1 reserva(s) do site paga(s) (${paga.reservaCodigo}): feche as datas no Beds24 como bloqueio e marque Datas fechadas nas OTAs.`, link: ficha(paga.reservaId) },
+      { nivel: "info", texto: `Reserva direta ${direta.codigo}: feche as datas de 10/11 a 13/11 no Beds24 como bloqueio (não crie reserva lá).`, link: ficha(direta.id) },
+    ];
+    expect(await inicio(minutos(90), env())).toEqual(esperado);
+    expect(await inicio(minutos(90), env(), false)).toEqual(esperado);
+    expect(await reservasComAtencaoNoBeds24(db, c.org, minutos(90), env())).toEqual([conflito.reservaId]);
+    expect(JSON.stringify(esperado)).not.toMatch(/R\$|Direto Fictício|direto@example|98888/);
   });
 });
 

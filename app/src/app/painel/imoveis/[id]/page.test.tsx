@@ -11,6 +11,8 @@ import { montarRevisao } from "@/calendario/importacao";
 import { beds24Calendario, idsExternos, organizacoes, usuarios } from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import type { Db } from "@/db/types";
+import { DETALHES_VAZIOS, salvarDetalhes } from "@/imoveis/detalhes";
+import { PERIODO_SO_DISPONIBILIDADE_PAINEL } from "@/imoveis/fonte-precos";
 import { criarImovel } from "@/imoveis/repositorio";
 import { somarDias } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
@@ -51,4 +53,18 @@ it("a ficha mostra os preços importados em Preço e taxas, com o link para a re
   expect(h).toContain("importou os preços do Beds24");
   expect(h).toContain(`preços importados do Beds24: — → 4 noite(s), de ${dia(hojeISO())} a ${dia(somarDias(hojeISO(), 3))}`);
   expect(await html(semImportados)).not.toContain("Preços importados do Beds24");
+});
+
+it("só disponibilidade (M3.11b, desenho §7): Períodos especiais mostra a nota no lugar do formulário; nas outras fontes, o formulário", async () => {
+  const org = admin.organizacaoId;
+  await salvarDetalhes(db, org, semImportados, { ...DETALHES_VAZIOS, fontePrecos: "so_disponibilidade" }, admin.usuarioId);
+  const h = await html(semImportados);
+  expect(h).toContain(PERIODO_SO_DISPONIBILIDADE_PAINEL);
+  expect(h).not.toContain('aria-label="Novo período especial"');
+  for (const fontePrecos of ["scl", "beds24", "manual"] as const) {
+    await salvarDetalhes(db, org, semImportados, { ...DETALHES_VAZIOS, fontePrecos }, admin.usuarioId);
+    const outra = await html(semImportados);
+    expect(outra).not.toContain(PERIODO_SO_DISPONIBILIDADE_PAINEL);
+    expect(outra).toContain('aria-label="Novo período especial"');
+  }
 });

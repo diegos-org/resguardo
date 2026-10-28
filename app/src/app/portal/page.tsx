@@ -488,7 +488,7 @@ export default async function Portal({ searchParams }: PageProps<"/portal">) {
                 })}
               </ul>
               <p className={styles.miudo}>
-                O calendário, as estadias mínimas e os bloqueios são sempre do SCL. O site da {empresa} vende pelo mesmo preço do canal, com o desconto do site por cima. Para mudar a fonte de preços, fale com a {empresa}.
+                O calendário e os bloqueios são sempre do SCL; as estadias mínimas também, exceto com &ldquo;{NOMES_FONTE_PRECOS_PORTAL.so_disponibilidade}&rdquo;, em que preço e estadias ficam com você ou com a sua ferramenta de preços. O site da {empresa} vende pelo mesmo preço do canal, com o desconto do site por cima. Para mudar a fonte de preços, fale com a {empresa}.
               </p>
             </section>
           )}

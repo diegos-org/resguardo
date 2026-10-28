@@ -7,7 +7,13 @@ import type { FontePrecos } from "@/imoveis/fonte-precos";
 import { DIAS_NA_ORDEM, DIAS_SEMANA } from "@/lib/datas";
 import styles from "../formularios.module.css";
 
-export type ImovelOpcao = { id: string; codigo: string; nome: string; vinculado: boolean; /** Fonte de preços (M3.9): com "beds24" o SCL envia só calendário. */ fontePrecos?: FontePrecos };
+export type ImovelOpcao = { id: string; codigo: string; nome: string; vinculado: boolean; /** Fonte de preços (M3.9): com "beds24" o SCL envia só calendário; com "so_disponibilidade" (M3.11b), só os bloqueios. */ fontePrecos?: FontePrecos };
+/** O que a lista de envio diz ao lado de cada imóvel, pela fonte de preços (M3.9, M3.11b); nada com a fonte scl. */
+const ROTULO_FONTE_NO_ENVIO: Partial<Record<FontePrecos, string>> = {
+  beds24: " (preços do Beds24: o SCL envia só calendário)",
+  manual: " (preços digitados no cadastro)",
+  so_disponibilidade: " (só disponibilidade: o SCL envia só os bloqueios do SCL)",
+};
 type Props = { regras: RegrasCalendario; imoveis: ImovelOpcao[]; salvar: (a: EstadoRegrasCalendario, f: FormData) => Promise<EstadoRegrasCalendario> };
 
 const grupo = { border: "1px solid var(--scl-areia)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column" as const, gap: 12, margin: 0 };
@@ -32,7 +38,7 @@ export function FormRegrasCalendario({ regras, imoveis, salvar }: Props) {
     </div>;
   };
   const listaImoveis = (nome: string, atual: readonly string[]) => <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
-    {imoveis.map((i) => <label key={i.id} className={styles.check} style={{ flex: "0 0 auto", minWidth: 0 }}><input type="checkbox" name={nome} value={i.id} defaultChecked={naLista(nome, i.id, atual)} /> {i.codigo}{nome === "envioImoveis" && !i.vinculado ? " (sem vínculo Beds24)" : ""}{nome === "envioImoveis" && i.fontePrecos === "beds24" ? " (preços do Beds24: o SCL envia só calendário)" : nome === "envioImoveis" && i.fontePrecos === "manual" ? " (preços digitados no cadastro)" : ""}</label>)}
+    {imoveis.map((i) => <label key={i.id} className={styles.check} style={{ flex: "0 0 auto", minWidth: 0 }}><input type="checkbox" name={nome} value={i.id} defaultChecked={naLista(nome, i.id, atual)} /> {i.codigo}{nome === "envioImoveis" && !i.vinculado ? " (sem vínculo Beds24)" : ""}{nome === "envioImoveis" && i.fontePrecos ? (ROTULO_FONTE_NO_ENVIO[i.fontePrecos] ?? "") : ""}</label>)}
     {!imoveis.length && <span style={nota}>Nenhum imóvel ativo cadastrado.</span>}
   </div>;
   return <form key={JSON.stringify(regras)} action={enviar} className={styles.form} aria-label="Regras de calendário e preços">

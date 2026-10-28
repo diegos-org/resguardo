@@ -838,3 +838,19 @@ export function escoposLidosBeds24(v: unknown): EscoposLidosBeds24 | null {
   if (!excessivos || !faltando || !ilegiveis) return null;
   return { situacao: v.situacao as ProntidaoEscoposBeds24["situacao"], excessivos, faltando, ilegiveis };
 }
+
+// ---------------------------------------------------------------- a reserva direta confirmada no SCL (M3.11b)
+
+/**
+ * Quem é "reserva direta" para as OTAs (M3.11b, desenho em `requisitos/product/SO-DISPONIBILIDADE.md`, 8): a reserva que
+ * não nasce no Beds24 (WhatsApp, indicação) — origem "direta" ou "outro", fonte diferente de "beds24" (a importada) e de
+ * "site" (o pedido do site tem o M8.3), sem `beds24_id`. A única regra, em TypeScript aqui e em SQL em `tarefasDasOtas`
+ * (`reservas-site-tarefas.ts`), pelas mesmas duas listas: a ficha, o Início e as marcas leem a mesma coisa. Ela nunca vai ao
+ * envio do M8.3c (que só lê `beds24_reservas_site`, de reserva do site): o sistema não cria nem bloqueia nada por ela.
+ */
+export const ORIGENS_RESERVA_DIRETA = ["direta", "outro"] as const;
+/** As fontes que nunca são "reserva direta": a importada do Beds24 e a do site. */
+export const FONTES_FORA_DA_RESERVA_DIRETA = ["beds24", "site"] as const;
+
+export const reservaDiretaParaOtas = (r: { origem: string; fonte: string; beds24Id: string | null }): boolean =>
+  (ORIGENS_RESERVA_DIRETA as readonly string[]).includes(r.origem) && !(FONTES_FORA_DA_RESERVA_DIRETA as readonly string[]).includes(r.fonte) && r.beds24Id === null;

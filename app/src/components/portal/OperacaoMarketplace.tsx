@@ -5,7 +5,7 @@ import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { CampoHora } from "@/components/CampoHora";
 import { Periodos } from "@/components/imoveis/Periodos";
 import type { EstadoPeriodo } from "@/imoveis/acoes";
-import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL } from "@/imoveis/fonte-precos";
+import { EXPLICACAO_FONTE_PRECOS_PORTAL, type FontePrecosPortal, NOMES_FONTE_PRECOS_PORTAL, PERIODO_SO_DISPONIBILIDADE_PORTAL, precoForaDoPortal } from "@/imoveis/fonte-precos";
 import type { Periodo } from "@/imoveis/regras-venda";
 import { dataBr, dataHoraNoFuso, DIAS_NA_ORDEM, DIAS_SEMANA } from "@/lib/datas";
 import { centavosParaCampo, reaisParaCentavos } from "@/lib/dinheiro-form";
@@ -65,7 +65,8 @@ const ESTADO_LIMPEZA = { pedida: "A fazer", confirmada: "A fazer", realizada: "F
 
 /**
  * O envio de calendário (M3.7) leva só isto às OTAs; o resto do cadastro vale apenas no site. Com os preços
- * definidos no Beds24 (M3.9), o envio não manda preço nenhum (a SCL só lê os preços de lá): vão só as estadias.
+ * definidos no Beds24 (M3.9), o envio não manda preço nenhum (a SCL só lê os preços de lá): vão só as estadias. Com
+ * só disponibilidade (M3.11b), o envio leva só as datas fechadas e reabertas: preço e estadias ficam com o proprietário.
  * Os textos para o proprietário não citam o Beds24 (M5.9): falam do nosso sistema, dos canais e do preço definido pelo
  * proprietário ou pela ferramenta de preços dele (as duas coisas: nem todo proprietário usa ferramenta).
  */
@@ -73,6 +74,7 @@ const vaiAsOtas = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "estad
 const oQueFica = (fonte: FontePrecosPortal) => (fonte === "ferramenta" ? "as estadias anteriores" : "o preço e as estadias anteriores");
 const SO_NO_SITE = "taxa de limpeza, hóspede extra, antecedência, janela de reservas, dias e horários de entrada e saída valem só no site";
 const PRECO_NA_FERRAMENTA = "o preço da noite é definido por você ou pela sua ferramenta de preços e vem de lá para o site e para os canais";
+const SO_DISPONIBILIDADE = "preço, estadia mínima e máxima são definidos por você ou pela sua ferramenta de preços e vêm de lá para o site e para os canais; nosso sistema leva aos canais só as datas que você fecha e reabre aqui";
 const maiuscula = (t: string) => `${t[0].toUpperCase()}${t.slice(1)}`;
 
 /** O que falta para o envio alcançar as OTAs de fato (lista, vínculo, chave de escrita, e um envio real que já aceitou o imóvel); vazio = pronto. */
@@ -90,6 +92,8 @@ function oQueFaltaNoEnvio(e: SituacaoEnvio, empresa: string): string | null {
 
 /** Mensagem depois de salvar: promete Airbnb/Booking só para o que o envio carrega para esta fonte de preços, e só se o envio está de fato pronto. */
 export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecosPortal = "scl"): string {
+  // Só disponibilidade: nada deste formulário vai aos canais (só as datas fechadas e reabertas vão), então nenhuma promessa.
+  if (fonte === "so_disponibilidade") return `Salvo. Vale no site da ${empresa} agora: ${SO_NO_SITE}. ${maiuscula(SO_DISPONIBILIDADE)}.`;
   const extra = fonte === "ferramenta" ? `; ${PRECO_NA_FERRAMENTA}` : "";
   const falta = oQueFaltaNoEnvio(e, empresa);
   return falta === null
@@ -99,8 +103,14 @@ export function textoSalvo(e: SituacaoEnvio, empresa: string, fonte: FontePrecos
 
 /** Explica, sem supor, se (e o que) do que o proprietário mudou chega às OTAs, conforme a fonte de preços e a prontidão real do envio. */
 export function textoDoEnvio(e: SituacaoEnvio, empresa: string, fonte: FontePrecosPortal = "scl"): string {
-  const extra = fonte === "ferramenta" ? ` ${maiuscula(PRECO_NA_FERRAMENTA)}.` : "";
   const falta = oQueFaltaNoEnvio(e, empresa);
+  if (fonte === "so_disponibilidade") {
+    const base = `${maiuscula(SO_DISPONIBILIDADE)}. O que você muda aqui vale só no site da ${empresa} (${SO_NO_SITE}).`;
+    if (falta !== null) return `${base} As datas que você fecha e reabre aqui chegam ao Airbnb e ao Booking só depois de ${falta}.`;
+    const ultimo = e.ultimo ? ` Último envio: ${quando(e.ultimo.em)} (${NOMES_SITUACAO_ENVIO[e.ultimo.situacao] ?? e.ultimo.situacao}).` : " Ainda não houve envio para este imóvel.";
+    return `${base} ${e.automatico ? "O envio aos canais roda todo dia" : `O envio aos canais é feito pela ${empresa}`} e leva ao Airbnb e ao Booking só as datas fechadas e reabertas.${ultimo}`;
+  }
+  const extra = fonte === "ferramenta" ? ` ${maiuscula(PRECO_NA_FERRAMENTA)}.` : "";
   if (falta !== null) return `O que você mudar aqui vale no site da ${empresa}, mas o Airbnb e o Booking continuam com o calendário e ${oQueFica(fonte)} até ${falta}. Em qualquer caso, ${SO_NO_SITE}.${extra}`;
   const ultimo = e.ultimo ? ` Último envio: ${quando(e.ultimo.em)} (${NOMES_SITUACAO_ENVIO[e.ultimo.situacao] ?? e.ultimo.situacao}).` : " Ainda não houve envio para este imóvel.";
   return `${e.automatico ? `O envio aos canais roda todo dia e leva ${vaiAsOtas(fonte)} ao Airbnb e ao Booking` : `O envio aos canais é feito pela ${empresa}: até ele rodar, o Airbnb e o Booking continuam com ${oQueFica(fonte)}`}; ${SO_NO_SITE}.${extra}${ultimo}`;
@@ -124,7 +134,11 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
   const invalido = (k: string) => (estado.erros?.[k] ? { "aria-invalid": true as const } : {});
   const [precoDigitado, setPrecoDigitado] = useState(dinheiro("precoBase"));
   const centavos = reaisParaCentavos(precoDigitado);
-  const precoNaFerramenta = imovel.fontePrecos === "ferramenta";
+  const precoNaFerramenta = precoForaDoPortal(imovel.fontePrecos);
+  // Só disponibilidade (M3.11b, desenho §6, registro de 26/10): estadia mínima e máxima também ficam com o proprietário ou
+  // com a ferramenta dele (o site lê as dos canais; nosso sistema não as envia). Os campos ficam só de leitura, com a nota;
+  // o servidor recusa a mudança deles nesta fonte, como faz com o preço (`salvarPrecosPeloProprietario`).
+  const estadiasNaFerramenta = imovel.fontePrecos === "so_disponibilidade";
   return (
     <form key={JSON.stringify(imovel.regras)} action={enviar} className={f.form} aria-label={`Preços e regras de venda do ${imovel.codigo}`}>
       <input type="hidden" name="imovelId" value={imovel.id} />
@@ -173,13 +187,13 @@ function FormPrecos({ imovel, precos, empresa, salvar }: { imovel: ImovelOperave
       </p>
       <div className={f.linha}>
         <label>
-          Estadia mínima (noites)
-          <input name="estadiaMinima" inputMode="numeric" defaultValue={numero("estadiaMinima")} {...invalido("estadiaMinima")} />
+          Estadia mínima (noites){estadiasNaFerramenta ? " — definida por você ou pela sua ferramenta de preços" : ""}
+          <input name="estadiaMinima" inputMode="numeric" defaultValue={numero("estadiaMinima")} readOnly={estadiasNaFerramenta} {...invalido("estadiaMinima")} />
           {erro("estadiaMinima")}
         </label>
         <label>
-          Estadia máxima (noites)
-          <input name="estadiaMaxima" inputMode="numeric" defaultValue={numero("estadiaMaxima")} {...invalido("estadiaMaxima")} />
+          Estadia máxima (noites){estadiasNaFerramenta ? " — definida por você ou pela sua ferramenta de preços" : ""}
+          <input name="estadiaMaxima" inputMode="numeric" defaultValue={numero("estadiaMaxima")} readOnly={estadiasNaFerramenta} {...invalido("estadiaMaxima")} />
           {erro("estadiaMaxima")}
         </label>
         <label>
@@ -384,7 +398,7 @@ export function OperacaoMarketplace({ imoveis, precos, limpezas, manutencoes, em
             {textoDoEnvio(i.envio, empresa, i.fontePrecos)}
           </p>
           <FormPrecos imovel={i} precos={precos} empresa={empresa} salvar={salvarPrecos} />
-          <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} semPreco={i.fontePrecos === "ferramenta"} />
+          <Periodos imovelId={i.id} periodos={i.periodos} criar={novoPeriodo} excluir={excluirPeriodo} semPreco={i.fontePrecos === "ferramenta"} recusados={i.fontePrecos === "so_disponibilidade" ? PERIODO_SO_DISPONIBILIDADE_PORTAL : undefined} />
         </article>
       ))}
       <Limpezas limpezas={limpezas} marcar={marcarLimpeza} />

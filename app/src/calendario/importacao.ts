@@ -215,7 +215,7 @@ export type NoiteConferida = {
   data: string;
   precoBeds24: number | null; precoScl: number | null;
   minimoBeds24: number | null; minimoScl: number | null;
-  maximoBeds24: number | null; maximoScl: number;
+  maximoBeds24: number | null; maximoScl: number | null;
   diferencas: DiferencaConferida[];
   /** O resumo da regra do plano (`LinhaPlano.regra`): piso de última hora, período ou evento por cima, mínimo de sobra. */
   motivo: string;

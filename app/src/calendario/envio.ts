@@ -14,7 +14,7 @@ import { type DiaCalendario, type Divergencia, ErroBeds24, type EscritorBeds24, 
 import { beds24Calendario, beds24CalendarioEnviado, beds24EnvioImoveis, beds24EnvioNoites, beds24Envios, bloqueios, imoveis, type MotivoCopiaCalendario, precosImportados, reservas } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { fontesDePrecosDosImoveis, lerDetalhes, listarPeriodos, regrasDeVenda } from "@/imoveis/detalhes";
-import type { FontePrecos } from "@/imoveis/fonte-precos";
+import { type FontePrecos, precoLidoDoBeds24 } from "@/imoveis/fonte-precos";
 import { somarDias } from "@/imoveis/regras-venda";
 import { hojeISO } from "@/lib/datas";
 import { copiarLeitura } from "./copias";
@@ -229,8 +229,9 @@ function quartosInvalidos(divergencias: Divergencia[], roomIdsPedidos: string[])
   return { quartos: new Set(semDono ? roomIdsPedidos : divergencias.map(d => d.id)), semDono };
 }
 
+// Campo que não foi (preço, mínimo ou máximo nulos; só o bloqueio, na fonte "só disponibilidade") não é conferido.
 const igualAoLido = (l: LinhaPlano, d: DiaCalendario | undefined) => d !== undefined
-  && (l.precoEnviar === null || d.preco === l.precoEnviar) && (l.minimoEnviar === null || d.minimoNoites === l.minimoEnviar) && d.maximoNoites === l.maximoEnviar
+  && (l.precoEnviar === null || d.preco === l.precoEnviar) && (l.minimoEnviar === null || d.minimoNoites === l.minimoEnviar) && (l.maximoEnviar === null || d.maximoNoites === l.maximoEnviar)
   && (l.bloqueioEnviar === undefined || (d.bloqueio ?? "none") === l.bloqueioEnviar);
 
 /**
@@ -426,11 +427,16 @@ export async function enviarCalendarioBeds24(db: Db, org: string, leitor: Leitor
         planos.push({ imovelId: m.imovelId, codigo: m.codigo, propertyId: m.propertyId, roomId: m.roomId, fontePrecos: p.fontePrecos, linhas: p.linhas, ocupacao: p.ocupacao });
         if (p.inicio < inicioLeitura) inicioLeitura = p.inicio;
         if (p.fim > fimLeitura) fimLeitura = p.fim;
-        const semPreco = p.linhas.filter(l => l.precoReferencia === null).length;
+        // Com o preço lido do Beds24 (fontes "beds24" e "só disponibilidade") o SCL não tem preço a enviar por regra: o aviso
+        // é da noite sem leitura, no plano, não deste.
+        const semPreco = precoLidoDoBeds24(p.fontePrecos) ? 0 : p.linhas.filter(l => l.precoReferencia === null).length;
         if (semPreco) aviso(`Imóvel ${m.codigo}: ${semPreco} noite(s) sem preço no SCL; o preço dessas noites não é enviado.`);
         for (const l of p.linhas) for (const a of l.avisos) if (!a.startsWith("Sem leitura do Beds24")) aviso(`Imóvel ${m.codigo}, noite ${dataBr(l.data)}: ${a}`);
-        const semLeitura = p.linhas.filter(l => !l.observacao).length;
-        if (semLeitura) aviso(`Imóvel ${m.codigo}: ${semLeitura} noite(s) sem leitura anterior do Beds24; serão enviadas e conferidas pela releitura.`);
+        // Noite sem leitura anterior só vai quando o plano a marcou para envio: com o preço lido do Beds24 ela só vai pelo
+        // bloqueio do SCL, e em qualquer fonte fica se é igual ao último envio confirmado. O aviso diz quantas de fato vão.
+        const semLeitura = p.linhas.filter(l => !l.observacao);
+        const semLeituraAEnviar = semLeitura.filter(l => l.acao === "enviar").length;
+        if (semLeitura.length) aviso(`Imóvel ${m.codigo}: ${semLeitura.length} noite(s) sem leitura anterior do Beds24; ${semLeituraAEnviar === 0 ? "nenhuma delas tem algo a enviar" : semLeituraAEnviar === semLeitura.length ? "serão enviadas e conferidas pela releitura" : `${semLeituraAEnviar} delas serão enviadas e conferidas pela releitura`}.`);
       }
       const resultadoImoveis: ImovelEnviado[] = planos.map(p => ({ imovelId: p.imovelId, codigo: p.codigo, resumo: resumirPlano(p.linhas), enviadas: 0, confirmadas: 0, divergentes: 0, pendentes: 0, falha: motivosSemEscrita.get(p.imovelId) ?? "" }));
 

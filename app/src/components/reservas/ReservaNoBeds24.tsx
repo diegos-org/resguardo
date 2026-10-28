@@ -7,8 +7,10 @@
  * "Tentar de novo", "Deixar à mão", "Reenviar o que está no SCL" (`reserva:editar`) e "Não existe, pode criar", "Vincular o
  * id" e "Passar ao sistema" (também `configuracao:editar`: a operação não os vê) —, só os que valem para a reserva agora (a
  * regra do domínio, `botoesDaFichaBeds24`), com o resultado em `?beds24=`; e a frase "o sistema faz isso sozinho" (6.2) quando
- * cabe. O domínio devolve códigos e os textos das tarefas; os rótulos ficam aqui. Só o painel importa este componente: nada
- * do hóspede nem do portal cita o Beds24.
+ * cabe. M3.11b (`ficha.direta`): a reserva direta confirmada no SCL mostra só a tarefa ("feche as datas" ou "reabra as
+ * datas"), a marca dela e quando foi marcada; nunca o envio automático, a frase da 6.2, o "Simular" nem os botões do envio,
+ * porque o sistema nunca a escreve no Beds24. O domínio devolve códigos e os textos das tarefas; os rótulos ficam aqui. Só o
+ * painel importa este componente: nada do hóspede nem do portal cita o Beds24.
  */
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import styles from "@/components/formularios.module.css";
@@ -306,7 +308,14 @@ function Marca({ reservaId, t }: { reservaId: string; t: TarefaOta }) {
     return (
       <form action={marcarDatasFechadasNasOtasAcao} style={{ display: "inline" }}>
         <input type="hidden" name="reservaId" value={reservaId} />
-        <BotaoConfirmar pergunta={`Confirmar que as datas desta reserva (${datas}) já foram fechadas nas OTAs (no Beds24, como bloqueio)? Depois disso o sistema nunca cria esta reserva no Beds24.`}>
+        <BotaoConfirmar
+          pergunta={
+            // M3.11b: a reserva direta nunca iria ao Beds24 pelo sistema; a pergunta diz só o que a equipe fez.
+            t.caso === "direta"
+              ? `Confirmar que as datas desta reserva direta (${datas}) já foram fechadas no Beds24 como bloqueio (sem criar reserva lá)?`
+              : `Confirmar que as datas desta reserva (${datas}) já foram fechadas nas OTAs (no Beds24, como bloqueio)? Depois disso o sistema nunca cria esta reserva no Beds24.`
+          }
+        >
           Datas fechadas nas OTAs
         </BotaoConfirmar>
       </form>
@@ -334,10 +343,52 @@ type Props = {
   resultado?: string;
 };
 
+/** O que a ficha da reserva direta diz antes da tarefa (M3.11b): o sistema nunca a cria no Beds24; o bloqueio é à mão. */
+const RESERVA_DIRETA = "Reserva direta (fora do site e das OTAs): o sistema nunca cria esta reserva no Beds24. As datas dela são fechadas à mão no Beds24, como bloqueio, e o aviso fica no Início e aqui até a marca da equipe.";
+
+/**
+ * O bloco da reserva direta (M3.11b): o aviso, a tarefa com a marca (reserva:editar) e quando a equipe marcou. Sem o envio
+ * automático, a frase da 6.2, o "Simular" e os botões do envio (nada disso vale para ela).
+ */
+function ReservaDiretaNoBeds24({ reservaId, direta, ficha, editar, marcada }: { reservaId: string; direta: NonNullable<FichaReservaNoBeds24["direta"]>; ficha: FichaReservaNoBeds24; editar: boolean; marcada: string | null }) {
+  const linhas: [string, string][] = [
+    ["Datas fechadas nas OTAs", direta.fechadasEm ? `${quando(direta.fechadasEm)} (marcado pela equipe)` : "não marcado"],
+    ...(direta.reabertasEm ? ([["Datas reabertas nas OTAs", `${quando(direta.reabertasEm)} (marcado pela equipe)`]] as [string, string][]) : []),
+  ];
+  return (
+    <section aria-label="Reserva no Beds24" style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 8 }}>
+      <h2 style={{ fontSize: "1.25rem" }}>No Beds24</h2>
+      {marcada && (
+        <p role="status" className={styles.sucesso}>
+          {marcada}
+        </p>
+      )}
+      <p style={{ margin: 0 }}>{RESERVA_DIRETA}</p>
+      <div aria-label="Nas OTAs" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {ficha.tarefas.map((t) => (
+          <div key={t.caso}>
+            {t.texto} {editar && <Marca reservaId={reservaId} t={t} />}
+          </div>
+        ))}
+        {!ficha.tarefas.length && <p style={{ margin: 0 }}>{NADA_A_FAZER}</p>}
+      </div>
+      <dl className={styles.form} style={{ display: "grid", gridTemplateColumns: "minmax(140px, max-content) 1fr", gap: "8px 16px" }}>
+        {linhas.map(([k, v]) => (
+          <div key={k} style={{ display: "contents" }}>
+            <dt style={{ color: "var(--scl-texto-2)", fontSize: "0.875rem" }}>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export function ReservaNoBeds24({ reservaId, ficha, editar, configurar = false, resultado }: Props) {
   const a = ficha.acompanhamento;
   const texto = textoDaSimulacao(resultado);
   const marcada = resultado && Object.hasOwn(MARCAS, resultado) ? MARCAS[resultado] : null;
+  if (ficha.direta) return <ReservaDiretaNoBeds24 reservaId={reservaId} direta={ficha.direta} ficha={ficha} editar={editar} marcada={marcada} />;
   const doBotao = textoDoBotao(resultado);
   // A frase da 6.2 também nas atenções de falha, recusa e incerteza do envio (plano, P5), com o envio automático ligado.
   const fraseDaAtencao = fraseDoEnvioAutomatico(ficha.acoes.automatico, { motivo: a?.motivo ?? null });
